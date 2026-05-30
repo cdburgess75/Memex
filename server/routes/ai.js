@@ -96,6 +96,16 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
       messages: [{ role: 'user', content: 'Source:\n\n' + source.slice(0, 8000) }],
     });
 
+    // Track token usage
+    await client.from('api_usage').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      operation: 'ingest',
+      model: MODEL(),
+      input_tokens: message.usage.input_tokens,
+      output_tokens: message.usage.output_tokens,
+    });
+
     const raw = message.content.map(b => b.text || '').join('');
     const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
 
@@ -171,6 +181,17 @@ router.post('/query', auth, async (req, res) => {
       }
     }
 
+    // Track token usage
+    const final = await stream.finalMessage();
+    await client.from('api_usage').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      operation: 'query',
+      model: MODEL(),
+      input_tokens: final.usage.input_tokens,
+      output_tokens: final.usage.output_tokens,
+    });
+
     await logEvent(client, `query · ${question.slice(0, 48)}`, req.user.id, req.user.email);
     res.write('data: [DONE]\n\n');
     res.end();
@@ -204,6 +225,17 @@ router.post('/lint', auth, async (req, res) => {
         res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
       }
     }
+
+    // Track token usage
+    const final = await stream.finalMessage();
+    await client.from('api_usage').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      operation: 'lint',
+      model: MODEL(),
+      input_tokens: final.usage.input_tokens,
+      output_tokens: final.usage.output_tokens,
+    });
 
     await logEvent(client, 'lint · audit run', req.user.id, req.user.email);
     res.write('data: [DONE]\n\n');
