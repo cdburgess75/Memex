@@ -121,6 +121,11 @@ body {
 .index-col {
   border-right: 1px solid var(--ink);
   padding: 26px 22px 40px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 .index-head {
   font-family: var(--mono);
@@ -138,20 +143,42 @@ body {
 .index-head .count { color: var(--ink-faint); }
 
 /* sidebar search */
-.search-wrap { margin-bottom: 14px; }
+.search-wrap { margin-bottom: 10px; }
 #page-search {
   font-family: var(--mono);
   font-size: 12px;
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 2px;
+  border-radius: 4px;
   padding: 7px 10px;
   color: var(--ink);
   transition: border-color 0.15s;
 }
 #page-search:focus { outline: none; border-color: var(--accent); }
 #page-search::placeholder { color: var(--ink-faint); }
+.cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.cat-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.cat-pill:hover { color: var(--ink); border-color: var(--ink-soft); }
+.cat-pill.active { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
 
 .cat-group { margin-bottom: 20px; }
 .cat-label {
@@ -845,6 +872,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <div class="search-wrap">
       <input type="text" id="page-search" placeholder="Filter pages…" oninput="renderIndex(this.value)" autocomplete="off">
     </div>
+    <div class="cat-filter" id="cat-filter"></div>
     <div id="index-body"></div>
   </aside>
   <main class="work-col">
@@ -917,6 +945,9 @@ let extractedFileText = '';
 // files tab state
 let filesList = []; // cached list of uploaded files
 
+// sidebar category filter
+let activeCatFilter = null;
+
 /* ---------- bootstrap ---------- */
 async function initApp() {
   try {
@@ -949,7 +980,9 @@ async function initApp() {
     applyRoleUI();
   }
 
-  if (localStorage.getItem('memex_theme') === 'dark') setTheme(true);
+  const savedTheme = localStorage.getItem('memex_theme');
+  if (savedTheme === 'dark') setTheme(true);
+  else if (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme(true);
 }
 
 async function loadFromServer() {
@@ -1028,12 +1061,25 @@ async function apiDelete(path) {
   return res.json();
 }
 
+let _streamController = null;
+function stopStream() {
+  if (_streamController) { _streamController.abort(); _streamController = null; }
+}
+
 async function streamFromApi(path, body, el) {
-  const res = await fetch('/api' + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
-    body: JSON.stringify(body),
-  });
+  _streamController = new AbortController();
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify(body),
+      signal: _streamController.signal,
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') { el.classList.remove('cursor', 'dim'); return null; }
+    throw e;
+  }
   if (!res.ok) { el.textContent = 'Error ' + res.status + ': ' + (await res.text()).slice(0, 200); return null; }
 
   const reader = res.body.getReader();
@@ -1041,25 +1087,31 @@ async function streamFromApi(path, body, el) {
   let text = '', buf = '', saved = null;
   el.classList.remove('dim'); el.classList.add('cursor');
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split('\n');
-    buf = parts.pop();
-    for (const line of parts) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') break;
-      try {
-        const d = JSON.parse(data);
-        if (d.text)  { text += d.text; el.textContent = text; }
-        if (d.saved) { saved = d.saved; }
-        if (d.error) { el.textContent = 'Error: ' + d.error; el.classList.remove('cursor'); return null; }
-      } catch {}
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const line of parts) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const d = JSON.parse(data);
+          if (d.text)  { text += d.text; el.textContent = text; }
+          if (d.saved) { saved = d.saved; }
+          if (d.error) { el.textContent = 'Error: ' + d.error; el.classList.remove('cursor'); return null; }
+        } catch {}
+      }
     }
+  } catch (e) {
+    if (e.name !== 'AbortError') throw e;
+  } finally {
+    _streamController = null;
+    el.classList.remove('cursor');
   }
-  el.classList.remove('cursor');
   return { text, saved };
 }
 
@@ -1081,14 +1133,32 @@ function toast(msg) {
 }
 
 /* ---------- sidebar ---------- */
+function setCatFilter(cat) {
+  activeCatFilter = activeCatFilter === cat ? null : cat;
+  renderIndex(document.getElementById('page-search')?.value || '');
+}
+
 function renderIndex(filter = '') {
   const filterLower = filter.toLowerCase();
   const visiblePages = state.pages.filter(p => p.id !== 'overview');
   document.getElementById('page-count').textContent = visiblePages.length;
 
-  // Filter pages: always show overview, filter others by title
+  // Render category filter pills (only categories that have pages)
+  const usedCats = [...new Set(visiblePages.map(p => p.category))];
+  const filterEl = document.getElementById('cat-filter');
+  if (filterEl && usedCats.length > 1) {
+    filterEl.innerHTML = CAT_ORDER
+      .filter(c => usedCats.includes(c))
+      .map(c => `<button class="cat-pill ${activeCatFilter === c ? 'active' : ''}" onclick="setCatFilter('${c}')">${CATS[c]?.glyph || ''} ${CATS[c]?.label || c}</button>`)
+      .join('');
+  } else if (filterEl) {
+    filterEl.innerHTML = '';
+  }
+
+  // Filter pages by title text + active category
   const filtered = state.pages.filter(p => {
-    if (p.id === 'overview') return true;
+    if (p.id === 'overview') return activeCatFilter === null;
+    if (activeCatFilter && p.category !== activeCatFilter) return false;
     if (!filter) return true;
     return p.title.toLowerCase().includes(filterLower);
   });
@@ -1098,7 +1168,9 @@ function renderIndex(filter = '') {
   let html = '';
   CAT_ORDER.forEach(cat => {
     if (!groups[cat]) return;
-    html += `<div class="cat-group"><div class="cat-label">${CATS[cat]?.label || cat}</div>`;
+    const showLabel = !activeCatFilter;
+    if (showLabel) html += `<div class="cat-group"><div class="cat-label">${CATS[cat]?.label || cat}</div>`;
+    else html += `<div class="cat-group">`;
     groups[cat].forEach(p => {
       const active = p.id === state.activePage && state.tab === 'read';
       html += `<div class="page-link ${active ? 'active' : ''} ${p.fresh ? 'fresh' : ''}" onclick="openPage('${p.id}')">
@@ -1106,7 +1178,7 @@ function renderIndex(filter = '') {
     });
     html += `</div>`;
   });
-  document.getElementById('index-body').innerHTML = html || '<div class="empty-index">Nothing filed yet.</div>';
+  document.getElementById('index-body').innerHTML = html || `<div class="empty-index">${filter ? 'No pages match.' : activeCatFilter ? 'No pages in this category.' : 'Nothing filed yet.'}</div>`;
 }
 
 /* ---------- full-text search ---------- */
@@ -1135,10 +1207,12 @@ function renderSearchResults(q, results) {
       }).join('')
     : '<p class="note placeholder">No pages matched.</p>';
 
+  const countLabel = results.length === 1 ? '1 result' : `${results.length} results`;
   document.getElementById('panel').innerHTML = `<div class="panel">
     <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
-      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">Search results</h2>
+      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">Search</h2>
       <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint)">${esc(q)}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:4px">${results.length ? '· ' + countLabel : ''}</span>
       <button class="ghost-btn" style="margin-left:auto;padding:6px 12px" onclick="openPage(state.activePage)">Clear</button>
     </div>
     ${items}
@@ -1194,7 +1268,7 @@ function mdToHtml(md) {
     line = line.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
     line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" onclick="gotoTitle('${t.replace(/'/g, "\\'")}')">${t}</a>`);
+    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" data-wiki="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.wiki)">${esc(t)}</a>`);
     line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
     // Block-level detection on raw line
@@ -1261,7 +1335,7 @@ function applyInline(s) {
   s = s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  s = s.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" onclick="gotoTitle('${t.replace(/'/g, "\\'")}')">${t}</a>`);
+  s = s.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" data-wiki="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.wiki)">${esc(t)}</a>`);
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return s;
 }
@@ -1446,12 +1520,14 @@ function renderIngest() {
 
     <div class="field" id="ingest-paste-section" style="${ingestMode !== 'paste' ? 'display:none' : ''}">
       <label class="field-label">Source text</label>
-      <textarea id="src" placeholder="Paste an article, abstract, transcript, or note…" style="min-height:200px"></textarea>
+      <textarea id="src" placeholder="Paste an article, abstract, transcript, or note…" style="min-height:200px"
+        onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();doIngest();}"></textarea>
     </div>
 
     <div class="field" id="ingest-url-section" style="${ingestMode !== 'url' ? 'display:none' : ''}">
       <label class="field-label">URL</label>
-      <input type="text" id="src-url" placeholder="https://…">
+      <input type="text" id="src-url" placeholder="https://…"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();doIngest();}">
     </div>
 
     <div class="field" id="ingest-file-section" style="${ingestMode !== 'file' ? 'display:none' : ''}">
@@ -1604,11 +1680,13 @@ function renderQuery() {
   document.getElementById('panel').innerHTML = `<div class="panel">
     <div class="field">
       <label class="field-label">Ask the collection</label>
-      <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"></textarea>
+      <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"
+        onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();doQuery(false);}"></textarea>
     </div>
     <div class="btn-row">
       <button class="run-btn" id="query-go" onclick="doQuery(false)">Ask</button>
       <button class="ghost-btn" id="query-save" onclick="doQuery(true)">Ask & file answer</button>
+      <button class="ghost-btn" id="query-stop" style="display:none" onclick="stopStream()">Stop</button>
     </div>
     <div class="result" id="query-result" style="display:none">
       <div class="result-label">Answer</div>
@@ -1624,7 +1702,10 @@ function renderLint() {
       <label class="field-label">Focus — optional</label>
       <textarea id="lintfocus" placeholder="e.g. focus on factual consistency, or suggest sources to add" style="min-height:64px"></textarea>
     </div>
-    <div class="btn-row"><button class="run-btn" id="lint-go" onclick="doLint()">Run audit</button></div>
+    <div class="btn-row">
+      <button class="run-btn" id="lint-go" onclick="doLint()">Run audit</button>
+      <button class="ghost-btn" id="lint-stop" style="display:none" onclick="stopStream()">Stop</button>
+    </div>
     <div class="result" id="lint-result" style="display:none">
       <div class="result-label">Audit</div>
       <div class="response" id="lint-report"></div>
@@ -1653,7 +1734,7 @@ async function renderAdmin() {
     const activityRows = activity.length
       ? activity.slice(0, 20).map(e => {
           const t = new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          return `<tr><td>${esc(t)}</td><td>${esc((e.user_email || '').split('@')[0])}</td><td>${esc(e.event || '')}</td></tr>`;
+          return `<tr><td>${esc(t)}</td><td>${esc(e.user_email || '')}</td><td>${esc(e.event || '')}</td></tr>`;
         }).join('')
       : `<tr><td colspan="3" style="color:var(--ink-faint);font-style:italic">No activity yet.</td></tr>`;
 
@@ -1685,15 +1766,15 @@ async function renderAdmin() {
         <h3>API Usage — this month</h3>
         <div class="stat-grid" style="margin-bottom:20px">
           <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtN(usage.totalInputTokens)}</div>
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.input_tokens)}</div>
             <div class="stat-label">Input tokens</div>
           </div>
           <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtN(usage.totalOutputTokens)}</div>
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.output_tokens)}</div>
             <div class="stat-label">Output tokens</div>
           </div>
           <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtC(usage.totalCostUsd)}</div>
+            <div class="stat-num" style="font-size:26px">${fmtC(usage.thisMonth?.cost_usd)}</div>
             <div class="stat-label">Estimated cost</div>
           </div>
         </div>
@@ -1791,7 +1872,7 @@ async function renderLog() {
     el.innerHTML = log.length
       ? log.slice(0, 7).map(e => {
           const t = new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          return `<div class="log-row"><span class="t">${t}</span><span class="who">${esc((e.user_email || '').split('@')[0])}</span><span>${esc(e.event)}</span></div>`;
+          return `<div class="log-row"><span class="t">${t}</span><span class="who">${esc(e.user_email || '')}</span><span>${esc(e.event)}</span></div>`;
         }).join('')
       : '<div class="note placeholder">No activity yet.</div>';
   } catch { el.innerHTML = '<div class="note placeholder">Could not load log.</div>'; }
@@ -1800,12 +1881,22 @@ async function renderLog() {
 /* ---------- query ---------- */
 async function doQuery(fileIt) {
   const q = document.getElementById('q').value.trim();
-  if (!q) { toast('Type a question'); return; }
+  if (!q) { toast('Type a question first'); return; }
   document.getElementById('query-result').style.display = 'block';
   const ans = document.getElementById('query-answer');
   ans.className = 'response dim'; ans.textContent = 'Searching the wiki…';
 
+  const goBtn = document.getElementById('query-go');
+  const saveBtn = document.getElementById('query-save');
+  const stopBtn = document.getElementById('query-stop');
+  goBtn.disabled = saveBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = '';
+
   const result = await streamFromApi('/ai/query', { question: q, fileIt }, ans);
+
+  goBtn.disabled = saveBtn.disabled = false;
+  if (stopBtn) stopBtn.style.display = 'none';
+
   if (result?.saved) {
     const saved = result.saved;
     state.pages.push({ ...saved, fresh: true });
@@ -1820,7 +1911,16 @@ async function doLint() {
   document.getElementById('lint-result').style.display = 'block';
   const rep = document.getElementById('lint-report');
   rep.className = 'response dim'; rep.textContent = 'Auditing the collection…';
+
+  const goBtn = document.getElementById('lint-go');
+  const stopBtn = document.getElementById('lint-stop');
+  goBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = '';
+
   await streamFromApi('/ai/lint', { focus }, rep);
+
+  goBtn.disabled = false;
+  if (stopBtn) stopBtn.style.display = 'none';
 }
 
 /* ---------- settings / account ---------- */
