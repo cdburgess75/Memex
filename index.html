@@ -699,6 +699,100 @@ html.dark .chip { color: var(--accent-soft); }
 .data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
 .data-table td:first-child { color: var(--ink); }
 .data-table select { font-family: var(--mono); font-size: 12px; padding: 3px 6px; }
+
+/* Files tab */
+.file-drop-zone {
+  border: 2px dashed var(--rule);
+  border-radius: 3px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 28px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.file-drop-zone:hover, .file-drop-zone.drag-over {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+.file-list { display: flex; flex-direction: column; gap: 12px; }
+.file-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.file-icon {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent-wash);
+  color: var(--accent);
+  padding: 4px 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.file-icon.pdf  { background: #fde8e8; color: #c0392b; }
+.file-icon.xlsx, .file-icon.xls, .file-icon.csv { background: #e8f5e9; color: #2e7d32; }
+.file-icon.pptx, .file-icon.ppt { background: #fff3e0; color: #e65100; }
+html.dark .file-icon { background: var(--accent-wash); color: var(--accent); }
+.file-info { flex: 1; min-width: 0; }
+.file-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.file-action-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.file-action-btn:hover { border-color: var(--ink); color: var(--ink); }
+.file-action-btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.file-action-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+.file-action-btn.danger { color: var(--accent); border-color: transparent; }
+.file-action-btn.danger:hover { border-color: var(--accent); }
+.file-action-btn:disabled { opacity: 0.4; cursor: wait; }
+.upload-progress {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+  letter-spacing: 0.04em;
+}
 </style>
 </head>
 <body>
@@ -751,6 +845,7 @@ html.dark .chip { color: var(--accent-soft); }
       <div class="tab" data-tab="ingest"><span class="ix">+</span>Ingest</div>
       <div class="tab" data-tab="query"><span class="ix">?</span>Query</div>
       <div class="tab" data-tab="lint"><span class="ix">✦</span>Lint</div>
+      <div class="tab" data-tab="files"><span class="ix">◫</span>Files</div>
       <div class="tab" data-tab="admin"><span class="ix">⚙</span>Admin</div>
     </nav>
     <div id="panel"></div>
@@ -810,6 +905,9 @@ let currentUser = null; // { id, email, role, name }
 // ingest mode state
 let ingestMode = 'paste';
 let extractedFileText = '';
+
+// files tab state
+let filesList = []; // cached list of uploaded files
 
 /* ---------- bootstrap ---------- */
 async function initApp() {
@@ -1173,6 +1271,7 @@ function setTab(tab) {
   else if (tab === 'ingest') renderIngest();
   else if (tab === 'query')  renderQuery();
   else if (tab === 'lint')   renderLint();
+  else if (tab === 'files')  renderFiles();
   else if (tab === 'admin')  renderAdmin();
 }
 
@@ -1776,6 +1875,205 @@ function importJSON(ev) {
   };
   r.readAsText(file);
   ev.target.value = '';
+}
+
+/* ---------- files ---------- */
+async function renderFiles() {
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div class="file-drop-zone" id="file-drop-zone" onclick="document.getElementById('file-picker').click()">
+      Drop files here or click to browse<br>
+      <span style="opacity:0.6;margin-top:4px;display:block">Word · Excel · PowerPoint · PDF · Text</span>
+    </div>
+    <input type="file" id="file-picker" style="display:none"
+      accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv"
+      multiple onchange="handleFilePickerChange(event)">
+    <div class="upload-progress" id="upload-status"></div>
+    <div class="file-list" id="file-list"><div class="note placeholder" style="margin-top:8px">Loading…</div></div>
+  </div>`;
+
+  // Wire drag-and-drop
+  const zone = document.getElementById('file-drop-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    uploadFiles(Array.from(e.dataTransfer.files));
+  });
+
+  await loadFiles();
+}
+
+async function loadFiles() {
+  try {
+    filesList = await apiGet('/files');
+    renderFileList();
+  } catch (e) {
+    const el = document.getElementById('file-list');
+    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`;
+  }
+}
+
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  if (!el) return;
+  if (!filesList.length) { el.innerHTML = '<p class="note placeholder">No files uploaded yet.</p>'; return; }
+
+  el.innerHTML = filesList.map(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
+    const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
+    const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+' MB' : (f.size/1024).toFixed(0)+' KB';
+    const date = new Date(f.created_at).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' });
+    const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+
+    return `<div class="file-card" id="file-card-${f.id}">
+      <div class="file-icon ${ext}">${ext}</div>
+      <div class="file-info">
+        <div class="file-name">${esc(f.name)}</div>
+        <div class="file-meta">${size} · ${date} · ${esc(f.uploaded_by_email || 'unknown')}</div>
+        <div class="file-actions">
+          ${isOffice ? `<button class="file-action-btn primary" onclick="openInOffice('${f.id}')">Office Online</button>` : ''}
+          ${isOffice ? `<button class="file-action-btn" onclick="openInGoogle('${f.id}')">Google Docs</button>` : ''}
+          ${f.google_drive_id && canEdit ? `<button class="file-action-btn" onclick="exportFromGoogle('${f.id}')">Export from Google</button>` : ''}
+          ${canIngest && canEdit ? `<button class="file-action-btn" onclick="ingestFile('${f.id}', '${esc(f.name)}')">Ingest to Wiki</button>` : ''}
+          <button class="file-action-btn" onclick="downloadFile('${f.id}')">Download</button>
+          ${canEdit ? `<button class="file-action-btn danger" onclick="deleteFile('${f.id}', '${esc(f.name)}')">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function handleFilePickerChange(event) {
+  uploadFiles(Array.from(event.target.files));
+  event.target.value = '';
+}
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const statusEl = document.getElementById('upload-status');
+
+  for (const file of files) {
+    if (statusEl) statusEl.textContent = `Uploading ${file.name}…`;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = await getToken();
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) { toast(`Upload failed: ${(await res.json()).error}`); continue; }
+      const { doc, canIngest } = await res.json();
+      filesList.unshift(doc);
+      renderFileList();
+      toast(canIngest ? `${file.name} uploaded — click "Ingest to Wiki" to add it to the collection` : `${file.name} uploaded`);
+    } catch (e) {
+      toast(`Upload error: ${e.message}`);
+    }
+  }
+  if (statusEl) statusEl.textContent = '';
+}
+
+async function openInOffice(fileId) {
+  try {
+    const data = await apiGet('/files/' + fileId + '/office');
+    // Prefer edit URL (WOPI), fall back to view URL
+    const url = data.editUrl || data.viewUrl;
+    if (!url) { toast('Could not generate Office URL'); return; }
+    window.open(url, '_blank', 'noopener');
+    if (!data.editUrl) toast('Opening in read-only mode. Set APP_URL on the server to enable editing.');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function openInGoogle(fileId) {
+  toast('Uploading to Google Drive…');
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/google', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Google Drive error'); return; }
+    // Refresh file list to show google_drive_id
+    await loadFiles();
+    window.open(data.editUrl, '_blank', 'noopener');
+    toast('Opened in Google Docs. Use "Export from Google" to save changes back.');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function exportFromGoogle(fileId) {
+  if (!confirm('Export from Google Drive and overwrite the stored file?')) return;
+  toast('Exporting…');
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/google/export', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Export failed'); return; }
+    await loadFiles();
+    toast('Exported and saved successfully');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function ingestFile(fileId, name) {
+  toast(`Reading ${name}…`);
+  const panel = document.getElementById('panel');
+
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast('Ingest failed: ' + (data.error || 'unknown error')); return; }
+
+    // Merge new pages into state
+    for (const p of (data.pages || [])) {
+      const idx = state.pages.findIndex(e => e.id === p.id);
+      if (idx >= 0) state.pages[idx] = { ...p, fresh: true };
+      else state.pages.push({ ...p, fresh: true });
+    }
+    renderIndex();
+    toast(`${name} ingested — ${data.pages?.length || 0} pages updated`);
+
+    // Show the summary and page chips
+    if (panel) {
+      const existing = panel.querySelector('.file-ingest-result');
+      const resultEl = existing || document.createElement('div');
+      resultEl.className = 'file-ingest-result';
+      resultEl.style.cssText = 'margin-top:16px;padding:16px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:3px;';
+      resultEl.innerHTML = `<div class="result-label">Ingested: ${esc(name)}</div>
+        <div class="response" style="margin-bottom:12px">${esc(data.summary || '')}</div>
+        <div class="chips">${(data.pages||[]).map(p => `<span class="chip" onclick="openPage('${p.id}')">${esc(p.title)}</span>`).join('')}</div>`;
+      if (!existing) panel.appendChild(resultEl);
+    }
+  } catch (e) { toast('Ingest error: ' + e.message); }
+}
+
+async function downloadFile(fileId) {
+  try {
+    const data = await apiGet('/files/' + fileId + '/url');
+    const a = document.createElement('a');
+    a.href = data.url; a.download = data.name; a.target = '_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch (e) { toast('Download error: ' + e.message); }
+}
+
+async function deleteFile(fileId, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete('/files/' + fileId);
+    filesList = filesList.filter(f => f.id !== fileId);
+    renderFileList();
+    toast(`${name} deleted`);
+  } catch (e) { toast('Delete failed: ' + e.message); }
 }
 
 /* ---------- boot ---------- */

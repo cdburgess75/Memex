@@ -20,6 +20,8 @@ app.use('/api/pages', require('./routes/pages'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/log', require('./routes/log'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/files', require('./routes/files'));
+app.use('/wopi', require('./routes/wopi'));
 
 // Serve the frontend for all other routes
 app.use(express.static(path.join(__dirname, '..')));

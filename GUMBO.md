@@ -71,6 +71,21 @@ Open source software used in this project. Thank you to every author and contrib
 - **License:** MIT
 - **Source:** https://gitlab.com/autokent/pdf-parse
 
+### mammoth
+- **Package:** `mammoth`
+- **License:** MIT
+- **Source:** https://github.com/mwilliamson/mammoth.js (.docx text extraction)
+
+### SheetJS (xlsx)
+- **Package:** `xlsx`
+- **License:** Apache 2.0
+- **Source:** https://github.com/SheetJS/sheetjs (spreadsheet parsing)
+
+### googleapis
+- **Package:** `googleapis`
+- **License:** Apache 2.0
+- **Source:** https://github.com/googleapis/google-api-nodejs-client (Google Drive API)
+
 ---
 
 ## Infrastructure
