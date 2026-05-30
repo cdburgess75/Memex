@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memex — a personal LLM wiki</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F4EEE2;
+  --surface: #FBF7EE;
+  --surface-2: #EFE8D8;
+  --ink: #211C16;
+  --ink-soft: #5C5347;
+  --ink-faint: #8B8170;
+  --accent: #9E3B22;
+  --accent-soft: #C26A4C;
+  --accent-wash: #F0DDD3;
+  --rule: rgba(33,28,22,0.12);
+  --rule-soft: rgba(33,28,22,0.07);
+  --shadow: 0 1px 2px rgba(33,28,22,0.05);
+  --display: 'Fraunces', Georgia, serif;
+  --body: 'Newsreader', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+html.dark {
+  --paper: #16130F;
+  --surface: #1E1A15;
+  --surface-2: #262019;
+  --ink: #ECE3D2;
+  --ink-soft: #ABA08C;
+  --ink-faint: #7A7160;
+  --accent: #DB825C;
+  --accent-soft: #B5613F;
+  --accent-wash: #2E2118;
+  --rule: rgba(236,227,210,0.13);
+  --rule-soft: rgba(236,227,210,0.07);
+  --shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--body);
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+::selection { background: var(--accent-wash); }
+
+.masthead {
+  border-bottom: 1px solid var(--ink);
+  padding: 22px 32px 16px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+.brand { display: flex; align-items: baseline; gap: 14px; }
+.brand h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 34px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.brand .colophon {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 3px;
+}
+.masthead-actions { display: flex; gap: 6px; align-items: center; }
+.icon-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  padding: 7px 11px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.icon-btn:hover { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+
+.shell {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  max-width: 1240px;
+  margin: 0 auto;
+  min-height: calc(100vh - 76px);
+}
+
+.index-col {
+  border-right: 1px solid var(--ink);
+  padding: 26px 22px 40px;
+}
+.index-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.index-head .count { color: var(--ink-faint); }
+.cat-group { margin-bottom: 20px; }
+.cat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+.page-link {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.35;
+  transition: all 0.12s;
+  margin-left: -10px;
+}
+.page-link:hover { color: var(--ink); border-left-color: var(--accent-soft); }
+.page-link.active { color: var(--ink); border-left-color: var(--accent); font-weight: 500; }
+.page-link .dot { color: var(--accent); font-size: 11px; opacity: 0; transition: opacity 0.12s; }
+.page-link.fresh .dot { opacity: 1; }
+.empty-index { font-size: 14px; color: var(--ink-faint); font-style: italic; }
+
+.work-col { display: flex; flex-direction: column; min-width: 0; }
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ink);
+  padding: 0 32px;
+  gap: 0;
+}
+.tab {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 14px 18px 12px;
+  cursor: pointer;
+  color: var(--ink-faint);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.tab .ix { color: var(--accent); margin-right: 6px; }
+
+.panel { padding: 34px 44px 60px; max-width: 760px; animation: rise 0.4s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* article view */
+.article .kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  display: flex;
+  gap: 14px;
+}
+.article .kicker .sep { color: var(--ink-faint); }
+.article h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin-bottom: 22px;
+}
+.prose { font-size: 18px; line-height: 1.68; color: var(--ink); }
+.prose h2 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 23px;
+  margin: 30px 0 10px;
+  letter-spacing: -0.01em;
+}
+.prose p { margin-bottom: 16px; }
+.prose ul { margin: 0 0 16px 22px; }
+.prose li { margin-bottom: 6px; }
+.prose em { font-style: italic; color: var(--ink-soft); }
+.prose strong { font-weight: 500; }
+.wikilink {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-wash);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.wikilink:hover { border-bottom-color: var(--accent); }
+
+/* forms */
+.field { margin-bottom: 20px; }
+.field-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  display: block;
+}
+textarea, input[type=text], input[type=password], select {
+  width: 100%;
+  font-family: var(--body);
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 12px 14px;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { min-height: 120px; line-height: 1.55; }
+select { cursor: pointer; }
+
+.run-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 12px 22px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.run-btn:hover { background: var(--accent); border-color: var(--accent); }
+.run-btn:disabled { opacity: 0.4; cursor: wait; }
+.ghost-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  padding: 12px 18px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ghost-btn:hover { border-color: var(--ink); color: var(--ink); }
+.btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.result {
+  margin-top: 26px;
+  border-top: 1px solid var(--rule);
+  padding-top: 22px;
+}
+.result-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.response {
+  font-size: 17px;
+  line-height: 1.62;
+  color: var(--ink);
+  white-space: pre-wrap;
+  min-height: 24px;
+}
+.response.dim { color: var(--ink-faint); font-style: italic; }
+.cursor::after { content: '▍'; color: var(--accent); animation: blink 0.8s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  background: var(--accent-wash);
+  color: var(--accent);
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+html.dark .chip { color: var(--accent-soft); }
+.chip:hover { opacity: 0.7; }
+
+.note { font-size: 15px; color: var(--ink-soft); line-height: 1.6; }
+.note.placeholder { font-style: italic; color: var(--ink-faint); }
+
+/* log */
+.log-list { margin-top: 8px; }
+.log-row {
+  display: flex;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.log-row .t { color: var(--accent-soft); flex-shrink: 0; }
+
+/* modal */
+.scrim {
+  position: fixed; inset: 0;
+  background: rgba(20,16,12,0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+.scrim.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  max-width: 460px;
+  width: 100%;
+  padding: 30px 32px;
+  box-shadow: 0 20px 60px rgba(20,16,12,0.3);
+}
+.modal h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+.modal .sub { font-size: 15px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
+.modal .sub a { color: var(--accent); }
+
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 11px 20px;
+  border-radius: 2px;
+  opacity: 0;
+  transition: all 0.25s;
+  pointer-events: none;
+  z-index: 60;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr; }
+  .index-col { border-right: none; border-bottom: 1px solid var(--ink); }
+  .panel { padding: 28px 24px 50px; }
+  .masthead, .tabs { padding-left: 20px; padding-right: 20px; }
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand">
+    <h1>Memex</h1>
+    <span class="colophon">a personal wiki, kept by Claude</span>
+  </div>
+  <div class="masthead-actions">
+    <button class="icon-btn" onclick="toggleTheme()" id="theme-btn">Dark</button>
+    <button class="icon-btn" onclick="exportMarkdown()">Export .md</button>
+    <button class="icon-btn" onclick="exportJSON()">Backup</button>
+    <button class="icon-btn" onclick="document.getElementById('import-file').click()">Restore</button>
+    <button class="icon-btn" onclick="openSettings()">Settings</button>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="index-col">
+    <div class="index-head"><span>Index</span><span class="count" id="page-count">0</span></div>
+    <div id="index-body"></div>
+  </aside>
+  <main class="work-col">
+    <nav class="tabs" id="tabs">
+      <div class="tab active" data-tab="read"><span class="ix">¶</span>Read</div>
+      <div class="tab" data-tab="ingest"><span class="ix">+</span>Ingest</div>
+      <div class="tab" data-tab="query"><span class="ix">?</span>Query</div>
+      <div class="tab" data-tab="lint"><span class="ix">✦</span>Lint</div>
+    </nav>
+    <div id="panel"></div>
+  </main>
+</div>
+
+<div class="scrim" id="settings-scrim">
+  <div class="modal">
+    <h2>Settings</h2>
+    <p class="sub">Your key is stored only in this browser and sent directly to Anthropic. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
+    <div class="field">
+      <label class="field-label">Anthropic API key</label>
+      <input type="password" id="apikey-input" placeholder="sk-ant-…">
+    </div>
+    <div class="field">
+      <label class="field-label">Model</label>
+      <select id="model-input">
+        <option value="claude-sonnet-4-6">claude-sonnet-4-6 — balanced (recommended)</option>
+        <option value="claude-opus-4-8">claude-opus-4-8 — most capable</option>
+        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 — fastest / cheapest</option>
+      </select>
+    </div>
+    <div class="btn-row" style="margin-top:24px">
+      <button class="run-btn" onclick="saveSettings()">Save</button>
+      <button class="ghost-btn" onclick="closeSettings()">Cancel</button>
+      <button class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const WELCOME = {
+  id: 'overview',
+  title: 'Reading room',
+  category: 'meta',
+  sources: 0,
+  updated: 'start here',
+  content: `# Reading room\n\nThis is your *Memex* — a private knowledge base that Claude reads, writes, and keeps in order for you. It lives entirely in this one file and saves to your browser.\n\n## The three motions\n\n- **Ingest** — paste an article, paper, or note. Claude reads it, summarizes it, and weaves new pages into the wiki, cross-linking what relates.\n- **Query** — ask anything. Claude answers from what you've gathered, and can file the answer back as its own page so insight accumulates.\n- **Lint** — periodically ask Claude to audit the collection for contradictions, orphans, and gaps worth chasing.\n\n## To begin\n\nOpen **Settings**, paste an Anthropic API key, then move to the **Ingest** tab and feed it your first source. Watch the index on the left fill in.`
+};
+
+let state = { pages: [], log: [], activePage: 'overview', tab: 'read' };
+let cfg = { key: '', model: 'claude-sonnet-4-6' };
+
+const CATS = {
+  meta:     { label: 'Reading room', glyph: '◆' },
+  concept:  { label: 'Concepts',     glyph: '◇' },
+  entity:   { label: 'Entities',     glyph: '○' },
+  source:   { label: 'Sources',      glyph: '▤' },
+  analysis: { label: 'Analyses',     glyph: '✦' }
+};
+const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
+
+/* ---------- persistence ---------- */
+function load() {
+  try {
+    const s = localStorage.getItem('memex_wiki');
+    if (s) state = JSON.parse(s);
+    const c = localStorage.getItem('memex_cfg');
+    if (c) cfg = JSON.parse(c);
+  } catch (e) {}
+  if (!state.pages || !state.pages.length) state.pages = [WELCOME];
+  if (!state.pages.find(p => p.id === 'overview')) state.pages.unshift(WELCOME);
+  if (document.documentElement.classList.contains('dark') !== (localStorage.getItem('memex_theme') === 'dark')) {}
+  if (localStorage.getItem('memex_theme') === 'dark') setTheme(true);
+}
+function save() { localStorage.setItem('memex_wiki', JSON.stringify(state)); }
+function saveCfg() { localStorage.setItem('memex_cfg', JSON.stringify(cfg)); }
+
+/* ---------- theme ---------- */
+function setTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('theme-btn').textContent = dark ? 'Light' : 'Dark';
+  localStorage.setItem('memex_theme', dark ? 'dark' : 'light');
+}
+function toggleTheme() { setTheme(!document.documentElement.classList.contains('dark')); }
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ---------- log ---------- */
+function logEvent(msg) {
+  state.log.unshift({ t: new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }), msg });
+  state.log = state.log.slice(0, 40);
+  save();
+}
+
+/* ---------- sidebar ---------- */
+function renderIndex() {
+  document.getElementById('page-count').textContent = state.pages.length;
+  const groups = {};
+  state.pages.forEach(p => { (groups[p.category] = groups[p.category] || []).push(p); });
+  let html = '';
+  CAT_ORDER.forEach(cat => {
+    if (!groups[cat]) return;
+    html += `<div class="cat-group"><div class="cat-label">${CATS[cat]?.label || cat}</div>`;
+    groups[cat].forEach(p => {
+      const active = p.id === state.activePage && state.tab === 'read';
+      html += `<div class="page-link ${active ? 'active' : ''} ${p.fresh ? 'fresh' : ''}" onclick="openPage('${p.id}')">
+        <span class="dot">●</span><span>${esc(p.title)}</span></div>`;
+    });
+    html += `</div>`;
+  });
+  document.getElementById('index-body').innerHTML = html || '<div class="empty-index">Nothing filed yet.</div>';
+}
+
+/* ---------- markdown ---------- */
+function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function mdToHtml(md) {
+  let s = esc(md);
+  s = s.replace(/^# .+$/gm, '');
+  const lines = s.split('\n');
+  let out = '', inList = false;
+  for (let raw of lines) {
+    let line = raw;
+    line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" onclick="gotoTitle('${t.replace(/'/g, "\\'")}')">${t}</a>`);
+    if (/^## /.test(raw)) { if (inList) { out += '</ul>'; inList = false; } out += '<h2>' + line.replace(/^## /, '') + '</h2>'; }
+    else if (/^- /.test(raw)) { if (!inList) { out += '<ul>'; inList = true; } out += '<li>' + line.replace(/^- /, '') + '</li>'; }
+    else if (raw.trim() === '') { if (inList) { out += '</ul>'; inList = false; } }
+    else { if (inList) { out += '</ul>'; inList = false; } out += '<p>' + line + '</p>'; }
+  }
+  if (inList) out += '</ul>';
+  return out;
+}
+function gotoTitle(title) {
+  const p = state.pages.find(pg => pg.title.toLowerCase() === title.toLowerCase());
+  if (p) openPage(p.id); else toast('No page yet: ' + title);
+}
+
+/* ---------- tabs / routing ---------- */
+function setTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  if (tab === 'read') openPage(state.activePage);
+  else if (tab === 'ingest') renderIngest();
+  else if (tab === 'query') renderQuery();
+  else if (tab === 'lint') renderLint();
+}
+function openPage(id) {
+  const page = state.pages.find(p => p.id === id) || state.pages[0];
+  state.activePage = page.id;
+  state.tab = 'read';
+  page.fresh = false;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'read'));
+  document.getElementById('panel').innerHTML = `<article class="panel article">
+    <div class="kicker">
+      <span>${CATS[page.category]?.glyph || '◇'} ${page.category}</span>
+      <span class="sep">${page.sources || 0} source${page.sources === 1 ? '' : 's'}</span>
+      <span class="sep">${esc(page.updated || '')}</span>
+    </div>
+    <h1>${esc(page.title)}</h1>
+    <div class="prose">${mdToHtml(page.content)}</div>
+  </article>`;
+  renderIndex();
+  save();
+}
+
+function renderIngest() {
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div class="field">
+      <label class="field-label">Source text</label>
+      <textarea id="src" placeholder="Paste an article, abstract, transcript, or note…" style="min-height:200px"></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">What to emphasize — optional</label>
+      <textarea id="focus" placeholder="e.g. focus on the methodology, or I care about business implications" style="min-height:64px"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="run-btn" id="ingest-go" onclick="doIngest()">Read & file</button>
+    </div>
+    <div class="result" id="ingest-result" style="display:none">
+      <div class="result-label">Summary</div>
+      <div class="response" id="ingest-summary"></div>
+      <div class="result-label" style="margin-top:20px">Pages touched</div>
+      <div class="chips" id="ingest-chips"></div>
+    </div>
+    <div class="result"><div class="result-label">Recent activity</div><div class="log-list" id="log-list"></div></div>
+  </div>`;
+  renderLog();
+}
+function renderQuery() {
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div class="field">
+      <label class="field-label">Ask the collection</label>
+      <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="run-btn" id="query-go" onclick="doQuery(false)">Ask</button>
+      <button class="ghost-btn" id="query-save" onclick="doQuery(true)">Ask & file answer</button>
+    </div>
+    <div class="result" id="query-result" style="display:none">
+      <div class="result-label">Answer</div>
+      <div class="response" id="query-answer"></div>
+    </div>
+  </div>`;
+}
+function renderLint() {
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <p class="note">A health-check of the whole collection — contradictions, orphaned pages, missing links, and gaps worth chasing next.</p>
+    <div class="field" style="margin-top:20px">
+      <label class="field-label">Focus — optional</label>
+      <textarea id="lintfocus" placeholder="e.g. focus on factual consistency, or suggest sources to add" style="min-height:64px"></textarea>
+    </div>
+    <div class="btn-row"><button class="run-btn" id="lint-go" onclick="doLint()">Run audit</button></div>
+    <div class="result" id="lint-result" style="display:none">
+      <div class="result-label">Audit</div>
+      <div class="response" id="lint-report"></div>
+    </div>
+  </div>`;
+}
+function renderLog() {
+  const el = document.getElementById('log-list');
+  if (!el) return;
+  el.innerHTML = state.log.length
+    ? state.log.slice(0, 7).map(e => `<div class="log-row"><span class="t">${e.t}</span><span>${esc(e.msg)}</span></div>`).join('')
+    : '<div class="note placeholder">No activity yet.</div>';
+}
+
+/* ---------- API ---------- */
+function requireKey() {
+  if (!cfg.key) { openSettings(); toast('Add your API key to begin'); return false; }
+  return true;
+}
+async function callClaude(system, user, stream) {
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': cfg.key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model: cfg.model, max_tokens: 1400, stream: !!stream, system, messages: [{ role: 'user', content: user }] })
+  });
+}
+async function streamInto(el, res) {
+  if (!res.ok) { el.textContent = 'Error ' + res.status + ': ' + (await res.text()).slice(0, 200); return ''; }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let text = '', buf = '';
+  el.classList.remove('dim'); el.classList.add('cursor');
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n');
+    buf = parts.pop();
+    for (const line of parts) {
+      if (line.startsWith('data: ')) {
+        try { const d = JSON.parse(line.slice(6)); if (d.type === 'content_block_delta' && d.delta?.text) { text += d.delta.text; el.textContent = text; } } catch {}
+      }
+    }
+  }
+  el.classList.remove('cursor');
+  return text;
+}
+function buildContext() {
+  return state.pages.filter(p => p.id !== 'overview')
+    .map(p => `### [[${p.title}]]  (${p.category})\n${p.content}`).join('\n\n---\n\n');
+}
+
+async function doIngest() {
+  if (!requireKey()) return;
+  const src = document.getElementById('src').value.trim();
+  if (!src) { toast('Paste a source first'); return; }
+  const focus = document.getElementById('focus').value.trim();
+  const btn = document.getElementById('ingest-go'); btn.disabled = true; btn.textContent = 'Reading…';
+  document.getElementById('ingest-result').style.display = 'block';
+  const sum = document.getElementById('ingest-summary');
+  sum.className = 'response dim'; sum.textContent = 'Reading the source…';
+  document.getElementById('ingest-chips').innerHTML = '';
+  const ctx = buildContext();
+  const system = `You maintain a personal wiki. Ingest the source the user provides.
+
+Existing wiki pages:
+${ctx || '(empty — this is the first source)'}
+
+Return ONLY valid JSON, no markdown fences, in this shape:
+{"summary":"2-3 sentence summary","pages":[{"id":"kebab-slug","title":"Page Title","category":"concept|entity|source|analysis","content":"# Page Title\\n\\nMarkdown body. Use [[Page Title]] to link related pages. Use ## for subheads and - for bullets."}]}
+
+Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[wikilinks]].${focus ? '\nUser emphasis: ' + focus : ''}`;
+  try {
+    const res = await callClaude(system, 'Source:\n\n' + src.slice(0, 8000), false);
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+    const raw = (data.content || []).map(b => b.text || '').join('');
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    sum.className = 'response'; sum.textContent = parsed.summary;
+    const touched = [];
+    (parsed.pages || []).forEach(p => {
+      const ex = state.pages.find(e => e.id === p.id);
+      if (ex) { ex.content = p.content; ex.title = p.title; ex.updated = 'just now'; ex.sources = (ex.sources || 0) + 1; ex.fresh = true; touched.push(ex); }
+      else { const np = { ...p, sources: 1, updated: 'just now', fresh: true }; state.pages.push(np); touched.push(np); }
+    });
+    document.getElementById('ingest-chips').innerHTML = touched.map(p => `<span class="chip" onclick="openPage('${p.id}')">${esc(p.title)}</span>`).join('');
+    logEvent('ingest · ' + touched.length + ' pages · ' + (parsed.pages[0]?.title || 'source'));
+    renderLog(); renderIndex(); save();
+    document.getElementById('src').value = '';
+  } catch (e) {
+    sum.className = 'response'; sum.textContent = 'Could not process this source. ' + (e.message || '');
+  } finally { btn.disabled = false; btn.textContent = 'Read & file'; }
+}
+
+async function doQuery(fileIt) {
+  if (!requireKey()) return;
+  const q = document.getElementById('q').value.trim();
+  if (!q) { toast('Type a question'); return; }
+  document.getElementById('query-result').style.display = 'block';
+  const ans = document.getElementById('query-answer');
+  ans.className = 'response dim'; ans.textContent = 'Searching the wiki…';
+  const ctx = buildContext();
+  const system = `You answer questions from a personal wiki. Ground every claim in the pages below and name the pages you draw on. If the wiki lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nWiki:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
+  try {
+    const res = await callClaude(system, q, true);
+    const full = await streamInto(ans, res);
+    if (fileIt && full.includes('SAVE_AS:')) {
+      const m = full.match(/SAVE_AS:\s*(.+?)\s*\|\s*(\w+)/);
+      const body = full.split('SAVE_AS:')[0].trim();
+      if (m) {
+        const title = m[1].trim();
+        const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        state.pages.push({ id, title, category: (m[2] || 'analysis').toLowerCase(), sources: 0, updated: 'just now', fresh: true, content: `# ${title}\n\n*Filed from the question: "${q}"*\n\n${body}` });
+        ans.textContent = body;
+        renderIndex(); save();
+        toast('Filed as: ' + title);
+      }
+    }
+    logEvent('query · ' + q.slice(0, 48));
+  } catch (e) { ans.className = 'response'; ans.textContent = 'Query failed. ' + (e.message || ''); }
+}
+
+async function doLint() {
+  if (!requireKey()) return;
+  const focus = document.getElementById('lintfocus').value.trim();
+  document.getElementById('lint-result').style.display = 'block';
+  const rep = document.getElementById('lint-report');
+  rep.className = 'response dim'; rep.textContent = 'Auditing the collection…';
+  const ctx = buildContext();
+  const system = `You audit a personal wiki for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
+  try {
+    const res = await callClaude(system, 'Wiki:\n\n' + (ctx || '(empty)'), true);
+    await streamInto(rep, res);
+    logEvent('lint · audit run');
+  } catch (e) { rep.className = 'response'; rep.textContent = 'Audit failed. ' + (e.message || ''); }
+}
+
+/* ---------- settings ---------- */
+function openSettings() {
+  document.getElementById('apikey-input').value = cfg.key || '';
+  document.getElementById('model-input').value = cfg.model || 'claude-sonnet-4-6';
+  document.getElementById('settings-scrim').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
+function saveSettings() {
+  cfg.key = document.getElementById('apikey-input').value.trim();
+  cfg.model = document.getElementById('model-input').value;
+  saveCfg(); closeSettings(); toast('Settings saved');
+}
+function wipeWiki() {
+  if (!confirm('Erase the entire wiki and start over? Export a backup first if you want to keep it.')) return;
+  state = { pages: [WELCOME], log: [], activePage: 'overview', tab: 'read' };
+  save(); closeSettings(); setTab('read'); renderIndex(); toast('Wiki erased');
+}
+
+/* ---------- export / import ---------- */
+function download(name, text, type) {
+  const blob = new Blob([text], { type: type || 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportMarkdown() {
+  const md = state.pages.map(p => `# ${p.title}\n> category: ${p.category} · sources: ${p.sources || 0}\n\n${p.content.replace(/^# .+\n?/, '')}`).join('\n\n\n---\n\n\n');
+  download('memex-wiki.md', md, 'text/markdown');
+  toast('Markdown exported');
+}
+function exportJSON() { download('memex-backup.json', JSON.stringify(state, null, 2), 'application/json'); toast('Backup saved'); }
+function importJSON(ev) {
+  const file = ev.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const data = JSON.parse(r.result);
+      if (!data.pages) throw new Error('not a backup');
+      state = data; if (!state.log) state.log = [];
+      save(); setTab('read'); renderIndex(); toast('Wiki restored');
+    } catch (e) { toast('Invalid backup file'); }
+  };
+  r.readAsText(file);
+  ev.target.value = '';
+}
+
+/* ---------- boot ---------- */
+document.getElementById('tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) setTab(t.dataset.tab); });
+document.getElementById('settings-scrim').addEventListener('click', e => { if (e.target.id === 'settings-scrim') closeSettings(); });
+load();
+renderIndex();
+openPage(state.activePage || 'overview');
+</script>
+</body>
+</html>
