@@ -1529,7 +1529,11 @@ async function renderAdmin() {
   const panel = document.getElementById('panel');
   panel.innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`;
   try {
-    const stats = await apiGet('/admin/stats');
+    const [stats, usage, users] = await Promise.all([
+      apiGet('/admin/stats'),
+      apiGet('/admin/usage').catch(() => null),
+      apiGet('/admin/users').catch(() => [])
+    ]);
     const pageCount = stats.pageCount ?? 0;
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
     const contributors = Array.isArray(stats.topContributors) ? stats.topContributors : [];
@@ -1546,7 +1550,92 @@ async function renderAdmin() {
         }).join('')
       : `<tr><td colspan="3" style="color:var(--ink-faint);font-style:italic">No activity yet.</td></tr>`;
 
+    // Build usage section
+    let usageHtml = '';
+    if (usage) {
+      const fmtN = n => (n ?? 0).toLocaleString();
+      const fmtC = n => '$' + ((n ?? 0).toFixed(2));
+
+      const byUserRows = Array.isArray(usage.byUser) && usage.byUser.length
+        ? usage.byUser.map(u => `<tr>
+            <td>${esc(u.email || '')}</td>
+            <td>${fmtN(u.input_tokens)}</td>
+            <td>${fmtN(u.output_tokens)}</td>
+            <td>${fmtC(u.cost_usd)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No usage data.</td></tr>`;
+
+      const byOpRows = Array.isArray(usage.byOperation) && usage.byOperation.length
+        ? usage.byOperation.map(o => `<tr>
+            <td>${esc(o.operation || '')}</td>
+            <td>${fmtN(o.input_tokens)}</td>
+            <td>${fmtN(o.output_tokens)}</td>
+            <td>${fmtC(o.cost_usd)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No usage data.</td></tr>`;
+
+      usageHtml = `<div class="usage-section">
+        <h3>API Usage — this month</h3>
+        <div class="stat-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.totalInputTokens)}</div>
+            <div class="stat-label">Input tokens</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.totalOutputTokens)}</div>
+            <div class="stat-label">Output tokens</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtC(usage.totalCostUsd)}</div>
+            <div class="stat-label">Estimated cost</div>
+          </div>
+        </div>
+        <div style="margin-bottom:20px">
+          <div class="result-label" style="margin-bottom:8px">By user</div>
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+            <tbody>${byUserRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <div class="result-label" style="margin-bottom:8px">By operation</div>
+          <table class="data-table">
+            <thead><tr><th>Operation</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+            <tbody>${byOpRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+
+    // Build team section
+    const roleOptions = ['admin', 'contributor', 'viewer'];
+    const userRows = Array.isArray(users) && users.length
+      ? users.map(u => {
+          const assigned = u.created_at
+            ? new Date(u.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+          const opts = roleOptions.map(r =>
+            `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`
+          ).join('');
+          return `<tr>
+            <td>${esc(u.email || '')}</td>
+            <td>${esc(u.role || '')}</td>
+            <td>${assigned}</td>
+            <td><select onchange="updateUserRole('${u.id}', this.value)">${opts}</select></td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
+
+    const teamHtml = `<div class="usage-section">
+      <h3>Team</h3>
+      <table class="data-table">
+        <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </div>`;
+
     panel.innerHTML = `<div class="panel">
+      ${usageHtml}
       <div class="stat-grid">
         <div class="stat-card">
           <div class="stat-num">${pageCount}</div>
@@ -1561,20 +1650,29 @@ async function renderAdmin() {
           <div class="stat-label">Contributors</div>
         </div>
       </div>
-      <div class="result-label">Top contributors</div>
+      <div class="result-label" style="margin-top:24px">Top contributors</div>
       <table class="admin-table" style="margin-bottom:28px">
         <thead><tr><th>User</th><th>Actions</th></tr></thead>
         <tbody>${contributorRows}</tbody>
       </table>
       <div class="result-label">Recent activity</div>
-      <table class="admin-table">
+      <table class="admin-table" style="margin-bottom:32px">
         <thead><tr><th>Time</th><th>User</th><th>Event</th></tr></thead>
         <tbody>${activityRows}</tbody>
       </table>
+      ${teamHtml}
     </div>`;
   } catch (e) {
-    panel.innerHTML = `<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin stats: ${esc(e.message)}</p></div>`;
+    panel.innerHTML = `<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`;
   }
+}
+
+async function updateUserRole(userId, role) {
+  try {
+    await apiPut('/admin/users/' + userId + '/role', { role });
+    toast('Role updated');
+    renderAdmin();
+  } catch (e) { toast('Failed: ' + e.message); }
 }
 
 async function renderLog() {

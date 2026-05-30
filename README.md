@@ -192,12 +192,6 @@ fly deploy
 The foundation is in place. Here is what makes the most sense to build next, roughly in order of impact:
 
 ### Near term
-- **Role-based access control** — distinguish admins (can erase pages, manage users) from contributors (ingest/edit) and viewers (query only). Currently all authenticated users have full access.
-- **Full-text search** — search inside page *content*, not just titles. Can be done with Postgres `tsvector` / `to_tsquery` at zero extra cost.
-- **Page version history** — store a `page_versions` table so edits can be compared or rolled back.
-
-### Medium term
-- **Usage and cost dashboard** — track Anthropic API token spend per user per month so you can see who is using the wiki and what it costs.
 - **Slack / Teams bot** — let team members query the wiki from a chat command without opening the browser.
 - **Webhook on ingest** — fire a notification (Slack, email, webhook) when a new page is created, so the team knows the collection grew.
 
