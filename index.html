@@ -1035,12 +1035,14 @@ async function apiGet(path) {
   return res.json();
 }
 
-async function apiPost(path, body) {
-  const res = await fetch('/api' + path, {
+async function apiPost(path, body, signal) {
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
     body: JSON.stringify(body),
-  });
+  };
+  if (signal) opts.signal = signal;
+  const res = await fetch('/api' + path, opts);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1064,6 +1066,11 @@ async function apiDelete(path) {
 let _streamController = null;
 function stopStream() {
   if (_streamController) { _streamController.abort(); _streamController = null; }
+}
+
+let _ingestController = null;
+function cancelIngest() {
+  if (_ingestController) { _ingestController.abort(); _ingestController = null; }
 }
 
 async function streamFromApi(path, body, el) {
@@ -1358,7 +1365,18 @@ function setTab(tab) {
 }
 
 function openPage(id) {
-  const page = state.pages.find(p => p.id === id) || state.pages[0];
+  const page = state.pages.find(p => p.id === id);
+  if (!page) {
+    state.tab = 'read';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'read'));
+    document.getElementById('panel').innerHTML = `<div class="panel article" style="padding-top:48px">
+      <h1 style="font-family:var(--display);font-weight:600;font-size:32px;margin-bottom:12px">Page not found</h1>
+      <p class="note" style="margin-bottom:24px">This page doesn't exist or may have been deleted.</p>
+      <button class="ghost-btn" onclick="openPage('overview')">Go to Reading room</button>
+    </div>`;
+    renderIndex();
+    return;
+  }
   state.activePage = page.id;
   state.tab = 'read';
   page.fresh = false;
@@ -1548,6 +1566,7 @@ function renderIngest() {
     </div>
     <div class="btn-row">
       <button class="run-btn" id="ingest-go" onclick="doIngest()">Read & file</button>
+      <button class="ghost-btn" id="ingest-cancel" style="display:none" onclick="cancelIngest()">Cancel</button>
     </div>
     <div class="result" id="ingest-result" style="display:none">
       <div class="result-label">Summary</div>
@@ -1631,31 +1650,38 @@ async function handleFileSelect(file, intoPasteArea) {
 async function doIngest() {
   const focus = document.getElementById('focus').value.trim();
   const btn = document.getElementById('ingest-go');
-  btn.disabled = true; btn.textContent = 'Reading…';
-  document.getElementById('ingest-result').style.display = 'block';
-  const sum = document.getElementById('ingest-summary');
-  sum.className = 'response dim'; sum.textContent = 'Reading the source…';
-  document.getElementById('ingest-chips').innerHTML = '';
+  const cancelBtn = document.getElementById('ingest-cancel');
 
   let body;
   if (ingestMode === 'url') {
     const urlValue = (document.getElementById('src-url')?.value || '').trim();
-    if (!urlValue) { toast('Enter a URL first'); btn.disabled = false; btn.textContent = 'Read & file'; return; }
+    if (!urlValue) { toast('Enter a URL first'); return; }
     body = { url: urlValue, focus };
   } else if (ingestMode === 'file') {
-    if (!extractedFileText) { toast('Select a file first'); btn.disabled = false; btn.textContent = 'Read & file'; return; }
+    if (!extractedFileText) { toast('Select a file first'); return; }
     body = { source: extractedFileText, focus };
   } else {
     const src = (document.getElementById('src')?.value || '').trim();
-    if (!src) { toast('Paste a source first'); btn.disabled = false; btn.textContent = 'Read & file'; return; }
+    if (!src) { toast('Paste a source first'); return; }
     body = { source: src, focus };
   }
 
+  const statusMsg = ingestMode === 'url' ? 'Fetching the URL and reading…'
+    : ingestMode === 'file' ? 'Extracting and reading the file…'
+    : 'Reading the source…';
+
+  btn.disabled = true; btn.textContent = 'Reading…';
+  if (cancelBtn) cancelBtn.style.display = '';
+  document.getElementById('ingest-result').style.display = 'block';
+  const sum = document.getElementById('ingest-summary');
+  sum.className = 'response dim'; sum.textContent = statusMsg;
+  document.getElementById('ingest-chips').innerHTML = '';
+
+  _ingestController = new AbortController();
   try {
-    const result = await apiPost('/ai/ingest', body);
+    const result = await apiPost('/ai/ingest', body, _ingestController.signal);
     sum.className = 'response'; sum.textContent = result.summary;
 
-    // Merge touched pages into local state
     for (const p of (result.pages || [])) {
       const idx = state.pages.findIndex(e => e.id === p.id);
       if (idx >= 0) state.pages[idx] = { ...p, fresh: true };
@@ -1663,7 +1689,7 @@ async function doIngest() {
     }
 
     document.getElementById('ingest-chips').innerHTML = (result.pages || [])
-      .map(p => `<span class="chip" onclick="openPage('${p.id}')">${esc(p.title)}</span>`).join('');
+      .map(p => `<span class="chip" data-pid="${p.id}" onclick="openPage(this.dataset.pid)">${esc(p.title)}</span>`).join('');
     renderIndex();
     if (ingestMode === 'paste') {
       const srcEl = document.getElementById('src');
@@ -1672,8 +1698,16 @@ async function doIngest() {
     extractedFileText = '';
     renderLog();
   } catch (e) {
-    sum.className = 'response'; sum.textContent = 'Could not process this source. ' + (e.message || '');
-  } finally { btn.disabled = false; btn.textContent = 'Read & file'; }
+    if (e.name === 'AbortError') {
+      sum.className = 'response'; sum.textContent = 'Cancelled.';
+    } else {
+      sum.className = 'response'; sum.textContent = 'Could not process this source. ' + (e.message || '');
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Read & file';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    _ingestController = null;
+  }
 }
 
 function renderQuery() {
@@ -1713,14 +1747,31 @@ function renderLint() {
   </div>`;
 }
 
+function fmtBytes(bytes) {
+  const b = bytes || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function adminDeleteFile(fileId, fileName) {
+  if (!confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete('/files/' + fileId);
+    toast('File deleted');
+    renderAdmin();
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
 async function renderAdmin() {
   const panel = document.getElementById('panel');
   panel.innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`;
   try {
-    const [stats, usage, users] = await Promise.all([
+    const [stats, usage, users, files] = await Promise.all([
       apiGet('/admin/stats'),
       apiGet('/admin/usage').catch(() => null),
-      apiGet('/admin/users').catch(() => [])
+      apiGet('/admin/users').catch(() => []),
+      apiGet('/files').catch(() => [])
     ]);
     const pageCount = stats.pageCount ?? 0;
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
@@ -1822,8 +1873,47 @@ async function renderAdmin() {
       </table>
     </div>`;
 
+    // Build storage section
+    const fileList = Array.isArray(files) ? files : [];
+    const totalBytes = fileList.reduce((s, f) => s + (f.size || 0), 0);
+    const fileRows = fileList.length
+      ? fileList.map(f => {
+          const ext = (f.name.split('.').pop() || '').toUpperCase();
+          const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+          return `<tr>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</td>
+            <td>${esc(ext)}</td>
+            <td>${fmtBytes(f.size || 0)}</td>
+            <td>${esc(f.uploaded_by_email || '')}</td>
+            <td>${t}</td>
+            <td><button class="ghost-btn" style="padding:3px 10px;font-size:11px;color:#C0392B;border-color:transparent"
+              data-fid="${f.id}" data-fname="${esc(f.name)}"
+              onclick="adminDeleteFile(this.dataset.fid, this.dataset.fname)">Delete</button></td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="6" style="color:var(--ink-faint);font-style:italic">No files uploaded yet.</td></tr>`;
+
+    const storageHtml = `<div class="usage-section">
+      <h3>File Storage</h3>
+      <div class="stat-grid" style="margin-bottom:20px">
+        <div class="stat-card">
+          <div class="stat-num">${fileList.length}</div>
+          <div class="stat-label">Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" style="font-size:22px">${fmtBytes(totalBytes)}</div>
+          <div class="stat-label">Total size</div>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th></th></tr></thead>
+        <tbody>${fileRows}</tbody>
+      </table>
+    </div>`;
+
     panel.innerHTML = `<div class="panel">
       ${usageHtml}
+      ${storageHtml}
       <div class="stat-grid">
         <div class="stat-card">
           <div class="stat-num">${pageCount}</div>
