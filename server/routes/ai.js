@@ -3,6 +3,34 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Anthropic = require('@anthropic-ai/sdk');
 const { createClient } = require('@supabase/supabase-js');
+const cheerio = require('cheerio');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+
+async function fetchUrl(url) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Memex/1.0' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  $('script, style, nav, footer, header, aside, noscript').remove();
+  const title = $('title').text().trim();
+  const text = ($('article, main, [role="main"], .content, .post, body').first().text())
+    .replace(/\s+/g, ' ').trim().slice(0, 12000);
+  return { title, text };
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const allowed = ['.txt', '.md', '.pdf'];
+    const ext = '.' + file.originalname.split('.').pop().toLowerCase();
+    cb(null, allowed.includes(ext));
+  }
+});
 
 function db() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -33,8 +61,18 @@ async function logEvent(client, event, userId, userEmail) {
 
 // POST /api/ai/ingest
 router.post('/ingest', auth, async (req, res) => {
-  const { source, focus } = req.body;
-  if (!source?.trim()) return res.status(400).json({ error: 'source required' });
+  let { source, url, focus } = req.body;
+
+  if (!source?.trim() && url?.trim()) {
+    try {
+      const { title, text } = await fetchUrl(url.trim());
+      source = (title ? `${title}\n\n` : '') + text;
+    } catch (e) {
+      return res.status(400).json({ error: `Could not fetch URL: ${e.message}` });
+    }
+  }
+
+  if (!source?.trim()) return res.status(400).json({ error: 'source or url required' });
 
   const client = db();
   const { data: pages } = await client.from('pages').select('*');
@@ -173,6 +211,28 @@ router.post('/lint', auth, async (req, res) => {
   } catch (e) {
     res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
     res.end();
+  }
+});
+
+// POST /api/ai/extract  (file upload — PDF or plain text)
+router.post('/extract', auth, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file required (.txt, .md, .pdf)' });
+
+  try {
+    const ext = '.' + req.file.originalname.split('.').pop().toLowerCase();
+    let text;
+
+    if (ext === '.pdf') {
+      const result = await pdfParse(req.file.buffer);
+      text = result.text;
+    } else {
+      text = req.file.buffer.toString('utf8');
+    }
+
+    text = text.replace(/\s+/g, ' ').trim().slice(0, 12000);
+    res.json({ text, title: '' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
