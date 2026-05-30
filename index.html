@@ -632,6 +632,73 @@ html.dark .chip { color: var(--accent-soft); }
   .masthead, .tabs { padding-left: 20px; padding-right: 20px; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* search results */
+.search-result {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.search-result:hover { opacity: 0.75; }
+.search-result-title {
+  font-family: var(--body);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.search-result-snippet {
+  font-size: 15px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.search-result-snippet mark {
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-style: normal;
+}
+
+/* version history */
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.version-meta { display: flex; flex-direction: column; gap: 2px; min-width: 140px; }
+.version-date { font-family: var(--mono); font-size: 12px; color: var(--accent-soft); }
+.version-who { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.version-title { flex: 1; font-size: 16px; color: var(--ink); }
+.version-actions { display: flex; gap: 6px; }
+
+/* usage / admin data tables */
+.usage-section { margin-bottom: 32px; }
+.usage-section h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 8px; }
+.data-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
+.data-table td:first-child { color: var(--ink); }
+.data-table select { font-family: var(--mono); font-size: 12px; padding: 3px 6px; }
 </style>
 </head>
 <body>
@@ -699,6 +766,18 @@ html.dark .chip { color: var(--accent-soft); }
       <button class="run-btn" onclick="signOut()">Sign out</button>
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
       <button class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
+    </div>
+  </div>
+</div>
+
+<!-- Version preview modal -->
+<div class="scrim" id="version-preview-scrim">
+  <div class="modal" style="max-width:680px;max-height:80vh;overflow-y:auto">
+    <h2 id="version-preview-title"></h2>
+    <div class="prose" id="version-preview-body" style="margin-top:18px;font-size:16px"></div>
+    <div class="btn-row" style="margin-top:24px">
+      <button class="run-btn" id="version-preview-restore">Restore this version</button>
+      <button class="ghost-btn" onclick="document.getElementById('version-preview-scrim').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -776,6 +855,19 @@ async function loadFromServer() {
     openPage(state.activePage);
   } catch (e) {
     toast('Could not load wiki: ' + e.message);
+  }
+}
+
+function applyRoleUI() {
+  const role = currentUser?.role || 'viewer';
+  // Admin tab: only admin
+  document.querySelectorAll('.tab[data-tab="admin"]').forEach(el => {
+    el.style.display = role === 'admin' ? '' : 'none';
+  });
+  // Update user chip to show role
+  const chip = document.getElementById('user-chip');
+  if (chip && currentUser) {
+    chip.textContent = `${currentUser.email}  ·  ${role}`;
   }
 }
 
@@ -909,6 +1001,42 @@ function renderIndex(filter = '') {
     html += `</div>`;
   });
   document.getElementById('index-body').innerHTML = html || '<div class="empty-index">Nothing filed yet.</div>';
+}
+
+/* ---------- full-text search ---------- */
+async function doContentSearch(q) {
+  if (!q) return;
+  state.tab = 'search'; // synthetic tab state, not a real tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  try {
+    const results = await apiGet('/pages/search?q=' + encodeURIComponent(q));
+    renderSearchResults(q, results);
+  } catch (e) {
+    toast('Search failed: ' + e.message);
+  }
+}
+
+function renderSearchResults(q, results) {
+  const items = results.length
+    ? results.map(r => {
+        const snippet = r.headline
+          .replace(/&lt;&lt;/g, '<mark>').replace(/&gt;&gt;/g, '</mark>')
+          .replace(/<</g, '<mark>').replace(/>>/g, '</mark>');
+        return `<div class="search-result" onclick="openPage('${r.id}')">
+          <div class="search-result-title">${CATS[r.category]?.glyph || '◇'} ${esc(r.title)}</div>
+          <div class="search-result-snippet">${snippet}</div>
+        </div>`;
+      }).join('')
+    : '<p class="note placeholder">No pages matched.</p>';
+
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">Search results</h2>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint)">${esc(q)}</span>
+      <button class="ghost-btn" style="margin-left:auto;padding:6px 12px" onclick="openPage(state.activePage)">Clear</button>
+    </div>
+    ${items}
+  </div>`;
 }
 
 /* ---------- markdown ---------- */
@@ -1058,8 +1186,12 @@ function openPage(id) {
     ? (page.updated_at === 'start here' ? 'start here' : new Date(page.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))
     : '';
 
-  const editButton = page.id !== 'overview'
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const editButton = page.id !== 'overview' && canEdit
     ? `<button class="edit-btn" onclick="editPage('${page.id}')">Edit</button>`
+    : '';
+  const historyButton = page.id !== 'overview' && canEdit
+    ? `<button class="edit-btn" style="margin-left:6px" onclick="showHistory('${page.id}')">History</button>`
     : '';
 
   document.getElementById('panel').innerHTML = `<article class="panel article">
@@ -1067,7 +1199,7 @@ function openPage(id) {
       <span>${CATS[page.category]?.glyph || '◇'} ${page.category}</span>
       <span class="sep">${page.sources || 0} source${page.sources === 1 ? '' : 's'}</span>
       <span class="sep">${esc(updated)}</span>
-      ${editButton}
+      ${editButton}${historyButton}
     </div>
     <h1>${esc(page.title)}</h1>
     <div class="prose">${mdToHtml(page.content)}</div>
@@ -1100,7 +1232,7 @@ function editPage(id) {
     <div class="btn-row">
       <button class="run-btn" onclick="savePage('${id}')">Save</button>
       <button class="ghost-btn" onclick="openPage('${id}')">Cancel</button>
-      <button class="delete-btn" onclick="deletePage('${id}')">Delete</button>
+      ${currentUser?.role === 'admin' ? `<button class="delete-btn" onclick="deletePage('${id}')">Delete</button>` : ''}
     </div>
   </div>`;
 }
@@ -1134,8 +1266,70 @@ async function deletePage(id) {
   } catch (e) { toast('Delete failed: ' + e.message); }
 }
 
+/* ---------- version history ---------- */
+async function showHistory(id) {
+  const page = state.pages.find(p => p.id === id);
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">History</h2>
+      <span style="font-family:var(--body);font-size:17px;color:var(--ink-soft)">${esc(page?.title || '')}</span>
+      <button class="ghost-btn" style="margin-left:auto;padding:6px 12px" onclick="openPage('${id}')">Back</button>
+    </div>
+    <div id="version-list"><div class="note placeholder">Loading…</div></div>
+  </div>`;
+
+  try {
+    const versions = await apiGet('/pages/' + id + '/versions');
+    const el = document.getElementById('version-list');
+    if (!versions.length) { el.innerHTML = '<p class="note placeholder">No saved versions yet.</p>'; return; }
+    el.innerHTML = versions.map(v => {
+      const d = new Date(v.saved_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<div class="version-row">
+        <div class="version-meta">
+          <span class="version-date">${d}</span>
+          <span class="version-who">${esc(v.saved_by_email || 'unknown')}</span>
+        </div>
+        <div class="version-title">${esc(v.title)}</div>
+        <div class="version-actions">
+          <button class="ghost-btn" style="padding:5px 12px" onclick="previewVersion('${id}','${v.id}')">Preview</button>
+          <button class="ghost-btn" style="padding:5px 12px" onclick="restoreVersion('${id}','${v.id}')">Restore</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { document.getElementById('version-list').innerHTML = '<p class="note" style="color:var(--accent)">Could not load history: ' + esc(e.message) + '</p>'; }
+}
+
+async function previewVersion(pageId, versionId) {
+  try {
+    const versions = await apiGet('/pages/' + pageId + '/versions');
+    const v = versions.find(x => x.id === versionId);
+    if (!v) return;
+    document.getElementById('version-preview-scrim').classList.add('open');
+    document.getElementById('version-preview-title').textContent = v.title;
+    document.getElementById('version-preview-body').innerHTML = mdToHtml(v.content);
+    document.getElementById('version-preview-restore').onclick = () => restoreVersion(pageId, versionId);
+  } catch (e) { toast('Could not load version: ' + e.message); }
+}
+
+async function restoreVersion(pageId, versionId) {
+  if (!confirm('Restore this version? The current content will be saved as a version first.')) return;
+  try {
+    const updated = await apiPost('/pages/' + pageId + '/restore/' + versionId, {});
+    const idx = state.pages.findIndex(p => p.id === pageId);
+    if (idx >= 0) state.pages[idx] = updated;
+    document.getElementById('version-preview-scrim')?.classList.remove('open');
+    renderIndex();
+    openPage(pageId);
+    toast('Version restored');
+  } catch (e) { toast('Restore failed: ' + e.message); }
+}
+
 /* ---------- ingest ---------- */
 function renderIngest() {
+  if (currentUser?.role === 'viewer') {
+    document.getElementById('panel').innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:40px">Contact an admin to get contributor access.</p></div>`;
+    return;
+  }
   document.getElementById('panel').innerHTML = `<div class="panel">
     <div class="mode-tabs">
       <button class="mode-tab ${ingestMode === 'paste' ? 'active' : ''}" onclick="setIngestMode('paste')">Paste</button>
@@ -1426,13 +1620,14 @@ async function doLint() {
 
 /* ---------- settings / account ---------- */
 function openSettings() {
-  const chip = document.getElementById('user-chip').textContent;
-  document.getElementById('settings-user-info').textContent = `Signed in as ${chip}`;
+  document.getElementById('settings-user-info').textContent =
+    `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
   document.getElementById('settings-scrim').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
 
 async function wipeWiki() {
+  if (currentUser?.role !== 'admin') { toast('Only admins can erase the wiki'); return; }
   if (!confirm('Erase the entire shared wiki? This affects all team members. Export a backup first.')) return;
   try {
     await apiDelete('/pages');
@@ -1488,6 +1683,12 @@ function importJSON(ev) {
 /* ---------- boot ---------- */
 document.getElementById('tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) setTab(t.dataset.tab); });
 document.getElementById('settings-scrim').addEventListener('click', e => { if (e.target.id === 'settings-scrim') closeSettings(); });
+document.getElementById('page-search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doContentSearch(e.target.value.trim());
+});
+document.getElementById('version-preview-scrim').addEventListener('click', e => {
+  if (e.target.id === 'version-preview-scrim') document.getElementById('version-preview-scrim').classList.remove('open');
+});
 renderIndex();
 initApp();
 </script>
