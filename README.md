@@ -11,6 +11,8 @@ reading, summarizing, cross-referencing, and bookkeeping.
 The whole app is one file. No build step, no server, no dependencies to install.
 Your wiki saves to your browser's local storage.
 
+**Live app:** https://cdburgess75.github.io/Memex/
+
 ## Three motions
 
 - **Ingest** — paste an article, paper, or note. Claude reads it, writes a
@@ -22,7 +24,9 @@ Your wiki saves to your browser's local storage.
 
 ## Run it
 
-1. Open `index.html` in any browser (or visit the GitHub Pages URL — see below).
+Either open the hosted app above, or run it locally:
+
+1. Open `index.html` in any browser.
 2. Click **Settings** and paste an [Anthropic API key](https://console.anthropic.com/settings/keys).
 3. Go to **Ingest** and feed it your first source.
 
@@ -30,13 +34,14 @@ Your key is stored only in your browser and sent directly to Anthropic — nothi
 is bundled into this repo and there is no backend. Ingesting and querying bill
 your own API account.
 
-## Host it free with GitHub Pages
+## Hosting
 
-Because the app is named `index.html`, you can serve it straight from this repo:
+This repo deploys to GitHub Pages automatically. Every push to `main` publishes
+to https://cdburgess75.github.io/Memex/ via the workflow in
+`.github/workflows/pages.yml`.
 
-1. Repo **Settings → Pages**.
-2. Source: **Deploy from a branch**, branch `main`, folder `/ (root)`.
-3. Wait a minute, then open `https://<your-username>.github.io/<repo-name>/`.
+To enable it once: repo **Settings → Pages → Build and deployment → Source →
+GitHub Actions**.
 
 ## Portability
 
