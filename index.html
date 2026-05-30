@@ -726,6 +726,7 @@ const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
 
 let state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
 let sb = null; // Supabase client, set after config fetch
+let currentUser = null; // { id, email, role, name }
 
 // ingest mode state
 let ingestMode = 'paste';
@@ -747,6 +748,8 @@ async function initApp() {
       document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
       document.getElementById('login-scrim').classList.remove('open');
       await loadFromServer();
+      currentUser = await apiGet('/auth/me');
+      applyRoleUI();
     } else {
       document.getElementById('login-scrim').classList.add('open');
     }
@@ -757,6 +760,8 @@ async function initApp() {
     document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
     document.getElementById('login-scrim').classList.remove('open');
     await loadFromServer();
+    currentUser = await apiGet('/auth/me');
+    applyRoleUI();
   }
 
   if (localStorage.getItem('memex_theme') === 'dark') setTheme(true);
