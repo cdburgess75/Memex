@@ -1,78 +1,73 @@
+'use strict';
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const { createClient } = require('@supabase/supabase-js');
+const db = require('../lib/db');
 
-function db() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-// GET /api/pages/search?q=text — full-text search via Postgres function
+// GET /api/pages/search?q=text
 router.get('/search', auth, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.json([]);
-
-  const { data, error } = await db().rpc('search_pages', { query_text: q });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  try {
+    const rows = await db.query('SELECT * FROM search_pages($1)', [q]);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// GET /api/pages — fetch all pages
+// GET /api/pages
 router.get('/', auth, async (req, res) => {
-  const { data, error } = await db().from('pages').select('*').order('updated_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  try {
+    const rows = await db.query('SELECT * FROM pages ORDER BY updated_at DESC');
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// GET /api/pages/:id/versions — list version history for a page
+// GET /api/pages/:id/versions
 router.get('/:id/versions', auth, async (req, res) => {
-  const { data, error } = await db()
-    .from('page_versions')
-    .select('id, page_id, title, category, saved_at, saved_by_email')
-    .eq('page_id', req.params.id)
-    .order('saved_at', { ascending: false })
-    .limit(20);
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  try {
+    const rows = await db.query(
+      `SELECT id, page_id, title, category, saved_at, saved_by_email
+       FROM page_versions WHERE page_id = $1 ORDER BY saved_at DESC LIMIT 20`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// POST /api/pages/:id/restore/:versionId — restore a page to a previous version
+// POST /api/pages/:id/restore/:versionId
 router.post('/:id/restore/:versionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const { id, versionId } = req.params;
-  const client = db();
+  try {
+    const version = await db.queryOne(
+      'SELECT * FROM page_versions WHERE id = $1 AND page_id = $2',
+      [versionId, id]
+    );
+    if (!version) return res.status(404).json({ error: 'Version not found' });
 
-  const { data: version, error: vErr } = await client
-    .from('page_versions')
-    .select('*')
-    .eq('id', versionId)
-    .eq('page_id', id)
-    .maybeSingle();
+    const current = await db.queryOne('SELECT sources FROM pages WHERE id = $1', [id]);
+    const sources = current?.sources ?? 0;
 
-  if (vErr) return res.status(500).json({ error: vErr.message });
-  if (!version) return res.status(404).json({ error: 'Version not found' });
-
-  // Preserve current sources count
-  const { data: current } = await client.from('pages').select('sources').eq('id', id).maybeSingle();
-  const sources = current?.sources ?? 0;
-
-  const { data: restored, error: uErr } = await client
-    .from('pages')
-    .upsert({
-      id,
-      title: version.title,
-      category: version.category,
-      content: version.content,
-      sources,
-      updated_at: new Date().toISOString(),
-      updated_by: req.user.id,
-    })
-    .select()
-    .single();
-
-  if (uErr) return res.status(500).json({ error: uErr.message });
-  res.json(restored);
+    const restored = await db.queryOne(
+      `INSERT INTO pages (id, title, category, content, sources, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO UPDATE SET
+         title = EXCLUDED.title, category = EXCLUDED.category,
+         content = EXCLUDED.content, sources = EXCLUDED.sources,
+         updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
+       RETURNING *`,
+      [id, version.title, version.category, version.content, sources, new Date().toISOString(), req.user.id]
+    );
+    res.json(restored);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // PUT /api/pages/:id — create or update a page (upsert by slug id)
@@ -82,52 +77,57 @@ router.put('/:id', auth, requireRole('admin', 'contributor'), async (req, res) =
     return res.status(400).json({ error: 'Invalid page ID format' });
   }
   const { title, category, content, sources } = req.body;
-  const client = db();
 
-  const { data: existing } = await client.from('pages').select('id, sources, title, category, content').eq('id', id).maybeSingle();
+  try {
+    const existing = await db.queryOne(
+      'SELECT id, sources, title, category, content FROM pages WHERE id = $1',
+      [id]
+    );
 
-  let result;
-  if (existing) {
-    // Save old version before updating
-    await client.from('page_versions').insert({
-      page_id: existing.id,
-      title: existing.title,
-      category: existing.category,
-      content: existing.content,
-      saved_by: req.user.id,
-      saved_by_email: req.user.email,
-    });
+    let row;
+    if (existing) {
+      await db.query(
+        `INSERT INTO page_versions (page_id, title, category, content, saved_by, saved_by_email)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [existing.id, existing.title, existing.category, existing.content, req.user.id, req.user.email]
+      );
+      row = await db.queryOne(
+        `UPDATE pages SET title = $1, category = $2, content = $3, sources = $4,
+         updated_at = $5, updated_by = $6 WHERE id = $7 RETURNING *`,
+        [title, category, content, sources, new Date().toISOString(), req.user.id, id]
+      );
+    } else {
+      row = await db.queryOne(
+        `INSERT INTO pages (id, title, category, content, sources, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+        [id, title, category, content, sources, req.user.id, req.user.id]
+      );
+    }
 
-    result = await client
-      .from('pages')
-      .update({ title, category, content, sources, updated_at: new Date().toISOString(), updated_by: req.user.id })
-      .eq('id', id)
-      .select()
-      .single();
-  } else {
-    result = await client
-      .from('pages')
-      .insert({ id, title, category, content, sources, created_by: req.user.id, updated_by: req.user.id })
-      .select()
-      .single();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  if (result.error) return res.status(500).json({ error: result.error.message });
-  res.json(result.data);
 });
 
-// DELETE /api/pages/:id — delete one page
+// DELETE /api/pages/:id
 router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
-  const { error } = await db().from('pages').delete().eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+  try {
+    await db.query('DELETE FROM pages WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // DELETE /api/pages — wipe all pages
 router.delete('/', auth, requireRole('admin'), async (req, res) => {
-  const { error } = await db().from('pages').delete().neq('id', '');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+  try {
+    await db.query('DELETE FROM pages');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

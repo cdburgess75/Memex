@@ -40,13 +40,25 @@ Node.js / Express  (server/)
 
 ### Auth flow
 
-Every request (except `/api/config`) passes through `server/middleware/auth.js`, which:
-1. Extracts the Bearer JWT from `Authorization` header
-2. Verifies it via `adminClient.auth.getUser(token)` (Supabase service-role client)
-3. Looks up the user's row in `user_roles`; if absent, auto-assigns `admin` (if email is in `ADMIN_EMAILS`) or `contributor` using an upsert to avoid race conditions
-4. Attaches `{ id, email, role, user_metadata }` to `req.user`
+The app uses Keycloak for identity. The browser performs a standard OIDC Authorization Code + PKCE flow entirely client-side — no server-side callback needed.
 
-Role enforcement for specific routes uses `server/middleware/requireRole.js`, e.g. `requireRole('admin', 'contributor')`.
+**Browser login flow:**
+1. `signIn(provider)` generates a PKCE code verifier + challenge, stores them in `sessionStorage`, and redirects to Keycloak with `kc_idp_hint=google|microsoft`
+2. Keycloak handles the IdP login and redirects back to `window.location.origin?code=...`
+3. `handleOAuthCallback()` exchanges the code for tokens at Keycloak's `/token` endpoint
+4. Access token + refresh token are stored in `localStorage`; token expiry is tracked in `memex_token_exp`
+5. `getToken()` returns the current access token, silently refreshing via the refresh token when near expiry
+
+**Server auth middleware** (`server/middleware/auth.js`):
+1. Extracts the Bearer JWT from `Authorization` header
+2. Fetches Keycloak's public key from the JWKS endpoint (cached 10 min), verifies JWT signature
+3. Extracts `sub` (user ID) and `email` from JWT claims
+4. Looks up `user_roles`; if absent, auto-assigns `admin` (if email is in `ADMIN_EMAILS`) or `contributor` via upsert
+5. Attaches `{ id, email, role, user_metadata }` to `req.user`
+
+Role enforcement uses `server/middleware/requireRole.js`, e.g. `requireRole('admin', 'contributor')`.
+
+**Key config**: `KEYCLOAK_URL` is the browser-visible URL (returned by `/api/config`). `KEYCLOAK_INTERNAL_URL` is the server-to-server URL for JWKS (defaults to `KEYCLOAK_URL` if not set — set separately in Docker so the container can reach Keycloak by service name).
 
 ### AI operations
 
@@ -66,14 +78,17 @@ The model is set via `ANTHROPIC_MODEL` env var (default `claude-sonnet-4-6`). To
 
 ### Frontend state
 
-`index.html` is ~2500 lines of vanilla JS. Key globals:
+`index.html` is ~2600 lines of vanilla JS. Key globals:
 - `state.pages` — in-memory array of all pages, loaded once on login and updated on mutations
 - `state.activePage` — currently viewed page id
 - `currentUser` — `{ id, email, role, name }` from `/api/auth/me`
+- `_kc` — Keycloak config `{ url, realm, clientId }` fetched from `/api/config`
 - `ingestMode` — `'paste' | 'url' | 'file'`
 - `filesList` — documents loaded on Files tab open
 - `_streamController` — AbortController for cancelling SSE streams (Query / Lint)
 - `_ingestController` — AbortController for cancelling in-flight ingest fetches
+
+Auth tokens are stored in `localStorage` under keys `memex_access_token`, `memex_refresh_token`, `memex_token_exp`. The `_hasValidToken()` helper checks expiry; `_refreshToken()` silently refreshes using the refresh token.
 
 ### File handling
 
@@ -103,26 +118,25 @@ The model is set via `ANTHROPIC_MODEL` env var (default `claude-sonnet-4-6`). To
 
 This only works in production when `APP_URL` is set to a public HTTPS URL that Microsoft's servers can reach.
 
-### Database migrations
+### Database
 
-Run all six in order in the Supabase SQL Editor before first use:
+The app uses Postgres directly via `pg` (node-postgres). All queries go through `server/lib/db.js` which exposes `query(sql, params)` and `queryOne(sql, params)` helpers over a connection pool.
 
-| File | What it creates |
-|------|----------------|
-| `001_initial.sql` | `pages`, `activity_log`, RLS policies |
-| `002_roles.sql` | `user_roles` table |
-| `003_full_text_search.sql` | `content_fts` generated column, `search_pages` RPC |
-| `004_page_versions.sql` | `page_versions` table |
-| `005_api_usage.sql` | `api_usage` table |
-| `006_documents.sql` | `documents` table, `documents` storage bucket |
+**Standalone deployment** (recommended): Run `docker compose up` — Postgres + Keycloak + the app start together. The schema is auto-applied from `postgres/init/01_schema.sql` on first boot.
+
+**Manual setup**: Run `postgres/init/01_schema.sql` against any Postgres 14+ instance.
+
+**Supabase** (legacy): The original migrations in `supabase/migrations/` still work on Supabase-hosted Postgres. They reference `auth.users` (FK constraints) and use Supabase Storage — those features are not used when running standalone. If migrating an existing Supabase instance, the app works as-is; the `auth.users` FK constraints are benign since Keycloak UUIDs are stored in the same UUID columns.
 
 ### Environment variables
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes | Public key for browser-side Supabase client |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Secret key used server-side only |
+| `DATABASE_URL` | Yes | Postgres connection string |
+| `KEYCLOAK_URL` | Yes | Browser-visible Keycloak URL (returned in `/api/config`) |
+| `KEYCLOAK_INTERNAL_URL` | No | Server-to-server JWKS URL; defaults to `KEYCLOAK_URL` |
+| `KEYCLOAK_REALM` | No | Defaults to `memex` |
+| `KEYCLOAK_CLIENT_ID` | No | Defaults to `memex-app` |
 | `ANTHROPIC_API_KEY` | Yes | Shared across all users |
 | `ANTHROPIC_MODEL` | No | Defaults to `claude-sonnet-4-6` |
 | `ADMIN_EMAILS` | No | Comma-separated; first-login auto-assignment |

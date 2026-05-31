@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Memex — team knowledge base</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -935,7 +935,7 @@ const CATS = {
 const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
 
 let state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
-let sb = null; // Supabase client, set after config fetch
+let _kc = null; // Keycloak config { url, realm, clientId }
 let currentUser = null; // { id, email, role, name }
 
 // ingest mode state
@@ -948,41 +948,112 @@ let filesList = []; // cached list of uploaded files
 // sidebar category filter
 let activeCatFilter = null;
 
+/* ---------- OIDC / PKCE helpers ---------- */
+
+function _kcAuthUrl() { return `${_kc.url}/realms/${_kc.realm}/protocol/openid-connect`; }
+
+function _generateVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function _generateChallenge(verifier) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function _hasValidToken() {
+  const tok = localStorage.getItem('memex_access_token');
+  const exp = parseInt(localStorage.getItem('memex_token_exp') || '0', 10);
+  return !!tok && Date.now() < exp - 30_000;
+}
+
+async function _refreshToken() {
+  const refresh = localStorage.getItem('memex_refresh_token');
+  if (!refresh || !_kc) return false;
+  try {
+    const res = await fetch(`${_kcAuthUrl()}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: _kc.clientId, grant_type: 'refresh_token', refresh_token: refresh }),
+    });
+    if (!res.ok) { _clearTokens(); return false; }
+    _storeTokens(await res.json());
+    return true;
+  } catch { _clearTokens(); return false; }
+}
+
+function _storeTokens(t) {
+  localStorage.setItem('memex_access_token', t.access_token);
+  if (t.refresh_token) localStorage.setItem('memex_refresh_token', t.refresh_token);
+  localStorage.setItem('memex_token_exp', String(Date.now() + (t.expires_in || 300) * 1000));
+}
+
+function _clearTokens() {
+  localStorage.removeItem('memex_access_token');
+  localStorage.removeItem('memex_refresh_token');
+  localStorage.removeItem('memex_token_exp');
+}
+
+async function handleOAuthCallback(code, returnedState) {
+  const verifier = sessionStorage.getItem('pkce_verifier');
+  const savedState = sessionStorage.getItem('oauth_state');
+  sessionStorage.removeItem('pkce_verifier');
+  sessionStorage.removeItem('oauth_state');
+  if (!verifier || returnedState !== savedState) { toast('Sign-in failed: invalid state'); return; }
+  try {
+    const res = await fetch(`${_kcAuthUrl()}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: _kc.clientId, grant_type: 'authorization_code',
+        code, redirect_uri: window.location.origin, code_verifier: verifier,
+      }),
+    });
+    if (!res.ok) { toast('Sign-in failed'); return; }
+    _storeTokens(await res.json());
+  } catch (e) { toast('Sign-in error: ' + e.message); }
+}
+
 /* ---------- bootstrap ---------- */
 async function initApp() {
+  let config;
   try {
-    const config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
-    sb = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+    config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
   } catch (e) {
     document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><h2>Memex</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Is it running?</p></div>`;
     return;
   }
 
-  // Supabase handles the OAuth redirect automatically on page load
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (session) {
-      document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
-      document.getElementById('login-scrim').classList.remove('open');
-      await loadFromServer();
-      currentUser = await apiGet('/auth/me');
-      applyRoleUI();
-    } else {
-      document.getElementById('login-scrim').classList.add('open');
-    }
-  });
+  _kc = { url: config.keycloakUrl, realm: config.keycloakRealm, clientId: config.keycloakClientId };
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
-    document.getElementById('login-scrim').classList.remove('open');
-    await loadFromServer();
-    currentUser = await apiGet('/auth/me');
-    applyRoleUI();
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('code')) {
+    await handleOAuthCallback(urlParams.get('code'), urlParams.get('state'));
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  if (_hasValidToken()) {
+    await _afterLogin();
+  } else if (localStorage.getItem('memex_refresh_token')) {
+    if (await _refreshToken()) await _afterLogin();
+    else document.getElementById('login-scrim').classList.add('open');
+  } else {
+    document.getElementById('login-scrim').classList.add('open');
   }
 
   const savedTheme = localStorage.getItem('memex_theme');
   if (savedTheme === 'dark') setTheme(true);
   else if (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme(true);
+}
+
+async function _afterLogin() {
+  document.getElementById('login-scrim').classList.remove('open');
+  await loadFromServer();
+  currentUser = await apiGet('/auth/me');
+  if (currentUser) document.getElementById('user-chip').textContent = `${currentUser.email}  ·  ${currentUser.role}`;
+  applyRoleUI();
 }
 
 async function loadFromServer() {
@@ -1012,21 +1083,48 @@ function applyRoleUI() {
 
 /* ---------- auth ---------- */
 async function signIn(provider) {
-  await sb.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+  const verifier = _generateVerifier();
+  const challenge = await _generateChallenge(verifier);
+  const state = _generateVerifier();
+  sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('oauth_state', state);
+  const idpHint = { google: 'google', microsoft: 'microsoft' }[provider];
+  const params = new URLSearchParams({
+    client_id: _kc.clientId, redirect_uri: window.location.origin,
+    response_type: 'code', scope: 'openid email profile',
+    code_challenge: challenge, code_challenge_method: 'S256', state,
+    ...(idpHint ? { kc_idp_hint: idpHint } : {}),
+  });
+  window.location.href = `${_kcAuthUrl()}/auth?${params}`;
 }
 
 async function signOut() {
-  await sb.auth.signOut();
+  const refresh = localStorage.getItem('memex_refresh_token');
+  _clearTokens();
   closeSettings();
   state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
   renderIndex();
   document.getElementById('user-chip').textContent = '';
+  document.getElementById('login-scrim').classList.add('open');
+  if (refresh && _kc) {
+    fetch(`${_kcAuthUrl()}/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: _kc.clientId, refresh_token: refresh }),
+    }).catch(() => {});
+  }
 }
 
 /* ---------- API helpers ---------- */
 async function getToken() {
-  const { data: { session } } = await sb.auth.getSession();
-  return session?.access_token;
+  if (!_hasValidToken()) {
+    const ok = await _refreshToken();
+    if (!ok) {
+      document.getElementById('login-scrim').classList.add('open');
+      throw new Error('Session expired — please sign in again');
+    }
+  }
+  return localStorage.getItem('memex_access_token');
 }
 
 async function apiGet(path) {

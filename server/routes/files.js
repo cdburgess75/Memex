@@ -1,12 +1,13 @@
+'use strict';
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
+const db = require('../lib/db');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -17,10 +18,6 @@ const upload = multer({
     cb(null, allowed.includes(ext));
   }
 });
-
-function db() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
 
 function anthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -47,7 +44,7 @@ async function extractText(buffer, filename) {
     const pdfParse = require('pdf-parse');
     return (await pdfParse(buffer)).text.slice(0, MAX);
   }
-  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8').slice(0, 100_000);
+  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8').slice(0, MAX);
   return null;
 }
 
@@ -58,64 +55,12 @@ function buildContext(pages) {
     .join('\n\n---\n\n');
 }
 
-async function logEvent(client, event, userId, userEmail) {
-  await client.from('activity_log').insert({ event, user_id: userId, user_email: userEmail });
+async function logEvent(event, userId, userEmail) {
+  await db.query(
+    'INSERT INTO activity_log (event, user_id, user_email) VALUES ($1, $2, $3)',
+    [event, userId, userEmail]
+  );
 }
-
-// GET /api/files — list all documents
-router.get('/', auth, async (req, res) => {
-  const { data, error } = await db()
-    .from('documents')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-// POST /api/files/upload — upload a document
-router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'file required' });
-
-  const client = db();
-  const path = require('path');
-  const { buffer, originalname, mimetype, size } = req.file;
-  const sanitizedName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
-
-  // Upload to storage
-  try {
-    await storage.upload(storagePath, buffer, mimetype);
-  } catch (uploadError) {
-    return res.status(500).json({ error: uploadError.message });
-  }
-
-  // Insert metadata row
-  const { data: doc, error: insertError } = await client
-    .from('documents')
-    .insert({
-      name: originalname,
-      size,
-      mime_type: mimetype,
-      storage_path: storagePath,
-      uploaded_by: req.user.id,
-      uploaded_by_email: req.user.email,
-    })
-    .select()
-    .single();
-
-  if (insertError) return res.status(500).json({ error: insertError.message });
-
-  // Attempt text extraction (non-fatal)
-  let canIngest = false;
-  try {
-    const text = await extractText(buffer, originalname);
-    canIngest = text !== null && text.trim().length > 0;
-  } catch (e) {
-    console.error('Text extraction failed (non-fatal):', e.message);
-  }
-
-  res.json({ doc, canIngest });
-});
 
 // GET /api/files/local-download — serve file using short-lived token (local storage only)
 router.get('/local-download', async (req, res) => {
@@ -134,44 +79,82 @@ router.get('/local-download', async (req, res) => {
   res.send(buffer);
 });
 
-// POST /api/files/:id/ingest — extract text and ingest into knowledge base
+// GET /api/files
+router.get('/', auth, async (req, res) => {
+  try {
+    const rows = await db.query('SELECT * FROM documents ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/upload
+router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file required' });
+
+  const path = require('path');
+  const { buffer, originalname, mimetype, size } = req.file;
+  const sanitizedName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+
+  try {
+    await storage.upload(storagePath, buffer, mimetype);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+
+  try {
+    const doc = await db.queryOne(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [originalname, size, mimetype, storagePath, req.user.id, req.user.email]
+    );
+
+    let canIngest = false;
+    try {
+      const text = await extractText(buffer, originalname);
+      canIngest = text !== null && text.trim().length > 0;
+    } catch (e) {
+      console.error('Text extraction failed (non-fatal):', e.message);
+    }
+
+    res.json({ doc, canIngest });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/:id/ingest
 router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const { focus } = req.body;
-  const client = db();
 
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  // Download from storage
-  let buffer;
   try {
-    buffer = await storage.download(doc.storage_path);
-  } catch (downloadError) {
-    return res.status(500).json({ error: downloadError.message });
-  }
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  let text;
-  try {
-    text = await extractText(buffer, doc.name);
-  } catch (e) {
-    return res.status(422).json({ error: `Text extraction failed: ${e.message}` });
-  }
+    let buffer;
+    try {
+      buffer = await storage.download(doc.storage_path);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
 
-  if (!text || !text.trim()) {
-    return res.status(422).json({ error: 'Could not extract text from this file' });
-  }
+    let text;
+    try {
+      text = await extractText(buffer, doc.name);
+    } catch (e) {
+      return res.status(422).json({ error: `Text extraction failed: ${e.message}` });
+    }
 
-  // Run the same ingest pipeline as ai.js
-  const { data: pages } = await client.from('pages').select('*');
-  const ctx = buildContext(pages);
+    if (!text || !text.trim()) {
+      return res.status(422).json({ error: 'Could not extract text from this file' });
+    }
 
-  const system = `You maintain a team knowledge base. Ingest the source the user provides.
+    const pages = await db.query('SELECT * FROM pages');
+    const ctx = buildContext(pages);
+
+    const system = `You maintain a team knowledge base. Ingest the source the user provides.
 
 Existing pages:
 ${ctx || '(empty — this is the first source)'}
@@ -181,7 +164,6 @@ Return ONLY valid JSON, no markdown fences, in this shape:
 
 Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
-  try {
     const message = await anthropic().messages.create({
       model: MODEL(),
       max_tokens: 1400,
@@ -189,66 +171,52 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
       messages: [{ role: 'user', content: 'Source:\n\n' + text.slice(0, 8000) }],
     });
 
-    // Track api_usage
-    await client.from('api_usage').insert({
-      user_id: req.user.id,
-      user_email: req.user.email,
-      operation: 'ingest',
-      model: MODEL(),
-      input_tokens: message.usage.input_tokens,
-      output_tokens: message.usage.output_tokens,
-    });
+    await db.query(
+      'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
+      [req.user.id, req.user.email, 'ingest', MODEL(), message.usage.input_tokens, message.usage.output_tokens]
+    );
 
     const raw = message.content.map(b => b.text || '').join('');
     let parsed;
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    } catch (parseErr) {
+    } catch {
       return res.status(422).json({ error: 'Claude returned invalid JSON — try again' });
     }
 
     const touched = [];
     for (const p of (parsed.pages || [])) {
-      const { data: existing } = await client.from('pages').select('id, sources').eq('id', p.id).maybeSingle();
-      let result;
+      const existing = await db.queryOne('SELECT id, sources FROM pages WHERE id = $1', [p.id]);
+      let row;
       if (existing) {
-        result = await client
-          .from('pages')
-          .update({ title: p.title, category: p.category, content: p.content, sources: (existing.sources || 0) + 1, updated_at: new Date().toISOString(), updated_by: req.user.id })
-          .eq('id', p.id)
-          .select()
-          .single();
+        row = await db.queryOne(
+          `UPDATE pages SET title = $1, category = $2, content = $3, sources = $4,
+           updated_at = $5, updated_by = $6 WHERE id = $7 RETURNING *`,
+          [p.title, p.category, p.content, (existing.sources || 0) + 1, new Date().toISOString(), req.user.id, p.id]
+        );
       } else {
-        result = await client
-          .from('pages')
-          .insert({ ...p, sources: 1, created_by: req.user.id, updated_by: req.user.id })
-          .select()
-          .single();
+        row = await db.queryOne(
+          `INSERT INTO pages (id, title, category, content, sources, created_by, updated_by)
+           VALUES ($1, $2, $3, $4, 1, $5, $6) RETURNING *`,
+          [p.id, p.title, p.category, p.content, req.user.id, req.user.id]
+        );
       }
-      if (result.data) touched.push(result.data);
+      if (row) touched.push(row);
     }
 
-    await logEvent(client, `ingest · ${touched.length} pages · ${parsed.pages?.[0]?.title || doc.name}`, req.user.id, req.user.email);
+    await logEvent(`ingest · ${touched.length} pages · ${parsed.pages?.[0]?.title || doc.name}`, req.user.id, req.user.email);
     res.json({ summary: parsed.summary, pages: touched });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/files/:id/url — get a signed download URL
+// GET /api/files/:id/url
 router.get('/:id/url', auth, async (req, res) => {
-  const client = db();
-
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
   try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
     const url = await storage.getUrl(doc.storage_path, 3600);
     res.json({ url, name: doc.name });
   } catch (e) {
@@ -256,52 +224,43 @@ router.get('/:id/url', auth, async (req, res) => {
   }
 });
 
-// GET /api/files/:id/office — get Office Online viewer/editor URLs
+// GET /api/files/:id/office
 router.get('/:id/office', auth, async (req, res) => {
-  const client = db();
-
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  let signedUrl;
   try {
-    signedUrl = await storage.getUrl(doc.storage_path, 3600);
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-  const ext = doc.name.split('.').pop().toLowerCase();
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  const viewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(signedUrl)}`;
+    const signedUrl = await storage.getUrl(doc.storage_path, 3600);
+    const ext = doc.name.split('.').pop().toLowerCase();
 
-  let editUrl = null;
-  const appUrl = process.env.APP_URL;
-  if (appUrl) {
-    const wopiApps = {
-      docx: 'https://word-edit.officeapps.live.com/op/edit.aspx',
-      doc:  'https://word-edit.officeapps.live.com/op/edit.aspx',
-      xlsx: 'https://excel.officeapps.live.com/op/edit.aspx',
-      xls:  'https://excel.officeapps.live.com/op/edit.aspx',
-      pptx: 'https://powerpoint.officeapps.live.com/op/edit.aspx',
-      ppt:  'https://powerpoint.officeapps.live.com/op/edit.aspx',
-    };
-    const wopiApp = wopiApps[ext];
-    if (wopiApp) {
-      const token = generateToken(doc.id, req.user.id, req.user.email);
-      const wopiSrc = encodeURIComponent(`${appUrl}/wopi/files/${doc.id}`);
-      editUrl = `${wopiApp}?WOPISrc=${wopiSrc}&access_token=${token}`;
+    const viewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(signedUrl)}`;
+
+    let editUrl = null;
+    const appUrl = process.env.APP_URL;
+    if (appUrl) {
+      const wopiApps = {
+        docx: 'https://word-edit.officeapps.live.com/op/edit.aspx',
+        doc:  'https://word-edit.officeapps.live.com/op/edit.aspx',
+        xlsx: 'https://excel.officeapps.live.com/op/edit.aspx',
+        xls:  'https://excel.officeapps.live.com/op/edit.aspx',
+        pptx: 'https://powerpoint.officeapps.live.com/op/edit.aspx',
+        ppt:  'https://powerpoint.officeapps.live.com/op/edit.aspx',
+      };
+      const wopiApp = wopiApps[ext];
+      if (wopiApp) {
+        const token = generateToken(doc.id, req.user.id, req.user.email);
+        const wopiSrc = encodeURIComponent(`${appUrl}/wopi/files/${doc.id}`);
+        editUrl = `${wopiApp}?WOPISrc=${wopiSrc}&access_token=${token}`;
+      }
     }
-  }
 
-  res.json({ viewUrl, editUrl, ext });
+    res.json({ viewUrl, editUrl, ext });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// POST /api/files/:id/google — upload to Google Drive for editing
+// POST /api/files/:id/google
 router.post('/:id/google', auth, async (req, res) => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
     return res.status(400).json({
@@ -309,44 +268,33 @@ router.post('/:id/google', auth, async (req, res) => {
     });
   }
 
-  const client = db();
-
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  // Download from storage
-  let buffer;
   try {
-    buffer = await storage.download(doc.storage_path);
-  } catch (downloadError) {
-    return res.status(500).json({ error: downloadError.message });
-  }
-  const ext = doc.name.split('.').pop().toLowerCase();
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  // MIME type mapping for Google conversion
-  const googleMimeTypes = {
-    docx: 'application/vnd.google-apps.document',
-    doc:  'application/vnd.google-apps.document',
-    xlsx: 'application/vnd.google-apps.spreadsheet',
-    xls:  'application/vnd.google-apps.spreadsheet',
-    pptx: 'application/vnd.google-apps.presentation',
-    ppt:  'application/vnd.google-apps.presentation',
-  };
+    let buffer;
+    try {
+      buffer = await storage.download(doc.storage_path);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+    const ext = doc.name.split('.').pop().toLowerCase();
 
-  try {
-    // Lazy require googleapis
+    const googleMimeTypes = {
+      docx: 'application/vnd.google-apps.document',
+      doc:  'application/vnd.google-apps.document',
+      xlsx: 'application/vnd.google-apps.spreadsheet',
+      xls:  'application/vnd.google-apps.spreadsheet',
+      pptx: 'application/vnd.google-apps.presentation',
+      ppt:  'application/vnd.google-apps.presentation',
+    };
+
     const { google } = require('googleapis');
 
     let credentials;
     try {
       credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-    } catch (e) {
+    } catch {
       return res.status(500).json({ error: 'Invalid GOOGLE_SERVICE_ACCOUNT_KEY — must be valid JSON' });
     }
 
@@ -364,44 +312,29 @@ router.post('/:id/google', auth, async (req, res) => {
     };
 
     const { Readable } = require('stream');
-    const readable = Readable.from(buffer);
-
     const { data: driveFile } = await drive.files.create({
       requestBody: fileMetadata,
-      media: {
-        mimeType: doc.mime_type,
-        body: readable,
-      },
+      media: { mimeType: doc.mime_type, body: Readable.from(buffer) },
       fields: 'id, webViewLink',
     });
 
-    // Share with requesting user's email (non-fatal)
     try {
       await drive.permissions.create({
         fileId: driveFile.id,
-        requestBody: {
-          type: 'user',
-          role: 'writer',
-          emailAddress: req.user.email,
-        },
+        requestBody: { type: 'user', role: 'writer', emailAddress: req.user.email },
       });
     } catch (shareErr) {
       console.error('Google Drive share failed (non-fatal):', shareErr.message);
     }
 
-    // Save google_drive_id back to documents table
-    await client
-      .from('documents')
-      .update({ google_drive_id: driveFile.id })
-      .eq('id', doc.id);
-
+    await db.query('UPDATE documents SET google_drive_id = $1 WHERE id = $2', [driveFile.id, doc.id]);
     res.json({ editUrl: driveFile.webViewLink, driveId: driveFile.id });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// POST /api/files/:id/google/export — export from Google Drive back to Supabase Storage
+// POST /api/files/:id/google/export
 router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), async (req, res) => {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
     return res.status(400).json({
@@ -409,39 +342,29 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     });
   }
 
-  const client = db();
-
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-  if (!doc.google_drive_id) return res.status(400).json({ error: 'Document has not been pushed to Google Drive' });
-
-  const ext = doc.name.split('.').pop().toLowerCase();
-
-  const exportMimeTypes = {
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    doc:  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    xls:  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    ppt:  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  };
-
-  const exportMime = exportMimeTypes[ext];
-  if (!exportMime) return res.status(400).json({ error: `Export not supported for .${ext} files` });
-
   try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (!doc.google_drive_id) return res.status(400).json({ error: 'Document has not been pushed to Google Drive' });
+
+    const ext = doc.name.split('.').pop().toLowerCase();
+    const exportMimeTypes = {
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      doc:  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      xls:  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      ppt:  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    };
+    const exportMime = exportMimeTypes[ext];
+    if (!exportMime) return res.status(400).json({ error: `Export not supported for .${ext} files` });
+
     const { google } = require('googleapis');
 
     let credentials;
     try {
       credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-    } catch (e) {
+    } catch {
       return res.status(500).json({ error: 'Invalid GOOGLE_SERVICE_ACCOUNT_KEY — must be valid JSON' });
     }
 
@@ -449,7 +372,6 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
       credentials,
       scopes: ['https://www.googleapis.com/auth/drive'],
     });
-
     const drive = google.drive({ version: 'v3', auth });
 
     const { data: exportStream } = await drive.files.export(
@@ -457,7 +379,6 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
       { responseType: 'stream' }
     );
 
-    // Collect stream into buffer
     const chunks = [];
     await new Promise((resolve, reject) => {
       exportStream.on('data', chunk => chunks.push(chunk));
@@ -466,54 +387,26 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     });
     const buffer = Buffer.concat(chunks);
 
-    // Upload buffer back to storage
-    try {
-      await storage.upload(doc.storage_path, buffer, exportMime);
-    } catch (uploadError) {
-      return res.status(500).json({ error: uploadError.message });
-    }
-
-    // Update size in documents table
-    await client
-      .from('documents')
-      .update({ size: buffer.length })
-      .eq('id', doc.id);
-
+    await storage.upload(doc.storage_path, buffer, exportMime);
+    await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
     res.json({ success: true, size: buffer.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// DELETE /api/files/:id — delete a document
+// DELETE /api/files/:id
 router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  const client = db();
-
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.id)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  // Remove from storage
   try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
     await storage.del(doc.storage_path);
-  } catch (storageError) {
-    return res.status(500).json({ error: storageError.message });
+    await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  // Delete metadata row
-  const { error: deleteError } = await client
-    .from('documents')
-    .delete()
-    .eq('id', req.params.id);
-
-  if (deleteError) return res.status(500).json({ error: deleteError.message });
-
-  res.json({ success: true });
 });
 
 module.exports = router;

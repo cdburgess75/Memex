@@ -1,33 +1,67 @@
-# Memex — docker-compose deployment
-#
-# Prerequisites:
-#   1. Copy .env.example to .env and fill in all values
-#   2. Run: docker compose up -d
-#
-# The app connects to Supabase (cloud or self-hosted) for its database,
-# auth, and file storage. See README.md for Supabase setup instructions.
-
 services:
-  memex:
-    image: ghcr.io/cdburgess75/memex:latest
-    # To build from source instead of pulling the pre-built image:
-    # build: .
-    container_name: memex
+
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: memex
+      POSTGRES_USER: memex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memex -d memex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: memex
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      - ./keycloak/memex-realm.json:/opt/keycloak/data/import/memex-realm.json:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://memex:${POSTGRES_PASSWORD:-changeme}@postgres:5432/memex
+      # KEYCLOAK_URL is the browser-visible URL (used in /api/config for the frontend PKCE flow)
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
+      # KEYCLOAK_INTERNAL_URL is the server-to-server URL for JWKS verification
+      KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-memex}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-memex-app}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      APP_URL: ${APP_URL:-}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_LOCAL_PATH: /data/documents
+    volumes:
+      - documents_data:/data/documents
     ports:
       - "${PORT:-3000}:3000"
-    env_file:
-      - .env
-    environment:
-      PORT: 3000
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/config"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  documents_data:
