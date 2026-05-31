@@ -4,7 +4,7 @@ A team knowledge base where Claude does the reading, writing, and upkeep.
 
 Most knowledge-management tools are retrieval-only — you put documents in and search them back out. Nothing accumulates. Memex is different: it **builds and maintains a persistent, interlinked wiki** that grows smarter every time your team feeds it a source. Paste an article, drop a PDF, point it at a URL, or upload a Word document — Claude summarizes it, weaves new pages into the collection, and cross-links everything that relates. Ask questions and get answers grounded in what your team has actually gathered. Run a periodic audit to catch contradictions, orphans, and gaps.
 
-The whole thing runs in one HTML file backed by a lightweight Node.js server and a Postgres database. No proprietary platform, no vendor lock-in — your knowledge stays yours.
+Everything is stored in a Postgres database (via Supabase). The frontend is a single HTML file; the backend is a lightweight Node.js/Express server. No proprietary platform, no vendor lock-in — your knowledge stays yours.
 
 ---
 
