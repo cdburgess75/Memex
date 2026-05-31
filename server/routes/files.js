@@ -6,6 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
+const storage = require('../lib/storage');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -81,12 +82,12 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single(
   const sanitizedName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `documents/${Date.now()}-${sanitizedName}`;
 
-  // Upload to Supabase Storage
-  const { error: uploadError } = await client.storage
-    .from('documents')
-    .upload(storagePath, buffer, { contentType: mimetype });
-
-  if (uploadError) return res.status(500).json({ error: uploadError.message });
+  // Upload to storage
+  try {
+    await storage.upload(storagePath, buffer, mimetype);
+  } catch (uploadError) {
+    return res.status(500).json({ error: uploadError.message });
+  }
 
   // Insert metadata row
   const { data: doc, error: insertError } = await client
@@ -116,6 +117,23 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single(
   res.json({ doc, canIngest });
 });
 
+// GET /api/files/local-download — serve file using short-lived token (local storage only)
+router.get('/local-download', async (req, res) => {
+  const entry = storage.validateLocalToken(req.query.token);
+  if (!entry) return res.status(401).json({ error: 'Invalid or expired download token' });
+
+  let buffer;
+  try {
+    buffer = await storage.download(entry.storagePath);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+
+  const path = require('path');
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(entry.storagePath)}"`);
+  res.send(buffer);
+});
+
 // POST /api/files/:id/ingest — extract text and ingest into knowledge base
 router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const { focus } = req.body;
@@ -130,14 +148,13 @@ router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  // Download from Supabase Storage
-  const { data: fileData, error: downloadError } = await client.storage
-    .from('documents')
-    .download(doc.storage_path);
-
-  if (downloadError) return res.status(500).json({ error: downloadError.message });
-
-  const buffer = Buffer.from(await fileData.arrayBuffer());
+  // Download from storage
+  let buffer;
+  try {
+    buffer = await storage.download(doc.storage_path);
+  } catch (downloadError) {
+    return res.status(500).json({ error: downloadError.message });
+  }
 
   let text;
   try {
@@ -231,13 +248,12 @@ router.get('/:id/url', auth, async (req, res) => {
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  const { data: signedData, error: signError } = await client.storage
-    .from('documents')
-    .createSignedUrl(doc.storage_path, 3600); // 1 hour
-
-  if (signError) return res.status(500).json({ error: signError.message });
-
-  res.json({ url: signedData.signedUrl, name: doc.name });
+  try {
+    const url = await storage.getUrl(doc.storage_path, 3600);
+    res.json({ url, name: doc.name });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/files/:id/office — get Office Online viewer/editor URLs
@@ -253,13 +269,12 @@ router.get('/:id/office', auth, async (req, res) => {
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  const { data: signedData, error: signError } = await client.storage
-    .from('documents')
-    .createSignedUrl(doc.storage_path, 3600);
-
-  if (signError) return res.status(500).json({ error: signError.message });
-
-  const signedUrl = signedData.signedUrl;
+  let signedUrl;
+  try {
+    signedUrl = await storage.getUrl(doc.storage_path, 3600);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
   const ext = doc.name.split('.').pop().toLowerCase();
 
   const viewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(signedUrl)}`;
@@ -305,14 +320,13 @@ router.post('/:id/google', auth, async (req, res) => {
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  // Download from Supabase Storage
-  const { data: fileData, error: downloadError } = await client.storage
-    .from('documents')
-    .download(doc.storage_path);
-
-  if (downloadError) return res.status(500).json({ error: downloadError.message });
-
-  const buffer = Buffer.from(await fileData.arrayBuffer());
+  // Download from storage
+  let buffer;
+  try {
+    buffer = await storage.download(doc.storage_path);
+  } catch (downloadError) {
+    return res.status(500).json({ error: downloadError.message });
+  }
   const ext = doc.name.split('.').pop().toLowerCase();
 
   // MIME type mapping for Google conversion
@@ -452,12 +466,12 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     });
     const buffer = Buffer.concat(chunks);
 
-    // Upload buffer back to Supabase Storage (upsert)
-    const { error: uploadError } = await client.storage
-      .from('documents')
-      .upload(doc.storage_path, buffer, { contentType: exportMime, upsert: true });
-
-    if (uploadError) return res.status(500).json({ error: uploadError.message });
+    // Upload buffer back to storage
+    try {
+      await storage.upload(doc.storage_path, buffer, exportMime);
+    } catch (uploadError) {
+      return res.status(500).json({ error: uploadError.message });
+    }
 
     // Update size in documents table
     await client
@@ -484,12 +498,12 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  // Remove from Supabase Storage
-  const { error: storageError } = await client.storage
-    .from('documents')
-    .remove([doc.storage_path]);
-
-  if (storageError) return res.status(500).json({ error: storageError.message });
+  // Remove from storage
+  try {
+    await storage.del(doc.storage_path);
+  } catch (storageError) {
+    return res.status(500).json({ error: storageError.message });
+  }
 
   // Delete metadata row
   const { error: deleteError } = await client

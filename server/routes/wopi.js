@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiTokens');
+const storage = require('../lib/storage');
 
 function db() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -53,13 +54,12 @@ router.get('/files/:fileId/contents', async (req, res) => {
   if (docError) return res.status(500).json({ error: docError.message });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  const { data: fileData, error: downloadError } = await client.storage
-    .from('documents')
-    .download(doc.storage_path);
-
-  if (downloadError) return res.status(500).json({ error: downloadError.message });
-
-  const buffer = Buffer.from(await fileData.arrayBuffer());
+  let buffer;
+  try {
+    buffer = await storage.download(doc.storage_path);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 
   res.setHeader('Content-Type', doc.mime_type);
   res.setHeader('Content-Length', buffer.length);
@@ -92,12 +92,11 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
 
   const buffer = req.body;
 
-  // Upload to Supabase Storage (upsert)
-  const { error: uploadError } = await client.storage
-    .from('documents')
-    .upload(doc.storage_path, buffer, { contentType: doc.mime_type, upsert: true });
-
-  if (uploadError) return res.status(500).json({ error: uploadError.message });
+  try {
+    await storage.upload(doc.storage_path, buffer, doc.mime_type);
+  } catch (uploadError) {
+    return res.status(500).json({ error: uploadError.message });
+  }
 
   // Update size in documents table
   await client

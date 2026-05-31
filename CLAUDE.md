@@ -78,10 +78,24 @@ The model is set via `ANTHROPIC_MODEL` env var (default `claude-sonnet-4-6`). To
 ### File handling
 
 `server/routes/files.js` handles two separate pipelines:
-1. **Direct upload** — multer stores file in memory → uploads to Supabase Storage → inserts metadata row in `documents`
-2. **File ingest** — downloads file from Storage → `extractText()` → runs the same Claude ingest prompt as `ai.js`
+1. **Direct upload** — multer stores file in memory → uploads via storage abstraction → inserts metadata row in `documents`
+2. **File ingest** — downloads file from storage → `extractText()` → runs the same Claude ingest prompt as `ai.js`
 
 `extractText()` caps output at 100 KB to prevent memory issues on large files. Supported formats: `.docx` (mammoth), `.xlsx/.xls/.csv` (SheetJS), `.pdf` (pdf-parse), `.txt/.md` (raw buffer).
+
+### Storage abstraction
+
+`server/lib/storage.js` is a provider-agnostic layer selected by `STORAGE_PROVIDER` env var. All file routes use it — no direct Supabase storage calls anywhere in the codebase.
+
+| Provider | `STORAGE_PROVIDER` value | Notes |
+|----------|--------------------------|-------|
+| Supabase Storage | `supabase` (default) | Uses existing bucket; best for small deployments |
+| Local filesystem | `local` | Set `STORAGE_LOCAL_PATH`; iSCSI/NAS/NFS mounts work transparently |
+| S3-compatible | `s3` | AWS S3, Cloudflare R2, Backblaze B2, MinIO, DigitalOcean Spaces |
+
+**Local provider**: Instead of signed URLs, generates short-lived tokens stored in-memory and serves files via `GET /api/files/local-download?token=...` (no auth middleware — the token is the credential, same model as signed URLs).
+
+**S3 provider**: Uses `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (lazy-required). Set `STORAGE_S3_ENDPOINT` for non-AWS providers; set `STORAGE_S3_FORCE_PATH_STYLE=true` for MinIO.
 
 ### WOPI (Office Online editing)
 
@@ -116,3 +130,11 @@ Run all six in order in the Supabase SQL Editor before first use:
 | `APP_URL` | No | Public HTTPS URL; required for WOPI editing |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | No | Full JSON blob; required for Google Drive editing |
 | `GOOGLE_DRIVE_FOLDER_ID` | No | Target folder for Drive uploads |
+| `STORAGE_PROVIDER` | No | `supabase` (default), `local`, or `s3` |
+| `STORAGE_LOCAL_PATH` | If local | Absolute path on the host filesystem |
+| `STORAGE_S3_BUCKET` | If s3 | Bucket name |
+| `STORAGE_S3_REGION` | If s3 | Defaults to `us-east-1` |
+| `STORAGE_S3_ACCESS_KEY_ID` | If s3 | Access key |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | If s3 | Secret key |
+| `STORAGE_S3_ENDPOINT` | If s3 (non-AWS) | Custom endpoint URL |
+| `STORAGE_S3_FORCE_PATH_STYLE` | If s3 (MinIO) | Set `true` for path-style addressing |
