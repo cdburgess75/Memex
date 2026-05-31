@@ -1,39 +1,63 @@
-const { createClient } = require('@supabase/supabase-js');
+'use strict';
+const jwt = require('jsonwebtoken');
+const JwksClient = require('jwks-rsa');
+const db = require('../lib/db');
 
-// Service-role client for token verification — never exposed to the browser
-const adminClient = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+let _jwksClient;
+function jwks() {
+  if (!_jwksClient) {
+    const base = process.env.KEYCLOAK_INTERNAL_URL || process.env.KEYCLOAK_URL;
+    const realm = process.env.KEYCLOAK_REALM || 'memex';
+    _jwksClient = new JwksClient({
+      jwksUri: `${base}/realms/${realm}/protocol/openid-connect/certs`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+    });
+  }
+  return _jwksClient;
+}
+
+async function verifyToken(token) {
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded?.header?.kid) throw new Error('Invalid token structure');
+  const key = await jwks().getSigningKeyAsync(decoded.header.kid);
+  return jwt.verify(token, key.getPublicKey(), { algorithms: ['RS256'] });
+}
 
 module.exports = async function auth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { data: { user }, error } = await adminClient.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: 'Invalid token' });
+  let payload;
+  try {
+    payload = await verifyToken(token);
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 
-  // Look up role in user_roles table
-  let { data: roleRow } = await adminClient.from('user_roles').select('role').eq('user_id', user.id).maybeSingle();
+  const userId = payload.sub;
+  const userEmail = (payload.email || '').toLowerCase();
+
+  let roleRow = await db.queryOne('SELECT role FROM user_roles WHERE user_id = $1', [userId]);
 
   if (!roleRow) {
-    // Auto-assign role based on ADMIN_EMAILS env var
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    const assignedRole = adminEmails.includes((user.email || '').toLowerCase()) ? 'admin' : 'contributor';
-
-    const { data: upserted } = await adminClient.from('user_roles').upsert(
-      { user_id: user.id, role: assignedRole },
-      { onConflict: 'user_id', ignoreDuplicates: false }
-    ).select('role').maybeSingle();
-
-    roleRow = upserted || { role: assignedRole };
+    const assignedRole = adminEmails.includes(userEmail) ? 'admin' : 'contributor';
+    roleRow = await db.queryOne(
+      `INSERT INTO user_roles (user_id, email, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email
+       RETURNING role`,
+      [userId, userEmail, assignedRole]
+    ) ?? { role: assignedRole };
   }
 
   req.user = {
-    id: user.id,
-    email: user.email,
+    id: userId,
+    email: userEmail,
     role: roleRow.role,
-    user_metadata: user.user_metadata,
+    user_metadata: { full_name: payload.name },
   };
 
   next();

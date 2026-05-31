@@ -1,116 +1,82 @@
+'use strict';
 const express = require('express');
 const router = express.Router();
-const { createClient } = require('@supabase/supabase-js');
+const db = require('../lib/db');
 const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 
-function db() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
 // GET /wopi/files/:fileId — CheckFileInfo
 router.get('/files/:fileId', async (req, res) => {
-  const token = req.query.access_token;
-  const entry = validateToken(token);
+  const entry = validateToken(req.query.access_token);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
 
-  const client = db();
-  const { data: doc, error } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.fileId)
-    .maybeSingle();
+  try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  res.json({
-    BaseFileName: doc.name,
-    Size: doc.size,
-    Version: doc.created_at,
-    OwnerId: doc.uploaded_by,
-    UserId: entry.userId,
-    UserFriendlyName: entry.userEmail,
-    UserCanWrite: true,
-    SupportsUpdate: true,
-    SupportsLock: true,
-    SupportsGetLock: true,
-  });
+    res.json({
+      BaseFileName: doc.name,
+      Size: doc.size,
+      Version: doc.created_at,
+      OwnerId: doc.uploaded_by,
+      UserId: entry.userId,
+      UserFriendlyName: entry.userEmail,
+      UserCanWrite: true,
+      SupportsUpdate: true,
+      SupportsLock: true,
+      SupportsGetLock: true,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /wopi/files/:fileId/contents — GetFile
 router.get('/files/:fileId/contents', async (req, res) => {
-  const token = req.query.access_token;
-  const entry = validateToken(token);
+  const entry = validateToken(req.query.access_token);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
 
-  const client = db();
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.fileId)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  let buffer;
   try {
-    buffer = await storage.download(doc.storage_path);
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-  res.setHeader('Content-Type', doc.mime_type);
-  res.setHeader('Content-Length', buffer.length);
-  res.send(buffer);
+    const buffer = await storage.download(doc.storage_path);
+    res.setHeader('Content-Type', doc.mime_type);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST /wopi/files/:fileId/contents — PutFile
 router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
-  const token = req.query.access_token;
-  const entry = validateToken(token);
+  const entry = validateToken(req.query.access_token);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
 
-  const client = db();
-  const { data: doc, error: docError } = await client
-    .from('documents')
-    .select('*')
-    .eq('id', req.params.fileId)
-    .maybeSingle();
-
-  if (docError) return res.status(500).json({ error: docError.message });
-  if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-  // Check that there's an active lock (or it's a new/empty file)
-  const currentLock = getLock(req.params.fileId);
-  const requestedLock = req.headers['x-wopi-lock'];
-  if (currentLock && currentLock !== requestedLock) {
-    res.setHeader('X-WOPI-Lock', currentLock);
-    return res.status(409).end();
-  }
-
-  const buffer = req.body;
-
   try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const currentLock = getLock(req.params.fileId);
+    const requestedLock = req.headers['x-wopi-lock'];
+    if (currentLock && currentLock !== requestedLock) {
+      res.setHeader('X-WOPI-Lock', currentLock);
+      return res.status(409).end();
+    }
+
+    const buffer = req.body;
     await storage.upload(doc.storage_path, buffer, doc.mime_type);
-  } catch (uploadError) {
-    return res.status(500).json({ error: uploadError.message });
+    await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
+    res.status(200).end();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  // Update size in documents table
-  await client
-    .from('documents')
-    .update({ size: buffer.length })
-    .eq('id', doc.id);
-
-  res.status(200).end();
 });
 
 // POST /wopi/files/:fileId — Operations (Lock, Unlock, etc.)
 router.post('/files/:fileId', async (req, res) => {
-  const token = req.query.access_token;
-  const entry = validateToken(token);
+  const entry = validateToken(req.query.access_token);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
 
   const override = req.headers['x-wopi-override'];
@@ -128,24 +94,19 @@ router.post('/files/:fileId', async (req, res) => {
       res.setHeader('X-WOPI-Lock', requestedLock);
       return res.status(200).end();
     }
-
     case 'GET_LOCK': {
-      const currentLock = getLock(fileId);
-      res.setHeader('X-WOPI-Lock', currentLock || '');
+      res.setHeader('X-WOPI-Lock', getLock(fileId) || '');
       return res.status(200).end();
     }
-
     case 'REFRESH_LOCK': {
       const currentLock = getLock(fileId);
       if (!currentLock || currentLock !== requestedLock) {
         res.setHeader('X-WOPI-Lock', currentLock || '');
         return res.status(409).end();
       }
-      // Refresh expiry by re-setting with the same token
       setLock(fileId, requestedLock);
       return res.status(200).end();
     }
-
     case 'UNLOCK': {
       const currentLock = getLock(fileId);
       if (!currentLock || currentLock !== requestedLock) {
@@ -155,7 +116,6 @@ router.post('/files/:fileId', async (req, res) => {
       clearLock(fileId);
       return res.status(200).end();
     }
-
     case 'UNLOCK_AND_RELOCK': {
       const oldLock = req.headers['x-wopi-old-lock'];
       const currentLock = getLock(fileId);
@@ -167,7 +127,6 @@ router.post('/files/:fileId', async (req, res) => {
       setLock(fileId, requestedLock);
       return res.status(200).end();
     }
-
     default:
       return res.status(501).end();
   }
