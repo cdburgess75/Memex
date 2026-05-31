@@ -27,7 +27,7 @@ Browser (index.html)          — single-file SPA, no framework, no build tool
 Node.js / Express  (server/)
     ├─ /api/config            — public: returns SUPABASE_URL + SUPABASE_ANON_KEY
     ├─ /api/auth/me           — returns current user id, email, role, name
-    ├─ /api/pages             — wiki page CRUD + full-text search + version history
+    ├─ /api/pages             — page CRUD + full-text search + version history
     ├─ /api/ai                — Anthropic API proxy (ingest · query · lint · extract)
     ├─ /api/files             — document upload, signed URLs, Office Online, Google Drive
     ├─ /api/log               — activity log reads
