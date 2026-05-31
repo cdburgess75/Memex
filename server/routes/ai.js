@@ -10,10 +10,21 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 
 async function fetchUrl(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Memex/1.0' },
-    signal: AbortSignal.timeout(15000)
-  });
+  const proxyUrl = await settings.getOrEnv('http_proxy');
+  const fetchOpts = { headers: { 'User-Agent': 'Memex/1.0' }, signal: AbortSignal.timeout(15000) };
+  if (proxyUrl) {
+    const { ProxyAgent, fetch: undiciFetch } = require('undici');
+    const res = await undiciFetch(url, { ...fetchOpts, dispatcher: new ProxyAgent(proxyUrl) });
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    $('script, style, nav, footer, header, aside, noscript').remove();
+    const title = $('title').text().trim();
+    const text = ($('article, main, [role="main"], .content, .post, body').first().text())
+      .replace(/\s+/g, ' ').trim().slice(0, 12000);
+    return { title, text };
+  }
+  const res = await fetch(url, fetchOpts);
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
   const html = await res.text();
   const $ = cheerio.load(html);
@@ -24,15 +35,24 @@ async function fetchUrl(url) {
   return { title, text };
 }
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
-    const allowed = ['.txt', '.md', '.pdf'];
-    const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-    cb(null, allowed.includes(ext));
+let _aiUploadMb = 0;
+let _aiUploadMw = null;
+async function getAiUpload() {
+  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '10', 10);
+  if (mb !== _aiUploadMb || !_aiUploadMw) {
+    _aiUploadMb = mb;
+    _aiUploadMw = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: mb * 1024 * 1024 },
+      fileFilter(_req, file, cb) {
+        const allowed = ['.txt', '.md', '.pdf'];
+        const ext = '.' + file.originalname.split('.').pop().toLowerCase();
+        cb(null, allowed.includes(ext));
+      }
+    }).single('file');
   }
-});
+  return _aiUploadMw;
+}
 
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
@@ -241,7 +261,7 @@ router.post('/lint', auth, async (req, res) => {
 });
 
 // POST /api/ai/extract  (file upload — PDF or plain text)
-router.post('/extract', auth, upload.single('file'), async (req, res) => {
+router.post('/extract', auth, (req, res, next) => getAiUpload().then(mw => mw(req, res, next)).catch(next), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required (.txt, .md, .pdf)' });
 
   try {

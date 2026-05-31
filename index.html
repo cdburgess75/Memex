@@ -2120,6 +2120,28 @@ async function renderAdmin() {
         <textarea id="cfg-google-key" placeholder='{"type":"service_account",…} — leave blank to keep current'>${esc(s.google_service_account_key||'')}</textarea>
       </div>
       <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Network &amp; Security</div>
+      <p class="settings-notice">Bind address and outbound proxy require a server restart to take effect. All other settings below apply within 30 seconds.</p>
+      <div class="settings-grid">
+        <label>Bind address <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
+        <input type="text" id="cfg-bind-addr" value="${esc(s.bind_address||'')}" placeholder="0.0.0.0 — all interfaces, or 127.0.0.1 for localhost only">
+        <label>Reverse proxy trust</label>
+        <select id="cfg-trust-proxy">
+          <option value="" ${!s.trust_proxy?'selected':''}>Disabled — direct connection</option>
+          <option value="1" ${s.trust_proxy==='1'?'selected':''}>1 hop — nginx / Caddy / Traefik</option>
+          <option value="loopback" ${s.trust_proxy==='loopback'?'selected':''}>Loopback only</option>
+          <option value="linklocal" ${s.trust_proxy==='linklocal'?'selected':''}>Link-local</option>
+          <option value="true" ${s.trust_proxy==='true'?'selected':''}>Trust all proxies (not recommended)</option>
+        </select>
+        <label>Allowed CORS origins</label>
+        <input type="text" id="cfg-cors-origins" value="${esc(s.cors_origins||'')}" placeholder="* (all) or comma-separated: https://app.co, https://admin.co">
+        <label>Outbound HTTP proxy <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
+        <input type="url" id="cfg-http-proxy" value="${esc(s.http_proxy||'')}" placeholder="http://proxy.company.com:8080 — for AI URL fetching through a corporate proxy">
+        <label>Max upload size (MB)</label>
+        <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'50')}" min="1" max="2000" step="1">
+      </div>
+      <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
     </div>`;
 
     panel.innerHTML = `<div class="panel">
@@ -2221,6 +2243,20 @@ async function saveIntegrationSettings() {
     await apiPut('/admin/settings', body);
     toast('Integration settings saved');
     document.getElementById('cfg-google-key').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function saveNetworkSettings() {
+  const body = {
+    bind_address:  document.getElementById('cfg-bind-addr').value.trim(),
+    trust_proxy:   document.getElementById('cfg-trust-proxy').value,
+    cors_origins:  document.getElementById('cfg-cors-origins').value.trim(),
+    http_proxy:    document.getElementById('cfg-http-proxy').value.trim(),
+    max_upload_mb: document.getElementById('cfg-max-upload-mb').value,
+  };
+  try {
+    await apiPut('/admin/settings', body);
+    toast('Network settings saved — bind address and proxy take effect on restart');
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
