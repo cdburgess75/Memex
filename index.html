@@ -3,41 +3,44 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memex — a personal LLM wiki</title>
+<title>Memex — team knowledge base</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --paper: #F4EEE2;
-  --surface: #FBF7EE;
-  --surface-2: #EFE8D8;
-  --ink: #211C16;
-  --ink-soft: #5C5347;
-  --ink-faint: #8B8170;
-  --accent: #9E3B22;
-  --accent-soft: #C26A4C;
-  --accent-wash: #F0DDD3;
-  --rule: rgba(33,28,22,0.12);
-  --rule-soft: rgba(33,28,22,0.07);
-  --shadow: 0 1px 2px rgba(33,28,22,0.05);
+  /* Claude light mode palette */
+  --paper: #F9F7F4;
+  --surface: #FFFFFF;
+  --surface-2: #F0EBE3;
+  --ink: #1A1916;
+  --ink-soft: #5C5650;
+  --ink-faint: #8C877E;
+  --accent: #D97757;
+  --accent-soft: #C4603D;
+  --accent-wash: #FAECE4;
+  --rule: rgba(26,25,22,0.10);
+  --rule-soft: rgba(26,25,22,0.06);
+  --shadow: 0 1px 3px rgba(26,25,22,0.06), 0 0 0 1px rgba(26,25,22,0.04);
   --display: 'Fraunces', Georgia, serif;
   --body: 'Newsreader', Georgia, serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 html.dark {
-  --paper: #16130F;
-  --surface: #1E1A15;
-  --surface-2: #262019;
-  --ink: #ECE3D2;
-  --ink-soft: #ABA08C;
-  --ink-faint: #7A7160;
-  --accent: #DB825C;
-  --accent-soft: #B5613F;
-  --accent-wash: #2E2118;
-  --rule: rgba(236,227,210,0.13);
-  --rule-soft: rgba(236,227,210,0.07);
-  --shadow: 0 1px 2px rgba(0,0,0,0.3);
+  /* Claude dark mode palette */
+  --paper: #1A1916;
+  --surface: #232119;
+  --surface-2: #2C2A22;
+  --ink: #EDE8E0;
+  --ink-soft: #A8A298;
+  --ink-faint: #736E65;
+  --accent: #D97757;
+  --accent-soft: #C4603D;
+  --accent-wash: #2D1E14;
+  --rule: rgba(237,232,224,0.11);
+  --rule-soft: rgba(237,232,224,0.06);
+  --shadow: 0 1px 3px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.18);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -93,6 +96,19 @@ body {
   text-transform: uppercase;
 }
 .icon-btn:hover { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.user-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  padding: 7px 11px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .shell {
   display: grid;
@@ -105,6 +121,11 @@ body {
 .index-col {
   border-right: 1px solid var(--ink);
   padding: 26px 22px 40px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
 }
 .index-head {
   font-family: var(--mono);
@@ -114,12 +135,51 @@ body {
   color: var(--accent);
   border-bottom: 1px solid var(--rule);
   padding-bottom: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
 }
 .index-head .count { color: var(--ink-faint); }
+
+/* sidebar search */
+.search-wrap { margin-bottom: 10px; }
+#page-search {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: var(--ink);
+  transition: border-color 0.15s;
+}
+#page-search:focus { outline: none; border-color: var(--accent); }
+#page-search::placeholder { color: var(--ink-faint); }
+.cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.cat-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.cat-pill:hover { color: var(--ink); border-color: var(--ink-soft); }
+.cat-pill.active { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
+
 .cat-group { margin-bottom: 20px; }
 .cat-label {
   font-family: var(--mono);
@@ -183,6 +243,7 @@ body {
   color: var(--accent);
   margin-bottom: 10px;
   display: flex;
+  align-items: center;
   gap: 14px;
 }
 .article .kicker .sep { color: var(--ink-faint); }
@@ -202,19 +263,115 @@ body {
   margin: 30px 0 10px;
   letter-spacing: -0.01em;
 }
+.prose h3 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 19px;
+  margin: 22px 0 8px;
+  letter-spacing: -0.01em;
+}
 .prose p { margin-bottom: 16px; }
 .prose ul { margin: 0 0 16px 22px; }
+.prose ol { margin: 0 0 16px 22px; }
 .prose li { margin-bottom: 6px; }
 .prose em { font-style: italic; color: var(--ink-soft); }
 .prose strong { font-weight: 500; }
-.wikilink {
+.cross-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid var(--accent-wash);
   cursor: pointer;
   transition: border-color 0.12s;
 }
-.wikilink:hover { border-bottom-color: var(--accent); }
+.cross-link:hover { border-bottom-color: var(--accent); }
+.prose a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-wash); transition: border-color 0.12s; }
+.prose a:hover { border-bottom-color: var(--accent); }
+.prose pre {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+.prose pre code {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+}
+.prose code {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 5px;
+  color: var(--ink);
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 20px;
+  font-size: 16px;
+}
+.prose th {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  padding: 8px 12px;
+  color: var(--ink-soft);
+}
+.prose td {
+  border: 1px solid var(--rule);
+  padding: 8px 12px;
+  vertical-align: top;
+}
+.prose tr:nth-child(even) td { background: var(--surface); }
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 28px 0;
+}
+
+/* edit form */
+.edit-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  padding: 5px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+}
+.edit-btn:hover { border-color: var(--ink); color: var(--ink); }
+.delete-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent-wash);
+  padding: 12px 18px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+}
+.delete-btn:hover { border-color: var(--accent); background: var(--accent-wash); }
 
 /* forms */
 .field { margin-bottom: 20px; }
@@ -248,15 +405,15 @@ select { cursor: pointer; }
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: var(--ink);
-  color: var(--paper);
-  border: 1px solid var(--ink);
+  background: var(--accent);
+  color: #FFFFFF;
+  border: 1px solid var(--accent);
   padding: 12px 22px;
-  border-radius: 2px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.run-btn:hover { background: var(--accent); border-color: var(--accent); }
+.run-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
 .run-btn:disabled { opacity: 0.4; cursor: wait; }
 .ghost-btn {
   font-family: var(--mono);
@@ -267,7 +424,7 @@ select { cursor: pointer; }
   color: var(--ink-soft);
   border: 1px solid var(--rule);
   padding: 12px 18px;
-  border-radius: 2px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -328,11 +485,14 @@ html.dark .chip { color: var(--accent-soft); }
   border-bottom: 1px solid var(--rule-soft);
 }
 .log-row .t { color: var(--accent-soft); flex-shrink: 0; }
+.log-row .who { color: var(--ink-faint); opacity: 0.7; flex-shrink: 0; }
 
 /* modal */
 .scrim {
   position: fixed; inset: 0;
-  background: rgba(20,16,12,0.5);
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   display: none;
   align-items: center;
   justify-content: center;
@@ -342,12 +502,12 @@ html.dark .chip { color: var(--accent-soft); }
 .scrim.open { display: flex; }
 .modal {
   background: var(--surface);
-  border: 1px solid var(--ink);
-  border-radius: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
   max-width: 460px;
   width: 100%;
   padding: 30px 32px;
-  box-shadow: 0 20px 60px rgba(20,16,12,0.3);
+  box-shadow: var(--shadow), 0 16px 48px rgba(0,0,0,0.18);
 }
 .modal h2 {
   font-family: var(--display);
@@ -356,7 +516,31 @@ html.dark .chip { color: var(--accent-soft); }
   margin-bottom: 6px;
 }
 .modal .sub { font-size: 15px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
-.modal .sub a { color: var(--accent); }
+
+/* login screen */
+.login-modal { text-align: center; max-width: 380px; }
+.login-modal h2 { font-size: 36px; margin-bottom: 8px; }
+.login-modal .sub { margin-bottom: 28px; }
+.login-providers { display: flex; flex-direction: column; gap: 10px; }
+.provider-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 14px 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: var(--shadow);
+}
+.provider-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
 
 .toast {
   position: fixed;
@@ -376,27 +560,308 @@ html.dark .chip { color: var(--accent-soft); }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ingest mode tabs */
+.mode-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.mode-tab {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-tab:hover { color: var(--ink); border-color: var(--ink-soft); }
+.mode-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-wash); }
+
+/* file drop zone */
+.file-drop {
+  border: 2px dashed var(--rule);
+  border-radius: 3px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-drop:hover, .file-drop.drag-over { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+.file-status {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+  min-height: 18px;
+}
+
+/* admin */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 30px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 20px 22px;
+}
+.stat-card .stat-num {
+  font-family: var(--display);
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.stat-card .stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+.admin-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 10px 6px 0;
+}
+.admin-table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.admin-table td:first-child { color: var(--ink); }
+
 @media (max-width: 820px) {
   .shell { grid-template-columns: 1fr; }
   .index-col { border-right: none; border-bottom: 1px solid var(--ink); }
   .panel { padding: 28px 24px 50px; }
   .masthead, .tabs { padding-left: 20px; padding-right: 20px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* search results */
+.search-result {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.search-result:hover { opacity: 0.75; }
+.search-result-title {
+  font-family: var(--body);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.search-result-snippet {
+  font-size: 15px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.search-result-snippet mark {
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-style: normal;
+}
+
+/* version history */
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.version-meta { display: flex; flex-direction: column; gap: 2px; min-width: 140px; }
+.version-date { font-family: var(--mono); font-size: 12px; color: var(--accent-soft); }
+.version-who { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.version-title { flex: 1; font-size: 16px; color: var(--ink); }
+.version-actions { display: flex; gap: 6px; }
+
+/* usage / admin data tables */
+.usage-section { margin-bottom: 32px; }
+.usage-section h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 8px; }
+.data-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
+.data-table td:first-child { color: var(--ink); }
+.data-table select { font-family: var(--mono); font-size: 12px; padding: 3px 6px; }
+
+/* Files tab */
+.file-drop-zone {
+  border: 2px dashed var(--rule);
+  border-radius: 3px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 28px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.file-drop-zone:hover, .file-drop-zone.drag-over {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+.file-list { display: flex; flex-direction: column; gap: 12px; }
+.file-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.file-icon {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent-wash);
+  color: var(--accent);
+  padding: 4px 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.file-icon.pdf  { background: #FCEAE8; color: #C0392B; }
+.file-icon.xlsx, .file-icon.xls, .file-icon.csv { background: #E8F5E9; color: #2E7D32; }
+.file-icon.pptx, .file-icon.ppt { background: #FEF0E6; color: #D84315; }
+html.dark .file-icon.pdf  { background: #2E1410; color: #E57373; }
+html.dark .file-icon.xlsx, html.dark .file-icon.xls, html.dark .file-icon.csv { background: #0F2A14; color: #81C784; }
+html.dark .file-icon.pptx, html.dark .file-icon.ppt { background: #2D1A08; color: #FFB74D; }
+.file-info { flex: 1; min-width: 0; }
+.file-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.file-action-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.file-action-btn:hover { border-color: var(--ink); color: var(--ink); }
+.file-action-btn.primary { background: var(--accent); color: #FFFFFF; border-color: var(--accent); }
+.file-action-btn.primary:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+.file-action-btn.danger { color: #C0392B; border-color: transparent; }
+html.dark .file-action-btn.danger { color: #E57373; }
+.file-action-btn.danger:hover { border-color: currentColor; background: transparent; }
+.file-action-btn:disabled { opacity: 0.4; cursor: wait; }
+.upload-progress {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+  letter-spacing: 0.04em;
 }
 </style>
 </head>
 <body>
 
+<!-- Login screen — shown until auth is confirmed -->
+<div class="scrim open" id="login-scrim">
+  <div class="modal login-modal">
+    <h2>Memex</h2>
+    <p class="sub">Sign in to access your team's knowledge base.</p>
+    <div class="login-providers">
+      <button class="provider-btn" onclick="signIn('google')">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.3 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.8 6.1C12.5 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.5-5.8c-2.1 1.4-4.8 2.3-8 2.3-6.2 0-11.5-3.7-13.4-9l-7.8 6.1C6.7 42.6 14.7 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+      <button class="provider-btn" onclick="signIn('azure')">
+        <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h23v23H0z"/><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
+        Sign in with Microsoft 365
+      </button>
+    </div>
+  </div>
+</div>
+
 <header class="masthead">
   <div class="brand">
     <h1>Memex</h1>
-    <span class="colophon">a personal wiki, kept by Claude</span>
+    <span class="colophon">a team knowledge base, kept by Claude</span>
   </div>
   <div class="masthead-actions">
     <button class="icon-btn" onclick="toggleTheme()" id="theme-btn">Dark</button>
     <button class="icon-btn" onclick="exportMarkdown()">Export .md</button>
     <button class="icon-btn" onclick="exportJSON()">Backup</button>
     <button class="icon-btn" onclick="document.getElementById('import-file').click()">Restore</button>
-    <button class="icon-btn" onclick="openSettings()">Settings</button>
+    <button class="icon-btn" onclick="openSettings()">Account</button>
+    <span class="user-chip" id="user-chip"></span>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
   </div>
 </header>
@@ -404,6 +869,10 @@ html.dark .chip { color: var(--accent-soft); }
 <div class="shell">
   <aside class="index-col">
     <div class="index-head"><span>Index</span><span class="count" id="page-count">0</span></div>
+    <div class="search-wrap">
+      <input type="text" id="page-search" placeholder="Filter pages…" oninput="renderIndex(this.value)" autocomplete="off">
+    </div>
+    <div class="cat-filter" id="cat-filter"></div>
     <div id="index-body"></div>
   </aside>
   <main class="work-col">
@@ -412,31 +881,34 @@ html.dark .chip { color: var(--accent-soft); }
       <div class="tab" data-tab="ingest"><span class="ix">+</span>Ingest</div>
       <div class="tab" data-tab="query"><span class="ix">?</span>Query</div>
       <div class="tab" data-tab="lint"><span class="ix">✦</span>Lint</div>
+      <div class="tab" data-tab="files"><span class="ix">◫</span>Files</div>
+      <div class="tab" data-tab="admin"><span class="ix">⚙</span>Admin</div>
     </nav>
     <div id="panel"></div>
   </main>
 </div>
 
+<!-- Account modal -->
 <div class="scrim" id="settings-scrim">
   <div class="modal">
-    <h2>Settings</h2>
-    <p class="sub">Your key is stored only in this browser and sent directly to Anthropic. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</p>
-    <div class="field">
-      <label class="field-label">Anthropic API key</label>
-      <input type="password" id="apikey-input" placeholder="sk-ant-…">
-    </div>
-    <div class="field">
-      <label class="field-label">Model</label>
-      <select id="model-input">
-        <option value="claude-sonnet-4-6">claude-sonnet-4-6 — balanced (recommended)</option>
-        <option value="claude-opus-4-8">claude-opus-4-8 — most capable</option>
-        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 — fastest / cheapest</option>
-      </select>
-    </div>
+    <h2>Account</h2>
+    <p class="sub" id="settings-user-info"></p>
     <div class="btn-row" style="margin-top:24px">
-      <button class="run-btn" onclick="saveSettings()">Save</button>
-      <button class="ghost-btn" onclick="closeSettings()">Cancel</button>
-      <button class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
+      <button class="run-btn" onclick="signOut()">Sign out</button>
+      <button class="ghost-btn" onclick="closeSettings()">Close</button>
+      <button id="erase-kb-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeAll()">Erase all</button>
+    </div>
+  </div>
+</div>
+
+<!-- Version preview modal -->
+<div class="scrim" id="version-preview-scrim">
+  <div class="modal" style="max-width:680px;max-height:80vh;overflow-y:auto">
+    <h2 id="version-preview-title"></h2>
+    <div class="prose" id="version-preview-body" style="margin-top:18px;font-size:16px"></div>
+    <div class="btn-row" style="margin-top:24px">
+      <button class="run-btn" id="version-preview-restore">Restore this version</button>
+      <button class="ghost-btn" onclick="document.getElementById('version-preview-scrim').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -449,12 +921,9 @@ const WELCOME = {
   title: 'Reading room',
   category: 'meta',
   sources: 0,
-  updated: 'start here',
-  content: `# Reading room\n\nThis is your *Memex* — a private knowledge base that Claude reads, writes, and keeps in order for you. It lives entirely in this one file and saves to your browser.\n\n## The three motions\n\n- **Ingest** — paste an article, paper, or note. Claude reads it, summarizes it, and weaves new pages into the wiki, cross-linking what relates.\n- **Query** — ask anything. Claude answers from what you've gathered, and can file the answer back as its own page so insight accumulates.\n- **Lint** — periodically ask Claude to audit the collection for contradictions, orphans, and gaps worth chasing.\n\n## To begin\n\nOpen **Settings**, paste an Anthropic API key, then move to the **Ingest** tab and feed it your first source. Watch the index on the left fill in.`
+  updated_at: 'start here',
+  content: `# Reading room\n\nThis is your team's *Memex* — a shared knowledge base that Claude reads, writes, and keeps in order. Sign in with your work account and start building.\n\n## The three motions\n\n- **Ingest** — paste an article, paper, or note. Claude reads it, summarizes it, and weaves new pages into the collection, cross-linking what relates.\n- **Query** — ask anything. Claude answers from what you've gathered, and can file the answer back as its own page so insight accumulates.\n- **Lint** — periodically ask Claude to audit the collection for contradictions, orphans, and gaps worth chasing.\n\n## To begin\n\nMove to the **Ingest** tab and feed it your first source. Watch the index on the left fill in.`
 };
-
-let state = { pages: [], log: [], activePage: 'overview', tab: 'read' };
-let cfg = { key: '', model: 'claude-sonnet-4-6' };
 
 const CATS = {
   meta:     { label: 'Reading room', glyph: '◆' },
@@ -465,21 +934,193 @@ const CATS = {
 };
 const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
 
-/* ---------- persistence ---------- */
-function load() {
+let state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
+let sb = null; // Supabase client, set after config fetch
+let currentUser = null; // { id, email, role, name }
+
+// ingest mode state
+let ingestMode = 'paste';
+let extractedFileText = '';
+
+// files tab state
+let filesList = []; // cached list of uploaded files
+
+// sidebar category filter
+let activeCatFilter = null;
+
+/* ---------- bootstrap ---------- */
+async function initApp() {
   try {
-    const s = localStorage.getItem('memex_wiki');
-    if (s) state = JSON.parse(s);
-    const c = localStorage.getItem('memex_cfg');
-    if (c) cfg = JSON.parse(c);
-  } catch (e) {}
-  if (!state.pages || !state.pages.length) state.pages = [WELCOME];
-  if (!state.pages.find(p => p.id === 'overview')) state.pages.unshift(WELCOME);
-  if (document.documentElement.classList.contains('dark') !== (localStorage.getItem('memex_theme') === 'dark')) {}
-  if (localStorage.getItem('memex_theme') === 'dark') setTheme(true);
+    const config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+    sb = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  } catch (e) {
+    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><h2>Memex</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Is it running?</p></div>`;
+    return;
+  }
+
+  // Supabase handles the OAuth redirect automatically on page load
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (session) {
+      document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
+      document.getElementById('login-scrim').classList.remove('open');
+      await loadFromServer();
+      currentUser = await apiGet('/auth/me');
+      applyRoleUI();
+    } else {
+      document.getElementById('login-scrim').classList.add('open');
+    }
+  });
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    document.getElementById('user-chip').textContent = session.user.email || session.user.user_metadata?.full_name || '';
+    document.getElementById('login-scrim').classList.remove('open');
+    await loadFromServer();
+    currentUser = await apiGet('/auth/me');
+    applyRoleUI();
+  }
+
+  const savedTheme = localStorage.getItem('memex_theme');
+  if (savedTheme === 'dark') setTheme(true);
+  else if (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme(true);
 }
-function save() { localStorage.setItem('memex_wiki', JSON.stringify(state)); }
-function saveCfg() { localStorage.setItem('memex_cfg', JSON.stringify(cfg)); }
+
+async function loadFromServer() {
+  try {
+    const pages = await apiGet('/pages');
+    state.pages = [WELCOME, ...pages];
+    if (!state.activePage) state.activePage = 'overview';
+    renderIndex();
+    openPage(state.activePage);
+  } catch (e) {
+    toast('Could not load pages: ' + e.message);
+  }
+}
+
+function applyRoleUI() {
+  const role = currentUser?.role || 'viewer';
+  // Admin tab: only admin
+  document.querySelectorAll('.tab[data-tab="admin"]').forEach(el => {
+    el.style.display = role === 'admin' ? '' : 'none';
+  });
+  // Update user chip to show role
+  const chip = document.getElementById('user-chip');
+  if (chip && currentUser) {
+    chip.textContent = `${currentUser.email}  ·  ${role}`;
+  }
+}
+
+/* ---------- auth ---------- */
+async function signIn(provider) {
+  await sb.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  closeSettings();
+  state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
+  renderIndex();
+  document.getElementById('user-chip').textContent = '';
+}
+
+/* ---------- API helpers ---------- */
+async function getToken() {
+  const { data: { session } } = await sb.auth.getSession();
+  return session?.access_token;
+}
+
+async function apiGet(path) {
+  const res = await fetch('/api' + path, { headers: { Authorization: `Bearer ${await getToken()}` } });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiPost(path, body, signal) {
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+    body: JSON.stringify(body),
+  };
+  if (signal) opts.signal = signal;
+  const res = await fetch('/api' + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiPut(path, body) {
+  const res = await fetch('/api' + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiDelete(path) {
+  const res = await fetch('/api' + path, { method: 'DELETE', headers: { Authorization: `Bearer ${await getToken()}` } });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+let _streamController = null;
+function stopStream() {
+  if (_streamController) { _streamController.abort(); _streamController = null; }
+}
+
+let _ingestController = null;
+function cancelIngest() {
+  if (_ingestController) { _ingestController.abort(); _ingestController = null; }
+}
+
+async function streamFromApi(path, body, el) {
+  _streamController = new AbortController();
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify(body),
+      signal: _streamController.signal,
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') { el.classList.remove('cursor', 'dim'); return null; }
+    throw e;
+  }
+  if (!res.ok) { el.textContent = 'Error ' + res.status + ': ' + (await res.text()).slice(0, 200); return null; }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let text = '', buf = '', saved = null;
+  el.classList.remove('dim'); el.classList.add('cursor');
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const line of parts) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const d = JSON.parse(data);
+          if (d.text)  { text += d.text; el.textContent = text; }
+          if (d.saved) { saved = d.saved; }
+          if (d.error) { el.textContent = 'Error: ' + d.error; el.classList.remove('cursor'); return null; }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') throw e;
+  } finally {
+    _streamController = null;
+    el.classList.remove('cursor');
+  }
+  return { text, saved };
+}
 
 /* ---------- theme ---------- */
 function setTheme(dark) {
@@ -493,28 +1134,50 @@ function toggleTheme() { setTheme(!document.documentElement.classList.contains('
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
+  t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-/* ---------- log ---------- */
-function logEvent(msg) {
-  state.log.unshift({ t: new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }), msg });
-  state.log = state.log.slice(0, 40);
-  save();
+/* ---------- sidebar ---------- */
+function setCatFilter(cat) {
+  activeCatFilter = activeCatFilter === cat ? null : cat;
+  renderIndex(document.getElementById('page-search')?.value || '');
 }
 
-/* ---------- sidebar ---------- */
-function renderIndex() {
-  document.getElementById('page-count').textContent = state.pages.length;
+function renderIndex(filter = '') {
+  const filterLower = filter.toLowerCase();
+  const visiblePages = state.pages.filter(p => p.id !== 'overview');
+  document.getElementById('page-count').textContent = visiblePages.length;
+
+  // Render category filter pills (only categories that have pages)
+  const usedCats = [...new Set(visiblePages.map(p => p.category))];
+  const filterEl = document.getElementById('cat-filter');
+  if (filterEl && usedCats.length > 1) {
+    filterEl.innerHTML = CAT_ORDER
+      .filter(c => usedCats.includes(c))
+      .map(c => `<button class="cat-pill ${activeCatFilter === c ? 'active' : ''}" onclick="setCatFilter('${c}')">${CATS[c]?.glyph || ''} ${CATS[c]?.label || c}</button>`)
+      .join('');
+  } else if (filterEl) {
+    filterEl.innerHTML = '';
+  }
+
+  // Filter pages by title text + active category
+  const filtered = state.pages.filter(p => {
+    if (p.id === 'overview') return activeCatFilter === null;
+    if (activeCatFilter && p.category !== activeCatFilter) return false;
+    if (!filter) return true;
+    return p.title.toLowerCase().includes(filterLower);
+  });
+
   const groups = {};
-  state.pages.forEach(p => { (groups[p.category] = groups[p.category] || []).push(p); });
+  filtered.forEach(p => { (groups[p.category] = groups[p.category] || []).push(p); });
   let html = '';
   CAT_ORDER.forEach(cat => {
     if (!groups[cat]) return;
-    html += `<div class="cat-group"><div class="cat-label">${CATS[cat]?.label || cat}</div>`;
+    const showLabel = !activeCatFilter;
+    if (showLabel) html += `<div class="cat-group"><div class="cat-label">${CATS[cat]?.label || cat}</div>`;
+    else html += `<div class="cat-group">`;
     groups[cat].forEach(p => {
       const active = p.id === state.activePage && state.tab === 'read';
       html += `<div class="page-link ${active ? 'active' : ''} ${p.fresh ? 'fresh' : ''}" onclick="openPage('${p.id}')">
@@ -522,29 +1185,168 @@ function renderIndex() {
     });
     html += `</div>`;
   });
-  document.getElementById('index-body').innerHTML = html || '<div class="empty-index">Nothing filed yet.</div>';
+  document.getElementById('index-body').innerHTML = html || `<div class="empty-index">${filter ? 'No pages match.' : activeCatFilter ? 'No pages in this category.' : 'Nothing filed yet.'}</div>`;
+}
+
+/* ---------- full-text search ---------- */
+async function doContentSearch(q) {
+  if (!q) return;
+  state.tab = 'search'; // synthetic tab state, not a real tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  try {
+    const results = await apiGet('/pages/search?q=' + encodeURIComponent(q));
+    renderSearchResults(q, results);
+  } catch (e) {
+    toast('Search failed: ' + e.message);
+  }
+}
+
+function renderSearchResults(q, results) {
+  const items = results.length
+    ? results.map(r => {
+        const snippet = r.headline
+          .replace(/&lt;&lt;/g, '<mark>').replace(/&gt;&gt;/g, '</mark>')
+          .replace(/<</g, '<mark>').replace(/>>/g, '</mark>');
+        return `<div class="search-result" onclick="openPage('${r.id}')">
+          <div class="search-result-title">${CATS[r.category]?.glyph || '◇'} ${esc(r.title)}</div>
+          <div class="search-result-snippet">${snippet}</div>
+        </div>`;
+      }).join('')
+    : '<p class="note placeholder">No pages matched.</p>';
+
+  const countLabel = results.length === 1 ? '1 result' : `${results.length} results`;
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">Search</h2>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint)">${esc(q)}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:4px">${results.length ? '· ' + countLabel : ''}</span>
+      <button class="ghost-btn" style="margin-left:auto;padding:6px 12px" onclick="openPage(state.activePage)">Clear</button>
+    </div>
+    ${items}
+  </div>`;
 }
 
 /* ---------- markdown ---------- */
 function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
 function mdToHtml(md) {
-  let s = esc(md);
+  // 1. Extract fenced code blocks before escaping
+  const codeBlocks = [];
+  const withPlaceholders = (md || '').replace(/```([^\n]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push({ lang: lang.trim(), code });
+    return `\x00${idx}\x00`;
+  });
+
+  // 2. HTML-escape remaining text
+  let s = esc(withPlaceholders);
+
+  // 3. Remove # Title line
   s = s.replace(/^# .+$/gm, '');
+
+  // 4. Process line by line
   const lines = s.split('\n');
-  let out = '', inList = false;
+  let out = '';
+  let inUl = false, inOl = false, inTable = false, tableHasHead = false;
+
+  function closeOpenLists() {
+    if (inUl) { out += '</ul>'; inUl = false; }
+    if (inOl) { out += '</ol>'; inOl = false; }
+  }
+  function closeTable() {
+    if (inTable) { out += '</tbody></table>'; inTable = false; tableHasHead = false; }
+  }
+
   for (let raw of lines) {
+    // Check for code block placeholder
+    const placeholderMatch = raw.match(/^\x00(\d+)\x00$/);
+    if (placeholderMatch) {
+      closeOpenLists();
+      closeTable();
+      const { lang, code } = codeBlocks[parseInt(placeholderMatch[1])];
+      const langAttr = lang ? ` class="language-${esc(lang)}"` : '';
+      out += `<pre><code${langAttr}>${esc(code)}</code></pre>`;
+      continue;
+    }
+
+    // Apply inline transforms
     let line = raw;
+    // inline code (single backtick) — must be done before other transforms
+    line = line.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
     line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" onclick="gotoTitle('${t.replace(/'/g, "\\'")}')">${t}</a>`);
-    if (/^## /.test(raw)) { if (inList) { out += '</ul>'; inList = false; } out += '<h2>' + line.replace(/^## /, '') + '</h2>'; }
-    else if (/^- /.test(raw)) { if (!inList) { out += '<ul>'; inList = true; } out += '<li>' + line.replace(/^- /, '') + '</li>'; }
-    else if (raw.trim() === '') { if (inList) { out += '</ul>'; inList = false; } }
-    else { if (inList) { out += '</ul>'; inList = false; } out += '<p>' + line + '</p>'; }
+    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="cross-link" data-page="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.page)">${esc(t)}</a>`);
+    line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // Block-level detection on raw line
+    if (/^### /.test(raw)) {
+      closeOpenLists(); closeTable();
+      out += '<h3>' + line.replace(/^### /, '') + '</h3>';
+    } else if (/^## /.test(raw)) {
+      closeOpenLists(); closeTable();
+      out += '<h2>' + line.replace(/^## /, '') + '</h2>';
+    } else if (/^---+$/.test(raw.trim())) {
+      closeOpenLists(); closeTable();
+      out += '<hr>';
+    } else if (/^\|/.test(raw) && raw.trim().endsWith('|')) {
+      // Table row
+      closeOpenLists();
+      const cells = raw.split('|').slice(1, -1).map(c => c.trim());
+      // Check if this is a separator row (e.g. | --- | --- |)
+      const isSep = cells.every(c => /^[-: ]+$/.test(c));
+      if (isSep) {
+        // separator — switch from thead to tbody
+        if (!tableHasHead) { out += '</thead><tbody>'; tableHasHead = true; }
+      } else if (!inTable) {
+        // First row: open table, start thead
+        closeTable();
+        inTable = true;
+        tableHasHead = false;
+        out += '<table><thead><tr>';
+        cells.forEach(c => { out += `<th>${applyInline(c)}</th>`; });
+        out += '</tr>';
+      } else if (tableHasHead) {
+        // Body row
+        out += '<tr>';
+        cells.forEach(c => { out += `<td>${applyInline(c)}</td>`; });
+        out += '</tr>';
+      }
+    } else if (/^\d+\. /.test(raw)) {
+      closeTable();
+      if (inUl) { out += '</ul>'; inUl = false; }
+      if (!inOl) { out += '<ol>'; inOl = true; }
+      out += '<li>' + line.replace(/^\d+\. /, '') + '</li>';
+    } else if (/^- /.test(raw)) {
+      closeTable();
+      if (inOl) { out += '</ol>'; inOl = false; }
+      if (!inUl) { out += '<ul>'; inUl = true; }
+      out += '<li>' + line.replace(/^- /, '') + '</li>';
+    } else if (raw.trim() === '') {
+      closeOpenLists();
+      closeTable();
+    } else {
+      closeOpenLists();
+      closeTable();
+      out += '<p>' + line + '</p>';
+    }
   }
-  if (inList) out += '</ul>';
+
+  closeOpenLists();
+  closeTable();
   return out;
 }
+
+// Helper: apply inline transforms to a string (for use inside table cells etc.)
+function applyInline(s) {
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="cross-link" data-page="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.page)">${esc(t)}</a>`);
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+
 function gotoTitle(title) {
   const p = state.pages.find(pg => pg.title.toLowerCase() === title.toLowerCase());
   if (p) openPage(p.id); else toast('No page yet: ' + title);
@@ -554,42 +1356,219 @@ function gotoTitle(title) {
 function setTab(tab) {
   state.tab = tab;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  if (tab === 'read') openPage(state.activePage);
+  if (tab === 'read')   openPage(state.activePage);
   else if (tab === 'ingest') renderIngest();
-  else if (tab === 'query') renderQuery();
-  else if (tab === 'lint') renderLint();
+  else if (tab === 'query')  renderQuery();
+  else if (tab === 'lint')   renderLint();
+  else if (tab === 'files')  renderFiles();
+  else if (tab === 'admin')  renderAdmin();
 }
+
 function openPage(id) {
-  const page = state.pages.find(p => p.id === id) || state.pages[0];
+  const page = state.pages.find(p => p.id === id);
+  if (!page) {
+    state.tab = 'read';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'read'));
+    document.getElementById('panel').innerHTML = `<div class="panel article" style="padding-top:48px">
+      <h1 style="font-family:var(--display);font-weight:600;font-size:32px;margin-bottom:12px">Page not found</h1>
+      <p class="note" style="margin-bottom:24px">This page doesn't exist or may have been deleted.</p>
+      <button class="ghost-btn" onclick="openPage('overview')">Go to Reading room</button>
+    </div>`;
+    renderIndex();
+    return;
+  }
   state.activePage = page.id;
   state.tab = 'read';
   page.fresh = false;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'read'));
+  const updated = page.updated_at
+    ? (page.updated_at === 'start here' ? 'start here' : new Date(page.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))
+    : '';
+
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const editButton = page.id !== 'overview' && canEdit
+    ? `<button class="edit-btn" onclick="editPage('${page.id}')">Edit</button>`
+    : '';
+  const historyButton = page.id !== 'overview' && canEdit
+    ? `<button class="edit-btn" style="margin-left:6px" onclick="showHistory('${page.id}')">History</button>`
+    : '';
+
   document.getElementById('panel').innerHTML = `<article class="panel article">
     <div class="kicker">
       <span>${CATS[page.category]?.glyph || '◇'} ${page.category}</span>
       <span class="sep">${page.sources || 0} source${page.sources === 1 ? '' : 's'}</span>
-      <span class="sep">${esc(page.updated || '')}</span>
+      <span class="sep">${esc(updated)}</span>
+      ${editButton}${historyButton}
     </div>
     <h1>${esc(page.title)}</h1>
     <div class="prose">${mdToHtml(page.content)}</div>
   </article>`;
   renderIndex();
-  save();
 }
 
-function renderIngest() {
+/* ---------- page editing ---------- */
+function editPage(id) {
+  const page = state.pages.find(p => p.id === id);
+  if (!page) return;
+
+  const catOptions = ['concept', 'entity', 'source', 'analysis'].map(c =>
+    `<option value="${c}" ${page.category === c ? 'selected' : ''}>${CATS[c]?.label || c}</option>`
+  ).join('');
+
   document.getElementById('panel').innerHTML = `<div class="panel">
     <div class="field">
-      <label class="field-label">Source text</label>
-      <textarea id="src" placeholder="Paste an article, abstract, transcript, or note…" style="min-height:200px"></textarea>
+      <label class="field-label">Title</label>
+      <input type="text" id="edit-title" value="${esc(page.title)}">
     </div>
+    <div class="field">
+      <label class="field-label">Category</label>
+      <select id="edit-category">${catOptions}</select>
+    </div>
+    <div class="field">
+      <label class="field-label">Content</label>
+      <textarea id="edit-content" style="font-family:var(--mono);font-size:13px;min-height:360px">${esc(page.content)}</textarea>
+    </div>
+    <div class="btn-row">
+      <button class="run-btn" onclick="savePage('${id}')">Save</button>
+      <button class="ghost-btn" onclick="openPage('${id}')">Cancel</button>
+      ${currentUser?.role === 'admin' ? `<button class="delete-btn" onclick="deletePage('${id}')">Delete</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function savePage(id) {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot edit pages'); return; }
+  const page = state.pages.find(p => p.id === id);
+  if (!page) return;
+  const title = document.getElementById('edit-title').value.trim();
+  const category = document.getElementById('edit-category').value;
+  const content = document.getElementById('edit-content').value;
+  if (!title) { toast('Title is required'); return; }
+  try {
+    const updated = await apiPut('/pages/' + id, { ...page, title, category, content });
+    const idx = state.pages.findIndex(p => p.id === id);
+    if (idx >= 0) state.pages[idx] = updated;
+    renderIndex();
+    openPage(id);
+    toast('Saved');
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function deletePage(id) {
+  if (currentUser?.role !== 'admin') { toast('Only admins can delete pages'); return; }
+  if (!confirm('Delete this page? This cannot be undone.')) return;
+  try {
+    await apiDelete('/pages/' + id);
+    state.pages = state.pages.filter(p => p.id !== id);
+    renderIndex();
+    const next = state.pages.find(p => p.id !== 'overview') || state.pages[0];
+    openPage(next.id);
+    toast('Page deleted');
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+/* ---------- version history ---------- */
+async function showHistory(id) {
+  const page = state.pages.find(p => p.id === id);
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+      <h2 style="font-family:var(--display);font-size:26px;font-weight:600">History</h2>
+      <span style="font-family:var(--body);font-size:17px;color:var(--ink-soft)">${esc(page?.title || '')}</span>
+      <button class="ghost-btn" style="margin-left:auto;padding:6px 12px" onclick="openPage('${id}')">Back</button>
+    </div>
+    <div id="version-list"><div class="note placeholder">Loading…</div></div>
+  </div>`;
+
+  try {
+    const versions = await apiGet('/pages/' + id + '/versions');
+    const el = document.getElementById('version-list');
+    if (!versions.length) { el.innerHTML = '<p class="note placeholder">No saved versions yet.</p>'; return; }
+    el.innerHTML = versions.map(v => {
+      const d = new Date(v.saved_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<div class="version-row">
+        <div class="version-meta">
+          <span class="version-date">${d}</span>
+          <span class="version-who">${esc(v.saved_by_email || 'unknown')}</span>
+        </div>
+        <div class="version-title">${esc(v.title)}</div>
+        <div class="version-actions">
+          <button class="ghost-btn" style="padding:5px 12px" onclick="previewVersion('${id}','${v.id}')">Preview</button>
+          <button class="ghost-btn" style="padding:5px 12px" onclick="restoreVersion('${id}','${v.id}')">Restore</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { document.getElementById('version-list').innerHTML = '<p class="note" style="color:var(--accent)">Could not load history: ' + esc(e.message) + '</p>'; }
+}
+
+async function previewVersion(pageId, versionId) {
+  try {
+    const versions = await apiGet('/pages/' + pageId + '/versions');
+    const v = versions.find(x => x.id === versionId);
+    if (!v) return;
+    document.getElementById('version-preview-scrim').classList.add('open');
+    document.getElementById('version-preview-title').textContent = v.title;
+    document.getElementById('version-preview-body').innerHTML = mdToHtml(v.content);
+    document.getElementById('version-preview-restore').onclick = () => restoreVersion(pageId, versionId);
+  } catch (e) { toast('Could not load version: ' + e.message); }
+}
+
+async function restoreVersion(pageId, versionId) {
+  if (!confirm('Restore this version? The current content will be saved as a version first.')) return;
+  try {
+    const updated = await apiPost('/pages/' + pageId + '/restore/' + versionId, {});
+    const idx = state.pages.findIndex(p => p.id === pageId);
+    if (idx >= 0) state.pages[idx] = updated;
+    document.getElementById('version-preview-scrim')?.classList.remove('open');
+    renderIndex();
+    openPage(pageId);
+    toast('Version restored');
+  } catch (e) { toast('Restore failed: ' + e.message); }
+}
+
+/* ---------- ingest ---------- */
+function renderIngest() {
+  if (currentUser?.role === 'viewer') {
+    document.getElementById('panel').innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:40px">Contact an admin to get contributor access.</p></div>`;
+    return;
+  }
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div class="mode-tabs">
+      <button class="mode-tab ${ingestMode === 'paste' ? 'active' : ''}" onclick="setIngestMode('paste')">Paste</button>
+      <button class="mode-tab ${ingestMode === 'url' ? 'active' : ''}" onclick="setIngestMode('url')">URL</button>
+      <button class="mode-tab ${ingestMode === 'file' ? 'active' : ''}" onclick="setIngestMode('file')">File</button>
+    </div>
+
+    <div class="field" id="ingest-paste-section" style="${ingestMode !== 'paste' ? 'display:none' : ''}">
+      <label class="field-label">Source text</label>
+      <textarea id="src" placeholder="Paste an article, abstract, transcript, or note…" style="min-height:200px"
+        onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();doIngest();}"></textarea>
+    </div>
+
+    <div class="field" id="ingest-url-section" style="${ingestMode !== 'url' ? 'display:none' : ''}">
+      <label class="field-label">URL</label>
+      <input type="text" id="src-url" placeholder="https://…"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();doIngest();}">
+    </div>
+
+    <div class="field" id="ingest-file-section" style="${ingestMode !== 'file' ? 'display:none' : ''}">
+      <label class="field-label">File</label>
+      <div class="file-drop" id="file-drop-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleFileDrop(event)">
+        Drop a .txt, .md, or .pdf file here, or click to browse
+      </div>
+      <input type="file" id="file-input" accept=".txt,.md,.pdf" style="display:none" onchange="handleFileInputChange(event)">
+      <div class="file-status" id="file-status"></div>
+    </div>
+
     <div class="field">
       <label class="field-label">What to emphasize — optional</label>
       <textarea id="focus" placeholder="e.g. focus on the methodology, or I care about business implications" style="min-height:64px"></textarea>
     </div>
     <div class="btn-row">
       <button class="run-btn" id="ingest-go" onclick="doIngest()">Read & file</button>
+      <button class="ghost-btn" id="ingest-cancel" style="display:none" onclick="cancelIngest()">Cancel</button>
     </div>
     <div class="result" id="ingest-result" style="display:none">
       <div class="result-label">Summary</div>
@@ -599,17 +1578,148 @@ function renderIngest() {
     </div>
     <div class="result"><div class="result-label">Recent activity</div><div class="log-list" id="log-list"></div></div>
   </div>`;
+
+  // Attach drag-and-drop to paste textarea (assign directly to avoid listener accumulation)
+  const srcEl = document.getElementById('src');
+  if (srcEl) {
+    srcEl.ondragover = e => e.preventDefault();
+    srcEl.ondrop = e => { e.preventDefault(); const file = e.dataTransfer?.files?.[0]; if (file) handleFileSelect(file, true); };
+  }
+
   renderLog();
 }
+
+function setIngestMode(mode) {
+  ingestMode = mode;
+  renderIngest();
+}
+
+function handleFileDrop(event) {
+  event.preventDefault();
+  document.getElementById('file-drop-zone').classList.remove('drag-over');
+  const file = event.dataTransfer?.files?.[0];
+  if (file) handleFileSelect(file, false);
+}
+
+function handleFileInputChange(event) {
+  const file = event.target.files?.[0];
+  if (file) handleFileSelect(file, false);
+}
+
+async function handleFileSelect(file, intoPasteArea) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['txt', 'md', 'pdf'].includes(ext)) {
+    toast('Only .txt, .md, and .pdf files supported');
+    return;
+  }
+
+  if (ext === 'pdf') {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = await getToken();
+      const res = await fetch('/api/ai/extract', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      extractedFileText = data.text || '';
+      const statusEl = document.getElementById('file-status');
+      if (statusEl) statusEl.textContent = `Extracted ${extractedFileText.length.toLocaleString()} characters from ${file.name}`;
+    } catch (e) {
+      toast('PDF extraction failed: ' + e.message);
+    }
+  } else {
+    // txt or md
+    const text = await file.text();
+    extractedFileText = text;
+    if (intoPasteArea) {
+      const srcEl = document.getElementById('src');
+      if (srcEl) srcEl.value = text;
+    } else {
+      const statusEl = document.getElementById('file-status');
+      if (statusEl) statusEl.textContent = `Loaded ${text.length.toLocaleString()} characters from ${file.name}`;
+    }
+  }
+}
+
+async function doIngest() {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot ingest content'); return; }
+  const focus = document.getElementById('focus').value.trim();
+  const btn = document.getElementById('ingest-go');
+  const cancelBtn = document.getElementById('ingest-cancel');
+
+  let body;
+  if (ingestMode === 'url') {
+    const urlValue = (document.getElementById('src-url')?.value || '').trim();
+    if (!urlValue) { toast('Enter a URL first'); return; }
+    body = { url: urlValue, focus };
+  } else if (ingestMode === 'file') {
+    if (!extractedFileText) { toast('Select a file first'); return; }
+    body = { source: extractedFileText, focus };
+  } else {
+    const src = (document.getElementById('src')?.value || '').trim();
+    if (!src) { toast('Paste a source first'); return; }
+    body = { source: src, focus };
+  }
+
+  const statusMsg = ingestMode === 'url' ? 'Fetching the URL and reading…'
+    : ingestMode === 'file' ? 'Extracting and reading the file…'
+    : 'Reading the source…';
+
+  btn.disabled = true; btn.textContent = 'Reading…';
+  if (cancelBtn) cancelBtn.style.display = '';
+  document.getElementById('ingest-result').style.display = 'block';
+  const sum = document.getElementById('ingest-summary');
+  sum.className = 'response dim'; sum.textContent = statusMsg;
+  document.getElementById('ingest-chips').innerHTML = '';
+
+  _ingestController = new AbortController();
+  try {
+    const result = await apiPost('/ai/ingest', body, _ingestController.signal);
+    sum.className = 'response'; sum.textContent = result.summary;
+
+    for (const p of (result.pages || [])) {
+      const idx = state.pages.findIndex(e => e.id === p.id);
+      if (idx >= 0) state.pages[idx] = { ...p, fresh: true };
+      else state.pages.push({ ...p, fresh: true });
+    }
+
+    document.getElementById('ingest-chips').innerHTML = (result.pages || [])
+      .map(p => `<span class="chip" data-pid="${p.id}" onclick="openPage(this.dataset.pid)">${esc(p.title)}</span>`).join('');
+    renderIndex();
+    if (ingestMode === 'paste') {
+      const srcEl = document.getElementById('src');
+      if (srcEl) srcEl.value = '';
+    }
+    extractedFileText = '';
+    renderLog();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      sum.className = 'response'; sum.textContent = 'Cancelled.';
+    } else {
+      sum.className = 'response'; sum.textContent = 'Could not process this source. ' + (e.message || '');
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Read & file';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    _ingestController = null;
+  }
+}
+
 function renderQuery() {
   document.getElementById('panel').innerHTML = `<div class="panel">
     <div class="field">
       <label class="field-label">Ask the collection</label>
-      <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"></textarea>
+      <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"
+        onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();doQuery(false);}"></textarea>
     </div>
     <div class="btn-row">
       <button class="run-btn" id="query-go" onclick="doQuery(false)">Ask</button>
       <button class="ghost-btn" id="query-save" onclick="doQuery(true)">Ask & file answer</button>
+      <button class="ghost-btn" id="query-stop" style="display:none" onclick="stopStream()">Stop</button>
     </div>
     <div class="result" id="query-result" style="display:none">
       <div class="result-label">Answer</div>
@@ -617,6 +1727,7 @@ function renderQuery() {
     </div>
   </div>`;
 }
+
 function renderLint() {
   document.getElementById('panel').innerHTML = `<div class="panel">
     <p class="note">A health-check of the whole collection — contradictions, orphaned pages, missing links, and gaps worth chasing next.</p>
@@ -624,165 +1735,305 @@ function renderLint() {
       <label class="field-label">Focus — optional</label>
       <textarea id="lintfocus" placeholder="e.g. focus on factual consistency, or suggest sources to add" style="min-height:64px"></textarea>
     </div>
-    <div class="btn-row"><button class="run-btn" id="lint-go" onclick="doLint()">Run audit</button></div>
+    <div class="btn-row">
+      <button class="run-btn" id="lint-go" onclick="doLint()">Run audit</button>
+      <button class="ghost-btn" id="lint-stop" style="display:none" onclick="stopStream()">Stop</button>
+    </div>
     <div class="result" id="lint-result" style="display:none">
       <div class="result-label">Audit</div>
       <div class="response" id="lint-report"></div>
     </div>
   </div>`;
 }
-function renderLog() {
+
+function fmtBytes(bytes) {
+  const b = bytes || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function adminDeleteFile(fileId, fileName) {
+  if (!confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete('/files/' + fileId);
+    toast('File deleted');
+    renderAdmin();
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+async function renderAdmin() {
+  const panel = document.getElementById('panel');
+  panel.innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`;
+  try {
+    const [stats, usage, users, files] = await Promise.all([
+      apiGet('/admin/stats'),
+      apiGet('/admin/usage').catch(() => null),
+      apiGet('/admin/users').catch(() => []),
+      apiGet('/files').catch(() => [])
+    ]);
+    const pageCount = stats.pageCount ?? 0;
+    const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
+    const contributors = Array.isArray(stats.topContributors) ? stats.topContributors : [];
+    const activity = Array.isArray(stats.recentActivity) ? stats.recentActivity : [];
+
+    const contributorRows = contributors.length
+      ? contributors.map(c => `<tr><td>${esc(c.email || c.user || '')}</td><td>${c.count ?? c.action_count ?? 0}</td></tr>`).join('')
+      : `<tr><td colspan="2" style="color:var(--ink-faint);font-style:italic">No contributors yet.</td></tr>`;
+
+    const activityRows = activity.length
+      ? activity.slice(0, 20).map(e => {
+          const t = new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          return `<tr><td>${esc(t)}</td><td>${esc(e.user_email || '')}</td><td>${esc(e.event || '')}</td></tr>`;
+        }).join('')
+      : `<tr><td colspan="3" style="color:var(--ink-faint);font-style:italic">No activity yet.</td></tr>`;
+
+    // Build usage section
+    let usageHtml = '';
+    if (usage) {
+      const fmtN = n => (n ?? 0).toLocaleString();
+      const fmtC = n => '$' + ((n ?? 0).toFixed(2));
+
+      const byUserRows = Array.isArray(usage.byUser) && usage.byUser.length
+        ? usage.byUser.map(u => `<tr>
+            <td>${esc(u.email || '')}</td>
+            <td>${fmtN(u.input_tokens)}</td>
+            <td>${fmtN(u.output_tokens)}</td>
+            <td>${fmtC(u.cost_usd)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No usage data.</td></tr>`;
+
+      const byOpRows = Array.isArray(usage.byOperation) && usage.byOperation.length
+        ? usage.byOperation.map(o => `<tr>
+            <td>${esc(o.operation || '')}</td>
+            <td>${fmtN(o.input_tokens)}</td>
+            <td>${fmtN(o.output_tokens)}</td>
+            <td>${fmtC(o.cost_usd)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No usage data.</td></tr>`;
+
+      usageHtml = `<div class="usage-section">
+        <h3>API Usage — this month</h3>
+        <div class="stat-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.input_tokens)}</div>
+            <div class="stat-label">Input tokens</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.output_tokens)}</div>
+            <div class="stat-label">Output tokens</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" style="font-size:26px">${fmtC(usage.thisMonth?.cost_usd)}</div>
+            <div class="stat-label">Estimated cost</div>
+          </div>
+        </div>
+        <div style="margin-bottom:20px">
+          <div class="result-label" style="margin-bottom:8px">By user</div>
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+            <tbody>${byUserRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <div class="result-label" style="margin-bottom:8px">By operation</div>
+          <table class="data-table">
+            <thead><tr><th>Operation</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+            <tbody>${byOpRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+
+    // Build team section
+    const roleOptions = ['admin', 'contributor', 'viewer'];
+    const userRows = Array.isArray(users) && users.length
+      ? users.map(u => {
+          const assigned = u.created_at
+            ? new Date(u.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+          const opts = roleOptions.map(r =>
+            `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`
+          ).join('');
+          return `<tr>
+            <td>${esc(u.email || '')}</td>
+            <td>${esc(u.role || '')}</td>
+            <td>${assigned}</td>
+            <td><select onchange="updateUserRole('${u.id}', this.value)">${opts}</select></td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
+
+    const teamHtml = `<div class="usage-section">
+      <h3>Team</h3>
+      <table class="data-table">
+        <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </div>`;
+
+    // Build storage section
+    const fileList = Array.isArray(files) ? files : [];
+    const totalBytes = fileList.reduce((s, f) => s + (f.size || 0), 0);
+    const fileRows = fileList.length
+      ? fileList.map(f => {
+          const ext = (f.name.split('.').pop() || '').toUpperCase();
+          const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+          return `<tr>
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</td>
+            <td>${esc(ext)}</td>
+            <td>${fmtBytes(f.size || 0)}</td>
+            <td>${esc(f.uploaded_by_email || '')}</td>
+            <td>${t}</td>
+            <td><button class="ghost-btn" style="padding:3px 10px;font-size:11px;color:#C0392B;border-color:transparent"
+              data-fid="${f.id}" data-fname="${esc(f.name)}"
+              onclick="adminDeleteFile(this.dataset.fid, this.dataset.fname)">Delete</button></td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="6" style="color:var(--ink-faint);font-style:italic">No files uploaded yet.</td></tr>`;
+
+    const storageHtml = `<div class="usage-section">
+      <h3>File Storage</h3>
+      <div class="stat-grid" style="margin-bottom:20px">
+        <div class="stat-card">
+          <div class="stat-num">${fileList.length}</div>
+          <div class="stat-label">Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" style="font-size:22px">${fmtBytes(totalBytes)}</div>
+          <div class="stat-label">Total size</div>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th></th></tr></thead>
+        <tbody>${fileRows}</tbody>
+      </table>
+    </div>`;
+
+    panel.innerHTML = `<div class="panel">
+      ${usageHtml}
+      ${storageHtml}
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-num">${pageCount}</div>
+          <div class="stat-label">Pages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">${activityCount}</div>
+          <div class="stat-label">Recent events</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">${contributors.length}</div>
+          <div class="stat-label">Contributors</div>
+        </div>
+      </div>
+      <div class="result-label" style="margin-top:24px">Top contributors</div>
+      <table class="admin-table" style="margin-bottom:28px">
+        <thead><tr><th>User</th><th>Actions</th></tr></thead>
+        <tbody>${contributorRows}</tbody>
+      </table>
+      <div class="result-label">Recent activity</div>
+      <table class="admin-table" style="margin-bottom:32px">
+        <thead><tr><th>Time</th><th>User</th><th>Event</th></tr></thead>
+        <tbody>${activityRows}</tbody>
+      </table>
+      ${teamHtml}
+    </div>`;
+  } catch (e) {
+    panel.innerHTML = `<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`;
+  }
+}
+
+async function updateUserRole(userId, role) {
+  try {
+    await apiPut('/admin/users/' + userId + '/role', { role });
+    toast('Role updated');
+    renderAdmin();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function renderLog() {
   const el = document.getElementById('log-list');
   if (!el) return;
-  el.innerHTML = state.log.length
-    ? state.log.slice(0, 7).map(e => `<div class="log-row"><span class="t">${e.t}</span><span>${esc(e.msg)}</span></div>`).join('')
-    : '<div class="note placeholder">No activity yet.</div>';
-}
-
-/* ---------- API ---------- */
-function requireKey() {
-  if (!cfg.key) { openSettings(); toast('Add your API key to begin'); return false; }
-  return true;
-}
-async function callClaude(system, user, stream) {
-  return fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': cfg.key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({ model: cfg.model, max_tokens: 1400, stream: !!stream, system, messages: [{ role: 'user', content: user }] })
-  });
-}
-async function streamInto(el, res) {
-  if (!res.ok) { el.textContent = 'Error ' + res.status + ': ' + (await res.text()).slice(0, 200); return ''; }
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let text = '', buf = '';
-  el.classList.remove('dim'); el.classList.add('cursor');
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split('\n');
-    buf = parts.pop();
-    for (const line of parts) {
-      if (line.startsWith('data: ')) {
-        try { const d = JSON.parse(line.slice(6)); if (d.type === 'content_block_delta' && d.delta?.text) { text += d.delta.text; el.textContent = text; } } catch {}
-      }
-    }
-  }
-  el.classList.remove('cursor');
-  return text;
-}
-function buildContext() {
-  return state.pages.filter(p => p.id !== 'overview')
-    .map(p => `### [[${p.title}]]  (${p.category})\n${p.content}`).join('\n\n---\n\n');
-}
-
-async function doIngest() {
-  if (!requireKey()) return;
-  const src = document.getElementById('src').value.trim();
-  if (!src) { toast('Paste a source first'); return; }
-  const focus = document.getElementById('focus').value.trim();
-  const btn = document.getElementById('ingest-go'); btn.disabled = true; btn.textContent = 'Reading…';
-  document.getElementById('ingest-result').style.display = 'block';
-  const sum = document.getElementById('ingest-summary');
-  sum.className = 'response dim'; sum.textContent = 'Reading the source…';
-  document.getElementById('ingest-chips').innerHTML = '';
-  const ctx = buildContext();
-  const system = `You maintain a personal wiki. Ingest the source the user provides.
-
-Existing wiki pages:
-${ctx || '(empty — this is the first source)'}
-
-Return ONLY valid JSON, no markdown fences, in this shape:
-{"summary":"2-3 sentence summary","pages":[{"id":"kebab-slug","title":"Page Title","category":"concept|entity|source|analysis","content":"# Page Title\\n\\nMarkdown body. Use [[Page Title]] to link related pages. Use ## for subheads and - for bullets."}]}
-
-Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[wikilinks]].${focus ? '\nUser emphasis: ' + focus : ''}`;
   try {
-    const res = await callClaude(system, 'Source:\n\n' + src.slice(0, 8000), false);
-    const data = await res.json();
-    if (!res.ok) throw new Error(JSON.stringify(data));
-    const raw = (data.content || []).map(b => b.text || '').join('');
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    sum.className = 'response'; sum.textContent = parsed.summary;
-    const touched = [];
-    (parsed.pages || []).forEach(p => {
-      const ex = state.pages.find(e => e.id === p.id);
-      if (ex) { ex.content = p.content; ex.title = p.title; ex.updated = 'just now'; ex.sources = (ex.sources || 0) + 1; ex.fresh = true; touched.push(ex); }
-      else { const np = { ...p, sources: 1, updated: 'just now', fresh: true }; state.pages.push(np); touched.push(np); }
-    });
-    document.getElementById('ingest-chips').innerHTML = touched.map(p => `<span class="chip" onclick="openPage('${p.id}')">${esc(p.title)}</span>`).join('');
-    logEvent('ingest · ' + touched.length + ' pages · ' + (parsed.pages[0]?.title || 'source'));
-    renderLog(); renderIndex(); save();
-    document.getElementById('src').value = '';
-  } catch (e) {
-    sum.className = 'response'; sum.textContent = 'Could not process this source. ' + (e.message || '');
-  } finally { btn.disabled = false; btn.textContent = 'Read & file'; }
+    const log = await apiGet('/log');
+    state.log = log;
+    el.innerHTML = log.length
+      ? log.slice(0, 7).map(e => {
+          const t = new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          return `<div class="log-row"><span class="t">${t}</span><span class="who">${esc(e.user_email || '')}</span><span>${esc(e.event)}</span></div>`;
+        }).join('')
+      : '<div class="note placeholder">No activity yet.</div>';
+  } catch { el.innerHTML = '<div class="note placeholder">Could not load log.</div>'; }
 }
 
+/* ---------- query ---------- */
 async function doQuery(fileIt) {
-  if (!requireKey()) return;
   const q = document.getElementById('q').value.trim();
-  if (!q) { toast('Type a question'); return; }
+  if (!q) { toast('Type a question first'); return; }
   document.getElementById('query-result').style.display = 'block';
   const ans = document.getElementById('query-answer');
-  ans.className = 'response dim'; ans.textContent = 'Searching the wiki…';
-  const ctx = buildContext();
-  const system = `You answer questions from a personal wiki. Ground every claim in the pages below and name the pages you draw on. If the wiki lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nWiki:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
-  try {
-    const res = await callClaude(system, q, true);
-    const full = await streamInto(ans, res);
-    if (fileIt && full.includes('SAVE_AS:')) {
-      const m = full.match(/SAVE_AS:\s*(.+?)\s*\|\s*(\w+)/);
-      const body = full.split('SAVE_AS:')[0].trim();
-      if (m) {
-        const title = m[1].trim();
-        const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        state.pages.push({ id, title, category: (m[2] || 'analysis').toLowerCase(), sources: 0, updated: 'just now', fresh: true, content: `# ${title}\n\n*Filed from the question: "${q}"*\n\n${body}` });
-        ans.textContent = body;
-        renderIndex(); save();
-        toast('Filed as: ' + title);
-      }
-    }
-    logEvent('query · ' + q.slice(0, 48));
-  } catch (e) { ans.className = 'response'; ans.textContent = 'Query failed. ' + (e.message || ''); }
+  ans.className = 'response dim'; ans.textContent = 'Searching…';
+
+  const goBtn = document.getElementById('query-go');
+  const saveBtn = document.getElementById('query-save');
+  const stopBtn = document.getElementById('query-stop');
+  goBtn.disabled = saveBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = '';
+
+  const result = await streamFromApi('/ai/query', { question: q, fileIt }, ans);
+
+  goBtn.disabled = saveBtn.disabled = false;
+  if (stopBtn) stopBtn.style.display = 'none';
+
+  if (result?.saved) {
+    const saved = result.saved;
+    state.pages.push({ ...saved, fresh: true });
+    renderIndex();
+    toast('Filed as: ' + saved.title);
+  }
 }
 
+/* ---------- lint ---------- */
 async function doLint() {
-  if (!requireKey()) return;
   const focus = document.getElementById('lintfocus').value.trim();
   document.getElementById('lint-result').style.display = 'block';
   const rep = document.getElementById('lint-report');
   rep.className = 'response dim'; rep.textContent = 'Auditing the collection…';
-  const ctx = buildContext();
-  const system = `You audit a personal wiki for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
-  try {
-    const res = await callClaude(system, 'Wiki:\n\n' + (ctx || '(empty)'), true);
-    await streamInto(rep, res);
-    logEvent('lint · audit run');
-  } catch (e) { rep.className = 'response'; rep.textContent = 'Audit failed. ' + (e.message || ''); }
+
+  const goBtn = document.getElementById('lint-go');
+  const stopBtn = document.getElementById('lint-stop');
+  goBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = '';
+
+  await streamFromApi('/ai/lint', { focus }, rep);
+
+  goBtn.disabled = false;
+  if (stopBtn) stopBtn.style.display = 'none';
 }
 
-/* ---------- settings ---------- */
+/* ---------- settings / account ---------- */
 function openSettings() {
-  document.getElementById('apikey-input').value = cfg.key || '';
-  document.getElementById('model-input').value = cfg.model || 'claude-sonnet-4-6';
+  document.getElementById('settings-user-info').textContent =
+    `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
+  document.getElementById('erase-kb-btn').style.display =
+    currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
-function saveSettings() {
-  cfg.key = document.getElementById('apikey-input').value.trim();
-  cfg.model = document.getElementById('model-input').value;
-  saveCfg(); closeSettings(); toast('Settings saved');
-}
-function wipeWiki() {
-  if (!confirm('Erase the entire wiki and start over? Export a backup first if you want to keep it.')) return;
-  state = { pages: [WELCOME], log: [], activePage: 'overview', tab: 'read' };
-  save(); closeSettings(); setTab('read'); renderIndex(); toast('Wiki erased');
+
+async function wipeAll() {
+  if (currentUser?.role !== 'admin') { toast('Only admins can erase the knowledge base'); return; }
+  if (!confirm('Erase the entire shared knowledge base? This affects all team members. Export a backup first.')) return;
+  try {
+    await apiDelete('/pages');
+    state.pages = [WELCOME];
+    state.activePage = 'overview';
+    closeSettings();
+    renderIndex();
+    openPage('overview');
+    toast('Knowledge base erased');
+  } catch (e) { toast('Could not erase: ' + e.message); }
 }
 
 /* ---------- export / import ---------- */
@@ -793,32 +2044,246 @@ function download(name, text, type) {
   URL.revokeObjectURL(a.href);
 }
 function exportMarkdown() {
-  const md = state.pages.map(p => `# ${p.title}\n> category: ${p.category} · sources: ${p.sources || 0}\n\n${p.content.replace(/^# .+\n?/, '')}`).join('\n\n\n---\n\n\n');
-  download('memex-wiki.md', md, 'text/markdown');
+  const md = state.pages
+    .filter(p => p.id !== 'overview')
+    .map(p => `# ${p.title}\n> category: ${p.category} · sources: ${p.sources || 0}\n\n${p.content.replace(/^# .+\n?/, '')}`)
+    .join('\n\n\n---\n\n\n');
+  download('memex-export.md', md, 'text/markdown');
   toast('Markdown exported');
 }
-function exportJSON() { download('memex-backup.json', JSON.stringify(state, null, 2), 'application/json'); toast('Backup saved'); }
+function exportJSON() {
+  const exportable = state.pages.filter(p => p.id !== 'overview');
+  download('memex-backup.json', JSON.stringify({ pages: exportable }, null, 2), 'application/json');
+  toast('Backup saved');
+}
 function importJSON(ev) {
   const file = ev.target.files[0]; if (!file) return;
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = async () => {
     try {
       const data = JSON.parse(r.result);
       if (!data.pages) throw new Error('not a backup');
-      state = data; if (!state.log) state.log = [];
-      save(); setTab('read'); renderIndex(); toast('Wiki restored');
-    } catch (e) { toast('Invalid backup file'); }
+      for (const p of data.pages) {
+        await apiPut('/pages/' + p.id, p);
+        const idx = state.pages.findIndex(e => e.id === p.id);
+        if (idx >= 0) state.pages[idx] = p; else state.pages.push(p);
+      }
+      renderIndex();
+      toast(`Restored ${data.pages.length} pages`);
+    } catch (e) { toast('Import failed: ' + e.message); }
   };
   r.readAsText(file);
   ev.target.value = '';
 }
 
+/* ---------- files ---------- */
+async function renderFiles() {
+  document.getElementById('panel').innerHTML = `<div class="panel">
+    <div class="file-drop-zone" id="file-drop-zone" onclick="document.getElementById('file-picker').click()">
+      Drop files here or click to browse<br>
+      <span style="opacity:0.6;margin-top:4px;display:block">Word · Excel · PowerPoint · PDF · Text</span>
+    </div>
+    <input type="file" id="file-picker" style="display:none"
+      accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv"
+      multiple onchange="handleFilePickerChange(event)">
+    <div class="upload-progress" id="upload-status"></div>
+    <div class="file-list" id="file-list"><div class="note placeholder" style="margin-top:8px">Loading…</div></div>
+  </div>`;
+
+  // Wire drag-and-drop (assign directly to avoid listener accumulation on re-render)
+  const zone = document.getElementById('file-drop-zone');
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag-over'); };
+  zone.ondragleave = () => zone.classList.remove('drag-over');
+  zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag-over'); uploadFiles(Array.from(e.dataTransfer.files)); };
+
+  await loadFiles();
+}
+
+async function loadFiles() {
+  try {
+    filesList = await apiGet('/files');
+    renderFileList();
+  } catch (e) {
+    const el = document.getElementById('file-list');
+    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`;
+  }
+}
+
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  if (!el) return;
+  if (!filesList.length) { el.innerHTML = '<p class="note placeholder">No files uploaded yet.</p>'; return; }
+
+  el.innerHTML = filesList.map(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
+    const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
+    const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+' MB' : (f.size/1024).toFixed(0)+' KB';
+    const date = new Date(f.created_at).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' });
+    const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+
+    const dName = f.name.replace(/"/g, '&quot;');
+    return `<div class="file-card" id="file-card-${f.id}">
+      <div class="file-icon ${ext}">${ext}</div>
+      <div class="file-info">
+        <div class="file-name">${esc(f.name)}</div>
+        <div class="file-meta">${size} · ${date} · ${esc(f.uploaded_by_email || 'unknown')}</div>
+        <div class="file-actions">
+          ${isOffice ? `<button class="file-action-btn primary" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">Office Online</button>` : ''}
+          ${isOffice ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Google Docs</button>` : ''}
+          ${f.google_drive_id && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export from Google</button>` : ''}
+          ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Add to collection</button>` : ''}
+          <button class="file-action-btn" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Download</button>
+          ${canEdit ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function handleFilePickerChange(event) {
+  uploadFiles(Array.from(event.target.files));
+  event.target.value = '';
+}
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const statusEl = document.getElementById('upload-status');
+
+  for (const file of files) {
+    if (statusEl) statusEl.textContent = `Uploading ${file.name}…`;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = await getToken();
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) { toast(`Upload failed: ${(await res.json()).error}`); continue; }
+      const { doc, canIngest } = await res.json();
+      filesList.unshift(doc);
+      renderFileList();
+      toast(canIngest ? `${file.name} uploaded — click "Add to collection" to index it` : `${file.name} uploaded`);
+    } catch (e) {
+      toast(`Upload error: ${e.message}`);
+    }
+  }
+  if (statusEl) statusEl.textContent = '';
+}
+
+async function openInOffice(fileId) {
+  try {
+    const data = await apiGet('/files/' + fileId + '/office');
+    // Prefer edit URL (WOPI), fall back to view URL
+    const url = data.editUrl || data.viewUrl;
+    if (!url) { toast('Could not generate Office URL'); return; }
+    window.open(url, '_blank', 'noopener');
+    if (!data.editUrl) toast('Opening in read-only mode. Set APP_URL on the server to enable editing.');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function openInGoogle(fileId) {
+  toast('Uploading to Google Drive…');
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/google', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Google Drive error'); return; }
+    // Refresh file list to show google_drive_id
+    await loadFiles();
+    window.open(data.editUrl, '_blank', 'noopener');
+    toast('Opened in Google Docs. Use "Export from Google" to save changes back.');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function exportFromGoogle(fileId) {
+  if (!confirm('Export from Google Drive and overwrite the stored file?')) return;
+  toast('Exporting…');
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/google/export', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Export failed'); return; }
+    await loadFiles();
+    toast('Exported and saved successfully');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function ingestFile(fileId, name) {
+  toast(`Reading ${name}…`);
+  const panel = document.getElementById('panel');
+
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/' + fileId + '/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (!res.ok) { toast('Ingest failed: ' + (data.error || 'unknown error')); return; }
+
+    // Merge new pages into state
+    for (const p of (data.pages || [])) {
+      const idx = state.pages.findIndex(e => e.id === p.id);
+      if (idx >= 0) state.pages[idx] = { ...p, fresh: true };
+      else state.pages.push({ ...p, fresh: true });
+    }
+    renderIndex();
+    toast(`${name} ingested — ${data.pages?.length || 0} pages updated`);
+
+    // Show the summary and page chips
+    if (panel) {
+      const existing = panel.querySelector('.file-ingest-result');
+      const resultEl = existing || document.createElement('div');
+      resultEl.className = 'file-ingest-result';
+      resultEl.style.cssText = 'margin-top:16px;padding:16px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:3px;';
+      resultEl.innerHTML = `<div class="result-label">Ingested: ${esc(name)}</div>
+        <div class="response" style="margin-bottom:12px">${esc(data.summary || '')}</div>
+        <div class="chips">${(data.pages||[]).map(p => `<span class="chip" onclick="openPage('${p.id}')">${esc(p.title)}</span>`).join('')}</div>`;
+      if (!existing) panel.appendChild(resultEl);
+    }
+  } catch (e) { toast('Ingest error: ' + e.message); }
+}
+
+async function downloadFile(fileId) {
+  try {
+    const data = await apiGet('/files/' + fileId + '/url');
+    const a = document.createElement('a');
+    a.href = data.url; a.download = data.name; a.target = '_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch (e) { toast('Download error: ' + e.message); }
+}
+
+async function deleteFile(fileId, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete('/files/' + fileId);
+    filesList = filesList.filter(f => f.id !== fileId);
+    renderFileList();
+    toast(`${name} deleted`);
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
 /* ---------- boot ---------- */
 document.getElementById('tabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) setTab(t.dataset.tab); });
 document.getElementById('settings-scrim').addEventListener('click', e => { if (e.target.id === 'settings-scrim') closeSettings(); });
-load();
+document.getElementById('page-search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doContentSearch(e.target.value.trim());
+});
+document.getElementById('version-preview-scrim').addEventListener('click', e => {
+  if (e.target.id === 'version-preview-scrim') document.getElementById('version-preview-scrim').classList.remove('open');
+});
 renderIndex();
-openPage(state.activePage || 'overview');
+initApp();
 </script>
 </body>
 </html>

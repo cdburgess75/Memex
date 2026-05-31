@@ -1,0 +1,33 @@
+# Memex — docker-compose deployment
+#
+# Prerequisites:
+#   1. Copy .env.example to .env and fill in all values
+#   2. Run: docker compose up -d
+#
+# The app connects to Supabase (cloud or self-hosted) for its database,
+# auth, and file storage. See README.md for Supabase setup instructions.
+
+services:
+  memex:
+    image: ghcr.io/cdburgess75/memex:latest
+    # To build from source instead of pulling the pre-built image:
+    # build: .
+    container_name: memex
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
