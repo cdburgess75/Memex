@@ -2110,6 +2110,17 @@ async function renderAdmin() {
 
       <button class="ghost-btn" style="margin-bottom:4px" onclick="saveStorageSettings()">Save storage settings</button>
 
+      <div class="settings-sub" style="margin-top:20px">At-rest Encryption</div>
+      <p class="settings-notice">Applies to <strong>local filesystem</strong> storage — files are encrypted with AES-256-GCM before writing to disk. For S3, enable server-side encryption (SSE) in your bucket settings instead. Existing unencrypted files remain readable; new uploads are encrypted as soon as a key is saved. <strong>If you lose the key, encrypted files cannot be recovered.</strong></p>
+      <div class="settings-grid">
+        <label>Encryption key</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" id="cfg-enc-key" value="${esc(s.storage_encryption_key||'')}" autocomplete="new-password" placeholder="64-char hex key or passphrase — blank = disabled" style="flex:1">
+          <button class="ghost-btn" style="white-space:nowrap;padding:5px 12px" onclick="generateEncKey()">Generate</button>
+        </div>
+      </div>
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveEncryptionSettings()">Save encryption settings</button>
+
       <div class="settings-sub" style="margin-top:20px">Integrations</div>
       <div class="settings-grid">
         <label>App URL</label>
@@ -2230,6 +2241,27 @@ async function saveStorageSettings() {
     document.getElementById('cfg-s3-access-key').value = '';
     document.getElementById('cfg-s3-secret').value = '';
     document.getElementById('cfg-supa-key').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+function generateEncKey() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const el = document.getElementById('cfg-enc-key');
+  el.value = hex;
+  el.type = 'text';
+  setTimeout(() => { el.type = 'password'; }, 8000);
+  toast('Key generated — copy it somewhere safe, then click Save. It will be hidden in 8 seconds.');
+}
+
+async function saveEncryptionSettings() {
+  const key = document.getElementById('cfg-enc-key').value.trim();
+  try {
+    await apiPut('/admin/settings', { storage_encryption_key: key || null });
+    document.getElementById('cfg-enc-key').value = '';
+    document.getElementById('cfg-enc-key').type = 'password';
+    toast(key ? 'Encryption key saved — new uploads will be encrypted' : 'Encryption key cleared — new uploads will not be encrypted');
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 

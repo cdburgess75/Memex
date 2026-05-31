@@ -15,6 +15,7 @@ const ENV_MAP = {
   storage_s3_secret_access_key:   'STORAGE_S3_SECRET_ACCESS_KEY',
   supabase_url:                   'SUPABASE_URL',
   supabase_service_role_key:      'SUPABASE_SERVICE_ROLE_KEY',
+  storage_encryption_key:         'STORAGE_ENCRYPTION_KEY',
   app_url:                        'APP_URL',
   google_drive_folder_id:         'GOOGLE_DRIVE_FOLDER_ID',
   google_service_account_key:     'GOOGLE_SERVICE_ACCOUNT_KEY',

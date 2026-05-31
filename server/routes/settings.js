@@ -13,6 +13,7 @@ const SENSITIVE = new Set([
   'storage_s3_secret_access_key',
   'supabase_service_role_key',
   'google_service_account_key',
+  'storage_encryption_key',
 ]);
 
 const MASKED = '●●●●●●●●';
