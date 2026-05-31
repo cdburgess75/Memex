@@ -78,15 +78,15 @@ router.post('/ingest', auth, async (req, res) => {
   const { data: pages } = await client.from('pages').select('*');
   const ctx = buildContext(pages);
 
-  const system = `You maintain a personal wiki. Ingest the source the user provides.
+  const system = `You maintain a team knowledge base. Ingest the source the user provides.
 
-Existing wiki pages:
+Existing pages:
 ${ctx || '(empty — this is the first source)'}
 
 Return ONLY valid JSON, no markdown fences, in this shape:
 {"summary":"2-3 sentence summary","pages":[{"id":"kebab-slug","title":"Page Title","category":"concept|entity|source|analysis","content":"# Page Title\\n\\nMarkdown body. Use [[Page Title]] to link related pages. Use ## for subheads and - for bullets."}]}
 
-Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[wikilinks]].${focus ? '\nUser emphasis: ' + focus : ''}`;
+Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
   try {
     const message = await anthropic().messages.create({
@@ -153,7 +153,7 @@ router.post('/query', auth, async (req, res) => {
   const { data: pages } = await client.from('pages').select('*');
   const ctx = buildContext(pages);
 
-  const system = `You answer questions from a personal wiki. Ground every claim in the pages below and name the pages you draw on. If the wiki lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nWiki:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
+  const system = `You answer questions from a team knowledge base. Ground every claim in the pages below and name the pages you draw on. If the knowledge base lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
 
   try {
     const stream = anthropic().messages.stream({
@@ -215,14 +215,14 @@ router.post('/lint', auth, async (req, res) => {
   const { data: pages } = await client.from('pages').select('*');
   const ctx = buildContext(pages);
 
-  const system = `You audit a personal wiki for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
+  const system = `You audit a team knowledge base for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
 
   try {
     const stream = anthropic().messages.stream({
       model: MODEL(),
       max_tokens: 1400,
       system,
-      messages: [{ role: 'user', content: 'Wiki:\n\n' + (ctx || '(empty)') }],
+      messages: [{ role: 'user', content: 'Knowledge base:\n\n' + (ctx || '(empty)') }],
     });
 
     for await (const chunk of await stream) {

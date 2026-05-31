@@ -2,7 +2,7 @@
 
 A team knowledge base where Claude does the reading, writing, and upkeep.
 
-Most knowledge-management tools are retrieval-only — you put documents in and search them back out. Nothing accumulates. Memex is different: it **builds and maintains a persistent, interlinked wiki** that grows smarter every time your team feeds it a source. Paste an article, drop a PDF, point it at a URL, or upload a Word document — Claude summarizes it, weaves new pages into the collection, and cross-links everything that relates. Ask questions and get answers grounded in what your team has actually gathered. Run a periodic audit to catch contradictions, orphans, and gaps.
+Most knowledge-management tools are retrieval-only — you put documents in and search them back out. Nothing accumulates. Memex is different: it **builds and maintains a persistent, interlinked knowledge base** that grows smarter every time your team feeds it a source. Paste an article, drop a PDF, point it at a URL, or upload a Word document — Claude summarizes it, weaves new pages into the collection, and cross-links everything that relates. Ask questions and get answers grounded in what your team has actually gathered. Run a periodic audit to catch contradictions, orphans, and gaps.
 
 Everything is stored in a Postgres database (via Supabase). The frontend is a single HTML file; the backend is a lightweight Node.js/Express server. No proprietary platform, no vendor lock-in — your knowledge stays yours.
 
@@ -14,13 +14,13 @@ Everything is stored in a Postgres database (via Supabase). The frontend is a si
 
 | Operation | What it does |
 |-----------|-------------|
-| **Ingest** | Paste text, enter a URL, or upload a file. Claude reads the source, writes a 2–3 sentence summary, and creates or updates 2–4 interlinked wiki pages. Supports Word, Excel, PowerPoint, PDF, and plain text. |
-| **Query** | Ask anything. Claude answers from what the team has gathered, names the pages it draws on, and can file the answer back as its own wiki page so insight compounds. Answers stream in real time with a Stop button. |
+| **Ingest** | Paste text, enter a URL, or upload a file. Claude reads the source, writes a 2–3 sentence summary, and creates or updates 2–4 interlinked pages. Supports Word, Excel, PowerPoint, PDF, and plain text. |
+| **Query** | Ask anything. Claude answers from what the team has gathered, names the pages it draws on, and can file the answer back as its own page so insight compounds. Answers stream in real time with a Stop button. |
 | **Lint** | Periodic health-check — contradictions between pages, orphaned pages with no inbound links, missing cross-references, and gaps worth chasing next. Focus on a topic or let it scan everything. |
 
 ### Team features
 
-- **Shared wiki** — one knowledge base for the whole team, stored in Postgres
+- **Shared knowledge base** — one collection for the whole team, stored in Postgres
 - **Google SSO** — sign in with a Google Workspace account
 - **Microsoft 365 SSO** — sign in with an Azure AD / Entra account
 - **Role-based access** — three roles: Admin, Contributor, Viewer. Admins manage the team; contributors ingest and edit; viewers read only.
@@ -34,7 +34,7 @@ Everything is stored in a Postgres database (via Supabase). The frontend is a si
 - **Office Online viewer** — open any supported file in Microsoft Office Online directly in the browser (read-only, no account needed)
 - **Office Online editor** — full in-browser editing via the WOPI protocol when `APP_URL` is configured
 - **Google Drive editing** — upload to Google Drive and open in Docs/Sheets/Slides; export edits back to storage
-- **Wiki ingest from file** — extract text from any document and run it through the ingest pipeline with one click
+- **Ingest from file** — extract text from any document and run it through the ingest pipeline with one click
 
 ### Editor & navigation
 
@@ -43,7 +43,7 @@ Everything is stored in a Postgres database (via Supabase). The frontend is a si
 - **Full-text search** — Postgres `tsvector` search with highlighted excerpts across all page content
 - **Inline editing** — click Edit on any page to rewrite it directly in the browser
 - **Version history** — every edit saves a snapshot; preview and restore any previous version
-- **Rich markdown** — fenced code blocks, pipe tables, ordered and unordered lists, H2/H3, inline code, external links, wiki-style `[[Page Links]]`
+- **Rich markdown** — fenced code blocks, pipe tables, ordered and unordered lists, H2/H3, inline code, external links, `[[Page Links]]` cross-references
 - **Dark mode** — auto-detected from your OS preference; toggle manually in the masthead
 
 ### Admin dashboard
@@ -54,7 +54,7 @@ Everything is stored in a Postgres database (via Supabase). The frontend is a si
 
 ### Portability
 
-- **Export .md** — dumps the entire wiki as a single Markdown bundle ready for Obsidian or a git repo
+- **Export .md** — dumps the entire knowledge base as a single Markdown bundle ready for Obsidian or a git repo
 - **Backup / Restore** — full JSON export and import to migrate, snapshot, or seed a new instance
 
 ---
@@ -357,12 +357,12 @@ Memex is a single stateless container and runs on any platform that supports Doc
 The core feature set is complete. Here is what makes the most sense to build next, roughly in order of impact:
 
 ### Near term
-- **Slack / Teams bot** — let team members query the wiki from a chat command without opening the browser
+- **Slack / Teams bot** — let team members query the knowledge base from a chat command without opening the browser
 - **Webhook on ingest** — fire a notification (Slack, email, webhook) when new pages are created, so the team knows the collection grew
 
 ### Longer term
 - **Granular permissions per page or category** — some pages may be sensitive (HR, legal). Row-level security is already in place; adding a `visibility` column is straightforward.
-- **Scheduled lint** — run the wiki audit automatically on a cron and email the report to admins
+- **Scheduled lint** — run the knowledge base audit automatically on a cron and email the report to admins
 - **Embedding-based semantic search** — use Anthropic embeddings to find pages by meaning rather than keyword match. Supabase has `pgvector` built in.
 - **Mobile app** — the responsive layout works on phones, but a native wrapper (Capacitor / React Native) would allow push notifications and offline reading
 

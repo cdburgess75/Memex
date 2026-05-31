@@ -276,14 +276,14 @@ body {
 .prose li { margin-bottom: 6px; }
 .prose em { font-style: italic; color: var(--ink-soft); }
 .prose strong { font-weight: 500; }
-.wikilink {
+.cross-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid var(--accent-wash);
   cursor: pointer;
   transition: border-color 0.12s;
 }
-.wikilink:hover { border-bottom-color: var(--accent); }
+.cross-link:hover { border-bottom-color: var(--accent); }
 .prose a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-wash); transition: border-color 0.12s; }
 .prose a:hover { border-bottom-color: var(--accent); }
 .prose pre {
@@ -853,7 +853,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 <header class="masthead">
   <div class="brand">
     <h1>Memex</h1>
-    <span class="colophon">a team wiki, kept by Claude</span>
+    <span class="colophon">a team knowledge base, kept by Claude</span>
   </div>
   <div class="masthead-actions">
     <button class="icon-btn" onclick="toggleTheme()" id="theme-btn">Dark</button>
@@ -896,7 +896,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <div class="btn-row" style="margin-top:24px">
       <button class="run-btn" onclick="signOut()">Sign out</button>
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
-      <button id="erase-wiki-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
+      <button id="erase-kb-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeAll()">Erase all</button>
     </div>
   </div>
 </div>
@@ -922,7 +922,7 @@ const WELCOME = {
   category: 'meta',
   sources: 0,
   updated_at: 'start here',
-  content: `# Reading room\n\nThis is your team's *Memex* — a shared knowledge base that Claude reads, writes, and keeps in order. Sign in with your work account and start building.\n\n## The three motions\n\n- **Ingest** — paste an article, paper, or note. Claude reads it, summarizes it, and weaves new pages into the wiki, cross-linking what relates.\n- **Query** — ask anything. Claude answers from what you've gathered, and can file the answer back as its own page so insight accumulates.\n- **Lint** — periodically ask Claude to audit the collection for contradictions, orphans, and gaps worth chasing.\n\n## To begin\n\nMove to the **Ingest** tab and feed it your first source. Watch the index on the left fill in.`
+  content: `# Reading room\n\nThis is your team's *Memex* — a shared knowledge base that Claude reads, writes, and keeps in order. Sign in with your work account and start building.\n\n## The three motions\n\n- **Ingest** — paste an article, paper, or note. Claude reads it, summarizes it, and weaves new pages into the collection, cross-linking what relates.\n- **Query** — ask anything. Claude answers from what you've gathered, and can file the answer back as its own page so insight accumulates.\n- **Lint** — periodically ask Claude to audit the collection for contradictions, orphans, and gaps worth chasing.\n\n## To begin\n\nMove to the **Ingest** tab and feed it your first source. Watch the index on the left fill in.`
 };
 
 const CATS = {
@@ -993,7 +993,7 @@ async function loadFromServer() {
     renderIndex();
     openPage(state.activePage);
   } catch (e) {
-    toast('Could not load wiki: ' + e.message);
+    toast('Could not load pages: ' + e.message);
   }
 }
 
@@ -1275,7 +1275,7 @@ function mdToHtml(md) {
     line = line.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
     line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     line = line.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" data-wiki="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.wiki)">${esc(t)}</a>`);
+    line = line.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="cross-link" data-page="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.page)">${esc(t)}</a>`);
     line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
     // Block-level detection on raw line
@@ -1342,7 +1342,7 @@ function applyInline(s) {
   s = s.replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`);
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  s = s.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="wikilink" data-wiki="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.wiki)">${esc(t)}</a>`);
+  s = s.replace(/\[\[(.+?)\]\]/g, (_, t) => `<a class="cross-link" data-page="${t.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="gotoTitle(this.dataset.page)">${esc(t)}</a>`);
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return s;
 }
@@ -1973,7 +1973,7 @@ async function doQuery(fileIt) {
   if (!q) { toast('Type a question first'); return; }
   document.getElementById('query-result').style.display = 'block';
   const ans = document.getElementById('query-answer');
-  ans.className = 'response dim'; ans.textContent = 'Searching the wiki…';
+  ans.className = 'response dim'; ans.textContent = 'Searching…';
 
   const goBtn = document.getElementById('query-go');
   const saveBtn = document.getElementById('query-save');
@@ -2016,15 +2016,15 @@ async function doLint() {
 function openSettings() {
   document.getElementById('settings-user-info').textContent =
     `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
-  document.getElementById('erase-wiki-btn').style.display =
+  document.getElementById('erase-kb-btn').style.display =
     currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
 
-async function wipeWiki() {
-  if (currentUser?.role !== 'admin') { toast('Only admins can erase the wiki'); return; }
-  if (!confirm('Erase the entire shared wiki? This affects all team members. Export a backup first.')) return;
+async function wipeAll() {
+  if (currentUser?.role !== 'admin') { toast('Only admins can erase the knowledge base'); return; }
+  if (!confirm('Erase the entire shared knowledge base? This affects all team members. Export a backup first.')) return;
   try {
     await apiDelete('/pages');
     state.pages = [WELCOME];
@@ -2032,7 +2032,7 @@ async function wipeWiki() {
     closeSettings();
     renderIndex();
     openPage('overview');
-    toast('Wiki erased');
+    toast('Knowledge base erased');
   } catch (e) { toast('Could not erase: ' + e.message); }
 }
 
@@ -2048,7 +2048,7 @@ function exportMarkdown() {
     .filter(p => p.id !== 'overview')
     .map(p => `# ${p.title}\n> category: ${p.category} · sources: ${p.sources || 0}\n\n${p.content.replace(/^# .+\n?/, '')}`)
     .join('\n\n\n---\n\n\n');
-  download('memex-wiki.md', md, 'text/markdown');
+  download('memex-export.md', md, 'text/markdown');
   toast('Markdown exported');
 }
 function exportJSON() {
@@ -2132,7 +2132,7 @@ function renderFileList() {
           ${isOffice ? `<button class="file-action-btn primary" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">Office Online</button>` : ''}
           ${isOffice ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Google Docs</button>` : ''}
           ${f.google_drive_id && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export from Google</button>` : ''}
-          ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Ingest to Wiki</button>` : ''}
+          ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Add to collection</button>` : ''}
           <button class="file-action-btn" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Download</button>
           ${canEdit ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Delete</button>` : ''}
         </div>
@@ -2165,7 +2165,7 @@ async function uploadFiles(files) {
       const { doc, canIngest } = await res.json();
       filesList.unshift(doc);
       renderFileList();
-      toast(canIngest ? `${file.name} uploaded — click "Ingest to Wiki" to add it to the collection` : `${file.name} uploaded`);
+      toast(canIngest ? `${file.name} uploaded — click "Add to collection" to index it` : `${file.name} uploaded`);
     } catch (e) {
       toast(`Upload error: ${e.message}`);
     }
