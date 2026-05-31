@@ -10,15 +10,24 @@ const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
-    const allowed = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
-    const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-    cb(null, allowed.includes(ext));
+let _uploadMb = 0;
+let _uploadMw = null;
+async function getUpload() {
+  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '50', 10);
+  if (mb !== _uploadMb || !_uploadMw) {
+    _uploadMb = mb;
+    _uploadMw = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: mb * 1024 * 1024 },
+      fileFilter(_req, file, cb) {
+        const allowed = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
+        const ext = '.' + file.originalname.split('.').pop().toLowerCase();
+        cb(null, allowed.includes(ext));
+      }
+    }).single('file');
   }
-});
+  return _uploadMw;
+}
 
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
@@ -93,7 +102,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // POST /api/files/upload
-router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single('file'), async (req, res) => {
+router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, next) => getUpload().then(mw => mw(req, res, next)).catch(next), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required' });
 
   const path = require('path');

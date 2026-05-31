@@ -18,6 +18,11 @@ const ENV_MAP = {
   app_url:                        'APP_URL',
   google_drive_folder_id:         'GOOGLE_DRIVE_FOLDER_ID',
   google_service_account_key:     'GOOGLE_SERVICE_ACCOUNT_KEY',
+  bind_address:                   'BIND_ADDRESS',
+  trust_proxy:                    'TRUST_PROXY',
+  cors_origins:                   'CORS_ORIGINS',
+  http_proxy:                     'HTTP_PROXY',
+  max_upload_mb:                  'MAX_UPLOAD_MB',
 };
 
 const cache = new Map();
