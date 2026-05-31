@@ -212,28 +212,89 @@ cd server && npm run dev
 
 ## Deployment
 
-### Docker
+### Recommended for small businesses
 
-Build and run the image locally:
+Two options depending on whether you prefer on-prem hardware or a cheap cloud server.
+
+---
+
+#### Option A — Coolify on a Hetzner VPS (easiest, ~€6/month)
+
+[Coolify](https://coolify.io) is a self-hosted platform that gives you a Heroku-style dashboard — auto-deploy on push, SSL, reverse proxy, environment variables, one-click rollbacks — all on hardware you control.
+
+1. **Provision a server.** Sign up at [hetzner.com](https://www.hetzner.com) and create a CX22 instance (2 vCPU, 4 GB RAM, ~€4/month). Ubuntu 24.04 LTS works well.
+
+2. **Install Coolify** (one command, run as root):
+   ```bash
+   curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+   ```
+   Then open `http://<your-server-ip>:8000` to finish setup.
+
+3. **Connect your GitHub repo.** In Coolify → Sources → add GitHub. Give it access to `cdburgess75/Memex`.
+
+4. **Create a new application.** Select the repo, set the branch to `main`, and choose *Dockerfile* as the build method. Coolify finds the `Dockerfile` automatically.
+
+5. **Add environment variables.** Paste all values from `.env.example` into Coolify's Environment Variables tab.
+
+6. **Set a domain.** Point an A record at the server IP, then enter the domain in Coolify. It provisions a Let's Encrypt certificate automatically.
+
+7. **Deploy.** Click Deploy. Every future push to `main` redeploys automatically.
+
+> From now on: push code → Coolify rebuilds → live in ~60 seconds. No SSH required for day-to-day operations.
+
+---
+
+#### Option B — Synology NAS (on-prem, no monthly fees)
+
+Any Synology running DSM 7.2+ with **Container Manager** installed can run Memex.
+
+1. **Open Container Manager** → Registry → search `ghcr.io/cdburgess75/memex` → Download (`latest` tag).
+
+2. **Create a container.** Container Manager → Container → Create → select the `memex` image.
+
+3. **Configure port mapping.** Map host port `3000` → container port `3000` (or choose a different host port if 3000 is taken).
+
+4. **Add environment variables.** In the Environment tab, add each variable from `.env.example` with its value.
+
+5. **Enable auto-restart.** Check "Enable auto-restart" so the container comes back after a NAS reboot.
+
+6. **Apply and start.**
+
+7. **Set up HTTPS.** In DSM → Control Panel → Login Portal → Advanced → Reverse Proxy, add a rule forwarding your domain (or a DDNS hostname from Synology's free DDNS service) to `localhost:3000`. Enable Let's Encrypt for the domain in DSM → Security → Certificate.
+
+> Memex will be available at `https://your-domain.synology.me` (or your custom domain) and survive NAS reboots automatically.
+
+---
+
+### Docker Compose
+
+The repo includes a `docker-compose.yml`. Copy your `.env` file to the same directory and run:
 
 ```bash
-docker build -t memex .
-docker run -p 3000:3000 --env-file .env memex
+docker compose up -d
 ```
 
-### GitHub Container Registry
+To pull the latest image and restart:
 
-Every push to `main` automatically builds and pushes a Docker image to GHCR via `.github/workflows/pages.yml`. Pull and run it on any server:
+```bash
+docker compose pull && docker compose up -d
+```
+
+To build from source instead of using the pre-built image, uncomment the `build: .` line in `docker-compose.yml` and remove or comment out the `image:` line.
+
+### Docker (single container)
 
 ```bash
 docker pull ghcr.io/cdburgess75/memex:latest
-docker run -p 3000:3000 --env-file .env ghcr.io/cdburgess75/memex:latest
+docker run -d --name memex --restart unless-stopped \
+  -p 3000:3000 --env-file .env \
+  ghcr.io/cdburgess75/memex:latest
 ```
 
 ### Railway
 
 1. Connect your GitHub repo in [Railway](https://railway.app).
-2. Railway will detect the `Dockerfile` automatically.
+2. Railway detects the `Dockerfile` automatically.
 3. Add the environment variables in the Railway dashboard.
 4. Deploy.
 
@@ -251,6 +312,44 @@ fly deploy
 2. In Azure → **App Service → Configuration**, add the environment variables.
 3. Set the startup command to `node server/index.js` if not using Docker directly.
 
+### Kubernetes
+
+The app is a stateless single-container workload. A minimal deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memex
+  template:
+    metadata:
+      labels:
+        app: memex
+    spec:
+      containers:
+        - name: memex
+          image: ghcr.io/cdburgess75/memex:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: memex-env
+```
+
+Create the secret from your `.env` file:
+```bash
+kubectl create secret generic memex-env --from-env-file=.env
+```
+
+### Other platforms
+
+Memex is a single stateless container and runs on any platform that supports Docker: **Portainer**, **Unraid**, **TrueNAS SCALE**, **Coolify**, **Caprover**, **GCP Cloud Run**, **AWS App Runner**, **Azure Container Apps**, and bare VMs running Node.js directly with `pm2` or `systemd`.
+
 ---
 
 ## Next steps
@@ -260,7 +359,6 @@ The core feature set is complete. Here is what makes the most sense to build nex
 ### Near term
 - **Slack / Teams bot** — let team members query the wiki from a chat command without opening the browser
 - **Webhook on ingest** — fire a notification (Slack, email, webhook) when new pages are created, so the team knows the collection grew
-- **Storage admin view** — admin panel section showing total bucket usage, per-user file counts, and bulk-delete
 
 ### Longer term
 - **Granular permissions per page or category** — some pages may be sensitive (HR, legal). Row-level security is already in place; adding a `visibility` column is straightforward.
