@@ -18,7 +18,7 @@ router.get('/search', auth, async (req, res) => {
   res.json(data);
 });
 
-// GET /api/pages — fetch all wiki pages
+// GET /api/pages — fetch all pages
 router.get('/', auth, async (req, res) => {
   const { data, error } = await db().from('pages').select('*').order('updated_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
@@ -123,7 +123,7 @@ router.delete('/:id', auth, requireRole('admin'), async (req, res) => {
   res.json({ success: true });
 });
 
-// DELETE /api/pages — wipe all pages (erase wiki)
+// DELETE /api/pages — wipe all pages
 router.delete('/', auth, requireRole('admin'), async (req, res) => {
   const { error } = await db().from('pages').delete().neq('id', '');
   if (error) return res.status(500).json({ error: error.message });

@@ -116,7 +116,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single(
   res.json({ doc, canIngest });
 });
 
-// POST /api/files/:id/ingest — extract text and ingest into wiki
+// POST /api/files/:id/ingest — extract text and ingest into knowledge base
 router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const { focus } = req.body;
   const client = db();
@@ -154,15 +154,15 @@ router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req
   const { data: pages } = await client.from('pages').select('*');
   const ctx = buildContext(pages);
 
-  const system = `You maintain a personal wiki. Ingest the source the user provides.
+  const system = `You maintain a team knowledge base. Ingest the source the user provides.
 
-Existing wiki pages:
+Existing pages:
 ${ctx || '(empty — this is the first source)'}
 
 Return ONLY valid JSON, no markdown fences, in this shape:
 {"summary":"2-3 sentence summary","pages":[{"id":"kebab-slug","title":"Page Title","category":"concept|entity|source|analysis","content":"# Page Title\\n\\nMarkdown body. Use [[Page Title]] to link related pages. Use ## for subheads and - for bullets."}]}
 
-Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[wikilinks]].${focus ? '\nUser emphasis: ' + focus : ''}`;
+Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
   try {
     const message = await anthropic().messages.create({
