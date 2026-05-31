@@ -107,7 +107,12 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
     });
 
     const raw = message.content.map(b => b.text || '').join('');
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (parseErr) {
+      return res.status(422).json({ error: 'Claude returned invalid JSON — try again' });
+    }
 
     const touched = [];
     for (const p of (parsed.pages || [])) {

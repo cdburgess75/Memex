@@ -37,4 +37,11 @@ function setLock(fileId, lockToken) {
 
 function clearLock(fileId) { locks.delete(fileId); }
 
+// Periodic cleanup of expired tokens and locks every 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of tokens) if (v.expires < now) tokens.delete(k);
+  for (const [k, v] of locks) if (v.expires < now) locks.delete(k);
+}, 15 * 60 * 1000).unref();
+
 module.exports = { generateToken, validateToken, getLock, setLock, clearLock };
