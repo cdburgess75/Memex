@@ -96,3 +96,11 @@ CREATE TABLE IF NOT EXISTS documents (
   uploaded_by_email TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- System settings — admin-configurable key/value pairs (override env vars at runtime)
+CREATE TABLE IF NOT EXISTS system_settings (
+  key         TEXT        PRIMARY KEY,
+  value       TEXT,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by  UUID
+);
