@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memex — UI Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F9F7F4;
+  --surface: #FFFFFF;
+  --surface-2: #F0EBE3;
+  --ink: #1A1916;
+  --ink-soft: #5C5650;
+  --ink-faint: #8C877E;
+  --accent: #D97757;
+  --accent-soft: #C4603D;
+  --accent-wash: #FAECE4;
+  --rule: rgba(26,25,22,0.10);
+  --rule-soft: rgba(26,25,22,0.06);
+  --shadow: 0 1px 3px rgba(26,25,22,0.06), 0 0 0 1px rgba(26,25,22,0.04);
+  --display: 'Fraunces', Georgia, serif;
+  --body: 'Newsreader', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--body);
+  background: #E8E4DE;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  padding: 40px 24px 80px;
+}
+
+/* ─── section labels ─── */
+.section-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 56px 0 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(26,25,22,0.15);
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.section-label:first-of-type { margin-top: 0; }
+
+/* ─── app frame ─── */
+.app-frame {
+  background: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  border: 1px solid rgba(26,25,22,0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ─── masthead ─── */
+.masthead {
+  border-bottom: 1px solid var(--ink);
+  padding: 22px 32px 16px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand { display: flex; align-items: baseline; gap: 14px; }
+.brand h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 34px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.brand .colophon {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 3px;
+}
+.masthead-actions { display: flex; gap: 6px; align-items: center; }
+.icon-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  padding: 7px 11px;
+  border-radius: 2px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.user-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  padding: 7px 11px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+}
+
+/* ─── shell ─── */
+.shell {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  min-height: 520px;
+}
+.index-col {
+  border-right: 1px solid var(--ink);
+  padding: 26px 22px 40px;
+}
+.index-head {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.index-head .count { color: var(--ink-faint); }
+.search-wrap { margin-bottom: 10px; }
+#page-search {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: var(--ink);
+}
+#page-search::placeholder { color: var(--ink-faint); }
+.cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.cat-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.cat-pill.active { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
+.cat-group { margin-bottom: 20px; }
+.cat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+.page-link {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px 4px 10px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.35;
+  margin-left: -10px;
+}
+.page-link.active { color: var(--ink); border-left-color: var(--accent); font-weight: 500; }
+.page-link .dot { color: var(--accent); font-size: 11px; opacity: 0; }
+.page-link.fresh .dot { opacity: 1; }
+
+/* ─── tabs ─── */
+.work-col { display: flex; flex-direction: column; min-width: 0; }
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--ink);
+  padding: 0 32px;
+}
+.tab {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 14px 18px 12px;
+  cursor: pointer;
+  color: var(--ink-faint);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.tab .ix { color: var(--accent); margin-right: 6px; }
+
+/* ─── panel ─── */
+.panel { padding: 34px 44px 60px; max-width: 760px; }
+
+/* ─── article ─── */
+.article .kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.article .kicker .sep { color: var(--ink-faint); }
+.article h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin-bottom: 22px;
+}
+.prose { font-size: 18px; line-height: 1.68; color: var(--ink); }
+.prose h2 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 23px;
+  margin: 30px 0 10px;
+  letter-spacing: -0.01em;
+}
+.prose h3 {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 19px;
+  margin: 22px 0 8px;
+  letter-spacing: -0.01em;
+}
+.prose p { margin-bottom: 16px; }
+.prose ul { margin: 0 0 16px 22px; }
+.prose li { margin-bottom: 6px; }
+.prose em { font-style: italic; color: var(--ink-soft); }
+.prose strong { font-weight: 500; }
+.cross-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-wash);
+  cursor: pointer;
+}
+.prose a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-wash); }
+.prose code {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+.prose table { width: 100%; border-collapse: collapse; margin: 0 0 20px; font-size: 16px; }
+.prose th {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  padding: 8px 12px;
+  color: var(--ink-soft);
+}
+.prose td { border: 1px solid var(--rule); padding: 8px 12px; vertical-align: top; }
+.prose tr:nth-child(even) td { background: var(--surface); }
+.article-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.edit-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  padding: 5px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.history-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  padding: 5px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* ─── forms ─── */
+.field { margin-bottom: 20px; }
+.field-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+  display: block;
+}
+textarea, input[type=text], select {
+  width: 100%;
+  font-family: var(--body);
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+textarea { min-height: 120px; line-height: 1.55; }
+.run-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: #FFFFFF;
+  border: 1px solid var(--accent);
+  padding: 12px 22px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ghost-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  padding: 12px 18px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.mode-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.mode-tab {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.mode-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-wash); }
+.result { margin-top: 26px; border-top: 1px solid var(--rule); padding-top: 22px; }
+.result-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.response { font-size: 17px; line-height: 1.62; color: var(--ink); white-space: pre-wrap; }
+.response.dim { color: var(--ink-faint); font-style: italic; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.note { font-size: 15px; color: var(--ink-soft); line-height: 1.6; }
+.note.placeholder { font-style: italic; color: var(--ink-faint); }
+.log-list { margin-top: 8px; }
+.log-row {
+  display: flex;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.log-row .t { color: var(--accent-soft); flex-shrink: 0; }
+.log-row .who { color: var(--ink-faint); opacity: 0.7; flex-shrink: 0; }
+
+/* ─── file drop ─── */
+.file-drop-zone {
+  border: 2px dashed var(--rule);
+  border-radius: 3px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 28px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.file-list { display: flex; flex-direction: column; gap: 12px; }
+.file-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.file-icon {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--accent-wash);
+  color: var(--accent);
+  padding: 4px 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.file-icon.pdf  { background: #FCEAE8; color: #C0392B; }
+.file-icon.xlsx { background: #E8F5E9; color: #2E7D32; }
+.file-icon.pptx { background: #FEF0E6; color: #D84315; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 16px; font-weight: 500; color: var(--ink); margin-bottom: 3px; }
+.file-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: 0.04em; }
+.file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.file-action-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.file-action-btn.primary { background: var(--accent); color: #FFFFFF; border-color: var(--accent); }
+.file-action-btn.danger { color: #C0392B; border-color: transparent; }
+
+/* ─── admin ─── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 30px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 20px 22px;
+}
+.stat-card .stat-num {
+  font-family: var(--display);
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-card .stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px; }
+.admin-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 10px 6px 0;
+}
+.admin-table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.admin-table td:first-child { color: var(--ink); }
+.usage-section { margin-bottom: 32px; }
+.usage-section h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 8px; }
+.data-table th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
+.data-table td:first-child { color: var(--ink); }
+
+/* ─── search results ─── */
+.search-result {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+.search-result-title { font-family: var(--body); font-size: 18px; font-weight: 500; color: var(--ink); margin-bottom: 4px; }
+.search-result-snippet { font-size: 15px; color: var(--ink-soft); line-height: 1.5; }
+.search-result-snippet mark { background: var(--accent-wash); color: var(--accent); font-style: normal; }
+
+/* ─── version history ─── */
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.version-meta { display: flex; flex-direction: column; gap: 2px; min-width: 140px; }
+.version-date { font-family: var(--mono); font-size: 12px; color: var(--accent-soft); }
+.version-who { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.version-title { flex: 1; font-size: 16px; color: var(--ink); }
+.version-actions { display: flex; gap: 6px; }
+
+/* ─── login modal ─── */
+.login-frame {
+  background: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  border: 1px solid rgba(26,25,22,0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  max-width: 360px;
+  width: 100%;
+  padding: 30px 32px;
+  box-shadow: var(--shadow), 0 16px 48px rgba(0,0,0,0.18);
+  text-align: center;
+}
+.modal h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 36px;
+  margin-bottom: 6px;
+}
+.modal .sub { font-size: 15px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
+.login-providers { display: flex; flex-direction: column; gap: 10px; }
+.provider-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 14px 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: var(--shadow);
+}
+
+/* ─── inline edit ─── */
+.edit-form-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     1. LOGIN SCREEN
+═══════════════════════════════════════════ -->
+<div class="section-label">1 — Login screen</div>
+<div class="login-frame">
+  <div class="modal">
+    <h2>Memex</h2>
+    <p class="sub">Sign in to access your team's knowledge base.</p>
+    <div class="login-providers">
+      <button class="provider-btn">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.3 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.8 6.1C12.5 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.5-5.8c-2.1 1.4-4.8 2.3-8 2.3-6.2 0-11.5-3.7-13.4-9l-7.8 6.1C6.7 42.6 14.7 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+      <button class="provider-btn">
+        <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h23v23H0z"/><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
+        Sign in with Microsoft 365
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     2. READ TAB — Page view
+═══════════════════════════════════════════ -->
+<div class="section-label">2 — Read tab · Page view</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand">
+      <h1>Memex</h1>
+      <span class="colophon">a team knowledge base, kept by Claude</span>
+    </div>
+    <div class="masthead-actions">
+      <button class="icon-btn">Dark</button>
+      <button class="icon-btn">Export .md</button>
+      <button class="icon-btn">Backup</button>
+      <button class="icon-btn">Account</button>
+      <span class="user-chip">sarah@acme.com · admin</span>
+    </div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">14</span></div>
+      <div class="search-wrap">
+        <input type="text" id="page-search" placeholder="Filter pages…" readonly>
+      </div>
+      <div class="cat-filter">
+        <button class="cat-pill active">All</button>
+        <button class="cat-pill">Concepts</button>
+        <button class="cat-pill">Entities</button>
+        <button class="cat-pill">Sources</button>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link active">Machine Learning Ops <span class="dot">●</span></div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+        <div class="page-link">Vector Embeddings</div>
+        <div class="page-link">Fine-tuning vs. Prompting</div>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Entities</div>
+        <div class="page-link">Anthropic</div>
+        <div class="page-link fresh">OpenAI <span class="dot">●</span></div>
+        <div class="page-link">Hugging Face</div>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Sources</div>
+        <div class="page-link">Attention Is All You Need</div>
+        <div class="page-link">LLM Survey — Zhao et al. 2023</div>
+        <div class="page-link">Andrej Karpathy — Intro to LLMs</div>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Analyses</div>
+        <div class="page-link">Q: Best embedding model for our use case?</div>
+        <div class="page-link">Q: Cost comparison — GPT-4 vs Claude</div>
+        <div class="page-link">Reading room</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab active"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="article">
+          <div class="kicker">
+            Concept <span class="sep">·</span> 8 sources <span class="sep">·</span> Updated May 30
+          </div>
+          <div class="article-meta">
+            <h1>Machine Learning Ops</h1>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:24px">
+            <button class="edit-btn">Edit</button>
+            <button class="history-btn">History</button>
+          </div>
+          <div class="prose">
+            <p><strong>MLOps</strong> (Machine Learning Operations) is the set of practices that unifies ML system development with IT operations. It applies DevOps principles — automation, monitoring, and continuous delivery — to the machine learning lifecycle.</p>
+            <h2>Core components</h2>
+            <ul>
+              <li><strong>Data pipelines</strong> — versioned, reproducible ingestion and transformation</li>
+              <li><strong>Model registry</strong> — tracks trained artefacts, metadata, and lineage</li>
+              <li><strong>CI/CD for ML</strong> — automated retraining, evaluation, and deployment gates</li>
+              <li><strong>Monitoring</strong> — data drift, concept drift, latency, and error tracking in production</li>
+            </ul>
+            <h2>Relationship to related concepts</h2>
+            <p>MLOps sits downstream of <a class="cross-link">Retrieval-Augmented Generation</a> infrastructure and upstream of cost concerns covered in <a class="cross-link">Q: Cost comparison — GPT-4 vs Claude</a>. Teams using <a class="cross-link">Fine-tuning vs. Prompting</a> workflows will find MLOps tooling most relevant when they commit to fine-tuning.</p>
+            <h2>Key tools (2024)</h2>
+            <table>
+              <tr><th>Category</th><th>Popular options</th></tr>
+              <tr><td>Experiment tracking</td><td>MLflow, Weights &amp; Biases, Neptune</td></tr>
+              <tr><td>Feature stores</td><td>Feast, Tecton, Hopsworks</td></tr>
+              <tr><td>Model serving</td><td>BentoML, Seldon, Ray Serve</td></tr>
+              <tr><td>Orchestration</td><td>Kubeflow, ZenML, Metaflow</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     3. INGEST TAB
+═══════════════════════════════════════════ -->
+<div class="section-label">3 — Ingest tab · Paste mode</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">sarah@acme.com · admin</span></div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">14</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+        <div class="page-link">Vector Embeddings</div>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Entities</div>
+        <div class="page-link">Anthropic</div>
+        <div class="page-link">OpenAI</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab active"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="mode-tabs">
+          <button class="mode-tab active">Paste</button>
+          <button class="mode-tab">URL</button>
+          <button class="mode-tab">File</button>
+        </div>
+        <div class="field">
+          <label class="field-label">Source text</label>
+          <textarea style="min-height:180px">Mixture of Experts (MoE) is a machine learning architecture where a "router" network selects a small subset of specialist sub-networks ("experts") to handle each input token, rather than running all parameters for every input. This allows models to scale total parameter count dramatically while keeping compute per token roughly constant…</textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">What to emphasize — optional</label>
+          <textarea style="min-height:64px" placeholder="e.g. focus on the methodology, or I care about business implications"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="run-btn">Read &amp; file</button>
+          <button class="ghost-btn">Cancel</button>
+        </div>
+        <div class="result">
+          <div class="result-label">Summary</div>
+          <div class="response">Mixture of Experts (MoE) architectures enable dramatic parameter scaling by routing each token to only a small subset of specialized sub-networks, keeping per-token compute constant. The paper introduces a sparsely-gated layer achieving state-of-the-art results with significantly lower compute than dense transformers.</div>
+          <div class="result-label" style="margin-top:20px">Pages touched</div>
+          <div class="chips">
+            <span class="chip">Mixture of Experts</span>
+            <span class="chip">Sparse Gating</span>
+            <span class="chip">Scaling Laws</span>
+            <span class="chip">Source: Shazeer et al. 2017</span>
+          </div>
+        </div>
+        <div class="result">
+          <div class="result-label">Recent activity</div>
+          <div class="log-list">
+            <div class="log-row"><span class="t">10:42</span><span class="who">sarah@acme.com</span><span>ingest · 4 pages · Mixture of Experts</span></div>
+            <div class="log-row"><span class="t">09:17</span><span class="who">marcus@acme.com</span><span>query · Best embedding model for our use case?</span></div>
+            <div class="log-row"><span class="t">Yesterday</span><span class="who">sarah@acme.com</span><span>ingest · 3 pages · Andrej Karpathy — Intro to LLMs</span></div>
+            <div class="log-row"><span class="t">May 29</span><span class="who">priya@acme.com</span><span>lint · full audit</span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     4. INGEST TAB — URL mode
+═══════════════════════════════════════════ -->
+<div class="section-label">4 — Ingest tab · URL mode</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">sarah@acme.com · admin</span></div>
+  </header>
+  <div class="shell" style="min-height:380px">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">14</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab active"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="mode-tabs">
+          <button class="mode-tab">Paste</button>
+          <button class="mode-tab active">URL</button>
+          <button class="mode-tab">File</button>
+        </div>
+        <div class="field">
+          <label class="field-label">URL</label>
+          <input type="text" value="https://arxiv.org/abs/2401.04088" readonly>
+        </div>
+        <div class="field">
+          <label class="field-label">What to emphasize — optional</label>
+          <textarea style="min-height:64px" placeholder="e.g. focus on production implications"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="run-btn" style="opacity:0.4;cursor:wait">Read &amp; file</button>
+          <button class="ghost-btn">Cancel</button>
+        </div>
+        <div class="result">
+          <div class="result-label">Status</div>
+          <div class="response dim">Fetching URL… reading with Claude…</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     5. QUERY TAB — Answer streaming
+═══════════════════════════════════════════ -->
+<div class="section-label">5 — Query tab · Answer streaming</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">marcus@acme.com · contributor</span></div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Mixture of Experts</div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+        <div class="page-link">Vector Embeddings</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab active"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="field">
+          <label class="field-label">Ask anything</label>
+          <textarea style="min-height:80px">What are the practical trade-offs between fine-tuning a model versus using RAG for our knowledge retrieval use case?</textarea>
+        </div>
+        <div class="btn-row">
+          <button class="run-btn" style="opacity:0.4;cursor:wait">Ask</button>
+          <button class="ghost-btn">Stop</button>
+          <label style="font-family:var(--mono);font-size:12px;color:var(--ink-faint);display:flex;align-items:center;gap:6px;margin-left:8px">
+            <input type="checkbox"> File answer as a page
+          </label>
+        </div>
+        <div class="result">
+          <div class="result-label">Answer</div>
+          <div class="response">Based on the pages gathered — particularly <strong>Fine-tuning vs. Prompting</strong>, <strong>Retrieval-Augmented Generation</strong>, and <strong>Vector Embeddings</strong> — here are the key trade-offs:
+
+<strong>Fine-tuning</strong> works best when you need consistent tone, format, or domain vocabulary baked into the model's weights. The downside is that knowledge becomes stale the moment the training data is, and retraining cycles are expensive. Your MLOps page notes that this path requires a full model registry and CI/CD pipeline.
+
+<strong>RAG</strong> keeps knowledge fresh — you update the document store, not the model. Latency is higher (retrieval + generation), and quality depends heavily on your embedding model and chunking strategy. The Vector Embeddings page flags that dense retrieval can miss exact-match queries that BM25 handles trivially.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     6. LINT TAB
+═══════════════════════════════════════════ -->
+<div class="section-label">6 — Lint tab · Audit results</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">priya@acme.com · admin</span></div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Mixture of Experts</div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab active"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="field">
+          <label class="field-label">Focus topic — optional</label>
+          <textarea style="min-height:64px" placeholder="Leave blank to audit everything, or focus on a specific area…"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="run-btn">Run audit</button>
+        </div>
+        <div class="result">
+          <div class="result-label">Audit report</div>
+          <div class="response">1. <strong>Contradiction:</strong> The <em>Scaling Laws</em> page states compute-optimal training follows Chinchilla ratios, but the <em>Mixture of Experts</em> page implies token efficiency changes the optimal compute allocation. These need reconciliation.
+
+2. <strong>Orphan:</strong> <em>Sparse Gating</em> has no inbound links from any other page. It's only referenced from its source page. Either merge it into Mixture of Experts or add a link from Vector Embeddings.
+
+3. <strong>Missing page:</strong> Several pages mention "RLHF" and "constitutional AI" without either having its own page. Anthropic's alignment approach is a significant gap given the pages on Claude and Anthropic.
+
+4. <strong>Missing cross-reference:</strong> <em>Machine Learning Ops</em> discusses monitoring for data drift but doesn't link to <em>Vector Embeddings</em>, where embedding drift is covered in more detail.
+
+5. <strong>Gap worth pursuing:</strong> Nothing in the collection covers inference optimization (quantization, speculative decoding, batching strategies). Suggest ingesting a survey or the vLLM paper.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     7. FILES TAB
+═══════════════════════════════════════════ -->
+<div class="section-label">7 — Files tab · Document library</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">sarah@acme.com · admin</span></div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Sources</div>
+        <div class="page-link">Attention Is All You Need</div>
+        <div class="page-link">LLM Survey — Zhao et al. 2023</div>
+        <div class="page-link">Andrej Karpathy — Intro to LLMs</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab active"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="file-drop-zone">
+          Drop files here or click to browse — .docx .xlsx .pptx .pdf .txt .md .csv up to 50 MB
+        </div>
+        <div class="file-list">
+          <div class="file-card">
+            <div class="file-icon pdf">pdf</div>
+            <div class="file-info">
+              <div class="file-name">Q3 2024 AI Strategy Brief.pdf</div>
+              <div class="file-meta">2.4 MB · May 30, 2026 · sarah@acme.com</div>
+              <div class="file-actions">
+                <button class="file-action-btn">Download</button>
+                <button class="file-action-btn">Add to collection</button>
+                <button class="file-action-btn danger">Delete</button>
+              </div>
+            </div>
+          </div>
+          <div class="file-card">
+            <div class="file-icon xlsx">xlsx</div>
+            <div class="file-info">
+              <div class="file-name">Model Cost Comparison — May 2026.xlsx</div>
+              <div class="file-meta">184 KB · May 29, 2026 · marcus@acme.com</div>
+              <div class="file-actions">
+                <button class="file-action-btn primary">Office Online</button>
+                <button class="file-action-btn">Google Docs</button>
+                <button class="file-action-btn">Download</button>
+                <button class="file-action-btn">Add to collection</button>
+                <button class="file-action-btn danger">Delete</button>
+              </div>
+            </div>
+          </div>
+          <div class="file-card">
+            <div class="file-icon pptx">pptx</div>
+            <div class="file-info">
+              <div class="file-name">Board Deck — LLM Roadmap.pptx</div>
+              <div class="file-meta">5.1 MB · May 27, 2026 · priya@acme.com</div>
+              <div class="file-actions">
+                <button class="file-action-btn primary">Office Online</button>
+                <button class="file-action-btn">Google Docs</button>
+                <button class="file-action-btn">Download</button>
+                <button class="file-action-btn">Add to collection</button>
+                <button class="file-action-btn danger">Delete</button>
+              </div>
+            </div>
+          </div>
+          <div class="file-card">
+            <div class="file-icon" style="background:#F0EBE3;color:#5C5650;">docx</div>
+            <div class="file-info">
+              <div class="file-name">Vendor Evaluation — Embedding APIs.docx</div>
+              <div class="file-meta">92 KB · May 22, 2026 · sarah@acme.com</div>
+              <div class="file-actions">
+                <button class="file-action-btn primary">Office Online</button>
+                <button class="file-action-btn">Google Docs</button>
+                <button class="file-action-btn">Download</button>
+                <button class="file-action-btn">Add to collection</button>
+                <button class="file-action-btn danger">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     8. ADMIN TAB
+═══════════════════════════════════════════ -->
+<div class="section-label">8 — Admin tab · Usage &amp; team management</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">priya@acme.com · admin</span></div>
+  </header>
+  <div class="shell">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Mixture of Experts</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab active"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-num">17</div><div class="stat-label">Pages</div></div>
+          <div class="stat-card"><div class="stat-num">42</div><div class="stat-label">Events this month</div></div>
+          <div class="stat-card"><div class="stat-num" style="font-size:28px">$1.84</div><div class="stat-label">API cost this month</div></div>
+        </div>
+
+        <div class="usage-section">
+          <h3>Usage by member</h3>
+          <table class="data-table">
+            <tr><th>Member</th><th>Ingests</th><th>Queries</th><th>Tokens</th><th>Cost</th></tr>
+            <tr><td>sarah@acme.com</td><td>18</td><td>9</td><td>284k</td><td>$0.91</td></tr>
+            <tr><td>marcus@acme.com</td><td>7</td><td>22</td><td>195k</td><td>$0.63</td></tr>
+            <tr><td>priya@acme.com</td><td>4</td><td>5</td><td>93k</td><td>$0.30</td></tr>
+          </table>
+        </div>
+
+        <div class="usage-section">
+          <h3>Team roles</h3>
+          <table class="admin-table">
+            <tr><th>Email</th><th>Role</th><th>Joined</th></tr>
+            <tr>
+              <td>sarah@acme.com</td>
+              <td><select style="font-family:var(--mono);font-size:12px;padding:3px 6px;background:var(--surface);border:1px solid var(--rule);color:var(--ink);border-radius:2px"><option selected>admin</option><option>contributor</option><option>viewer</option></select></td>
+              <td>May 30</td>
+            </tr>
+            <tr>
+              <td>marcus@acme.com</td>
+              <td><select style="font-family:var(--mono);font-size:12px;padding:3px 6px;background:var(--surface);border:1px solid var(--rule);color:var(--ink);border-radius:2px"><option>admin</option><option selected>contributor</option><option>viewer</option></select></td>
+              <td>May 30</td>
+            </tr>
+            <tr>
+              <td>priya@acme.com</td>
+              <td><select style="font-family:var(--mono);font-size:12px;padding:3px 6px;background:var(--surface);border:1px solid var(--rule);color:var(--ink);border-radius:2px"><option>admin</option><option selected>contributor</option><option>viewer</option></select></td>
+              <td>May 28</td>
+            </tr>
+            <tr>
+              <td>guest@partner.com</td>
+              <td><select style="font-family:var(--mono);font-size:12px;padding:3px 6px;background:var(--surface);border:1px solid var(--rule);color:var(--ink);border-radius:2px"><option>admin</option><option>contributor</option><option selected>viewer</option></select></td>
+              <td>May 31</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     9. FULL-TEXT SEARCH RESULTS
+═══════════════════════════════════════════ -->
+<div class="section-label">9 — Full-text search results</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">marcus@acme.com · contributor</span></div>
+  </header>
+  <div class="shell" style="min-height:420px">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="search-wrap">
+        <input type="text" id="page-search" value="embedding drift" readonly>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link">Machine Learning Ops</div>
+        <div class="page-link">Vector Embeddings</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab active"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:16px">3 results for "embedding drift"</div>
+        <div class="search-result">
+          <div class="search-result-title">Vector Embeddings</div>
+          <div class="search-result-snippet">…production systems must monitor for <mark>embedding drift</mark> — when the distribution of inputs shifts enough that existing embeddings no longer represent the data faithfully. Re-indexing can be expensive…</div>
+        </div>
+        <div class="search-result">
+          <div class="search-result-title">Machine Learning Ops</div>
+          <div class="search-result-snippet">…data drift monitoring is a core MLOps concern. For retrieval systems, <mark>embedding drift</mark> requires periodic re-embedding of the document store, which has cost and latency implications…</div>
+        </div>
+        <div class="search-result">
+          <div class="search-result-title">Q: Best embedding model for our use case?</div>
+          <div class="search-result-snippet">…the choice of model also affects how often you'll face <mark>embedding drift</mark> — larger, more stable models tend to produce more consistent representations across version updates…</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     10. VERSION HISTORY
+═══════════════════════════════════════════ -->
+<div class="section-label">10 — Version history panel</div>
+<div class="app-frame">
+  <header class="masthead">
+    <div class="brand"><h1>Memex</h1><span class="colophon">a team knowledge base, kept by Claude</span></div>
+    <div class="masthead-actions"><button class="icon-btn">Dark</button><button class="icon-btn">Account</button><span class="user-chip">sarah@acme.com · admin</span></div>
+  </header>
+  <div class="shell" style="min-height:420px">
+    <aside class="index-col">
+      <div class="index-head"><span>Index</span><span class="count">17</span></div>
+      <div class="cat-group">
+        <div class="cat-label">Concepts</div>
+        <div class="page-link active">Machine Learning Ops</div>
+        <div class="page-link">Mixture of Experts</div>
+        <div class="page-link">Retrieval-Augmented Generation</div>
+      </div>
+    </aside>
+    <main class="work-col">
+      <nav class="tabs">
+        <div class="tab active"><span class="ix">¶</span>Read</div>
+        <div class="tab"><span class="ix">+</span>Ingest</div>
+        <div class="tab"><span class="ix">?</span>Query</div>
+        <div class="tab"><span class="ix">✦</span>Lint</div>
+        <div class="tab"><span class="ix">◫</span>Files</div>
+        <div class="tab"><span class="ix">⚙</span>Admin</div>
+      </nav>
+      <div class="panel">
+        <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+          <h2 style="font-family:var(--display);font-size:26px;font-weight:600">History</h2>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--ink-faint)">Machine Learning Ops</span>
+          <button class="ghost-btn" style="margin-left:auto;padding:7px 14px;font-size:11px">← Back</button>
+        </div>
+        <div class="version-row">
+          <div class="version-meta">
+            <span class="version-date">May 31 · 10:42</span>
+            <span class="version-who">sarah@acme.com</span>
+          </div>
+          <div class="version-title">Added tools table and Kubeflow section</div>
+          <div class="version-actions">
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px">Preview</button>
+            <button class="run-btn" style="padding:5px 10px;font-size:11px">Restore</button>
+          </div>
+        </div>
+        <div class="version-row">
+          <div class="version-meta">
+            <span class="version-date">May 30 · 14:08</span>
+            <span class="version-who">marcus@acme.com</span>
+          </div>
+          <div class="version-title">Added cross-links to RAG and Fine-tuning pages</div>
+          <div class="version-actions">
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px">Preview</button>
+            <button class="run-btn" style="padding:5px 10px;font-size:11px">Restore</button>
+          </div>
+        </div>
+        <div class="version-row">
+          <div class="version-meta">
+            <span class="version-date">May 30 · 09:17</span>
+            <span class="version-who">sarah@acme.com</span>
+          </div>
+          <div class="version-title">Initial page created from ingest</div>
+          <div class="version-actions">
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px">Preview</button>
+            <button class="run-btn" style="padding:5px 10px;font-size:11px">Restore</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
