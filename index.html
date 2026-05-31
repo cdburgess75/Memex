@@ -705,6 +705,40 @@ html.dark .chip { color: var(--accent-soft); }
 .version-title { flex: 1; font-size: 16px; color: var(--ink); }
 .version-actions { display: flex; gap: 6px; }
 
+/* system settings panel */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.settings-grid label { font-size: 13px; color: var(--ink-soft); }
+.settings-grid input,
+.settings-grid select,
+.settings-grid textarea {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  width: 100%;
+  box-sizing: border-box;
+}
+.settings-grid textarea { resize: vertical; min-height: 60px; }
+.settings-notice {
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--rule));
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.settings-sub { margin-top: 20px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+
 /* usage / admin data tables */
 .usage-section { margin-bottom: 32px; }
 .usage-section h3 {
@@ -1864,11 +1898,12 @@ async function renderAdmin() {
   const panel = document.getElementById('panel');
   panel.innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`;
   try {
-    const [stats, usage, users, files] = await Promise.all([
+    const [stats, usage, users, files, sysSettings] = await Promise.all([
       apiGet('/admin/stats'),
       apiGet('/admin/usage').catch(() => null),
       apiGet('/admin/users').catch(() => []),
-      apiGet('/files').catch(() => [])
+      apiGet('/files').catch(() => []),
+      apiGet('/admin/settings').catch(() => ({}))
     ]);
     const pageCount = stats.pageCount ?? 0;
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
@@ -1947,8 +1982,8 @@ async function renderAdmin() {
     const roleOptions = ['admin', 'contributor', 'viewer'];
     const userRows = Array.isArray(users) && users.length
       ? users.map(u => {
-          const assigned = u.created_at
-            ? new Date(u.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+          const assigned = u.assigned_at
+            ? new Date(u.assigned_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
             : '—';
           const opts = roleOptions.map(r =>
             `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`
@@ -1957,7 +1992,7 @@ async function renderAdmin() {
             <td>${esc(u.email || '')}</td>
             <td>${esc(u.role || '')}</td>
             <td>${assigned}</td>
-            <td><select onchange="updateUserRole('${u.id}', this.value)">${opts}</select></td>
+            <td><select onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
@@ -2008,6 +2043,85 @@ async function renderAdmin() {
       </table>
     </div>`;
 
+    const s = sysSettings;
+    const provider = s.storage_provider || 'local';
+    const settingsHtml = `<div class="usage-section">
+      <h3>System Settings</h3>
+
+      <div class="settings-sub">Artificial Intelligence</div>
+      <div class="settings-grid">
+        <label>Model</label>
+        <select id="cfg-ai-model">
+          <option value="claude-opus-4-8" ${(s.anthropic_model||'claude-sonnet-4-6')==='claude-opus-4-8'?'selected':''}>Claude Opus 4.8 (most capable)</option>
+          <option value="claude-sonnet-4-6" ${(s.anthropic_model||'claude-sonnet-4-6')==='claude-sonnet-4-6'?'selected':''}>Claude Sonnet 4.6 (recommended)</option>
+          <option value="claude-haiku-4-5-20251001" ${s.anthropic_model==='claude-haiku-4-5-20251001'?'selected':''}>Claude Haiku 4.5 (fastest)</option>
+        </select>
+        <label>Anthropic API Key</label>
+        <input type="password" id="cfg-ai-key" value="${esc(s.anthropic_api_key||'')}" autocomplete="new-password" placeholder="sk-ant-… (leave blank to keep current)">
+      </div>
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveAISettings()">Save AI settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">File Storage</div>
+      <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
+      <div class="settings-grid">
+        <label>Provider</label>
+        <select id="cfg-storage-provider" onchange="updateStorageFields()">
+          <option value="local" ${provider==='local'?'selected':''}>Local filesystem</option>
+          <option value="s3" ${provider==='s3'?'selected':''}>S3-compatible (AWS, R2, B2, MinIO…)</option>
+          <option value="supabase" ${provider==='supabase'?'selected':''}>Supabase Storage (legacy)</option>
+        </select>
+      </div>
+
+      <div id="cfg-local-fields" style="display:${provider==='local'?'':'none'}">
+        <div class="settings-grid">
+          <label>Local path</label>
+          <input type="text" id="cfg-local-path" value="${esc(s.storage_local_path||'')}" placeholder="/data/memex/documents">
+        </div>
+      </div>
+
+      <div id="cfg-s3-fields" style="display:${provider==='s3'?'':'none'}">
+        <div class="settings-grid">
+          <label>Bucket</label>
+          <input type="text" id="cfg-s3-bucket" value="${esc(s.storage_s3_bucket||'')}">
+          <label>Region</label>
+          <input type="text" id="cfg-s3-region" value="${esc(s.storage_s3_region||'us-east-1')}">
+          <label>Endpoint URL</label>
+          <input type="text" id="cfg-s3-endpoint" value="${esc(s.storage_s3_endpoint||'')}" placeholder="Leave blank for AWS; set for R2, B2, MinIO…">
+          <label>Force path style</label>
+          <select id="cfg-s3-path-style">
+            <option value="false" ${s.storage_s3_force_path_style!=='true'?'selected':''}>No (AWS, R2, B2)</option>
+            <option value="true" ${s.storage_s3_force_path_style==='true'?'selected':''}>Yes (MinIO, self-hosted)</option>
+          </select>
+          <label>Access Key ID</label>
+          <input type="password" id="cfg-s3-access-key" value="${esc(s.storage_s3_access_key_id||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+          <label>Secret Access Key</label>
+          <input type="password" id="cfg-s3-secret" value="${esc(s.storage_s3_secret_access_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+
+      <div id="cfg-supabase-fields" style="display:${provider==='supabase'?'':'none'}">
+        <div class="settings-grid">
+          <label>Supabase URL</label>
+          <input type="text" id="cfg-supa-url" value="${esc(s.supabase_url||'')}" placeholder="https://your-project.supabase.co">
+          <label>Service Role Key</label>
+          <input type="password" id="cfg-supa-key" value="${esc(s.supabase_service_role_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveStorageSettings()">Save storage settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Integrations</div>
+      <div class="settings-grid">
+        <label>App URL</label>
+        <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
+        <label>Google Drive Folder ID</label>
+        <input type="text" id="cfg-google-folder" value="${esc(s.google_drive_folder_id||'')}" placeholder="optional — default Drive root">
+        <label>Google Service Account Key</label>
+        <textarea id="cfg-google-key" placeholder='{"type":"service_account",…} — leave blank to keep current'>${esc(s.google_service_account_key||'')}</textarea>
+      </div>
+      <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
+    </div>`;
+
     panel.innerHTML = `<div class="panel">
       ${usageHtml}
       ${storageHtml}
@@ -2048,6 +2162,66 @@ async function updateUserRole(userId, role) {
     toast('Role updated');
     renderAdmin();
   } catch (e) { toast('Failed: ' + e.message); }
+}
+
+function updateStorageFields() {
+  const provider = document.getElementById('cfg-storage-provider')?.value;
+  document.getElementById('cfg-local-fields').style.display = provider === 'local' ? '' : 'none';
+  document.getElementById('cfg-s3-fields').style.display = provider === 's3' ? '' : 'none';
+  document.getElementById('cfg-supabase-fields').style.display = provider === 'supabase' ? '' : 'none';
+}
+
+async function saveAISettings() {
+  const model = document.getElementById('cfg-ai-model').value;
+  const key = document.getElementById('cfg-ai-key').value;
+  try {
+    const body = { anthropic_model: model };
+    if (key.trim()) body.anthropic_api_key = key;
+    await apiPut('/admin/settings', body);
+    toast('AI settings saved');
+    document.getElementById('cfg-ai-key').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function saveStorageSettings() {
+  const provider = document.getElementById('cfg-storage-provider').value;
+  const body = { storage_provider: provider };
+  if (provider === 'local') {
+    body.storage_local_path = document.getElementById('cfg-local-path').value;
+  } else if (provider === 's3') {
+    body.storage_s3_bucket = document.getElementById('cfg-s3-bucket').value;
+    body.storage_s3_region = document.getElementById('cfg-s3-region').value;
+    body.storage_s3_endpoint = document.getElementById('cfg-s3-endpoint').value;
+    body.storage_s3_force_path_style = document.getElementById('cfg-s3-path-style').value;
+    const ak = document.getElementById('cfg-s3-access-key').value;
+    const sk = document.getElementById('cfg-s3-secret').value;
+    if (ak.trim()) body.storage_s3_access_key_id = ak;
+    if (sk.trim()) body.storage_s3_secret_access_key = sk;
+  } else if (provider === 'supabase') {
+    body.supabase_url = document.getElementById('cfg-supa-url').value;
+    const supaKey = document.getElementById('cfg-supa-key').value;
+    if (supaKey.trim()) body.supabase_service_role_key = supaKey;
+  }
+  try {
+    await apiPut('/admin/settings', body);
+    toast('Storage settings saved — server will use new provider on next request');
+    document.getElementById('cfg-s3-access-key').value = '';
+    document.getElementById('cfg-s3-secret').value = '';
+    document.getElementById('cfg-supa-key').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function saveIntegrationSettings() {
+  const appUrl = document.getElementById('cfg-app-url').value;
+  const folder = document.getElementById('cfg-google-folder').value;
+  const gKey = document.getElementById('cfg-google-key').value;
+  const body = { app_url: appUrl, google_drive_folder_id: folder };
+  if (gKey.trim()) body.google_service_account_key = gKey;
+  try {
+    await apiPut('/admin/settings', body);
+    toast('Integration settings saved');
+    document.getElementById('cfg-google-key').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
 }
 
 async function renderLog() {

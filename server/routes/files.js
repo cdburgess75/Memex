@@ -8,6 +8,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const db = require('../lib/db');
+const settings = require('../lib/settings');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -19,11 +20,13 @@ const upload = multer({
   }
 });
 
-function anthropic() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+async function anthropic() {
+  return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
 }
 
-const MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+async function MODEL() {
+  return (await settings.getOrEnv('anthropic_model')) || 'claude-sonnet-4-6';
+}
 
 async function extractText(buffer, filename) {
   const ext = filename.split('.').pop().toLowerCase();
@@ -164,8 +167,9 @@ Return ONLY valid JSON, no markdown fences, in this shape:
 
 Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
-    const message = await anthropic().messages.create({
-      model: MODEL(),
+    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
+    const message = await ai.messages.create({
+      model,
       max_tokens: 1400,
       system,
       messages: [{ role: 'user', content: 'Source:\n\n' + text.slice(0, 8000) }],
@@ -173,7 +177,7 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'ingest', MODEL(), message.usage.input_tokens, message.usage.output_tokens]
+      [req.user.id, req.user.email, 'ingest', model, message.usage.input_tokens, message.usage.output_tokens]
     );
 
     const raw = message.content.map(b => b.text || '').join('');

@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Anthropic = require('@anthropic-ai/sdk');
 const db = require('../lib/db');
+const settings = require('../lib/settings');
 const cheerio = require('cheerio');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -33,11 +34,13 @@ const upload = multer({
   }
 });
 
-function anthropic() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+async function anthropic() {
+  return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
 }
 
-const MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+async function MODEL() {
+  return (await settings.getOrEnv('anthropic_model')) || 'claude-sonnet-4-6';
+}
 
 function buildContext(pages) {
   return (pages || [])
@@ -104,8 +107,9 @@ Return ONLY valid JSON, no markdown fences, in this shape:
 
 Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
-    const message = await anthropic().messages.create({
-      model: MODEL(),
+    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
+    const message = await ai.messages.create({
+      model,
       max_tokens: 1400,
       system,
       messages: [{ role: 'user', content: 'Source:\n\n' + source.slice(0, 8000) }],
@@ -113,7 +117,7 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'ingest', MODEL(), message.usage.input_tokens, message.usage.output_tokens]
+      [req.user.id, req.user.email, 'ingest', model, message.usage.input_tokens, message.usage.output_tokens]
     );
 
     const raw = message.content.map(b => b.text || '').join('');
@@ -150,8 +154,9 @@ router.post('/query', auth, async (req, res) => {
 
     const system = `You answer questions from a team knowledge base. Ground every claim in the pages below and name the pages you draw on. If the knowledge base lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
 
-    const stream = anthropic().messages.stream({
-      model: MODEL(),
+    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
+    const stream = ai.messages.stream({
+      model,
       max_tokens: 1400,
       system,
       messages: [{ role: 'user', content: question }],
@@ -183,7 +188,7 @@ router.post('/query', auth, async (req, res) => {
     const final = await stream.finalMessage();
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'query', MODEL(), final.usage.input_tokens, final.usage.output_tokens]
+      [req.user.id, req.user.email, 'query', model, final.usage.input_tokens, final.usage.output_tokens]
     );
 
     await logEvent(`query · ${question.slice(0, 48)}`, req.user.id, req.user.email);
@@ -206,8 +211,9 @@ router.post('/lint', auth, async (req, res) => {
 
     const system = `You audit a team knowledge base for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
 
-    const stream = anthropic().messages.stream({
-      model: MODEL(),
+    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
+    const stream = ai.messages.stream({
+      model,
       max_tokens: 1400,
       system,
       messages: [{ role: 'user', content: 'Knowledge base:\n\n' + (ctx || '(empty)') }],
@@ -222,7 +228,7 @@ router.post('/lint', auth, async (req, res) => {
     const final = await stream.finalMessage();
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'lint', MODEL(), final.usage.input_tokens, final.usage.output_tokens]
+      [req.user.id, req.user.email, 'lint', model, final.usage.input_tokens, final.usage.output_tokens]
     );
 
     await logEvent('lint · audit run', req.user.id, req.user.email);

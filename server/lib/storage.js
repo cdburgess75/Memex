@@ -1,29 +1,35 @@
 'use strict';
+const settings = require('./settings');
 
-const PROVIDER = () => process.env.STORAGE_PROVIDER || 'supabase';
+async function PROVIDER() {
+  return (await settings.getOrEnv('storage_provider')) || 'local';
+}
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 
 const { createClient } = require('@supabase/supabase-js');
-function supabaseClient() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+async function supabaseClient() {
+  return createClient(
+    await settings.getOrEnv('supabase_url'),
+    await settings.getOrEnv('supabase_service_role_key')
+  );
 }
 
 async function supabaseUpload(storagePath, buffer, mimeType) {
-  const { error } = await supabaseClient().storage
+  const { error } = await (await supabaseClient()).storage
     .from('documents')
     .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
   if (error) throw error;
 }
 
 async function supabaseDownload(storagePath) {
-  const { data, error } = await supabaseClient().storage.from('documents').download(storagePath);
+  const { data, error } = await (await supabaseClient()).storage.from('documents').download(storagePath);
   if (error) throw error;
   return Buffer.from(await data.arrayBuffer());
 }
 
 async function supabaseGetUrl(storagePath, ttl) {
-  const { data, error } = await supabaseClient().storage
+  const { data, error } = await (await supabaseClient()).storage
     .from('documents')
     .createSignedUrl(storagePath, ttl);
   if (error) throw error;
@@ -31,7 +37,7 @@ async function supabaseGetUrl(storagePath, ttl) {
 }
 
 async function supabaseDel(storagePath) {
-  const { error } = await supabaseClient().storage.from('documents').remove([storagePath]);
+  const { error } = await (await supabaseClient()).storage.from('documents').remove([storagePath]);
   if (error) throw error;
 }
 
@@ -41,13 +47,12 @@ const fs = require('fs').promises;
 const nodePath = require('path');
 const crypto = require('crypto');
 
-function localBase() {
-  const p = process.env.STORAGE_LOCAL_PATH;
+async function localBase() {
+  const p = await settings.getOrEnv('storage_local_path');
   if (!p) throw new Error('STORAGE_LOCAL_PATH is required when STORAGE_PROVIDER=local');
   return p;
 }
 
-// Short-lived download tokens — replaces signed URLs for local storage
 const localTokens = new Map();
 setInterval(() => {
   const now = Date.now();
@@ -62,61 +67,62 @@ function validateLocalToken(token) {
 }
 
 async function localUpload(storagePath, buffer) {
-  const fullPath = nodePath.join(localBase(), storagePath);
+  const fullPath = nodePath.join(await localBase(), storagePath);
   await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, buffer);
 }
 
 async function localDownload(storagePath) {
-  return fs.readFile(nodePath.join(localBase(), storagePath));
+  return fs.readFile(nodePath.join(await localBase(), storagePath));
 }
 
-function localGetUrl(storagePath, ttl) {
+async function localGetUrl(storagePath, ttl) {
   const token = crypto.randomBytes(32).toString('hex');
   localTokens.set(token, { storagePath, expires: Date.now() + ttl * 1000 });
-  const base = (process.env.APP_URL || '').replace(/\/$/, '');
+  const base = ((await settings.getOrEnv('app_url')) || '').replace(/\/$/, '');
   return `${base}/api/files/local-download?token=${token}`;
 }
 
 async function localDel(storagePath) {
-  await fs.unlink(nodePath.join(localBase(), storagePath));
+  await fs.unlink(nodePath.join(await localBase(), storagePath));
 }
 
 // ─── S3-compatible ───────────────────────────────────────────────────────────
 // Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO, DigitalOcean Spaces.
 
-function s3Client() {
+async function s3Client() {
   const { S3Client } = require('@aws-sdk/client-s3');
   const config = {
-    region: process.env.STORAGE_S3_REGION || 'us-east-1',
+    region: (await settings.getOrEnv('storage_s3_region')) || 'us-east-1',
     credentials: {
-      accessKeyId: process.env.STORAGE_S3_ACCESS_KEY_ID,
-      secretAccessKey: process.env.STORAGE_S3_SECRET_ACCESS_KEY,
+      accessKeyId: await settings.getOrEnv('storage_s3_access_key_id'),
+      secretAccessKey: await settings.getOrEnv('storage_s3_secret_access_key'),
     },
   };
-  if (process.env.STORAGE_S3_ENDPOINT) {
-    config.endpoint = process.env.STORAGE_S3_ENDPOINT;
-    config.forcePathStyle = process.env.STORAGE_S3_FORCE_PATH_STYLE === 'true';
+  const endpoint = await settings.getOrEnv('storage_s3_endpoint');
+  if (endpoint) {
+    config.endpoint = endpoint;
+    config.forcePathStyle = (await settings.getOrEnv('storage_s3_force_path_style')) === 'true';
   }
   return new S3Client(config);
 }
 
-function s3Bucket() {
-  const b = process.env.STORAGE_S3_BUCKET;
+async function s3Bucket() {
+  const b = await settings.getOrEnv('storage_s3_bucket');
   if (!b) throw new Error('STORAGE_S3_BUCKET is required when STORAGE_PROVIDER=s3');
   return b;
 }
 
 async function s3Upload(storagePath, buffer, mimeType) {
   const { PutObjectCommand } = require('@aws-sdk/client-s3');
-  await s3Client().send(new PutObjectCommand({
-    Bucket: s3Bucket(), Key: storagePath, Body: buffer, ContentType: mimeType,
+  await (await s3Client()).send(new PutObjectCommand({
+    Bucket: await s3Bucket(), Key: storagePath, Body: buffer, ContentType: mimeType,
   }));
 }
 
 async function s3Download(storagePath) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
-  const res = await s3Client().send(new GetObjectCommand({ Bucket: s3Bucket(), Key: storagePath }));
+  const res = await (await s3Client()).send(new GetObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
   const chunks = [];
   for await (const chunk of res.Body) chunks.push(chunk);
   return Buffer.concat(chunks);
@@ -126,21 +132,21 @@ async function s3GetUrl(storagePath, ttl) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
   const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
   return getSignedUrl(
-    s3Client(),
-    new GetObjectCommand({ Bucket: s3Bucket(), Key: storagePath }),
+    await s3Client(),
+    new GetObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }),
     { expiresIn: ttl }
   );
 }
 
 async function s3Del(storagePath) {
   const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-  await s3Client().send(new DeleteObjectCommand({ Bucket: s3Bucket(), Key: storagePath }));
+  await (await s3Client()).send(new DeleteObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
 }
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
 async function upload(storagePath, buffer, mimeType) {
-  switch (PROVIDER()) {
+  switch (await PROVIDER()) {
     case 'local': return localUpload(storagePath, buffer);
     case 's3':    return s3Upload(storagePath, buffer, mimeType);
     default:      return supabaseUpload(storagePath, buffer, mimeType);
@@ -148,7 +154,7 @@ async function upload(storagePath, buffer, mimeType) {
 }
 
 async function download(storagePath) {
-  switch (PROVIDER()) {
+  switch (await PROVIDER()) {
     case 'local': return localDownload(storagePath);
     case 's3':    return s3Download(storagePath);
     default:      return supabaseDownload(storagePath);
@@ -156,7 +162,7 @@ async function download(storagePath) {
 }
 
 async function getUrl(storagePath, ttl = 3600) {
-  switch (PROVIDER()) {
+  switch (await PROVIDER()) {
     case 'local': return localGetUrl(storagePath, ttl);
     case 's3':    return s3GetUrl(storagePath, ttl);
     default:      return supabaseGetUrl(storagePath, ttl);
@@ -164,7 +170,7 @@ async function getUrl(storagePath, ttl = 3600) {
 }
 
 async function del(storagePath) {
-  switch (PROVIDER()) {
+  switch (await PROVIDER()) {
     case 'local': return localDel(storagePath);
     case 's3':    return s3Del(storagePath);
     default:      return supabaseDel(storagePath);
