@@ -896,7 +896,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <div class="btn-row" style="margin-top:24px">
       <button class="run-btn" onclick="signOut()">Sign out</button>
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
-      <button class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
+      <button id="erase-wiki-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeWiki()">Erase wiki</button>
     </div>
   </div>
 </div>
@@ -951,7 +951,7 @@ let activeCatFilter = null;
 /* ---------- bootstrap ---------- */
 async function initApp() {
   try {
-    const config = await fetch('/api/config').then(r => r.json());
+    const config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
     sb = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
   } catch (e) {
     document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><h2>Memex</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Is it running?</p></div>`;
@@ -1437,6 +1437,7 @@ function editPage(id) {
 }
 
 async function savePage(id) {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot edit pages'); return; }
   const page = state.pages.find(p => p.id === id);
   if (!page) return;
   const title = document.getElementById('edit-title').value.trim();
@@ -1454,6 +1455,7 @@ async function savePage(id) {
 }
 
 async function deletePage(id) {
+  if (currentUser?.role !== 'admin') { toast('Only admins can delete pages'); return; }
   if (!confirm('Delete this page? This cannot be undone.')) return;
   try {
     await apiDelete('/pages/' + id);
@@ -1577,15 +1579,11 @@ function renderIngest() {
     <div class="result"><div class="result-label">Recent activity</div><div class="log-list" id="log-list"></div></div>
   </div>`;
 
-  // Attach drag-and-drop to paste textarea
+  // Attach drag-and-drop to paste textarea (assign directly to avoid listener accumulation)
   const srcEl = document.getElementById('src');
   if (srcEl) {
-    srcEl.addEventListener('dragover', e => e.preventDefault());
-    srcEl.addEventListener('drop', e => {
-      e.preventDefault();
-      const file = e.dataTransfer?.files?.[0];
-      if (file) handleFileSelect(file, true);
-    });
+    srcEl.ondragover = e => e.preventDefault();
+    srcEl.ondrop = e => { e.preventDefault(); const file = e.dataTransfer?.files?.[0]; if (file) handleFileSelect(file, true); };
   }
 
   renderLog();
@@ -1648,6 +1646,7 @@ async function handleFileSelect(file, intoPasteArea) {
 }
 
 async function doIngest() {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot ingest content'); return; }
   const focus = document.getElementById('focus').value.trim();
   const btn = document.getElementById('ingest-go');
   const cancelBtn = document.getElementById('ingest-cancel');
@@ -2017,6 +2016,8 @@ async function doLint() {
 function openSettings() {
   document.getElementById('settings-user-info').textContent =
     `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
+  document.getElementById('erase-wiki-btn').style.display =
+    currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
@@ -2089,14 +2090,11 @@ async function renderFiles() {
     <div class="file-list" id="file-list"><div class="note placeholder" style="margin-top:8px">Loading…</div></div>
   </div>`;
 
-  // Wire drag-and-drop
+  // Wire drag-and-drop (assign directly to avoid listener accumulation on re-render)
   const zone = document.getElementById('file-drop-zone');
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('drag-over');
-    uploadFiles(Array.from(e.dataTransfer.files));
-  });
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag-over'); };
+  zone.ondragleave = () => zone.classList.remove('drag-over');
+  zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag-over'); uploadFiles(Array.from(e.dataTransfer.files)); };
 
   await loadFiles();
 }
@@ -2124,18 +2122,19 @@ function renderFileList() {
     const date = new Date(f.created_at).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' });
     const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
 
+    const dName = f.name.replace(/"/g, '&quot;');
     return `<div class="file-card" id="file-card-${f.id}">
       <div class="file-icon ${ext}">${ext}</div>
       <div class="file-info">
         <div class="file-name">${esc(f.name)}</div>
         <div class="file-meta">${size} · ${date} · ${esc(f.uploaded_by_email || 'unknown')}</div>
         <div class="file-actions">
-          ${isOffice ? `<button class="file-action-btn primary" onclick="openInOffice('${f.id}')">Office Online</button>` : ''}
-          ${isOffice ? `<button class="file-action-btn" onclick="openInGoogle('${f.id}')">Google Docs</button>` : ''}
-          ${f.google_drive_id && canEdit ? `<button class="file-action-btn" onclick="exportFromGoogle('${f.id}')">Export from Google</button>` : ''}
-          ${canIngest && canEdit ? `<button class="file-action-btn" onclick="ingestFile('${f.id}', '${esc(f.name)}')">Ingest to Wiki</button>` : ''}
-          <button class="file-action-btn" onclick="downloadFile('${f.id}')">Download</button>
-          ${canEdit ? `<button class="file-action-btn danger" onclick="deleteFile('${f.id}', '${esc(f.name)}')">Delete</button>` : ''}
+          ${isOffice ? `<button class="file-action-btn primary" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">Office Online</button>` : ''}
+          ${isOffice ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Google Docs</button>` : ''}
+          ${f.google_drive_id && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export from Google</button>` : ''}
+          ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Ingest to Wiki</button>` : ''}
+          <button class="file-action-btn" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Download</button>
+          ${canEdit ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Delete</button>` : ''}
         </div>
       </div>
     </div>`;

@@ -27,7 +27,7 @@ router.get('/files/:fileId', async (req, res) => {
     BaseFileName: doc.name,
     Size: doc.size,
     Version: doc.created_at,
-    OwnerId: doc.uploaded_by_email,
+    OwnerId: doc.uploaded_by,
     UserId: entry.userId,
     UserFriendlyName: entry.userEmail,
     UserCanWrite: true,

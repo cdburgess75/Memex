@@ -78,6 +78,9 @@ router.post('/:id/restore/:versionId', auth, requireRole('admin', 'contributor')
 // PUT /api/pages/:id — create or update a page (upsert by slug id)
 router.put('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const { id } = req.params;
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) {
+    return res.status(400).json({ error: 'Invalid page ID format' });
+  }
   const { title, category, content, sources } = req.body;
   const client = db();
 

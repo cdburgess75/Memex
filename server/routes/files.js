@@ -29,23 +29,24 @@ const MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
 async function extractText(buffer, filename) {
   const ext = filename.split('.').pop().toLowerCase();
+  const MAX = 100_000;
   if (ext === 'docx' || ext === 'doc') {
     const mammoth = require('mammoth');
     const result = await mammoth.extractRawText({ buffer });
-    return result.value;
+    return result.value.slice(0, MAX);
   }
   if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
     const XLSX = require('xlsx');
     const wb = XLSX.read(buffer, { type: 'buffer' });
     return wb.SheetNames.map(name =>
       `## ${name}\n\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}`
-    ).join('\n\n');
+    ).join('\n\n').slice(0, MAX);
   }
   if (ext === 'pdf') {
     const pdfParse = require('pdf-parse');
-    return (await pdfParse(buffer)).text;
+    return (await pdfParse(buffer)).text.slice(0, MAX);
   }
-  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8');
+  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8').slice(0, 100_000);
   return null;
 }
 
@@ -75,8 +76,9 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), upload.single(
   if (!req.file) return res.status(400).json({ error: 'file required' });
 
   const client = db();
+  const path = require('path');
   const { buffer, originalname, mimetype, size } = req.file;
-  const sanitizedName = originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const sanitizedName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `documents/${Date.now()}-${sanitizedName}`;
 
   // Upload to Supabase Storage
@@ -181,7 +183,12 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
     });
 
     const raw = message.content.map(b => b.text || '').join('');
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (parseErr) {
+      return res.status(422).json({ error: 'Claude returned invalid JSON — try again' });
+    }
 
     const touched = [];
     for (const p of (parsed.pages || [])) {
@@ -338,7 +345,7 @@ router.post('/:id/google', auth, async (req, res) => {
 
     const fileMetadata = {
       name: doc.name,
-      ...(googleMimeTypes[ext] ? { mimeType: googleMimeTypes[ext] } : {}),
+      mimeType: googleMimeTypes[ext] || doc.mime_type,
       ...(process.env.GOOGLE_DRIVE_FOLDER_ID ? { parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] } : {}),
     };
 

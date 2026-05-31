@@ -14,20 +14,19 @@ module.exports = async function auth(req, res, next) {
   if (error || !user) return res.status(401).json({ error: 'Invalid token' });
 
   // Look up role in user_roles table
-  const client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-  let { data: roleRow } = await client.from('user_roles').select('role').eq('user_id', user.id).maybeSingle();
+  let { data: roleRow } = await adminClient.from('user_roles').select('role').eq('user_id', user.id).maybeSingle();
 
   if (!roleRow) {
     // Auto-assign role based on ADMIN_EMAILS env var
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
     const assignedRole = adminEmails.includes((user.email || '').toLowerCase()) ? 'admin' : 'contributor';
 
-    await client.from('user_roles').insert({
-      user_id: user.id,
-      role: assignedRole,
-    });
+    const { data: upserted } = await adminClient.from('user_roles').upsert(
+      { user_id: user.id, role: assignedRole },
+      { onConflict: 'user_id', ignoreDuplicates: false }
+    ).select('role').maybeSingle();
 
-    roleRow = { role: assignedRole };
+    roleRow = upserted || { role: assignedRole };
   }
 
   req.user = {
