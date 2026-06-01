@@ -1,6 +1,6 @@
 'use strict';
 const jwt = require('jsonwebtoken');
-const JwksClient = require('jwks-rsa');
+const { JwksClient } = require('jwks-rsa');
 const db = require('../lib/db');
 
 let _jwksClient;
@@ -21,7 +21,7 @@ function jwks() {
 async function verifyToken(token) {
   const decoded = jwt.decode(token, { complete: true });
   if (!decoded?.header?.kid) throw new Error('Invalid token structure');
-  const key = await jwks().getSigningKeyAsync(decoded.header.kid);
+  const key = await jwks().getSigningKey(decoded.header.kid);
   return jwt.verify(token, key.getPublicKey(), { algorithms: ['RS256'] });
 }
 
