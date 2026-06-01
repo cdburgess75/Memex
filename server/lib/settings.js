@@ -73,4 +73,6 @@ async function set(key, value, userId) {
   }
 }
 
-module.exports = { get, getOrEnv, set, refresh, ENV_MAP };
+function _reset() { cache.clear(); lastFetch = 0; }
+
+module.exports = { get, getOrEnv, set, refresh, ENV_MAP, _reset };
