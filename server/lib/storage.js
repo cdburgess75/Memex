@@ -47,38 +47,14 @@ async function supabaseDel(storagePath) {
 // Files uploaded before encryption was enabled are detected by missing magic bytes
 // and returned as-is, so enabling encryption is non-destructive to existing files.
 
-const fs = require('fs').promises;
+const enc  = require('./encryption');
+const fs   = require('fs').promises;
 const nodePath = require('path');
-const crypto = require('crypto');
-
-const ENC_MAGIC = Buffer.from('MXEC');
-const ENC_ALGO  = 'aes-256-gcm';
-
-function _deriveKey(passphrase) {
-  return crypto.scryptSync(passphrase, 'memex-local-enc-v1', 32);
-}
+const crypto   = require('crypto');
 
 async function _encKey() {
   const raw = await settings.getOrEnv('storage_encryption_key');
-  if (!raw) return null;
-  return /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, 'hex') : _deriveKey(raw);
-}
-
-function _encrypt(buf, key) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ENC_ALGO, key, iv);
-  const ct = Buffer.concat([cipher.update(buf), cipher.final()]);
-  return Buffer.concat([ENC_MAGIC, iv, cipher.getAuthTag(), ct]);
-}
-
-function _decrypt(buf, key) {
-  if (buf.length < 32 || !buf.slice(0, 4).equals(ENC_MAGIC)) return buf;
-  const iv  = buf.slice(4, 16);
-  const tag = buf.slice(16, 32);
-  const ct  = buf.slice(32);
-  const dec = crypto.createDecipheriv(ENC_ALGO, key, iv);
-  dec.setAuthTag(tag);
-  return Buffer.concat([dec.update(ct), dec.final()]);
+  return enc.resolveKey(raw);
 }
 
 async function localBase() {
@@ -102,7 +78,7 @@ function validateLocalToken(token) {
 
 async function localUpload(storagePath, buffer) {
   const key = await _encKey();
-  const data = key ? _encrypt(buffer, key) : buffer;
+  const data = key ? enc.encrypt(buffer, key) : buffer;
   const fullPath = nodePath.join(await localBase(), storagePath);
   await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, data);
@@ -111,7 +87,7 @@ async function localUpload(storagePath, buffer) {
 async function localDownload(storagePath) {
   const raw = await fs.readFile(nodePath.join(await localBase(), storagePath));
   const key = await _encKey();
-  return key ? _decrypt(raw, key) : raw;
+  return key ? enc.decrypt(raw, key) : raw;
 }
 
 async function localGetUrl(storagePath, ttl) {
