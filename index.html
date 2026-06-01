@@ -880,6 +880,16 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h23v23H0z"/><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
         Sign in with Microsoft 365
       </button>
+      <div style="text-align:center;color:var(--muted,#999);font-size:12px;margin:14px 0;letter-spacing:.1em">OR</div>
+      <form class="login-form" onsubmit="return signInPassword(event)">
+        <input id="login-email" type="email" autocomplete="username" placeholder="Email"
+               style="width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border,#ccc);border-radius:6px;font:inherit">
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="Password"
+               style="width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border,#ccc);border-radius:6px;font:inherit">
+        <button class="provider-btn" type="submit" style="width:100%;justify-content:center">
+          Sign in with email &amp; password
+        </button>
+      </form>
     </div>
   </div>
 </div>
@@ -1130,6 +1140,27 @@ async function signIn(provider) {
     ...(idpHint ? { kc_idp_hint: idpHint } : {}),
   });
   window.location.href = `${_kcAuthUrl()}/auth?${params}`;
+}
+
+async function signInPassword(ev) {
+  if (ev) ev.preventDefault();
+  const email = (document.getElementById("login-email").value || "").trim();
+  const password = document.getElementById("login-password").value || "";
+  if (!email || !password) { toast("Enter email and password"); return false; }
+  try {
+    const res = await fetch(`${_kcAuthUrl()}/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: _kc.clientId, grant_type: "password",
+        scope: "openid email profile", username: email, password,
+      }),
+    });
+    if (!res.ok) { toast("Sign-in failed — check your email and password"); return false; }
+    _storeTokens(await res.json());
+    await _afterLogin();
+  } catch (e) { toast("Sign-in error: " + e.message); }
+  return false;
 }
 
 async function signOut() {
