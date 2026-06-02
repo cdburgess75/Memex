@@ -13,9 +13,11 @@ RUN cd server && npm ci --production && npm cache clean --force
 # Copy application source
 COPY . .
 
-# Run as a non-root user
+# Run as a non-root user. Pre-create the storage dir owned by memex so a fresh
+# named volume mounted at /data/documents inherits writable ownership.
 RUN addgroup -S memex && adduser -S memex -G memex && \
-    chown -R memex:memex /app
+    mkdir -p /data/documents && \
+    chown -R memex:memex /app /data
 USER memex
 
 EXPOSE 3000

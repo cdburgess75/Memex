@@ -94,7 +94,9 @@ CREATE TABLE IF NOT EXISTS documents (
   google_drive_id  TEXT,
   uploaded_by      UUID,
   uploaded_by_email TEXT,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at       TIMESTAMPTZ,
+  deleted_by       UUID
 );
 
 -- System settings — admin-configurable key/value pairs (override env vars at runtime)
