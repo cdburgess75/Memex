@@ -1,0 +1,28 @@
+# Memex production reverse proxy — terminates TLS for files.ptechllc.com
+# Caddy auto-provisions a Let's Encrypt cert via the HTTP-01 challenge once
+# the A record (files.ptechllc.com -> public IP) and port-forwarding (80/443
+# -> this box) are in place.
+
+files.ptechllc.com {
+	encode zstd gzip
+
+	# Keycloak browser-facing endpoints (login pages, JWKS, token, static assets).
+	# Server-to-server JWKS verification still uses KEYCLOAK_INTERNAL_URL=http://keycloak:8080.
+	@keycloak path /realms/* /resources/*
+	handle @keycloak {
+		reverse_proxy keycloak:8080
+	}
+
+	# Everything else -> the Memex app.
+	handle {
+		reverse_proxy app:3000
+	}
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
