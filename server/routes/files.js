@@ -94,7 +94,17 @@ router.get('/local-download', async (req, res) => {
 // GET /api/files
 router.get('/', auth, async (req, res) => {
   try {
-    const rows = await db.query('SELECT * FROM documents ORDER BY created_at DESC');
+    const rows = await db.query('SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/files/trash — list soft-deleted documents (admin/contributor)
+router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const rows = await db.query('SELECT * FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC');
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -231,6 +241,7 @@ router.get('/:id/url', auth, async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const url = await storage.getUrl(doc.storage_path, 3600);
+    await logEvent(`download · ${doc.name}`, req.user.id, req.user.email);
     res.json({ url, name: doc.name });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -267,6 +278,7 @@ router.get('/:id/office', auth, async (req, res) => {
       }
     }
 
+    await logEvent(`view · ${doc.name}`, req.user.id, req.user.email);
     res.json({ viewUrl, editUrl, ext });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -409,13 +421,43 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
 });
 
 // DELETE /api/files/:id
+// DELETE /api/files/:id — soft-delete (move to trash); storage object is retained
 router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1', [req.params.id, req.user.id]);
+    await logEvent(`trash · ${doc.name}`, req.user.id, req.user.email);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/:id/restore — restore a soft-deleted document from trash
+router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NOT NULL', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
+
+    await db.query('UPDATE documents SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [req.params.id]);
+    await logEvent(`restore · ${doc.name}`, req.user.id, req.user.email);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/files/:id/purge — permanently delete a trashed document (admin only)
+router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NOT NULL', [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
     await storage.del(doc.storage_path);
     await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
+    await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
