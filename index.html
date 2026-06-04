@@ -1072,6 +1072,11 @@ async function initApp() {
 
   _kc = { url: config.keycloakUrl, realm: config.keycloakRealm, clientId: config.keycloakClientId };
 
+  if (config.version) {
+    const colophon = document.querySelector('.brand .colophon');
+    if (colophon) colophon.textContent = `a team knowledge base, kept by Claude · ${config.version}`;
+  }
+
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code')) {
     await handleOAuthCallback(urlParams.get('code'), urlParams.get('state'));
