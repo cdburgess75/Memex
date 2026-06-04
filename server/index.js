@@ -6,6 +6,12 @@ const settings = require('./lib/settings');
 
 const app = express();
 
+// App version (vYYYY.MM.DD.NNN) — read from the VERSION file at the repo root
+let VERSION = 'dev';
+try {
+  VERSION = require('fs').readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim() || 'dev';
+} catch { /* VERSION file optional */ }
+
 // Dynamic CORS — origins configurable via admin settings
 app.use(cors((_req, callback) => {
   settings.getOrEnv('cors_origins').then(raw => {
@@ -32,6 +38,7 @@ app.get('/api/config', (_req, res) => {
     keycloakUrl: process.env.KEYCLOAK_URL,
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
+    version: VERSION,
   });
 });
 
