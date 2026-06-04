@@ -988,6 +988,8 @@ let extractedFileText = '';
 
 // files tab state
 let filesList = []; // cached list of uploaded files
+let trashList = []; // cached list of trashed files
+let fileView = 'active'; // 'active' | 'trash'
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -2463,6 +2465,10 @@ async function renderFiles() {
       accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv"
       multiple onchange="handleFilePickerChange(event)">
     <div class="upload-progress" id="upload-status"></div>
+    <div class="file-toolbar" style="display:flex;gap:8px;margin:12px 0 4px">
+      <button class="file-action-btn" id="file-view-active" onclick="setFileView('active')">Files</button>
+      <button class="file-action-btn" id="file-view-trash" onclick="setFileView('trash')">Trash</button>
+    </div>
     <div class="file-list" id="file-list"><div class="note placeholder" style="margin-top:8px">Loading…</div></div>
   </div>`;
 
@@ -2472,7 +2478,72 @@ async function renderFiles() {
   zone.ondragleave = () => zone.classList.remove('drag-over');
   zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag-over'); uploadFiles(Array.from(e.dataTransfer.files)); };
 
-  await loadFiles();
+  setFileView('active');
+}
+
+function setFileView(view) {
+  fileView = view;
+  const aBtn = document.getElementById('file-view-active');
+  const tBtn = document.getElementById('file-view-trash');
+  if (aBtn) aBtn.classList.toggle('primary', view === 'active');
+  if (tBtn) tBtn.classList.toggle('primary', view === 'trash');
+  const zone = document.getElementById('file-drop-zone');
+  if (zone) zone.style.display = view === 'trash' ? 'none' : '';
+  if (view === 'trash') loadTrash(); else loadFiles();
+}
+
+async function loadTrash() {
+  const el = document.getElementById('file-list');
+  if (el) el.innerHTML = '<div class="note placeholder" style="margin-top:8px">Loading…</div>';
+  try {
+    trashList = await apiGet('/files/trash');
+    renderTrashList();
+  } catch (e) {
+    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load trash: ${esc(e.message)}</p>`;
+  }
+}
+
+function renderTrashList() {
+  const el = document.getElementById('file-list');
+  if (!el) return;
+  if (!trashList.length) { el.innerHTML = '<p class="note placeholder">Trash is empty.</p>'; return; }
+  const isAdmin = currentUser?.role === 'admin';
+  el.innerHTML = trashList.map(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+' MB' : (f.size/1024).toFixed(0)+' KB';
+    const when = f.deleted_at ? new Date(f.deleted_at).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : '';
+    const dName = f.name.replace(/"/g, '&quot;');
+    return `<div class="file-card" id="file-card-${f.id}">
+      <div class="file-icon ${ext}">${ext}</div>
+      <div class="file-info">
+        <div class="file-name">${esc(f.name)}</div>
+        <div class="file-meta">${size} · deleted ${when}</div>
+        <div class="file-actions">
+          <button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>
+          ${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function restoreFile(fileId, name) {
+  try {
+    await apiPost('/files/' + fileId + '/restore', {});
+    trashList = trashList.filter(f => f.id !== fileId);
+    renderTrashList();
+    toast(`${name} restored`);
+  } catch (e) { toast('Restore failed: ' + e.message); }
+}
+
+async function purgeFile(fileId, name) {
+  if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+  try {
+    await apiDelete('/files/' + fileId + '/purge');
+    trashList = trashList.filter(f => f.id !== fileId);
+    renderTrashList();
+    toast(`${name} permanently deleted`);
+  } catch (e) { toast('Delete failed: ' + e.message); }
 }
 
 async function loadFiles() {
@@ -2640,12 +2711,12 @@ async function downloadFile(fileId) {
 }
 
 async function deleteFile(fileId, name) {
-  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  if (!confirm(`Move "${name}" to Trash? You can restore it later.`)) return;
   try {
     await apiDelete('/files/' + fileId);
     filesList = filesList.filter(f => f.id !== fileId);
     renderFileList();
-    toast(`${name} deleted`);
+    toast(`${name} moved to Trash`);
   } catch (e) { toast('Delete failed: ' + e.message); }
 }
 
