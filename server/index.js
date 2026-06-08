@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const settings = require('./lib/settings');
+const { makeRateLimiters } = require('./lib/rateLimiters');
 
 const app = express();
 
@@ -31,6 +32,10 @@ app.use((_req, _res, next) => {
 });
 
 app.use(express.json());
+
+const { apiLimiter, authLimiter } = makeRateLimiters();
+app.use('/api/auth', authLimiter);
+app.use('/api', apiLimiter);
 
 // Public config — lets the frontend bootstrap auth without a build step
 app.get('/api/config', (_req, res) => {
