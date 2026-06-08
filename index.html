@@ -1723,11 +1723,10 @@ async function setTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   if (tab === 'files') { await renderFiles(); return; }
   if (tab === 'read') { openPage(state.activePage); return; }
-  if (tab === 'ingest') renderIngest();
-  else if (tab === 'query') renderQuery();
-  else if (tab === 'lint') renderLint();
-  else if (tab === 'admin') await renderAdmin();
-  wrapPanelInFileHome(tab);
+  if (tab === 'ingest') { renderIngest(); return; }
+  if (tab === 'query') { renderQuery(); return; }
+  if (tab === 'lint') { renderLint(); return; }
+  if (tab === 'admin') { await renderAdmin(); return; }
 }
 
 function openPage(id) {
@@ -1801,6 +1800,7 @@ function editPage(id) {
       ${currentUser?.role === 'admin' ? `<button class="delete-btn" onclick="deletePage('${id}')">Delete</button>` : ''}
     </div>
   </div>`;
+  if (document.documentElement.classList.contains('file-home-mode')) wrapPanelInFileHome('read');
 }
 
 async function savePage(id) {
@@ -1845,6 +1845,7 @@ async function showHistory(id) {
     </div>
     <div id="version-list"><div class="note placeholder">Loading…</div></div>
   </div>`;
+  if (document.documentElement.classList.contains('file-home-mode')) wrapPanelInFileHome('read');
 
   try {
     const versions = await apiGet('/pages/' + id + '/versions');
@@ -1892,13 +1893,20 @@ async function restoreVersion(pageId, versionId) {
   } catch (e) { toast('Restore failed: ' + e.message); }
 }
 
+/* ---------- workspace shell helpers ---------- */
+function setWorkspacePanel(html, activeWorkspace) {
+  const panel = document.getElementById('panel');
+  panel.innerHTML = html;
+  if (document.documentElement.classList.contains('file-home-mode')) wrapPanelInFileHome(activeWorkspace);
+}
+
 /* ---------- ingest ---------- */
 function renderIngest() {
   if (currentUser?.role === 'viewer') {
-    document.getElementById('panel').innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:40px">Contact an admin to get contributor access.</p></div>`;
+    setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:40px">Contact an admin to get contributor access.</p></div>`, 'ingest');
     return;
   }
-  document.getElementById('panel').innerHTML = `<div class="panel">
+  setWorkspacePanel(`<div class="panel">
     <div class="mode-tabs">
       <button class="mode-tab ${ingestMode === 'paste' ? 'active' : ''}" onclick="setIngestMode('paste')">Paste</button>
       <button class="mode-tab ${ingestMode === 'url' ? 'active' : ''}" onclick="setIngestMode('url')">URL</button>
@@ -1944,7 +1952,7 @@ function renderIngest() {
       <div class="chips" id="ingest-chips"></div>
     </div>
     <div class="result"><div class="result-label">Recent activity</div><div class="log-list" id="log-list"></div></div>
-  </div>`;
+  </div>`, 'ingest');
 
   // Attach drag-and-drop to paste textarea (assign directly to avoid listener accumulation)
   const srcEl = document.getElementById('src');
@@ -2077,7 +2085,7 @@ async function doIngest() {
 }
 
 function renderQuery() {
-  document.getElementById('panel').innerHTML = `<div class="panel">
+  setWorkspacePanel(`<div class="panel">
     <div class="field">
       <label class="field-label">Ask the collection</label>
       <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"
@@ -2092,11 +2100,11 @@ function renderQuery() {
       <div class="result-label">Answer</div>
       <div class="response" id="query-answer"></div>
     </div>
-  </div>`;
+  </div>`, 'query');
 }
 
 function renderLint() {
-  document.getElementById('panel').innerHTML = `<div class="panel">
+  setWorkspacePanel(`<div class="panel">
     <p class="note">A health-check of the whole collection — contradictions, orphaned pages, missing links, and gaps worth chasing next.</p>
     <div class="field" style="margin-top:20px">
       <label class="field-label">Focus — optional</label>
@@ -2110,7 +2118,7 @@ function renderLint() {
       <div class="result-label">Audit</div>
       <div class="response" id="lint-report"></div>
     </div>
-  </div>`;
+  </div>`, 'lint');
 }
 
 function fmtBytes(bytes) {
@@ -2131,7 +2139,7 @@ async function adminDeleteFile(fileId, fileName) {
 
 async function renderAdmin() {
   const panel = document.getElementById('panel');
-  panel.innerHTML = `<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`;
+  setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`, 'admin');
   try {
     const [stats, usage, users, files, sysSettings] = await Promise.all([
       apiGet('/admin/stats'),
@@ -2390,7 +2398,7 @@ async function renderAdmin() {
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
     </div>`;
 
-    panel.innerHTML = `<div class="panel">
+    setWorkspacePanel(`<div class="panel">
       ${usageHtml}
       ${storageHtml}
       <div class="stat-grid">
@@ -2418,9 +2426,9 @@ async function renderAdmin() {
         <tbody>${activityRows}</tbody>
       </table>
       ${teamHtml}
-    </div>`;
+    </div>`, 'admin');
   } catch (e) {
-    panel.innerHTML = `<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`;
+    setWorkspacePanel(`<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`, 'admin');
   }
 }
 
