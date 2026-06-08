@@ -42,6 +42,21 @@ html.dark {
   --rule-soft: rgba(237,232,224,0.06);
   --shadow: 0 1px 3px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.18);
 }
+html.office {
+  /* Microsoft 365-inspired palette */
+  --paper: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F5F8FC;
+  --ink: #111827;
+  --ink-soft: #24324A;
+  --ink-faint: #667085;
+  --accent: #0078D4;
+  --accent-soft: #005A9E;
+  --accent-wash: #E8F3FF;
+  --rule: rgba(17,24,39,0.14);
+  --rule-soft: rgba(17,24,39,0.07);
+  --shadow: 0 2px 8px rgba(31,48,74,0.08), 0 0 0 1px rgba(0,120,212,0.08);
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--body);
@@ -82,6 +97,66 @@ body {
   padding-bottom: 3px;
 }
 .masthead-actions { display: flex; gap: 6px; align-items: center; }
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+.theme-option {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-faint);
+  padding: 6px 9px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.theme-option:hover { color: var(--ink); background: var(--surface); }
+.theme-option.active {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule-soft), 0 1px 2px rgba(0,0,0,0.04);
+}
+html.office body { background-image: none; }
+html.office .masthead { border-bottom-color: var(--rule); }
+html.office .brand h1 { font-family: var(--body); font-weight: 500; }
+html.office .colophon::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  vertical-align: -4px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #0F6CBD 0 35%, #2AA0FF 35% 52%, #3BCEAC 52% 68%, #F7634D 68% 84%, #F2C94C 84% 100%);
+  box-shadow: 0 2px 5px rgba(0,120,212,0.22);
+}
+html.office .tab.active,
+html.office .run-btn,
+html.office .provider-btn:hover,
+html.office .page-link.active {
+  background: var(--accent-wash);
+  border-color: rgba(0,120,212,0.28);
+}
+html.office .run-btn {
+  background: #0078D4;
+  color: #FFFFFF;
+  border-color: #0078D4;
+}
+html.office .run-btn:hover { background: #005A9E; border-color: #005A9E; }
+html.office .file-icon.docx, html.office .file-icon.doc { background: #E8F3FF; color: #185ABD; }
+html.office .file-icon.xlsx, html.office .file-icon.xls, html.office .file-icon.csv { background: #EAF7EA; color: #107C41; }
+html.office .file-icon.pptx, html.office .file-icon.ppt { background: #FFF0EA; color: #C43E1C; }
+html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
 .icon-btn {
   font-family: var(--mono);
   font-size: 12px;
@@ -900,7 +975,11 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <span class="colophon">a team knowledge base, kept by Claude</span>
   </div>
   <div class="masthead-actions">
-    <button class="icon-btn" onclick="toggleTheme()" id="theme-btn">Dark</button>
+    <div class="theme-switcher" role="group" aria-label="Theme">
+      <button class="theme-option" type="button" data-theme="light" onclick="setTheme('light')">Light</button>
+      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')">365</button>
+      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+    </div>
     <button class="icon-btn" onclick="exportMarkdown()">Export .md</button>
     <button class="icon-btn" onclick="exportJSON()">Backup</button>
     <button class="icon-btn" onclick="document.getElementById('import-file').click()">Restore</button>
@@ -1095,8 +1174,9 @@ async function initApp() {
   }
 
   const savedTheme = localStorage.getItem('memex_theme');
-  if (savedTheme === 'dark') setTheme(true);
-  else if (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme(true);
+  if (savedTheme) setTheme(savedTheme);
+  else if (window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme('dark');
+  else setTheme('light');
 }
 
 async function _afterLogin() {
@@ -1293,12 +1373,23 @@ async function streamFromApi(path, body, el) {
 }
 
 /* ---------- theme ---------- */
-function setTheme(dark) {
-  document.documentElement.classList.toggle('dark', dark);
-  document.getElementById('theme-btn').textContent = dark ? 'Light' : 'Dark';
-  localStorage.setItem('memex_theme', dark ? 'dark' : 'light');
+function setTheme(theme) {
+  if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
+  if (!['light', 'office', 'dark'].includes(theme)) theme = 'light';
+  document.documentElement.classList.toggle('dark', theme === 'dark');
+  document.documentElement.classList.toggle('office', theme === 'office');
+  document.querySelectorAll('.theme-option').forEach(btn => {
+    const active = btn.dataset.theme === theme;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  localStorage.setItem('memex_theme', theme);
 }
-function toggleTheme() { setTheme(!document.documentElement.classList.contains('dark')); }
+function toggleTheme() {
+  const order = ['light', 'office', 'dark'];
+  const current = localStorage.getItem('memex_theme') || 'light';
+  setTheme(order[(order.indexOf(current) + 1) % order.length]);
+}
 
 /* ---------- toast ---------- */
 let toastTimer;
