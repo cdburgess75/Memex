@@ -843,7 +843,8 @@ html.dark .chip { color: var(--accent-soft); }
 
 /* Files home */
 html.file-home-mode body { background: #F7F7F8; background-image: none; }
-html.file-home-mode .shell { max-width: none; width: 100%; grid-template-columns: 1fr; min-height: calc(100vh - 76px); }
+html.file-home-mode .masthead { max-width: none; padding-left: 36px; padding-right: 36px; }
+html.file-home-mode .shell { max-width: none; width: 100%; grid-template-columns: 1fr; min-height: calc(100vh - 76px); margin: 0; padding: 0; }
 html.file-home-mode .index-col { display: none; }
 html.file-home-mode .work-col { min-height: calc(100vh - 76px); }
 html.file-home-mode .tabs { display: none; }
@@ -898,10 +899,13 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-table th { text-align: left; color: #696969; font: 700 15px var(--body); padding: 13px 18px; border-bottom: 1px solid #ECECEC; }
 .file-table td { padding: 13px 18px; border-bottom: 1px solid #F0F0F0; color: #616161; vertical-align: middle; font-size: 15px; }
 .file-table tr:last-child td { border-bottom: 0; }
+.file-table th:nth-child(4), .file-table td:nth-child(4) { width: 22%; overflow: hidden; }
+.file-table th:nth-child(5), .file-table td:nth-child(5) { width: 244px; }
 .file-row-name { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .file-row-title { color: #323130; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row-sub { color: #707070; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row-activity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.file-row-activity span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .file-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .file-upload-status { min-height: 24px; color: #0F5FB5; font-size: 14px; margin-bottom: 10px; }
 .file-empty-home { background: #FFFFFF; border: 1px dashed #D8D8D8; border-radius: 12px; padding: 36px; color: #707070; }
@@ -916,7 +920,7 @@ html.file-home-mode .masthead-actions { display: none; }
   .file-home-shell { display: block; }
   .file-home-nav { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid #E5E5E5; }
   .file-home-user, .file-nav-section, .file-quick-list { display: none; }
-  .file-nav-main { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .file-nav-main { display: flex; gap: 8px; flex-wrap: wrap; overflow: visible; padding-bottom: 2px; }
   .file-nav-link { flex: 0 0 auto; width: auto; white-space: nowrap; padding: 8px 12px; }
   .file-nav-icon { width: auto; }
   .file-home-main { padding: 22px 16px 34px; }
@@ -2730,12 +2734,21 @@ function fileNavButton(label, symbol, action, active) {
   return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span class="file-nav-symbol">${symbol}</span><span>${label}</span></button>`;
 }
 
+function friendlyUserName() {
+  const name = currentUser?.name || currentUser?.displayName;
+  const email = currentUser?.email || '';
+  if (name) return name;
+  if (email.toLowerCase() === 'dave@ptechllc.com') return 'Dave Ptech';
+  return email || 'Dave Ptech';
+}
+
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
-  const userName = esc(currentUser?.name || currentUser?.email || 'Dave Ptech');
+  const userName = esc(friendlyUserName());
   return `<button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span class="file-nav-symbol">P</span><span>People</span></div><div class="file-nav-label"><span class="file-nav-symbol">M</span><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
+  document.documentElement.classList.add('file-home-mode');
   return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
 }
 
@@ -2750,6 +2763,7 @@ function wrapPanelInFileHome(activeWorkspace) {
 }
 
 async function renderFiles() {
+  document.documentElement.classList.add('file-home-mode');
   document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name or person" oninput="renderFileList()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section>`, 'files', 'home');
   fileView = 'active';
   fileFilter = 'all';
