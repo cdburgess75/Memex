@@ -847,7 +847,10 @@ html.file-home-mode .shell { max-width: none; width: 100%; grid-template-columns
 html.file-home-mode .index-col { display: none; }
 html.file-home-mode .work-col { min-height: calc(100vh - 76px); }
 html.file-home-mode .tabs { display: none; }
-html.file-home-mode .panel { max-width: none; min-height: calc(100vh - 76px); padding: 0; border: 0; background: transparent; box-shadow: none; }
+html.file-home-mode #panel > .panel { max-width: none; min-height: calc(100vh - 76px); padding: 0; border: 0; background: transparent; box-shadow: none; }
+html.file-home-mode .masthead-actions { display: none; }
+.file-workspace-content { max-width: 1120px; }
+.file-workspace-content .panel { margin: 0; }
 .file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
 .file-create-btn { width: 100%; border: 0; border-radius: 999px; padding: 12px 16px; color: #FFFFFF; background: linear-gradient(135deg, #0F6CBD, #4F3FB8); font: 600 15px var(--body); display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; box-shadow: 0 6px 18px rgba(15,108,189,0.22); }
@@ -1293,7 +1296,7 @@ async function loadFromServer() {
     state.pages = [WELCOME, ...pages];
     if (!state.activePage) state.activePage = 'overview';
     renderIndex();
-    openPage(state.activePage);
+    await setTab('files');
   } catch (e) {
     toast('Could not load pages: ' + e.message);
   }
@@ -1714,16 +1717,17 @@ function gotoTitle(title) {
 }
 
 /* ---------- tabs / routing ---------- */
-function setTab(tab) {
+async function setTab(tab) {
   state.tab = tab;
-  document.documentElement.classList.toggle('file-home-mode', tab === 'files');
+  document.documentElement.classList.add('file-home-mode');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  if (tab === 'read')   openPage(state.activePage);
-  else if (tab === 'ingest') renderIngest();
-  else if (tab === 'query')  renderQuery();
-  else if (tab === 'lint')   renderLint();
-  else if (tab === 'files')  renderFiles();
-  else if (tab === 'admin')  renderAdmin();
+  if (tab === 'files') { await renderFiles(); return; }
+  if (tab === 'read') { openPage(state.activePage); return; }
+  if (tab === 'ingest') renderIngest();
+  else if (tab === 'query') renderQuery();
+  else if (tab === 'lint') renderLint();
+  else if (tab === 'admin') await renderAdmin();
+  wrapPanelInFileHome(tab);
 }
 
 function openPage(id) {
@@ -1766,6 +1770,7 @@ function openPage(id) {
     <div class="prose">${mdToHtml(page.content)}</div>
   </article>`;
   renderIndex();
+  if (document.documentElement.classList.contains('file-home-mode')) wrapPanelInFileHome('read');
 }
 
 /* ---------- page editing ---------- */
@@ -2713,8 +2718,31 @@ function openRecommendedFile(fileId) {
 }
 let fileFilter = 'all';
 
+function fileNavButton(label, symbol, action, active) {
+  return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span class="file-nav-symbol">${symbol}</span><span>${label}</span></button>`;
+}
+
+function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
+  const userName = esc(currentUser?.name || currentUser?.email || 'Dave Ptech');
+  return `<button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span class="file-nav-symbol">P</span><span>People</span></div><div class="file-nav-label"><span class="file-nav-symbol">M</span><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+}
+
+function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
+}
+
+function wrapPanelInFileHome(activeWorkspace) {
+  const panel = document.getElementById('panel');
+  const content = panel.innerHTML;
+  panel.innerHTML = fileHomeShell(`<div class="file-workspace-content">${content}</div>`, activeWorkspace, '');
+  quickAccessHtml().then(html => {
+    const quick = document.getElementById('file-quick-list');
+    if (quick) quick.innerHTML = html;
+  });
+}
+
 async function renderFiles() {
-  document.getElementById('panel').innerHTML = `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell"><aside class="file-home-nav"><button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${esc(currentUser?.name || currentUser?.email || 'Memex')}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main"><button class="file-nav-link" onclick="setTab(&quot;read&quot;)"><span class="file-nav-symbol">R</span><span>Read</span></button><button class="file-nav-link" onclick="setTab(&quot;ingest&quot;)"><span class="file-nav-symbol">+</span><span>Ingest</span></button><button class="file-nav-link" onclick="setTab(&quot;query&quot;)"><span class="file-nav-symbol">?</span><span>Query</span></button><button class="file-nav-link" onclick="setTab(&quot;lint&quot;)"><span class="file-nav-symbol">L</span><span>Lint</span></button><button class="file-nav-link" onclick="setTab(&quot;admin&quot;)"><span class="file-nav-symbol">A</span><span>Admin</span></button></div><div class="file-nav-section">Files</div><div class="file-nav-main"><button class="file-nav-link active" onclick="setFileView(&quot;active&quot;)"><span class="file-nav-symbol">H</span><span>Home</span></button><button class="file-nav-link" onclick="setFileView(&quot;active&quot;)"><span class="file-nav-symbol">F</span><span>Files</span></button><button class="file-nav-link" onclick="setFileView(&quot;shared&quot;)"><span class="file-nav-symbol">S</span><span>Shared</span></button><button class="file-nav-link" onclick="setFileView(&quot;active&quot;)"><span class="file-nav-symbol">*</span><span>Favorites</span></button><button class="file-nav-link" onclick="setFileView(&quot;trash&quot;)"><span class="file-nav-symbol">T</span><span>Trash</span></button></div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span class="file-nav-symbol">P</span><span>People</span></div><div class="file-nav-label"><span class="file-nav-symbol">M</span><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div></aside><main class="file-home-main"><div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name or person" oninput="renderFileList()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section></main></div></div>`;
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name or person" oninput="renderFileList()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section>`, 'files', 'home');
   fileView = 'active';
   fileFilter = 'all';
   await loadFiles();
@@ -2728,9 +2756,10 @@ function setFileFilter(filter) {
 
 function setFileView(view) {
   fileView = view;
-  document.querySelectorAll('.file-nav-link').forEach((btn, idx) => {
+  document.querySelectorAll('.file-nav-link').forEach(btn => {
     const label = btn.textContent.trim();
-    btn.classList.toggle('active', (view === 'active' && idx === 0) || (view === 'shared' && label.includes('Share')) || (view === 'trash' && label.includes('Bin')));
+    const isFilesHome = ['Files','Shared','Favorites','Trash'].includes(label);
+    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'shared' && label === 'Shared') || (view === 'trash' && label === 'Trash')));
   });
   if (view === 'trash') loadTrash(); else renderFileList();
 }
