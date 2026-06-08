@@ -5,13 +5,13 @@ jest.mock('jwks-rsa');
 jest.mock('../../lib/db');
 
 const jwt        = require('jsonwebtoken');
-const JwksClient = require('jwks-rsa');
+const { JwksClient } = require('jwks-rsa');
 const db         = require('../../lib/db');
 
 // Set up the JWKS mock before auth.js loads so the singleton uses it
 const mockGetPublicKey  = jest.fn().mockReturnValue('mock-public-key');
 const mockGetSigningKey = jest.fn().mockResolvedValue({ getPublicKey: mockGetPublicKey });
-JwksClient.mockImplementation(() => ({ getSigningKeyAsync: mockGetSigningKey }));
+JwksClient.mockImplementation(() => ({ getSigningKey: mockGetSigningKey }));
 
 // Require auth after mocks are registered
 const auth = require('../../middleware/auth');
