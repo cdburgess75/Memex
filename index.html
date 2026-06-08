@@ -858,13 +858,12 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; }
 .file-create-btn .plus { font-size: 25px; line-height: 0; font-weight: 300; }
 .file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
+.file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
 .file-nav-link:hover, .file-nav-label:hover { background: #F8FBFF; color: #242424; }
 .file-nav-link.active { color: #242424; background: #EAF3FF; font-weight: 700; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
-.file-nav-symbol { width: 22px; height: 22px; border-radius: 6px; background: #FFFFFF; color: #0F6CBD; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font: 700 12px var(--body); box-shadow: inset 0 0 0 1px #C7DFF6; }
-.file-nav-link.active .file-nav-symbol { background: #FFFFFF; color: #0F6CBD; box-shadow: inset 0 0 0 1px #8FC7F4; }
+.file-nav-symbol { display: none; }
 .file-nav-section { margin: 24px 8px 8px; font-size: 13px; font-weight: 700; color: #323130; }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
 .file-quick-pill { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; color: #5F5F61; font-size: 14px; }
@@ -944,7 +943,11 @@ html.file-home-mode .masthead-actions { display: none; }
 }
 @media (max-width: 520px) {
   .file-home-main { padding: 18px 12px 30px; }
-  .file-create-btn { justify-content: flex-start; }
+  .file-home-nav { gap: 10px; padding: 10px 12px 12px; }
+  .file-create-btn { justify-content: flex-start; padding: 10px 12px; }
+  .file-workspace-main, .file-actions-main, .file-theme-main, .file-nav-label { display: none; }
+  .file-files-main { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .file-files-main .file-nav-link { padding: 8px 12px; }
   .file-rec-card { flex-basis: 88vw; padding: 15px; }
   .file-rec-body { grid-template-columns: 1fr; }
   .file-preview { display: none; }
@@ -2733,7 +2736,7 @@ function openRecommendedFile(fileId) {
 let fileFilter = 'all';
 
 function fileNavButton(label, symbol, action, active) {
-  return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span class="file-nav-symbol">${symbol}</span><span>${label}</span></button>`;
+  return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span>${label}</span></button>`;
 }
 
 function friendlyUserName() {
@@ -2746,7 +2749,7 @@ function friendlyUserName() {
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span class="file-nav-symbol">P</span><span>People</span></div><div class="file-nav-label"><span class="file-nav-symbol">M</span><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
