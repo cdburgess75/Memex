@@ -10,19 +10,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  /* Claude light mode palette */
-  --paper: #F9F7F4;
+  /* Light mode — clean white + neutral grays + Microsoft blue (from the M365/Copilot palette) */
+  --paper: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-2: #F0EBE3;
-  --ink: #1A1916;
-  --ink-soft: #5C5650;
-  --ink-faint: #8C877E;
-  --accent: #D97757;
-  --accent-soft: #C4603D;
-  --accent-wash: #FAECE4;
-  --rule: rgba(26,25,22,0.10);
-  --rule-soft: rgba(26,25,22,0.06);
-  --shadow: 0 1px 3px rgba(26,25,22,0.06), 0 0 0 1px rgba(26,25,22,0.04);
+  --surface-2: #F4F4F4;
+  --ink: #1B1B1F;
+  --ink-soft: #5F5F5F;
+  --ink-faint: #9B9B9B;
+  --accent: #0F6CBD;
+  --accent-soft: #0C5195;
+  --accent-wash: #EAF4FB;
+  --rule: rgba(0,0,0,0.09);
+  --rule-soft: rgba(0,0,0,0.05);
+  --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06);
   --display: 'Fraunces', Georgia, serif;
   --body: 'Newsreader', Georgia, serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -46,12 +46,14 @@ html.dark {
 body {
   font-family: var(--body);
   background-color: var(--paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   color: var(--ink);
   font-size: 17px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+}
+html.dark body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
 }
 ::selection { background: var(--accent-wash); }
 
