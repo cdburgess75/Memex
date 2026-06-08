@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-08 · Running version: **v2026.06.08.005**_
+_Last updated: 2026-06-08 · Running version: **v2026.06.08.006**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -39,12 +39,12 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
   The jwks-rsa fix + email/password login (`686dc07`) and `.env` gitignore (`98ddcfe`) are already
-  pushed. **9 commits after `98ddcfe` are LOCAL-only on the box** and need pushing after this `.005` file-home release commit.
+  pushed. **10 commits after `98ddcfe` are LOCAL-only on the box** and need pushing after this `.006` cleanup release commit.
   (Note: `git status` may show a larger "ahead" number — the local `origin/...` tracking ref is
   stale because a push was done via explicit URL and a later `git fetch` timed out. Trust `98ddcfe`.)
 - Local-only commits: `RECOMMENDATIONS.md`; Caddy TLS overlay; trash/audit/perms;
-  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home.
-- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`.
+  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default.
+- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`.
 - `main` is the **stale Supabase v2** (predates this work); branch is 30 ahead / main 1 ahead — a future merge to main will be a deliberate "replace v2" merge, not fast-forward.
 
 ## Key fixes made this session (real bugs)
@@ -64,7 +64,7 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
      `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
 3. **Next Phase 1 build items** (each its own version bump):
-   - `.006` Full-text document search (persist extracted text → Postgres `tsvector` GIN index).
+   - `.007` Full-text document search (persist extracted text → Postgres `tsvector` GIN index).
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart, folders + ACLs, ClamAV scanning, envelope encryption, backups.
 
