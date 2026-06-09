@@ -7,19 +7,29 @@ const settings = require('./lib/settings');
 const app = express();
 
 // Dynamic CORS — origins configurable via admin settings
+// Falls back to last known-good value (or env var) on DB error rather than opening up
+let _lastCorsOpts = null;
 app.use(cors((_req, callback) => {
   settings.getOrEnv('cors_origins').then(raw => {
-    if (!raw || raw === '*') return callback(null, { origin: true });
-    const origins = raw.split(',').map(o => o.trim()).filter(Boolean);
-    callback(null, { origin: origins });
-  }).catch(() => callback(null, { origin: true }));
+    _lastCorsOpts = (!raw || raw === '*')
+      ? { origin: true }
+      : { origin: raw.split(',').map(o => o.trim()).filter(Boolean) };
+    callback(null, _lastCorsOpts);
+  }).catch(() => {
+    const fallback = _lastCorsOpts
+      ?? (process.env.CORS_ORIGINS && process.env.CORS_ORIGINS !== '*'
+        ? { origin: process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean) }
+        : { origin: true });
+    callback(null, fallback);
+  });
 }));
 
-// Dynamic reverse-proxy trust level — configurable without restart for most changes
+// Dynamic reverse-proxy trust level — only calls app.set when value changes
+let _lastTrustProxy;
 app.use((_req, _res, next) => {
   settings.getOrEnv('trust_proxy').then(tp => {
-    if (tp && tp !== 'false') app.set('trust proxy', isNaN(Number(tp)) ? tp : Number(tp));
-    else app.set('trust proxy', false);
+    const val = (tp && tp !== 'false') ? (isNaN(Number(tp)) ? tp : Number(tp)) : false;
+    if (val !== _lastTrustProxy) { _lastTrustProxy = val; app.set('trust proxy', val); }
     next();
   }).catch(() => next());
 });

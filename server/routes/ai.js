@@ -6,27 +6,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const cheerio = require('cheerio');
-const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const { makeUploadMiddleware } = require('../lib/upload');
 
-async function fetchUrl(url) {
-  const proxyUrl = await settings.getOrEnv('http_proxy');
-  const fetchOpts = { headers: { 'User-Agent': 'Memex/1.0' }, signal: AbortSignal.timeout(15000) };
-  if (proxyUrl) {
-    const { ProxyAgent, fetch: undiciFetch } = require('undici');
-    const res = await undiciFetch(url, { ...fetchOpts, dispatcher: new ProxyAgent(proxyUrl) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    $('script, style, nav, footer, header, aside, noscript').remove();
-    const title = $('title').text().trim();
-    const text = ($('article, main, [role="main"], .content, .post, body').first().text())
-      .replace(/\s+/g, ' ').trim().slice(0, 12000);
-    return { title, text };
-  }
-  const res = await fetch(url, fetchOpts);
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
-  const html = await res.text();
+function parseHtml(html) {
   const $ = cheerio.load(html);
   $('script, style, nav, footer, header, aside, noscript').remove();
   const title = $('title').text().trim();
@@ -35,24 +18,21 @@ async function fetchUrl(url) {
   return { title, text };
 }
 
-let _aiUploadMb = 0;
-let _aiUploadMw = null;
-async function getAiUpload() {
-  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '10', 10);
-  if (mb !== _aiUploadMb || !_aiUploadMw) {
-    _aiUploadMb = mb;
-    _aiUploadMw = multer({
-      storage: multer.memoryStorage(),
-      limits: { fileSize: mb * 1024 * 1024 },
-      fileFilter(_req, file, cb) {
-        const allowed = ['.txt', '.md', '.pdf'];
-        const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-        cb(null, allowed.includes(ext));
-      }
-    }).single('file');
+async function fetchUrl(url) {
+  const proxyUrl = await settings.getOrEnv('http_proxy');
+  const fetchOpts = { headers: { 'User-Agent': 'Memex/1.0' }, signal: AbortSignal.timeout(15000) };
+  let res;
+  if (proxyUrl) {
+    const { ProxyAgent, fetch: undiciFetch } = require('undici');
+    res = await undiciFetch(url, { ...fetchOpts, dispatcher: new ProxyAgent(proxyUrl) });
+  } else {
+    res = await fetch(url, fetchOpts);
   }
-  return _aiUploadMw;
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching URL`);
+  return parseHtml(await res.text());
 }
+
+const getAiUpload = makeUploadMiddleware(['.txt', '.md', '.pdf'], 10);
 
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });

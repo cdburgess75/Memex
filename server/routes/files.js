@@ -3,31 +3,17 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const multer = require('multer');
+const { makeUploadMiddleware } = require('../lib/upload');
 const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 
-let _uploadMb = 0;
-let _uploadMw = null;
-async function getUpload() {
-  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '50', 10);
-  if (mb !== _uploadMb || !_uploadMw) {
-    _uploadMb = mb;
-    _uploadMw = multer({
-      storage: multer.memoryStorage(),
-      limits: { fileSize: mb * 1024 * 1024 },
-      fileFilter(_req, file, cb) {
-        const allowed = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
-        const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-        cb(null, allowed.includes(ext));
-      }
-    }).single('file');
-  }
-  return _uploadMw;
-}
+const getUpload = makeUploadMiddleware(
+  ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'],
+  50
+);
 
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
