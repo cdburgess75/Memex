@@ -10,6 +10,14 @@ const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 
+function cleanDisplayName(name) {
+  return String(name || '')
+    .split(/[\\/]+/)
+    .map(part => part.trim().replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/^\.+$/, '_'))
+    .filter(Boolean)
+    .join('/');
+}
+
 let _uploadMb = 0;
 let _uploadMw = null;
 async function getUpload() {
@@ -117,7 +125,8 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
 
   const path = require('path');
   const { buffer, originalname, mimetype, size } = req.file;
-  const sanitizedName = path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const displayName = cleanDisplayName(req.body.displayName) || cleanDisplayName(originalname) || 'upload';
+  const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `documents/${Date.now()}-${sanitizedName}`;
 
   try {
@@ -130,12 +139,12 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     const doc = await db.queryOne(
       `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [originalname, size, mimetype, storagePath, req.user.id, req.user.email]
+      [displayName, size, mimetype, storagePath, req.user.id, req.user.email]
     );
 
     let canIngest = false;
     try {
-      const text = await extractText(buffer, originalname);
+      const text = await extractText(buffer, displayName);
       canIngest = text !== null && text.trim().length > 0;
     } catch (e) {
       console.error('Text extraction failed (non-fatal):', e.message);
