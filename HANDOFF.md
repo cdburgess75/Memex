@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.001**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.002**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -51,6 +51,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Resumable/chunked upload sessions for local-backed storage: large browser uploads use
   `/api/files/uploads` sessions, raw chunk PUTs, completion assembly, resume metadata in
   localStorage, and progress UI. API smoke test verified two-chunk upload/complete/cleanup.
+- Dependency/security cleanup: upgraded `multer` from 1.x to 2.1.1. Jest passed and live
+  multipart, streaming, and chunked upload smoke tests passed after rebuild.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
@@ -90,6 +92,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      immutable audit logs, malware scanning, access review exports, retention/legal hold,
      backup restore evidence, vulnerability management, and evidence binder.
    - `.021` Object-storage multipart uploads for S3/R2/B2 when production storage moves beyond local disk.
+   - `.022` Remaining dependency audit cleanup: `googleapis`/`uuid` requires a breaking
+     `googleapis` upgrade path; `xlsx` has no npm audit fix and likely needs replacement or isolation.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
    envelope encryption, backups.
