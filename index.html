@@ -3012,14 +3012,14 @@ async function uploadFiles(items) {
     const displayName = item.path || file.webkitRelativePath || file.name;
     if (statusEl) statusEl.textContent = `Uploading ${uploaded + 1} of ${items.length}: ${displayName}`;
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('displayName', displayName);
       const token = await getToken();
-      const res = await fetch('/api/files/upload', {
+      const res = await fetch('/api/files/upload-stream?displayName=' + encodeURIComponent(displayName), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': file.type || 'application/octet-stream'
+        },
+        body: file,
       });
       if (!res.ok) { toast(`Upload failed: ${(await res.json()).error}`); continue; }
       const { doc, canIngest } = await res.json();

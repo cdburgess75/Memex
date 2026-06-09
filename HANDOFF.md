@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-08 · Running version: **v2026.06.08.014**_
+_Last updated: 2026-06-08 · Running version: **v2026.06.08.015**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -35,6 +35,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Rate limiting on `/api/*` via `express-rate-limit` with configurable `.env` knobs; verified `RateLimit` headers on `/api/config`.
 - Microsoft 365-inspired theme option added next to Light and Dark in the masthead.
 - Files tab rebuilt as a full-screen Microsoft 365-style home with left rail, For you cards, Recent table, Shared view, Trash view, and responsive iPad/iPhone layouts.
+- Large-file upload path now streams raw file bodies to storage via `/api/files/upload-stream`
+  instead of holding multipart uploads in server memory. Small files still get text extracted
+  for document search; very large files are stored first and need chunk-aware indexing later.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
@@ -43,8 +46,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   (Note: `git status` may show a larger "ahead" number — the local `origin/...` tracking ref is
   stale because a push was done via explicit URL and a later `git fetch` timed out. Trust `98ddcfe`.)
 - Local-only commits: `RECOMMENDATIONS.md`; Caddy TLS overlay; trash/audit/perms;
-  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search.
-- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`.
+  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search; `v2026.06.08.015` streaming large-file uploads.
+- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`, `v2026.06.08.015`.
 - `main` is the **stale Supabase v2** (predates this work); branch is 30 ahead / main 1 ahead — a future merge to main will be a deliberate "replace v2" merge, not fast-forward.
 
 ## Key fixes made this session (real bugs)
@@ -64,9 +67,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
      `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
 3. **Next Phase 1 build items** (each its own version bump):
-   - `.015` Streaming/chunked uploads for very large files. Replace the current in-memory
-     multipart upload path with a resumable/streaming upload flow, then move the documents
-     Docker volume onto a large dedicated disk/NAS mount so multi-GB/TB files are realistic.
+   - `.016` Move the documents Docker volume onto a large dedicated disk/NAS mount so
+     multi-GB/TB files are realistic. Current named volume is still on the small root disk.
+   - `.017` Resumable/chunked upload sessions with pause/resume and progress reporting.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
    envelope encryption, backups.

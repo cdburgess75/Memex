@@ -16,6 +16,8 @@ const DOCUMENT_COLUMNS = `
   uploaded_by_email, created_at, deleted_at, deleted_by
 `;
 
+const ALLOWED_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
+
 function cleanDisplayName(name) {
   return String(name || '')
     .split(/[\\/]+/)
@@ -24,19 +26,31 @@ function cleanDisplayName(name) {
     .join('/');
 }
 
+function fileExt(name) {
+  const ext = require('path').extname(String(name || '')).toLowerCase();
+  return ext;
+}
+
+function isAllowedFile(name) {
+  return ALLOWED_FILE_EXTS.includes(fileExt(name));
+}
+
+async function maxUploadMb() {
+  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '50', 10);
+  return Number.isFinite(mb) && mb > 0 ? mb : 50;
+}
+
 let _uploadMb = 0;
 let _uploadMw = null;
 async function getUpload() {
-  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '50', 10);
+  const mb = await maxUploadMb();
   if (mb !== _uploadMb || !_uploadMw) {
     _uploadMb = mb;
     _uploadMw = multer({
       storage: multer.memoryStorage(),
       limits: { fileSize: mb * 1024 * 1024 },
       fileFilter(_req, file, cb) {
-        const allowed = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
-        const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-        cb(null, allowed.includes(ext));
+        cb(null, isAllowedFile(file.originalname));
       }
     }).single('file');
   }
@@ -152,6 +166,55 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
 
     res.json({ doc, canIngest });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/upload-stream — stream request body directly into storage.
+// The legacy multipart route above remains for compatibility, but the file-home
+// UI uses this route so large files do not sit in server memory before writing.
+router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  const path = require('path');
+  const rawName = req.query.displayName || req.headers['x-file-name'];
+  const displayName = cleanDisplayName(rawName) || 'upload';
+  if (!isAllowedFile(displayName)) return res.status(415).json({ error: 'File type not allowed' });
+
+  const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+  const mimetype = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
+  const declaredSize = Number.parseInt(req.headers['content-length'] || '0', 10);
+
+  let storedSize = declaredSize;
+  try {
+    const result = await storage.uploadStream(storagePath, req, mimetype);
+    if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+
+  try {
+    let canIngest = false;
+    let documentText = null;
+    const extractionLimit = (await maxUploadMb()) * 1024 * 1024;
+    if (storedSize > 0 && storedSize <= extractionLimit) {
+      try {
+        const buffer = await storage.download(storagePath);
+        documentText = await extractText(buffer, displayName);
+        canIngest = documentText !== null && documentText.trim().length > 0;
+      } catch (e) {
+        console.error('Text extraction failed (non-fatal):', e.message);
+      }
+    }
+
+    const doc = await db.queryOne(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText]
+    );
+
+    res.json({ doc, canIngest, streamed: true });
+  } catch (e) {
+    await storage.del(storagePath).catch(() => {});
     res.status(500).json({ error: e.message });
   }
 });
