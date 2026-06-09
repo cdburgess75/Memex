@@ -64,9 +64,12 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
      `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
 3. **Next Phase 1 build items** (each its own version bump):
-   - `.015` TBD next focused build item from roadmap.
+   - `.015` Streaming/chunked uploads for very large files. Replace the current in-memory
+     multipart upload path with a resumable/streaming upload flow, then move the documents
+     Docker volume onto a large dedicated disk/NAS mount so multi-GB/TB files are realistic.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
-   large-file presigned multipart, folders + ACLs, ClamAV scanning, envelope encryption, backups.
+   large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
+   envelope encryption, backups.
 
 ## How to resume
 SSH: password auth still works; Codex key generated locally but not yet installed on host. Code edits: edit under `/opt/memex`,
