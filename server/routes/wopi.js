@@ -6,6 +6,28 @@ const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiToken
 const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
 
+async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
+  const path = require('path');
+  const safeName = path.basename(doc.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const versionNumber = await db.queryOne(
+    'SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM document_versions WHERE document_id = $1',
+    [doc.id]
+  );
+  const next = Number(versionNumber?.next || 1);
+  const versionPath = `versions/${doc.id}/${String(next).padStart(4, '0')}-${Date.now()}-${safeName}`;
+  await storage.copy(doc.storage_path, versionPath, doc.mime_type);
+  await db.query(
+    `INSERT INTO document_versions
+     (document_id, version_number, name, size, mime_type, storage_path, document_text, saved_by, saved_by_email, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [doc.id, next, doc.name, doc.size || 0, doc.mime_type, versionPath, doc.document_text || null, entry.userId, entry.userEmail, source]
+  );
+  await db.query(
+    'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
+    [doc.id, 'version_saved', entry.userId, entry.userEmail, `${source} · version ${next}`]
+  );
+}
+
 // GET /wopi/files/:fileId — CheckFileInfo
 router.get('/files/:fileId', async (req, res) => {
   const entry = validateToken(req.query.access_token);
@@ -67,6 +89,7 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
     }
 
     const buffer = req.body;
+    await saveDocumentVersion(doc, entry, 'wopi_save');
     await storage.upload(doc.storage_path, buffer, doc.mime_type);
     let documentText = null;
     let textExtracted = false;
@@ -81,6 +104,10 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
     } else {
       await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
     }
+    await db.query(
+      'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
+      [doc.id, 'updated', entry.userId, entry.userEmail, `Office save · ${buffer.length} bytes`]
+    );
     res.status(200).end();
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -1132,6 +1132,47 @@ html.dark .file-icon.pptx, html.dark .file-icon.ppt { background: #2D1A08; color
 html.dark .file-action-btn.danger { color: #E57373; }
 .file-action-btn.danger:hover { border-color: currentColor; background: transparent; }
 .file-action-btn:disabled { opacity: 0.4; cursor: wait; }
+.file-history-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0,0,0,0.32);
+}
+.file-history-modal {
+  width: min(860px, 100%);
+  max-height: min(720px, 92dvh);
+  overflow: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+}
+.file-history-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--rule);
+}
+.file-history-title { margin: 0; font-size: 22px; }
+.file-history-sub { margin-top: 4px; color: var(--ink-faint); font-size: 14px; }
+.file-history-body { display: grid; gap: 18px; padding: 20px 22px 24px; }
+.file-history-section h3 { margin: 0 0 10px; font-size: 15px; color: var(--ink); }
+.file-history-list { display: grid; gap: 8px; }
+.file-history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.file-history-meta { color: var(--ink-faint); font-size: 13px; margin-top: 3px; }
 .upload-progress {
   font-family: var(--mono);
   font-size: 12px;
@@ -2491,6 +2532,8 @@ async function renderAdmin() {
         <input type="url" id="cfg-http-proxy" value="${esc(s.http_proxy||'')}" placeholder="http://proxy.company.com:8080 — for AI URL fetching through a corporate proxy">
         <label>Max upload size (MB)</label>
         <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'50')}" min="1" max="2000" step="1">
+        <label>Trash retention (days)</label>
+        <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
     </div>`;
@@ -2625,6 +2668,7 @@ async function saveNetworkSettings() {
     cors_origins:  document.getElementById('cfg-cors-origins').value.trim(),
     http_proxy:    document.getElementById('cfg-http-proxy').value.trim(),
     max_upload_mb: document.getElementById('cfg-max-upload-mb').value,
+    trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
   };
   try {
     await apiPut('/admin/settings', body);
@@ -2779,12 +2823,14 @@ function fileActionButtons(f) {
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
   const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
   const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const isAdmin = currentUser?.role === 'admin';
   const dName = f.name.replace(/"/g, '&quot;');
   return `${isOffice ? `<button class="file-action-btn primary" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">Open</button>` : `<button class="file-action-btn primary" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Open</button>`}
     ${isOffice ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Google Docs</button>` : ''}
     ${f.google_drive_id && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export</button>` : ''}
     ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Index</button>` : ''}
     <button class="file-action-btn" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Download</button>
+    ${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}
     ${canEdit ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Trash</button>` : ''}`;
 }
 function fileRecommendationCard(f, idx) {
@@ -2905,7 +2951,7 @@ function renderTrashList() {
   if (!el) return;
   if (!trashList.length) { el.innerHTML = '<div class="file-empty-home">Trash is empty.</div>'; return; }
   const isAdmin = currentUser?.role === 'admin';
-  el.innerHTML = `<table class="file-table"><thead><tr><th>Name</th><th>Deleted</th><th>Owner</th><th>Activity</th><th></th></tr></thead><tbody>${trashList.map(f => { const ext = fileExt(f.name); const when = fileDate(f.deleted_at); const dName = f.name.replace(/"/g, '&quot;'); return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)}</div></div></div></td><td>${when}</td><td>${esc(fileOwner(f))}</td><td>Deleted ${when}</td><td><div class="file-row-actions"><button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table>`;
+  el.innerHTML = `<table class="file-table"><thead><tr><th>Name</th><th>Deleted</th><th>Owner</th><th>Activity</th><th></th></tr></thead><tbody>${trashList.map(f => { const ext = fileExt(f.name); const when = fileDate(f.deleted_at); const dName = f.name.replace(/"/g, '&quot;'); const actor = f.deleted_by_email ? ` by ${esc(f.deleted_by_email)}` : ''; return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)}</div></div></div></td><td>${when}</td><td>${esc(fileOwner(f))}</td><td>Deleted${actor} ${when}</td><td><div class="file-row-actions">${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}<button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table>`;
 }
 
 async function restoreFile(fileId, name) {
@@ -3032,6 +3078,60 @@ async function uploadFiles(items) {
     }
   }
   if (statusEl) statusEl.textContent = uploaded ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}.` : '';
+}
+
+function closeFileHistory() {
+  document.getElementById('file-history-scrim')?.remove();
+}
+
+function historyDate(value) {
+  return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+}
+
+async function openFileHistory(fileId) {
+  if (currentUser?.role !== 'admin') return;
+  closeFileHistory();
+  document.body.insertAdjacentHTML('beforeend', `<div class="file-history-scrim" id="file-history-scrim" onclick="if(event.target.id==='file-history-scrim')closeFileHistory()"><div class="file-history-modal"><div class="file-history-head"><div><h2 class="file-history-title">File history</h2><div class="file-history-sub">Loading...</div></div><button class="file-action-btn" onclick="closeFileHistory()">Close</button></div><div class="file-history-body"><div class="file-empty-home">Loading history...</div></div></div></div>`);
+  try {
+    const data = await apiGet('/files/' + fileId + '/history');
+    const doc = data.doc || {};
+    const retention = data.retention_days || 30;
+    const events = data.events || [];
+    const versions = data.versions || [];
+    const status = doc.deleted_at
+      ? `In trash · deleted ${historyDate(doc.deleted_at)}${doc.deleted_by_email ? ' by ' + esc(doc.deleted_by_email) : ''}`
+      : 'Active file';
+    const retentionText = doc.deleted_at ? `Retention window: ${retention} days before admin purge review.` : `Trash retention window: ${retention} days.`;
+    const versionHtml = versions.length
+      ? versions.map(v => `<div class="file-history-item"><div><strong>Version ${esc(String(v.version_number))}</strong><div class="file-history-meta">${esc(v.source || 'saved')} · ${historyDate(v.saved_at)}${v.saved_by_email ? ' · ' + esc(v.saved_by_email) : ''} · ${fileSizeLabel(v.size || 0)}</div></div><button class="file-action-btn" data-fid="${doc.id}" data-vid="${v.id}" onclick="restoreFileVersion(this.dataset.fid,this.dataset.vid)">Restore</button></div>`).join('')
+      : '<div class="file-empty-home">No previous versions yet.</div>';
+    const eventHtml = events.length
+      ? events.map(ev => `<div class="file-history-item"><div><strong>${esc((ev.event_type || '').replaceAll('_', ' '))}</strong><div class="file-history-meta">${historyDate(ev.created_at)}${ev.actor_email ? ' · ' + esc(ev.actor_email) : ''}${ev.detail ? ' · ' + esc(ev.detail) : ''}</div></div></div>`).join('')
+      : '<div class="file-empty-home">No audit events yet.</div>';
+
+    const modal = document.querySelector('#file-history-scrim .file-history-modal');
+    modal.querySelector('.file-history-title').textContent = doc.name || 'File history';
+    modal.querySelector('.file-history-sub').innerHTML = `${status}<br>${retentionText}`;
+    modal.querySelector('.file-history-body').innerHTML = `<section class="file-history-section"><h3>Previous versions</h3><div class="file-history-list">${versionHtml}</div></section><section class="file-history-section"><h3>Admin audit timeline</h3><div class="file-history-list">${eventHtml}</div></section>`;
+  } catch (e) {
+    const body = document.querySelector('#file-history-scrim .file-history-body');
+    if (body) body.innerHTML = `<p class="note" style="color:var(--accent)">Could not load history: ${esc(e.message)}</p>`;
+  }
+}
+
+async function restoreFileVersion(fileId, versionId) {
+  if (!confirm('Restore this previous file version? The current file will be saved as a new version first.')) return;
+  try {
+    const data = await apiPost('/files/' + fileId + '/restore-version/' + versionId, {});
+    filesList = filesList.filter(f => String(f.id) !== String(fileId));
+    if (data.doc && !data.doc.deleted_at) filesList.unshift(data.doc);
+    trashList = trashList.filter(f => String(f.id) !== String(fileId));
+    closeFileHistory();
+    if (fileView === 'trash') renderTrashList(); else renderFileList();
+    toast('Previous version restored');
+  } catch (e) {
+    toast('Version restore failed: ' + e.message);
+  }
 }
 
 async function openInOffice(fileId) {

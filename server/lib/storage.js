@@ -165,6 +165,14 @@ async function localDel(storagePath) {
   await fs.unlink(nodePath.join(await localBase(), storagePath));
 }
 
+async function localCopy(fromStoragePath, toStoragePath) {
+  const base = await localBase();
+  const fromPath = nodePath.join(base, fromStoragePath);
+  const toPath = nodePath.join(base, toStoragePath);
+  await fs.mkdir(nodePath.dirname(toPath), { recursive: true });
+  await fs.copyFile(fromPath, toPath);
+}
+
 // ─── S3-compatible ───────────────────────────────────────────────────────────
 // Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO, DigitalOcean Spaces.
 
@@ -229,6 +237,16 @@ async function s3Del(storagePath) {
   await (await s3Client()).send(new DeleteObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
 }
 
+async function s3Copy(fromStoragePath, toStoragePath) {
+  const { CopyObjectCommand } = require('@aws-sdk/client-s3');
+  const bucket = await s3Bucket();
+  await (await s3Client()).send(new CopyObjectCommand({
+    Bucket: bucket,
+    CopySource: `${bucket}/${fromStoragePath}`,
+    Key: toStoragePath,
+  }));
+}
+
 // ─── Public interface ────────────────────────────────────────────────────────
 
 async function upload(storagePath, buffer, mimeType) {
@@ -285,4 +303,15 @@ async function del(storagePath) {
   }
 }
 
-module.exports = { upload, uploadStream, download, getUrl, del, validateLocalToken };
+async function copy(fromStoragePath, toStoragePath, mimeType) {
+  switch (await PROVIDER()) {
+    case 'local': return localCopy(fromStoragePath, toStoragePath);
+    case 's3':    return s3Copy(fromStoragePath, toStoragePath);
+    default: {
+      const buffer = await supabaseDownload(fromStoragePath);
+      return supabaseUpload(toStoragePath, buffer, mimeType);
+    }
+  }
+}
+
+module.exports = { upload, uploadStream, download, getUrl, del, copy, validateLocalToken };

@@ -24,6 +24,7 @@ const ENV_MAP = {
   cors_origins:                   'CORS_ORIGINS',
   http_proxy:                     'HTTP_PROXY',
   max_upload_mb:                  'MAX_UPLOAD_MB',
+  trash_retention_days:           'TRASH_RETENTION_DAYS',
 };
 
 const cache = new Map();

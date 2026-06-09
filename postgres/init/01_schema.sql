@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS api_usage (
 CREATE TABLE IF NOT EXISTS documents (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name             TEXT        NOT NULL,
-  size             INTEGER     NOT NULL DEFAULT 0,
+  size             BIGINT      NOT NULL DEFAULT 0,
   mime_type        TEXT        NOT NULL,
   storage_path     TEXT        NOT NULL,
   google_drive_id  TEXT,
@@ -104,6 +104,21 @@ ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS document_text TEXT;
 
 ALTER TABLE documents
+  ALTER COLUMN size TYPE BIGINT USING size::bigint;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS deleted_by_email TEXT;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS restored_at TIMESTAMPTZ;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS restored_by UUID;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS restored_by_email TEXT;
+
+ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS document_fts tsvector
   GENERATED ALWAYS AS (
     to_tsvector('english', coalesce(name,'') || ' ' || coalesce(document_text,''))
@@ -111,11 +126,43 @@ ALTER TABLE documents
 
 CREATE INDEX IF NOT EXISTS documents_fts_idx ON documents USING GIN(document_fts);
 
+-- File audit timeline and version history
+CREATE TABLE IF NOT EXISTS document_events (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id  UUID        REFERENCES documents(id) ON DELETE SET NULL,
+  event_type   TEXT        NOT NULL,
+  actor_id     UUID,
+  actor_email  TEXT,
+  detail       TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS document_events_document_idx ON document_events(document_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS document_versions (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id       UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  version_number    INTEGER     NOT NULL,
+  name              TEXT        NOT NULL,
+  size              BIGINT      NOT NULL DEFAULT 0,
+  mime_type         TEXT        NOT NULL,
+  storage_path      TEXT        NOT NULL,
+  document_text     TEXT,
+  saved_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  saved_by          UUID,
+  saved_by_email    TEXT,
+  source            TEXT        NOT NULL DEFAULT 'replace'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS document_versions_document_number_idx ON document_versions(document_id, version_number);
+
+DROP FUNCTION IF EXISTS search_documents(TEXT);
+
 CREATE OR REPLACE FUNCTION search_documents(query_text TEXT)
 RETURNS TABLE(
   id UUID,
   name TEXT,
-  size INTEGER,
+  size BIGINT,
   mime_type TEXT,
   storage_path TEXT,
   google_drive_id TEXT,
