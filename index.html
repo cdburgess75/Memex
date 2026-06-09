@@ -854,8 +854,12 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-workspace-content .panel { margin: 0; }
 .file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
+.file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
+.file-upload-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .file-create-btn { width: 100%; border: 1px solid #BBD7F0; border-radius: 8px; padding: 12px 16px; color: #242424; background: #EAF3FF; font: 700 15px var(--body); display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; }
+.file-folder-btn { border: 1px solid #BBD7F0; border-radius: 8px; padding: 0 12px; color: #242424; background: #FFFFFF; font: 700 14px var(--body); cursor: pointer; }
+.file-folder-btn:hover { background: #F8FBFF; border-color: #8FC7F4; }
 .file-create-btn .plus { font-size: 25px; line-height: 0; font-weight: 300; }
 .file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
@@ -944,6 +948,8 @@ html.file-home-mode .masthead-actions { display: none; }
 @media (max-width: 520px) {
   .file-home-main { padding: 18px 12px 30px; }
   .file-home-nav { gap: 10px; padding: 10px 12px 12px; }
+  .file-upload-actions { grid-template-columns: 1fr; }
+  .file-folder-btn { min-height: 38px; }
   .file-create-btn { justify-content: flex-start; padding: 10px 12px; }
   .file-workspace-main, .file-actions-main, .file-theme-main, .file-nav-label { display: none; }
   .file-files-main { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
@@ -2749,12 +2755,12 @@ function friendlyUserName() {
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Create or upload</span></button><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Upload files</span></button><button class="file-folder-btn" onclick="document.getElementById('folder-picker').click()">Folder</button></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
@@ -2839,19 +2845,66 @@ function renderFileList() {
 }
 
 function handleFilePickerChange(event) {
-  uploadFiles(Array.from(event.target.files));
+  uploadFiles(Array.from(event.target.files).map(file => ({ file, path: file.webkitRelativePath || file.name })));
   event.target.value = '';
 }
 
-async function uploadFiles(files) {
-  if (!files.length) return;
+function handleFileHomeDropOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+  event.currentTarget.classList.add('dragging');
+}
+
+function handleFileHomeDropLeave(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove('dragging');
+}
+
+async function handleFileHomeDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('dragging');
+  const items = await filesFromFileHomeDrop(event.dataTransfer);
+  uploadFiles(items);
+}
+
+async function filesFromFileHomeDrop(dataTransfer) {
+  const entries = Array.from(dataTransfer.items || [])
+    .map(item => item.webkitGetAsEntry && item.webkitGetAsEntry())
+    .filter(Boolean);
+  if (!entries.length) return Array.from(dataTransfer.files || []).map(file => ({ file, path: file.name }));
+
+  const out = [];
+  async function walk(entry, prefix = '') {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      out.push({ file, path: prefix + file.name });
+      return;
+    }
+    if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        for (const child of batch) await walk(child, prefix + entry.name + '/');
+      } while (batch.length);
+    }
+  }
+  for (const entry of entries) await walk(entry);
+  return out;
+}
+
+async function uploadFiles(items) {
+  if (!items.length) return;
   const statusEl = document.getElementById('upload-status');
 
-  for (const file of files) {
-    if (statusEl) statusEl.textContent = `Uploading ${file.name}…`;
+  let uploaded = 0;
+  for (const item of items) {
+    const file = item.file || item;
+    const displayName = item.path || file.webkitRelativePath || file.name;
+    if (statusEl) statusEl.textContent = `Uploading ${uploaded + 1} of ${items.length}: ${displayName}`;
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('displayName', displayName);
       const token = await getToken();
       const res = await fetch('/api/files/upload', {
         method: 'POST',
@@ -2862,12 +2915,13 @@ async function uploadFiles(files) {
       const { doc, canIngest } = await res.json();
       filesList.unshift(doc);
       renderFileList();
-      toast(canIngest ? `${file.name} uploaded — click "Add to collection" to index it` : `${file.name} uploaded`);
+      uploaded += 1;
+      toast(canIngest ? `${displayName} uploaded — click "Index" to add it` : `${displayName} uploaded`);
     } catch (e) {
-      toast(`Upload error: ${e.message}`);
+      toast(`Upload error for ${displayName}: ${e.message}`);
     }
   }
-  if (statusEl) statusEl.textContent = '';
+  if (statusEl) statusEl.textContent = uploaded ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}.` : '';
 }
 
 async function openInOffice(fileId) {
