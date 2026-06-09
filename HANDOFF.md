@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.002**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.003**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -53,6 +53,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   localStorage, and progress UI. API smoke test verified two-chunk upload/complete/cleanup.
 - Dependency/security cleanup: upgraded `multer` from 1.x to 2.1.1. Jest passed and live
   multipart, streaming, and chunked upload smoke tests passed after rebuild.
+- Files nav now opens a SharePoint-style document library/commander view with a command bar,
+  document filters, compact rows, mobile card rendering, and upload refresh that stays in-place.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
