@@ -10,6 +10,11 @@ const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const { extractText } = require('../lib/textExtraction');
+const fsSync = require('fs');
+const fs = fsSync.promises;
+const path = require('path');
+const crypto = require('crypto');
+const { Readable } = require('stream');
 
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, google_drive_id, uploaded_by,
@@ -18,6 +23,9 @@ const DOCUMENT_COLUMNS = `
 `;
 
 const ALLOWED_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
+const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
+const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
+let uploadSessionsEnsured = false;
 
 function cleanDisplayName(name) {
   return String(name || '')
@@ -121,6 +129,123 @@ async function saveDocumentVersion(doc, user, source = 'replace') {
   );
   await logDocumentEvent(doc.id, 'version_saved', user.id, user.email, `${source} · version ${next}`);
   return version;
+}
+
+async function ensureUploadSessionsTable() {
+  if (uploadSessionsEnsured) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS upload_sessions (
+      id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      name              TEXT        NOT NULL,
+      size              BIGINT      NOT NULL DEFAULT 0,
+      mime_type         TEXT        NOT NULL,
+      storage_path      TEXT        NOT NULL,
+      chunk_size        INTEGER     NOT NULL,
+      total_chunks      INTEGER     NOT NULL,
+      received_chunks   INTEGER[]   NOT NULL DEFAULT '{}',
+      received_bytes    BIGINT      NOT NULL DEFAULT 0,
+      uploaded_by       UUID,
+      uploaded_by_email TEXT,
+      status            TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','complete','canceled')),
+      document_id       UUID        REFERENCES documents(id) ON DELETE SET NULL,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at      TIMESTAMPTZ
+    )
+  `);
+  await db.query('CREATE INDEX IF NOT EXISTS upload_sessions_user_status_idx ON upload_sessions(uploaded_by, status, updated_at DESC)');
+  uploadSessionsEnsured = true;
+}
+
+function clampChunkSize(value) {
+  const n = Number.parseInt(value || DEFAULT_CHUNK_SIZE, 10);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_CHUNK_SIZE;
+  return Math.min(Math.max(n, 1024 * 1024), MAX_CHUNK_SIZE);
+}
+
+function uploadSessionClientShape(row) {
+  const received = (row.received_chunks || []).map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+  return {
+    id: row.id,
+    name: row.name,
+    size: Number(row.size || 0),
+    mimeType: row.mime_type,
+    chunkSize: Number(row.chunk_size || DEFAULT_CHUNK_SIZE),
+    totalChunks: Number(row.total_chunks || 0),
+    receivedChunks: received,
+    receivedBytes: Number(row.received_bytes || 0),
+    status: row.status,
+    documentId: row.document_id || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at
+  };
+}
+
+async function chunkRoot() {
+  if (!(await storage.isLocalProvider())) {
+    throw new Error('Resumable chunk uploads currently require local storage');
+  }
+  return path.join(await storage.localBase(), '.uploads');
+}
+
+async function chunkDir(sessionId) {
+  return path.join(await chunkRoot(), String(sessionId));
+}
+
+async function writeChunk(sessionId, index, readable) {
+  const dir = await chunkDir(sessionId);
+  await fs.mkdir(dir, { recursive: true });
+  const finalPath = path.join(dir, `${index}.part`);
+  const tmpPath = `${finalPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  let bytes = 0;
+  await new Promise((resolve, reject) => {
+    const out = fsSync.createWriteStream(tmpPath);
+    readable.on('data', chunk => { bytes += chunk.length; });
+    readable.on('error', reject);
+    out.on('error', reject);
+    out.on('finish', resolve);
+    readable.pipe(out);
+  });
+  await fs.rename(tmpPath, finalPath);
+  return bytes;
+}
+
+async function removeUploadSessionFiles(sessionId) {
+  await fs.rm(await chunkDir(sessionId), { recursive: true, force: true }).catch(() => {});
+}
+
+async function chunkedFileStream(session) {
+  return Readable.from((async function* () {
+    for (let i = 0; i < Number(session.total_chunks || 0); i += 1) {
+      const stream = fsSync.createReadStream(path.join(await chunkDir(session.id), `${i}.part`));
+      for await (const chunk of stream) yield chunk;
+    }
+  })());
+}
+
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail }) {
+  let canIngest = false;
+  let documentText = null;
+  const extractionLimit = (await maxUploadMb()) * 1024 * 1024;
+  if (storedSize > 0 && storedSize <= extractionLimit) {
+    try {
+      const buffer = await storage.download(storagePath);
+      documentText = await extractText(buffer, displayName);
+      canIngest = documentText !== null && documentText.trim().length > 0;
+    } catch (e) {
+      console.error('Text extraction failed (non-fatal):', e.message);
+    }
+  }
+
+  const doc = await db.queryOne(
+    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
+    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText]
+  );
+  await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
+  await logEvent(`upload · ${displayName}`, user.id, user.email);
+  return { doc, canIngest };
 }
 
 // GET /api/files/local-download — serve file using short-lived token (local storage only)
@@ -261,6 +386,169 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/uploads — create or resume a local-backed chunked upload session.
+router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadSessionsTable();
+  const displayName = cleanDisplayName(req.body.displayName || req.body.name) || 'upload';
+  if (!isAllowedFile(displayName)) return res.status(415).json({ error: 'File type not allowed' });
+
+  const size = Number.parseInt(req.body.size || '0', 10);
+  if (!Number.isFinite(size) || size < 0) return res.status(400).json({ error: 'Valid file size required' });
+
+  const mimetype = String(req.body.mimeType || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
+  const chunkSize = clampChunkSize(req.body.chunkSize);
+  const totalChunks = Math.max(1, Math.ceil(size / chunkSize));
+  const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+
+  try {
+    if (!(await storage.isLocalProvider())) {
+      return res.status(400).json({ error: 'Resumable chunk uploads currently require local storage' });
+    }
+    const session = await db.queryOne(
+      `INSERT INTO upload_sessions
+       (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [displayName, size, mimetype, storagePath, chunkSize, totalChunks, req.user.id, req.user.email]
+    );
+    await fs.mkdir(await chunkDir(session.id), { recursive: true });
+    res.json({ session: uploadSessionClientShape(session) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/files/uploads/:sessionId — inspect resumable upload state.
+router.get('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadSessionsTable();
+  try {
+    const session = await db.queryOne(
+      'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
+      [req.params.sessionId, req.user.id]
+    );
+    if (!session) return res.status(404).json({ error: 'Upload session not found' });
+    res.json({ session: uploadSessionClientShape(session) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/files/uploads/:sessionId/chunks/:index — upload one raw chunk.
+router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadSessionsTable();
+  const index = Number.parseInt(req.params.index, 10);
+  if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Valid chunk index required' });
+
+  try {
+    const session = await db.queryOne(
+      'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
+      [req.params.sessionId, req.user.id]
+    );
+    if (!session) return res.status(404).json({ error: 'Upload session not found' });
+    if (session.status !== 'active') return res.status(409).json({ error: `Upload session is ${session.status}` });
+    if (index >= Number(session.total_chunks)) return res.status(400).json({ error: 'Chunk index out of range' });
+
+    const bytes = await writeChunk(session.id, index, req);
+    const expectedChunkBytes = index === Number(session.total_chunks) - 1
+      ? Number(session.size || 0) - (Number(session.total_chunks || 0) - 1) * Number(session.chunk_size || 0)
+      : Number(session.chunk_size || 0);
+    if (Number(session.size || 0) > 0 && bytes !== expectedChunkBytes) {
+      await fs.unlink(path.join(await chunkDir(session.id), `${index}.part`)).catch(() => {});
+      return res.status(400).json({ error: `Chunk ${index} size mismatch`, expected: expectedChunkBytes, received: bytes });
+    }
+    const received = new Set((session.received_chunks || []).map(Number));
+    received.add(index);
+    const receivedChunks = Array.from(received).sort((a, b) => a - b);
+    const expectedBytes = receivedChunks.reduce((sum, idx) => {
+      const isLast = idx === Number(session.total_chunks) - 1;
+      if (!isLast) return sum + Number(session.chunk_size || 0);
+      const tail = Number(session.size || 0) - (Number(session.total_chunks || 0) - 1) * Number(session.chunk_size || 0);
+      return sum + Math.max(0, tail);
+    }, 0);
+    const updated = await db.queryOne(
+      `UPDATE upload_sessions
+       SET received_chunks = $1, received_bytes = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [receivedChunks, expectedBytes || bytes, session.id]
+    );
+    res.json({ session: uploadSessionClientShape(updated) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/uploads/:sessionId/complete — assemble chunks into final storage.
+router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadSessionsTable();
+  try {
+    const session = await db.queryOne(
+      'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
+      [req.params.sessionId, req.user.id]
+    );
+    if (!session) return res.status(404).json({ error: 'Upload session not found' });
+    if (session.status === 'complete' && session.document_id) {
+      const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [session.document_id]);
+      return res.json({ doc, canIngest: false, session: uploadSessionClientShape(session), resumed: true });
+    }
+    if (session.status !== 'active') return res.status(409).json({ error: `Upload session is ${session.status}` });
+
+    const received = new Set((session.received_chunks || []).map(Number));
+    const missing = [];
+    for (let i = 0; i < Number(session.total_chunks || 0); i += 1) {
+      if (!received.has(i)) missing.push(i);
+    }
+    if (missing.length) return res.status(409).json({ error: 'Upload is missing chunks', missing });
+
+    const stream = await chunkedFileStream(session);
+    const result = await storage.uploadStream(session.storage_path, stream, session.mime_type);
+    const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
+    const { doc, canIngest } = await createDocumentRecord({
+      displayName: session.name,
+      storagePath: session.storage_path,
+      mimetype: session.mime_type,
+      storedSize,
+      user: req.user,
+      sourceDetail: 'resumable upload'
+    });
+
+    const updated = await db.queryOne(
+      `UPDATE upload_sessions
+       SET status = 'complete', document_id = $1, completed_at = NOW(), updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [doc.id, session.id]
+    );
+    await removeUploadSessionFiles(session.id);
+    res.json({ doc, canIngest, session: uploadSessionClientShape(updated), chunked: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/files/uploads/:sessionId — cancel an incomplete upload and remove chunks.
+router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadSessionsTable();
+  try {
+    const session = await db.queryOne(
+      'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
+      [req.params.sessionId, req.user.id]
+    );
+    if (!session) return res.status(404).json({ error: 'Upload session not found' });
+    if (session.status === 'active') await removeUploadSessionFiles(session.id);
+    await db.query(
+      `UPDATE upload_sessions
+       SET status = 'canceled', updated_at = NOW()
+       WHERE id = $1 AND status = 'active'`,
+      [session.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
