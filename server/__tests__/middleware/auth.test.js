@@ -4,9 +4,9 @@ jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa');
 jest.mock('../../lib/db');
 
-const jwt        = require('jsonwebtoken');
-const { JwksClient } = require('jwks-rsa');
-const db         = require('../../lib/db');
+const jwt              = require('jsonwebtoken');
+const { JwksClient }   = require('jwks-rsa');  // named export in jwks-rsa v3
+const db               = require('../../lib/db');
 
 // Set up the JWKS mock before auth.js loads so the singleton uses it
 const mockGetPublicKey  = jest.fn().mockReturnValue('mock-public-key');
