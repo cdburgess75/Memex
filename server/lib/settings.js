@@ -58,7 +58,7 @@ async function getOrEnv(key) {
 }
 
 async function set(key, value, userId) {
-  if (!value) {
+  if (value === null || value === undefined || value === '') {
     await db.query('DELETE FROM system_settings WHERE key = $1', [key]);
     cache.delete(key);
   } else {

@@ -39,7 +39,7 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
     for (const [key, value] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
       if (SENSITIVE.has(key) && value === MASKED) continue; // user didn't change it
-      await settings.set(key, value || null, req.user.id);
+      await settings.set(key, value === '' ? null : value, req.user.id);
     }
     await settings.refresh();
     res.json({ ok: true });
