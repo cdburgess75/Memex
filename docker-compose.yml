@@ -59,7 +59,7 @@ services:
       RATE_LIMIT_API_MAX: ${RATE_LIMIT_API_MAX:-300}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
     volumes:
-      - documents_data:/data/documents
+      - /srv/memex-documents:/data/documents
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
@@ -68,4 +68,3 @@ services:
 
 volumes:
   postgres_data:
-  documents_data:
