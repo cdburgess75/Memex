@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.003**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.004**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -19,6 +19,8 @@ file store (external upload, secure share links, large files, compliance readine
 
 ### Credentials / config
 - **App login (interim):** `dave@ptechllc.com` / `Memex#2026!` (Keycloak local user, admin role).
+  - NOTE (2026-06-09): this password drifted (an agent changed it) and was **reset back to
+    `Memex#2026!`** via the Keycloak admin API. If login fails, reset again with admin creds.
 - **Keycloak admin:** user `admin`, password in `/opt/memex/.env` (`KEYCLOAK_ADMIN_PASSWORD`).
 - **Postgres / app secrets:** all in `/opt/memex/.env` (gitignored). Anthropic key set there.
 - `ADMIN_EMAILS=dave@ptechllc.com` → admin role on first login.
@@ -55,16 +57,22 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   multipart, streaming, and chunked upload smoke tests passed after rebuild.
 - Files nav now opens a SharePoint-style document library/commander view with a command bar,
   document filters, compact rows, mobile card rendering, and upload refresh that stays in-place.
+- Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
+  fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
+  trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
+  an auth-test mock fix. Kept local `index.html` (M365 redesign) and `files.js` (streaming/chunked
+  uploads). Full jest suite green (62/62) on the merged tree.
 
 ## Git state
-- **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
-  The jwks-rsa fix + email/password login (`686dc07`) and `.env` gitignore (`98ddcfe`) are already
-  pushed. **12 commits after `98ddcfe` are LOCAL-only on the box** and need pushing after this `.008` workspace-shell polish release commit.
-  (Note: `git status` may show a larger "ahead" number — the local `origin/...` tracking ref is
-  stale because a push was done via explicit URL and a later `git fetch` timed out. Trust `98ddcfe`.)
+- **Branch:** `claude/url-request-GwwHe`. **Origin tip is `cdeaf78`** (another agent pushed two
+  commits — `3a27481` light-mode palette, `cdeaf78` code-review fixes — on top of `98ddcfe`).
+  Those two are now **merged into the local branch** (merge commit `21e4d62`), so local is a
+  superset of origin. **Local is the source of truth; origin is behind by the whole local line
+  and needs the merged branch pushed.** Nothing has been pushed to origin since `cdeaf78`.
+  (`git fetch` has been run, so the local `origin/...` tracking ref is now accurate.)
 - Local-only commits: `RECOMMENDATIONS.md`; Caddy TLS overlay; trash/audit/perms;
   `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search; `v2026.06.08.015` streaming large-file uploads; `v2026.06.08.016` file lifecycle history and version restore; dev storage moved to dedicated `/dev/sdb` disk.
-- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`, `v2026.06.08.015`, `v2026.06.08.016`.
+- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`, `v2026.06.08.015`, `v2026.06.08.016`, `v2026.06.09.001`, `v2026.06.09.002`, `v2026.06.09.003`, `v2026.06.09.004`.
 - `main` is the **stale Supabase v2** (predates this work); branch is 30 ahead / main 1 ahead — a future merge to main will be a deliberate "replace v2" merge, not fast-forward.
 
 ## Key fixes made this session (real bugs)
@@ -75,7 +83,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 
 ## TO-DO / open loops
 1. **Push to GitHub** — needs a fine-grained PAT (Contents: read/write on `cdburgess75/Memex`).
-   Push is done inline without persisting the token. Nothing pushed since `98ddcfe`.
+   Push is done inline without persisting the token. Origin is at `cdeaf78`; the entire local
+   line (merge `21e4d62` + release `v2026.06.09.004` and everything before) is unpushed.
+   **Multiple agents work this branch — push from the box regularly to avoid re-diverging.**
 2. **HTTPS cutover** (unblocks real SSO + safe external sharing). Caddy config is staged
    (`Caddyfile` + `docker-compose.prod.yml`). Requires, on your side:
    - DNS A record: `files.ptechllc.com → 153.66.221.62` (at directnic). Confirm the public IP is static.
