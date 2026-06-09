@@ -20,12 +20,14 @@ Already started:
 - Configurable local encryption key support.
 - Streaming upload path for large files.
 - Versioned releases and git tags.
+- Dedicated document disk in the dev VM.
+- Local backup and non-destructive restore-check tooling.
 
 Major gaps:
 
 - HTTPS and real SSO/MFA are not live yet.
-- Storage is still on the small root disk, not dedicated resilient storage.
-- No off-box backups or restore-test evidence yet.
+- Production storage still needs dedicated resilient storage.
+- Off-box backups are not configured yet.
 - No malware scanning, data classification, DLP, or legal hold.
 - No immutable/tamper-resistant audit log yet.
 - No formal policies, access reviews, vulnerability management, incident response, or evidence binder.
@@ -133,4 +135,3 @@ Target outcome: a repeatable evidence binder that can be shown to customers, aud
 - External share governance.
 - AI governance controls and evidence.
 - Compliance evidence export.
-
