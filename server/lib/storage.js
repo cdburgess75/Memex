@@ -48,9 +48,12 @@ async function supabaseDel(storagePath) {
 // and returned as-is, so enabling encryption is non-destructive to existing files.
 
 const enc  = require('./encryption');
-const fs   = require('fs').promises;
+const fsSync = require('fs');
+const fs   = fsSync.promises;
 const nodePath = require('path');
 const crypto   = require('crypto');
+const { pipeline } = require('stream/promises');
+const { Transform } = require('stream');
 
 async function _encKey() {
   const raw = await settings.getOrEnv('storage_encryption_key');
@@ -82,6 +85,67 @@ async function localUpload(storagePath, buffer) {
   const fullPath = nodePath.join(await localBase(), storagePath);
   await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, data);
+}
+
+function byteCounter(onCount) {
+  return new Transform({
+    transform(chunk, _encoding, callback) {
+      onCount(chunk.length);
+      callback(null, chunk);
+    }
+  });
+}
+
+async function localUploadStream(storagePath, readable) {
+  const key = await _encKey();
+  const fullPath = nodePath.join(await localBase(), storagePath);
+  await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
+
+  const tmpPath = `${fullPath}.${crypto.randomBytes(8).toString('hex')}.upload`;
+  let bytes = 0;
+
+  try {
+    if (!key) {
+      await pipeline(
+        readable,
+        byteCounter(n => { bytes += n; }),
+        fsSync.createWriteStream(tmpPath)
+      );
+      await fs.rename(tmpPath, fullPath);
+      return { size: bytes };
+    }
+
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    await pipeline(
+      readable,
+      byteCounter(n => { bytes += n; }),
+      cipher,
+      fsSync.createWriteStream(tmpPath)
+    );
+
+    const cipherTextPath = `${tmpPath}.ciphertext`;
+    await fs.rename(tmpPath, cipherTextPath);
+    await new Promise((resolve, reject) => {
+      const out = fsSync.createWriteStream(tmpPath);
+      const input = fsSync.createReadStream(cipherTextPath);
+      out.on('error', reject);
+      input.on('error', reject);
+      out.write(enc.MAGIC);
+      out.write(iv);
+      out.write(cipher.getAuthTag());
+      input.pipe(out);
+      input.on('end', () => out.end());
+      out.on('finish', resolve);
+    });
+    await fs.unlink(cipherTextPath);
+    await fs.rename(tmpPath, fullPath);
+    return { size: bytes };
+  } catch (e) {
+    await fs.unlink(tmpPath).catch(() => {});
+    await fs.unlink(`${tmpPath}.ciphertext`).catch(() => {});
+    throw e;
+  }
 }
 
 async function localDownload(storagePath) {
@@ -134,6 +198,14 @@ async function s3Upload(storagePath, buffer, mimeType) {
   }));
 }
 
+async function s3UploadStream(storagePath, readable, mimeType) {
+  const { PutObjectCommand } = require('@aws-sdk/client-s3');
+  await (await s3Client()).send(new PutObjectCommand({
+    Bucket: await s3Bucket(), Key: storagePath, Body: readable, ContentType: mimeType,
+  }));
+  return { size: null };
+}
+
 async function s3Download(storagePath) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
   const res = await (await s3Client()).send(new GetObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
@@ -167,6 +239,28 @@ async function upload(storagePath, buffer, mimeType) {
   }
 }
 
+async function streamToBuffer(readable) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of readable) {
+    chunks.push(chunk);
+    size += chunk.length;
+  }
+  return { buffer: Buffer.concat(chunks), size };
+}
+
+async function uploadStream(storagePath, readable, mimeType) {
+  switch (await PROVIDER()) {
+    case 'local': return localUploadStream(storagePath, readable);
+    case 's3':    return s3UploadStream(storagePath, readable, mimeType);
+    default: {
+      const { buffer, size } = await streamToBuffer(readable);
+      await supabaseUpload(storagePath, buffer, mimeType);
+      return { size };
+    }
+  }
+}
+
 async function download(storagePath) {
   switch (await PROVIDER()) {
     case 'local': return localDownload(storagePath);
@@ -191,4 +285,4 @@ async function del(storagePath) {
   }
 }
 
-module.exports = { upload, download, getUrl, del, validateLocalToken };
+module.exports = { upload, uploadStream, download, getUrl, del, validateLocalToken };
