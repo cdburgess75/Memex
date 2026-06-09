@@ -23,6 +23,7 @@
   --rule: rgba(26,25,22,0.10);
   --rule-soft: rgba(26,25,22,0.06);
   --shadow: 0 1px 3px rgba(26,25,22,0.06), 0 0 0 1px rgba(26,25,22,0.04);
+  --ui: "Segoe UI", Aptos, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   --display: 'Fraunces', Georgia, serif;
   --body: 'Newsreader', Georgia, serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -56,6 +57,8 @@ html.office {
   --rule: rgba(17,24,39,0.14);
   --rule-soft: rgba(17,24,39,0.07);
   --shadow: 0 2px 8px rgba(31,48,74,0.08), 0 0 0 1px rgba(0,120,212,0.08);
+  --display: var(--ui);
+  --body: var(--ui);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -85,7 +88,7 @@ body {
   font-family: var(--display);
   font-weight: 600;
   font-size: 34px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1;
 }
 .brand .colophon {
@@ -128,7 +131,7 @@ body {
 }
 html.office body { background-image: none; }
 html.office .masthead { border-bottom-color: var(--rule); }
-html.office .brand h1 { font-family: var(--body); font-weight: 500; }
+html.office .brand h1 { font-family: var(--display); font-weight: 600; }
 html.office .colophon::before {
   content: '';
   display: inline-block;
@@ -153,6 +156,27 @@ html.office .run-btn {
   border-color: #0078D4;
 }
 html.office .run-btn:hover { background: #005A9E; border-color: #005A9E; }
+html.office .theme-option,
+html.office .icon-btn,
+html.office .user-chip,
+html.office .run-btn,
+html.office .ghost-btn,
+html.office .edit-btn,
+html.office .delete-btn,
+html.office .provider-btn,
+html.office .field-label,
+html.office .mode-tab,
+html.office .file-action-btn,
+html.office .upload-progress {
+  font-family: var(--body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+html.office .field-label,
+html.office .mode-tab,
+html.office .upload-progress {
+  font-weight: 600;
+}
 html.office .file-icon.docx, html.office .file-icon.doc { background: #E8F3FF; color: #185ABD; }
 html.office .file-icon.xlsx, html.office .file-icon.xls, html.office .file-icon.csv { background: #EAF7EA; color: #107C41; }
 html.office .file-icon.pptx, html.office .file-icon.ppt { background: #FFF0EA; color: #C43E1C; }
@@ -327,7 +351,7 @@ html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
   font-weight: 600;
   font-size: 40px;
   line-height: 1.05;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   margin-bottom: 22px;
 }
 .prose { font-size: 18px; line-height: 1.68; color: var(--ink); }
@@ -336,14 +360,14 @@ html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
   font-weight: 500;
   font-size: 23px;
   margin: 30px 0 10px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .prose h3 {
   font-family: var(--display);
   font-weight: 500;
   font-size: 19px;
   margin: 22px 0 8px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .prose p { margin-bottom: 16px; }
 .prose ul { margin: 0 0 16px 22px; }
@@ -459,7 +483,14 @@ html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
   margin-bottom: 8px;
   display: block;
 }
-textarea, input[type=text], input[type=password], select {
+textarea,
+input[type=text],
+input[type=password],
+input[type=email],
+input[type=url],
+input[type=number],
+input[type=search],
+select {
   width: 100%;
   font-family: var(--body);
   font-size: 17px;
@@ -593,20 +624,36 @@ html.dark .chip { color: var(--accent-soft); }
 .modal .sub { font-size: 15px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
 
 /* login screen */
-.login-modal { text-align: center; max-width: 380px; }
-.login-modal h2 { font-size: 36px; margin-bottom: 8px; }
-.login-modal .sub { margin-bottom: 28px; }
+.login-modal { text-align: center; max-width: 420px; padding: 34px 36px 36px; }
+.login-modal h2 { font-size: 34px; line-height: 1.08; margin-bottom: 10px; }
+.login-modal .sub { margin: 0 auto 26px; max-width: 300px; font-size: 15px; }
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
-.provider-btn {
-  font-family: var(--mono);
+.login-form { display: flex; flex-direction: column; gap: 10px; }
+.login-form input {
+  min-height: 48px;
+  border-radius: 6px;
+  padding: 11px 13px;
+  font-size: 15px;
+}
+.login-divider {
+  color: var(--ink-faint);
+  font-family: var(--body);
   font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
+  margin: 13px 0;
+}
+.provider-btn {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--rule);
-  padding: 14px 22px;
-  border-radius: 4px;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
   display: flex;
@@ -616,6 +663,31 @@ html.dark .chip { color: var(--accent-soft); }
   box-shadow: var(--shadow);
 }
 .provider-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+html.office .modal {
+  border-color: rgba(17,24,39,0.12);
+  border-radius: 8px;
+  box-shadow: 0 24px 72px rgba(17,24,39,0.22), 0 0 0 1px rgba(0,120,212,0.06);
+}
+html.office .login-modal h2 {
+  font-size: 32px;
+  font-weight: 650;
+  color: #111827;
+}
+html.office .login-modal .sub {
+  color: #475467;
+  line-height: 1.45;
+}
+html.office .provider-btn {
+  color: #242424;
+  border-color: #D0D5DD;
+  background: #FFFFFF;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05);
+}
+html.office .provider-btn:hover {
+  color: #0F5FB5;
+  border-color: #8FC7F4;
+  background: #F8FBFF;
+}
 
 .toast {
   position: fixed;
@@ -737,6 +809,14 @@ html.dark .chip { color: var(--accent-soft); }
   .index-col { border-right: none; border-bottom: 1px solid var(--ink); }
   .panel { padding: 28px 24px 50px; }
   .masthead, .tabs { padding-left: 20px; padding-right: 20px; }
+  .masthead { align-items: flex-start; flex-direction: column; gap: 12px; overflow: hidden; }
+  .brand { align-items: flex-start; flex-wrap: wrap; max-width: 100%; gap: 8px 12px; }
+  .brand h1 { flex: 0 0 auto; }
+  .brand .colophon { flex: 1 1 180px; min-width: 0; line-height: 1.35; white-space: normal; }
+  .masthead-actions { width: 100%; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
+  .tabs { max-width: 100%; overflow-x: auto; justify-content: flex-start; }
+  .tab { white-space: nowrap; }
+  .login-modal { max-width: 100%; padding: 30px 24px 32px; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
 }
 
@@ -1075,13 +1155,13 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h23v23H0z"/><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
         Sign in with Microsoft 365
       </button>
-      <div style="text-align:center;color:var(--muted,#999);font-size:12px;margin:14px 0;letter-spacing:.1em">OR</div>
+      <div class="login-divider">or</div>
       <form class="login-form" onsubmit="return signInPassword(event)">
         <input id="login-email" type="email" autocomplete="username" placeholder="Email"
-               style="width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border,#ccc);border-radius:6px;font:inherit">
+               aria-label="Email">
         <input id="login-password" type="password" autocomplete="current-password" placeholder="Password"
-               style="width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border,#ccc);border-radius:6px;font:inherit">
-        <button class="provider-btn" type="submit" style="width:100%;justify-content:center">
+               aria-label="Password">
+        <button class="provider-btn" type="submit">
           Sign in with email &amp; password
         </button>
       </form>
