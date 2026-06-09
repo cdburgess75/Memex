@@ -64,7 +64,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
      `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
 3. **Next Phase 1 build items** (each its own version bump):
-   - `.013` Full-text document search (persist extracted text → Postgres `tsvector` GIN index).
+   - `.013` Font/typography pass, especially the login modal: make heading/body/button/input fonts feel intentional, readable, and consistent with the Microsoft 365-inspired theme on desktop and mobile.
+   - `.014` Full-text document search (persist extracted text → Postgres `tsvector` GIN index).
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart, folders + ACLs, ClamAV scanning, envelope encryption, backups.
 
