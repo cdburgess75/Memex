@@ -9,6 +9,12 @@ const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
+const { extractText } = require('../lib/textExtraction');
+
+const DOCUMENT_COLUMNS = `
+  id, name, size, mime_type, storage_path, google_drive_id, uploaded_by,
+  uploaded_by_email, created_at, deleted_at, deleted_by
+`;
 
 function cleanDisplayName(name) {
   return String(name || '')
@@ -45,29 +51,6 @@ async function MODEL() {
   return (await settings.getOrEnv('anthropic_model')) || 'claude-sonnet-4-6';
 }
 
-async function extractText(buffer, filename) {
-  const ext = filename.split('.').pop().toLowerCase();
-  const MAX = 100_000;
-  if (ext === 'docx' || ext === 'doc') {
-    const mammoth = require('mammoth');
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value.slice(0, MAX);
-  }
-  if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
-    const XLSX = require('xlsx');
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    return wb.SheetNames.map(name =>
-      `## ${name}\n\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}`
-    ).join('\n\n').slice(0, MAX);
-  }
-  if (ext === 'pdf') {
-    const pdfParse = require('pdf-parse');
-    return (await pdfParse(buffer)).text.slice(0, MAX);
-  }
-  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8').slice(0, MAX);
-  return null;
-}
-
 function buildContext(pages) {
   return (pages || [])
     .filter(p => p.id !== 'overview')
@@ -102,7 +85,7 @@ router.get('/local-download', async (req, res) => {
 // GET /api/files
 router.get('/', auth, async (req, res) => {
   try {
-    const rows = await db.query('SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC');
+    const rows = await db.query(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC`);
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -112,7 +95,23 @@ router.get('/', auth, async (req, res) => {
 // GET /api/files/trash — list soft-deleted documents (admin/contributor)
 router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const rows = await db.query('SELECT * FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC');
+    const rows = await db.query(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/files/search?q=text — full-text search uploaded document text
+router.get('/search', auth, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+
+  try {
+    const rows = await db.query(
+      'SELECT * FROM search_documents($1)',
+      [q]
+    );
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -136,19 +135,20 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
   }
 
   try {
-    const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [displayName, size, mimetype, storagePath, req.user.id, req.user.email]
-    );
-
     let canIngest = false;
+    let documentText = null;
     try {
-      const text = await extractText(buffer, displayName);
-      canIngest = text !== null && text.trim().length > 0;
+      documentText = await extractText(buffer, displayName);
+      canIngest = documentText !== null && documentText.trim().length > 0;
     } catch (e) {
       console.error('Text extraction failed (non-fatal):', e.message);
     }
+
+    const doc = await db.queryOne(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText]
+    );
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -161,7 +161,7 @@ router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req
   const { focus } = req.body;
 
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     let buffer;
@@ -173,7 +173,7 @@ router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req
 
     let text;
     try {
-      text = await extractText(buffer, doc.name);
+      text = doc.document_text || await extractText(buffer, doc.name);
     } catch (e) {
       return res.status(422).json({ error: `Text extraction failed: ${e.message}` });
     }
@@ -246,7 +246,7 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 // GET /api/files/:id/url
 router.get('/:id/url', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const url = await storage.getUrl(doc.storage_path, 3600);
@@ -260,7 +260,7 @@ router.get('/:id/url', auth, async (req, res) => {
 // GET /api/files/:id/office
 router.get('/:id/office', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const signedUrl = await storage.getUrl(doc.storage_path, 3600);
@@ -303,7 +303,7 @@ router.post('/:id/google', auth, async (req, res) => {
   }
 
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     let buffer;
@@ -377,7 +377,7 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
   }
 
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     if (!doc.google_drive_id) return res.status(400).json({ error: 'Document has not been pushed to Google Drive' });
 
@@ -422,7 +422,19 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     const buffer = Buffer.concat(chunks);
 
     await storage.upload(doc.storage_path, buffer, exportMime);
-    await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
+    let documentText = null;
+    let textExtracted = false;
+    try {
+      documentText = await extractText(buffer, doc.name);
+      textExtracted = true;
+    } catch (e) {
+      console.error('Text extraction after Google export failed (non-fatal):', e.message);
+    }
+    if (textExtracted) {
+      await db.query('UPDATE documents SET size = $1, mime_type = $2, document_text = $3 WHERE id = $4', [buffer.length, exportMime, documentText, doc.id]);
+    } else {
+      await db.query('UPDATE documents SET size = $1, mime_type = $2 WHERE id = $3', [buffer.length, exportMime, doc.id]);
+    }
     res.json({ success: true, size: buffer.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -433,7 +445,7 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
 // DELETE /api/files/:id — soft-delete (move to trash); storage object is retained
 router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1', [req.params.id, req.user.id]);
@@ -447,7 +459,7 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
 router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NOT NULL', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
     await db.query('UPDATE documents SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [req.params.id]);
@@ -461,7 +473,7 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
 // DELETE /api/files/:id/purge — permanently delete a trashed document (admin only)
 router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1 AND deleted_at IS NOT NULL', [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
     await storage.del(doc.storage_path);

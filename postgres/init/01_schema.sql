@@ -92,12 +92,70 @@ CREATE TABLE IF NOT EXISTS documents (
   mime_type        TEXT        NOT NULL,
   storage_path     TEXT        NOT NULL,
   google_drive_id  TEXT,
+  document_text    TEXT,
   uploaded_by      UUID,
   uploaded_by_email TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at       TIMESTAMPTZ,
   deleted_by       UUID
 );
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS document_text TEXT;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS document_fts tsvector
+  GENERATED ALWAYS AS (
+    to_tsvector('english', coalesce(name,'') || ' ' || coalesce(document_text,''))
+  ) STORED;
+
+CREATE INDEX IF NOT EXISTS documents_fts_idx ON documents USING GIN(document_fts);
+
+CREATE OR REPLACE FUNCTION search_documents(query_text TEXT)
+RETURNS TABLE(
+  id UUID,
+  name TEXT,
+  size INTEGER,
+  mime_type TEXT,
+  storage_path TEXT,
+  google_drive_id TEXT,
+  uploaded_by UUID,
+  uploaded_by_email TEXT,
+  created_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID,
+  search_headline TEXT,
+  search_rank REAL
+) AS $$
+  SELECT
+    d.id,
+    d.name,
+    d.size,
+    d.mime_type,
+    d.storage_path,
+    d.google_drive_id,
+    d.uploaded_by,
+    d.uploaded_by_email,
+    d.created_at,
+    d.deleted_at,
+    d.deleted_by,
+    ts_headline(
+      'english',
+      coalesce(d.document_text, ''),
+      websearch_to_tsquery('english', query_text),
+      'StartSel=<<, StopSel=>>, MaxFragments=2, MaxWords=18, MinWords=5'
+    ) AS search_headline,
+    ts_rank(d.document_fts, websearch_to_tsquery('english', query_text)) AS search_rank
+  FROM documents d
+  WHERE d.deleted_at IS NULL
+    AND (
+      d.document_fts @@ websearch_to_tsquery('english', query_text)
+      OR d.name ILIKE '%' || query_text || '%'
+      OR d.uploaded_by_email ILIKE '%' || query_text || '%'
+    )
+  ORDER BY search_rank DESC NULLS LAST, d.created_at DESC
+  LIMIT 50;
+$$ LANGUAGE sql STABLE;
 
 -- System settings — admin-configurable key/value pairs (override env vars at runtime)
 CREATE TABLE IF NOT EXISTS system_settings (
