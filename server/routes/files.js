@@ -13,7 +13,8 @@ const { extractText } = require('../lib/textExtraction');
 
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, google_drive_id, uploaded_by,
-  uploaded_by_email, created_at, deleted_at, deleted_by
+  uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
+  restored_at, restored_by, restored_by_email
 `;
 
 const ALLOWED_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
@@ -33,6 +34,16 @@ function fileExt(name) {
 
 function isAllowedFile(name) {
   return ALLOWED_FILE_EXTS.includes(fileExt(name));
+}
+
+function fileSizeLabelForEvent(size) {
+  const n = Number(size || 0);
+  if (!Number.isFinite(n) || n <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = n;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) { value /= 1024; idx += 1; }
+  return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
 }
 
 async function maxUploadMb() {
@@ -77,6 +88,39 @@ async function logEvent(event, userId, userEmail) {
     'INSERT INTO activity_log (event, user_id, user_email) VALUES ($1, $2, $3)',
     [event, userId, userEmail]
   );
+}
+
+async function logDocumentEvent(documentId, eventType, userId, userEmail, detail = null) {
+  await db.query(
+    'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
+    [documentId, eventType, userId, userEmail, detail]
+  );
+}
+
+async function trashRetentionDays() {
+  const days = parseInt(await settings.getOrEnv('trash_retention_days') || '30', 10);
+  return Number.isFinite(days) && days > 0 ? days : 30;
+}
+
+async function saveDocumentVersion(doc, user, source = 'replace') {
+  const path = require('path');
+  const safeName = path.basename(doc.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const versionNumber = await db.queryOne(
+    'SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM document_versions WHERE document_id = $1',
+    [doc.id]
+  );
+  const next = Number(versionNumber?.next || 1);
+  const versionPath = `versions/${doc.id}/${String(next).padStart(4, '0')}-${Date.now()}-${safeName}`;
+  await storage.copy(doc.storage_path, versionPath, doc.mime_type);
+  const version = await db.queryOne(
+    `INSERT INTO document_versions
+     (document_id, version_number, name, size, mime_type, storage_path, document_text, saved_by, saved_by_email, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING id, document_id, version_number, name, size, mime_type, saved_at, saved_by_email, source`,
+    [doc.id, next, doc.name, doc.size || 0, doc.mime_type, versionPath, doc.document_text || null, user.id, user.email, source]
+  );
+  await logDocumentEvent(doc.id, 'version_saved', user.id, user.email, `${source} · version ${next}`);
+  return version;
 }
 
 // GET /api/files/local-download — serve file using short-lived token (local storage only)
@@ -163,6 +207,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
       [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText]
     );
+    await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -211,6 +256,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
       [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText]
     );
+    await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
@@ -309,7 +355,7 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 // GET /api/files/:id/url
 router.get('/:id/url', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const url = await storage.getUrl(doc.storage_path, 3600);
@@ -323,7 +369,7 @@ router.get('/:id/url', auth, async (req, res) => {
 // GET /api/files/:id/office
 router.get('/:id/office', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const signedUrl = await storage.getUrl(doc.storage_path, 3600);
@@ -484,6 +530,7 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     });
     const buffer = Buffer.concat(chunks);
 
+    await saveDocumentVersion(doc, req.user, 'google_export');
     await storage.upload(doc.storage_path, buffer, exportMime);
     let documentText = null;
     let textExtracted = false;
@@ -498,7 +545,72 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     } else {
       await db.query('UPDATE documents SET size = $1, mime_type = $2 WHERE id = $3', [buffer.length, exportMime, doc.id]);
     }
+    await logDocumentEvent(doc.id, 'updated', req.user.id, req.user.email, `Google export · ${fileSizeLabelForEvent(buffer.length)}`);
     res.json({ success: true, size: buffer.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/files/:id/history — admin-only file audit timeline and versions
+router.get('/:id/history', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const [events, versions, retention] = await Promise.all([
+      db.query(
+        `SELECT id, event_type, actor_email, detail, created_at
+         FROM document_events
+         WHERE document_id = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [req.params.id]
+      ),
+      db.query(
+        `SELECT id, version_number, name, size, mime_type, saved_at, saved_by_email, source
+         FROM document_versions
+         WHERE document_id = $1
+         ORDER BY version_number DESC`,
+        [req.params.id]
+      ),
+      trashRetentionDays()
+    ]);
+
+    res.json({ doc, events, versions, retention_days: retention });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/:id/restore-version/:versionId — restore a previous stored file version
+router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const version = await db.queryOne(
+      `SELECT id, version_number, name, size, mime_type, storage_path, document_text
+       FROM document_versions
+       WHERE id = $1 AND document_id = $2`,
+      [req.params.versionId, req.params.id]
+    );
+    if (!version) return res.status(404).json({ error: 'Version not found' });
+
+    await saveDocumentVersion(doc, req.user, 'before_version_restore');
+    await storage.copy(version.storage_path, doc.storage_path, version.mime_type);
+    const updated = await db.queryOne(
+      `UPDATE documents
+       SET name = $1, size = $2, mime_type = $3, document_text = $4,
+           deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
+           restored_at = NOW(), restored_by = $5, restored_by_email = $6
+       WHERE id = $7
+       RETURNING ${DOCUMENT_COLUMNS}`,
+      [version.name, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
+    );
+
+    await logDocumentEvent(doc.id, 'version_restored', req.user.id, req.user.email, `restored version ${version.version_number}`);
+    await logEvent(`version restore · ${updated.name} · v${version.version_number}`, req.user.id, req.user.email);
+    res.json({ doc: updated });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -511,7 +623,8 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2 WHERE id = $1', [req.params.id, req.user.id]);
+    await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1', [req.params.id, req.user.id, req.user.email]);
+    await logDocumentEvent(doc.id, 'trashed', req.user.id, req.user.email, `retention ${await trashRetentionDays()} days`);
     await logEvent(`trash · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
@@ -525,7 +638,14 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
     const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
-    await db.query('UPDATE documents SET deleted_at = NULL, deleted_by = NULL WHERE id = $1', [req.params.id]);
+    await db.query(
+      `UPDATE documents
+       SET deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
+           restored_at = NOW(), restored_by = $2, restored_by_email = $3
+       WHERE id = $1`,
+      [req.params.id, req.user.id, req.user.email]
+    );
+    await logDocumentEvent(doc.id, 'restored', req.user.id, req.user.email, 'restored from trash');
     await logEvent(`restore · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
@@ -539,6 +659,7 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
     const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
+    await logDocumentEvent(doc.id, 'purged', req.user.id, req.user.email, 'permanent delete');
     await storage.del(doc.storage_path);
     await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
     await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
