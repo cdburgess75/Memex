@@ -46,6 +46,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   and restore-from-previous-version support for overwrite paths.
 - Dedicated document storage moved off the root filesystem for the dev VM:
   `/srv/memex-documents` on `/dev/sdb`, bind-mounted into the app container.
+- Backup tooling added under `scripts/`: `backup-memex.sh` creates a Postgres dump plus
+  document archive; `verify-backup.sh` checks checksums/catalog/archive and writes restore-check evidence.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
@@ -79,8 +81,10 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      dedicated disk/NAS/ZFS dataset. Dev VM now proves the separation with `/dev/sdb`.
    - `.018` Configure ZFS snapshots once production-style storage exists, plus off-box backups to NAS/cloud.
      Snapshots protect local recovery; backups protect against host loss.
-   - `.019` Resumable/chunked upload sessions with pause/resume and progress reporting.
-   - `.020` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
+   - `.019` Configure scheduled/off-box backups and retention around `scripts/backup-memex.sh`;
+     current tooling creates local backup evidence only.
+   - `.020` Resumable/chunked upload sessions with pause/resume and progress reporting.
+   - `.021` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
      immutable audit logs, malware scanning, access review exports, retention/legal hold,
      backup restore evidence, vulnerability management, and evidence binder.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
