@@ -14,6 +14,8 @@ file store (external upload, secure share links, large files, compliance readine
 - **Stack:** `docker compose` — services `app` (:3000), `keycloak` (:8080), `postgres` (:5432).
 - **Bring up:** `cd /opt/memex && docker compose up -d` (add `--build app` after code changes).
 - **Currently reachable only over plain HTTP at `http://192.168.1.32:3000`** (see HTTPS open loop).
+- **Document storage:** `/dev/sdb` (25 GB ext4, label `memex-documents`) mounted at
+  `/srv/memex-documents`; app bind-mounts it to `/data/documents`.
 
 ### Credentials / config
 - **App login (interim):** `dave@ptechllc.com` / `Memex#2026!` (Keycloak local user, admin role).
@@ -42,6 +44,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - File lifecycle history: admin-only file history modal, structured document events,
   deleted/restored actor metadata, configurable trash retention days, previous-version records,
   and restore-from-previous-version support for overwrite paths.
+- Dedicated document storage moved off the root filesystem for the dev VM:
+  `/srv/memex-documents` on `/dev/sdb`, bind-mounted into the app container.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
@@ -50,7 +54,7 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   (Note: `git status` may show a larger "ahead" number — the local `origin/...` tracking ref is
   stale because a push was done via explicit URL and a later `git fetch` timed out. Trust `98ddcfe`.)
 - Local-only commits: `RECOMMENDATIONS.md`; Caddy TLS overlay; trash/audit/perms;
-  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search; `v2026.06.08.015` streaming large-file uploads; `v2026.06.08.016` file lifecycle history and version restore.
+  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search; `v2026.06.08.015` streaming large-file uploads; `v2026.06.08.016` file lifecycle history and version restore; dev storage moved to dedicated `/dev/sdb` disk.
 - Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`, `v2026.06.08.015`, `v2026.06.08.016`.
 - `main` is the **stale Supabase v2** (predates this work); branch is 30 ahead / main 1 ahead — a future merge to main will be a deliberate "replace v2" merge, not fast-forward.
 
@@ -71,10 +75,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
      `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
 3. **Next Phase 1 build items** (each its own version bump):
-   - `.017` Move the documents Docker volume onto a large dedicated disk/NAS mount or ZFS
-     dataset so multi-GB/TB files are realistic. Current host has only one 24 GB ext4 root disk;
-     no spare block device and no visible ZFS tooling were present during the `.016` check.
-   - `.018` Configure ZFS snapshots once storage exists, plus off-box backups to NAS/cloud.
+   - `.017` Production storage sizing/pattern: replicate the dev bind-mount pattern on a larger
+     dedicated disk/NAS/ZFS dataset. Dev VM now proves the separation with `/dev/sdb`.
+   - `.018` Configure ZFS snapshots once production-style storage exists, plus off-box backups to NAS/cloud.
      Snapshots protect local recovery; backups protect against host loss.
    - `.019` Resumable/chunked upload sessions with pause/resume and progress reporting.
    - `.020` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
