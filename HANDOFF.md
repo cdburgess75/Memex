@@ -6,7 +6,8 @@ _Last updated: 2026-06-08 · Running version: **v2026.06.08.016**_
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
 frontend (`index.html`) + Node.js/Express backend, Postgres, Keycloak OIDC auth, pluggable
 storage (local / S3 / Supabase). Goal in progress: make it a small business's secure primary
-file store (external upload, secure share links, large files). See `RECOMMENDATIONS.md`.
+file store (external upload, secure share links, large files, compliance readiness). See
+`RECOMMENDATIONS.md` and `COMPLIANCE_ROADMAP.md`.
 
 ## Deployment
 - **Host:** Ubuntu ARM64 box at `192.168.1.32`, root SSH (password auth). Repo at `/opt/memex`.
@@ -76,6 +77,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
    - `.018` Configure ZFS snapshots once storage exists, plus off-box backups to NAS/cloud.
      Snapshots protect local recovery; backups protect against host loss.
    - `.019` Resumable/chunked upload sessions with pause/resume and progress reporting.
+   - `.020` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
+     immutable audit logs, malware scanning, access review exports, retention/legal hold,
+     backup restore evidence, vulnerability management, and evidence binder.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
    envelope encryption, backups.
