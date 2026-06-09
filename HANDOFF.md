@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-08 · Running version: **v2026.06.08.016**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.001**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -48,6 +48,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   `/srv/memex-documents` on `/dev/sdb`, bind-mounted into the app container.
 - Backup tooling added under `scripts/`: `backup-memex.sh` creates a Postgres dump plus
   document archive; `verify-backup.sh` checks checksums/catalog/archive and writes restore-check evidence.
+- Resumable/chunked upload sessions for local-backed storage: large browser uploads use
+  `/api/files/uploads` sessions, raw chunk PUTs, completion assembly, resume metadata in
+  localStorage, and progress UI. API smoke test verified two-chunk upload/complete/cleanup.
 
 ## Git state
 - **Branch:** `claude/url-request-GwwHe`. **Origin tip is `98ddcfe`** (confirmed via GitHub API).
@@ -83,10 +86,10 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
      Snapshots protect local recovery; backups protect against host loss.
    - `.019` Configure scheduled/off-box backups and retention around `scripts/backup-memex.sh`;
      current tooling creates local backup evidence only.
-   - `.020` Resumable/chunked upload sessions with pause/resume and progress reporting.
-   - `.021` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
+   - `.020` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
      immutable audit logs, malware scanning, access review exports, retention/legal hold,
      backup restore evidence, vulnerability management, and evidence binder.
+   - `.021` Object-storage multipart uploads for S3/R2/B2 when production storage moves beyond local disk.
 4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
    large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
    envelope encryption, backups.

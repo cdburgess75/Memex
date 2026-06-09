@@ -66,6 +66,10 @@ async function localBase() {
   return p;
 }
 
+async function isLocalProvider() {
+  return (await PROVIDER()) === 'local';
+}
+
 const localTokens = new Map();
 setInterval(() => {
   const now = Date.now();
@@ -314,4 +318,4 @@ async function copy(fromStoragePath, toStoragePath, mimeType) {
   }
 }
 
-module.exports = { upload, uploadStream, download, getUrl, del, copy, validateLocalToken };
+module.exports = { upload, uploadStream, download, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase };

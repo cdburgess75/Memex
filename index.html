@@ -995,6 +995,10 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-row-activity span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .file-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .file-upload-status { min-height: 24px; color: #0F5FB5; font-size: 14px; margin-bottom: 10px; }
+.file-upload-status .upload-line { display: grid; gap: 6px; color: #0F5FB5; }
+.file-upload-status .upload-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #424242; }
+.file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: #DDEEFF; overflow: hidden; border: 1px solid #BBD7F0; }
+.file-upload-status .upload-fill { height: 100%; width: var(--pct, 0%); background: linear-gradient(90deg, #0F6CBD, #5B5FC7); transition: width 120ms ease; }
 .file-empty-home { background: #FFFFFF; border: 1px dashed #D8D8D8; border-radius: 12px; padding: 36px; color: #707070; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
@@ -1311,6 +1315,8 @@ let extractedFileText = '';
 let filesList = []; // cached list of uploaded files
 let trashList = []; // cached list of trashed files
 let fileView = 'active'; // 'active' | 'trash'
+const RESUMABLE_UPLOAD_THRESHOLD = 16 * 1024 * 1024;
+const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -3056,19 +3062,11 @@ async function uploadFiles(items) {
   for (const item of items) {
     const file = item.file || item;
     const displayName = item.path || file.webkitRelativePath || file.name;
-    if (statusEl) statusEl.textContent = `Uploading ${uploaded + 1} of ${items.length}: ${displayName}`;
+    setUploadStatus(statusEl, `Uploading ${uploaded + 1} of ${items.length}: ${displayName}`, 0, file.size);
     try {
-      const token = await getToken();
-      const res = await fetch('/api/files/upload-stream?displayName=' + encodeURIComponent(displayName), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': file.type || 'application/octet-stream'
-        },
-        body: file,
-      });
-      if (!res.ok) { toast(`Upload failed: ${(await res.json()).error}`); continue; }
-      const { doc, canIngest } = await res.json();
+      const { doc, canIngest } = file.size >= RESUMABLE_UPLOAD_THRESHOLD
+        ? await uploadFileResumable(file, displayName, statusEl, uploaded + 1, items.length)
+        : await uploadFileStream(file, displayName);
       filesList.unshift(doc);
       renderFileList();
       uploaded += 1;
@@ -3078,6 +3076,95 @@ async function uploadFiles(items) {
     }
   }
   if (statusEl) statusEl.textContent = uploaded ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}.` : '';
+}
+
+function setUploadStatus(statusEl, label, doneBytes = 0, totalBytes = 0) {
+  if (!statusEl) return;
+  const pct = totalBytes ? Math.min(100, Math.round((doneBytes / totalBytes) * 100)) : 0;
+  statusEl.innerHTML = `<div class="upload-line"><div class="upload-meta"><span>${esc(label)}</span><span>${pct}%</span></div><div class="upload-bar"><div class="upload-fill" style="--pct:${pct}%"></div></div></div>`;
+}
+
+async function uploadFileStream(file, displayName) {
+  const token = await getToken();
+  const res = await fetch('/api/files/upload-stream?displayName=' + encodeURIComponent(displayName), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': file.type || 'application/octet-stream'
+    },
+    body: file,
+  });
+  if (!res.ok) throw new Error(await uploadErrorMessage(res));
+  return res.json();
+}
+
+function uploadResumeKey(file, displayName) {
+  return `memex_upload_session:${displayName}:${file.size}:${file.lastModified || 0}`;
+}
+
+async function uploadErrorMessage(res) {
+  try {
+    const body = await res.json();
+    return body.error || JSON.stringify(body);
+  } catch {
+    return await res.text();
+  }
+}
+
+async function getOrCreateUploadSession(file, displayName) {
+  const key = uploadResumeKey(file, displayName);
+  const savedId = localStorage.getItem(key);
+  if (savedId) {
+    try {
+      const existing = await apiGet('/files/uploads/' + savedId);
+      if (existing.session?.status === 'active') return { key, session: existing.session, resumed: true };
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+  const created = await apiPost('/files/uploads', {
+    displayName,
+    size: file.size,
+    mimeType: file.type || 'application/octet-stream',
+    chunkSize: RESUMABLE_CHUNK_SIZE
+  });
+  localStorage.setItem(key, created.session.id);
+  return { key, session: created.session, resumed: false };
+}
+
+async function uploadFileResumable(file, displayName, statusEl, ordinal, totalItems) {
+  let { key, session, resumed } = await getOrCreateUploadSession(file, displayName);
+  const received = new Set((session.receivedChunks || []).map(Number));
+  const totalChunks = session.totalChunks || Math.ceil(file.size / RESUMABLE_CHUNK_SIZE);
+  let doneBytes = received.size * (session.chunkSize || RESUMABLE_CHUNK_SIZE);
+  if (received.has(totalChunks - 1)) doneBytes = file.size - (totalChunks - received.size) * (session.chunkSize || RESUMABLE_CHUNK_SIZE);
+  setUploadStatus(statusEl, `${resumed ? 'Resuming' : 'Uploading'} ${ordinal} of ${totalItems}: ${displayName}`, Math.max(0, Math.min(file.size, doneBytes)), file.size);
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    if (received.has(index)) continue;
+    const chunkSize = session.chunkSize || RESUMABLE_CHUNK_SIZE;
+    const start = index * chunkSize;
+    const end = Math.min(file.size, start + chunkSize);
+    const token = await getToken();
+    const res = await fetch(`/api/files/uploads/${session.id}/chunks/${index}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/octet-stream'
+      },
+      body: file.slice(start, end)
+    });
+    if (!res.ok) throw new Error(await uploadErrorMessage(res));
+    const body = await res.json();
+    session = body.session || session;
+    received.add(index);
+    setUploadStatus(statusEl, `Uploading ${ordinal} of ${totalItems}: ${displayName}`, Math.min(file.size, end), file.size);
+  }
+
+  const completed = await apiPost('/files/uploads/' + session.id + '/complete', {});
+  localStorage.removeItem(key);
+  setUploadStatus(statusEl, `Uploaded ${displayName}`, file.size, file.size);
+  return completed;
 }
 
 function closeFileHistory() {

@@ -156,6 +156,28 @@ CREATE TABLE IF NOT EXISTS document_versions (
 
 CREATE UNIQUE INDEX IF NOT EXISTS document_versions_document_number_idx ON document_versions(document_id, version_number);
 
+-- Resumable upload sessions for local-backed chunked uploads
+CREATE TABLE IF NOT EXISTS upload_sessions (
+  id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name              TEXT        NOT NULL,
+  size              BIGINT      NOT NULL DEFAULT 0,
+  mime_type         TEXT        NOT NULL,
+  storage_path      TEXT        NOT NULL,
+  chunk_size        INTEGER     NOT NULL,
+  total_chunks      INTEGER     NOT NULL,
+  received_chunks   INTEGER[]   NOT NULL DEFAULT '{}',
+  received_bytes    BIGINT      NOT NULL DEFAULT 0,
+  uploaded_by       UUID,
+  uploaded_by_email TEXT,
+  status            TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','complete','canceled')),
+  document_id       UUID        REFERENCES documents(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS upload_sessions_user_status_idx ON upload_sessions(uploaded_by, status, updated_at DESC);
+
 DROP FUNCTION IF EXISTS search_documents(TEXT);
 
 CREATE OR REPLACE FUNCTION search_documents(query_text TEXT)
