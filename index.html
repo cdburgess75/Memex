@@ -989,6 +989,8 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-row-name { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .file-row-title { color: #323130; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row-sub { color: #707070; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row-hit { color: #616161; font-size: 13px; line-height: 1.35; margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.file-row-hit mark { background: #FFF4CE; color: #242424; border-radius: 2px; padding: 0 2px; }
 .file-row-activity { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .file-row-activity span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .file-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -2768,6 +2770,10 @@ function fileDate(value) { return value ? new Date(value).toLocaleDateString([],
 function fileSizeLabel(size) { return size > 1024*1024 ? (size/1024/1024).toFixed(1)+' MB' : Math.max(1, Math.round((size || 0)/1024))+' KB'; }
 function fileIconHtml(ext) { return `<div class="file-icon ${ext}">${esc(fileKind(ext).slice(0,3))}</div>`; }
 function isSharedFile(f) { return (f.uploaded_by_email || '').toLowerCase() !== (currentUser?.email || '').toLowerCase(); }
+function highlightSearchHeadline(headline) {
+  if (!headline) return '';
+  return esc(headline).replace(/&lt;&lt;/g, '<mark>').replace(/&gt;&gt;/g, '</mark>');
+}
 function fileActionButtons(f) {
   const ext = fileExt(f.name);
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
@@ -2791,7 +2797,8 @@ function fileRecentRow(f) {
   const ext = fileExt(f.name);
   const owner = fileOwner(f);
   const activity = isSharedFile(f) ? `${owner} shared this` : `${owner} edited this`;
-  return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${isSharedFile(f) ? `${esc(owner)}'s files` : 'My files'}</div></div></div></td><td>${fileDate(f.created_at)}</td><td>${esc(owner)}</td><td><div class="file-row-activity"><span>${esc(activity)} · ${fileDate(f.created_at)}</span></div></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
+  const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
+  return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${isSharedFile(f) ? `${esc(owner)}'s files` : 'My files'}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td>${esc(owner)}</td><td><div class="file-row-activity"><span>${esc(activity)} · ${fileDate(f.created_at)}</span></div></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
 function quickAccessHtml(files) {
   const items = files.slice(0, 6);
@@ -2802,13 +2809,13 @@ function quickAccessHtml(files) {
     return `<div class="file-quick-pill"><span class="file-quick-badge" style="background:${colors[i % colors.length]}">${esc(fileKind(ext).slice(0,2).toUpperCase())}</span><span class="file-quick-name">${esc(f.name)}</span></div>`;
   }).join('');
 }
-function filterFilesForHome(filter) {
+function filterFilesForHome(filter, list = filesList, applyTextQuery = true) {
   const q = (document.getElementById('file-home-search')?.value || '').trim().toLowerCase();
-  return filesList.filter(f => {
+  return list.filter(f => {
     const ext = fileExt(f.name);
     const kind = fileKind(ext).toLowerCase();
     const matchesKind = filter === 'all' || kind === filter || (filter === 'pdf' && ext === 'pdf');
-    const matchesQuery = !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q);
+    const matchesQuery = !applyTextQuery || !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q);
     return matchesKind && matchesQuery;
   });
 }
@@ -2820,6 +2827,13 @@ function openRecommendedFile(fileId) {
   else downloadFile(fileId);
 }
 let fileFilter = 'all';
+let fileSearchTimer = null;
+let fileSearchSeq = 0;
+
+function scheduleFileSearch() {
+  clearTimeout(fileSearchTimer);
+  fileSearchTimer = setTimeout(() => renderFileList(), 180);
+}
 
 function fileNavButton(label, symbol, action, active) {
   return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span>${label}</span></button>`;
@@ -2855,7 +2869,7 @@ function wrapPanelInFileHome(activeWorkspace) {
 
 async function renderFiles() {
   document.documentElement.classList.add('file-home-mode');
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name or person" oninput="renderFileList()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section>`, 'files', 'home');
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name, person, or document text" oninput="scheduleFileSearch()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section>`, 'files', 'home');
   fileView = 'active';
   fileFilter = 'all';
   await loadFiles();
@@ -2910,17 +2924,33 @@ async function loadFiles() {
   catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`; }
 }
 
-function renderFileList() {
+async function renderFileList() {
   const el = document.getElementById('file-list');
   const rec = document.getElementById('file-recommendations');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml(filesList);
   if (!el) return;
-  const source = fileView === 'shared' ? filesList.filter(isSharedFile) : filesList;
+  const q = (document.getElementById('file-home-search')?.value || '').trim();
+  let searchableFiles = filesList;
+  if (q) {
+    const seq = ++fileSearchSeq;
+    el.innerHTML = '<div class="file-empty-home">Searching document text...</div>';
+    try {
+      searchableFiles = await apiGet('/files/search?q=' + encodeURIComponent(q));
+      if (seq !== fileSearchSeq) return;
+    } catch (e) {
+      if (seq !== fileSearchSeq) return;
+      searchableFiles = filesList;
+      toast('Search failed: ' + e.message);
+    }
+  } else {
+    fileSearchSeq += 1;
+  }
+  const source = fileView === 'shared' ? searchableFiles.filter(isSharedFile) : searchableFiles;
   const recommendations = source.slice(0, 3);
   if (rec) rec.innerHTML = recommendations.length ? recommendations.map(fileRecommendationCard).join('') : '<div class="file-empty-home">Upload or share files to see recommendations here.</div>';
-  const rows = filterFilesForHome(fileFilter).filter(f => fileView === 'shared' ? isSharedFile(f) : true);
-  if (!rows.length) { el.innerHTML = '<div class="file-empty-home">No files match this view.</div>'; return; }
+  const rows = filterFilesForHome(fileFilter, searchableFiles, !q).filter(f => fileView === 'shared' ? isSharedFile(f) : true);
+  if (!rows.length) { el.innerHTML = `<div class="file-empty-home">${q ? 'No files match this search.' : 'No files match this view.'}</div>`; return; }
   el.innerHTML = `<table class="file-table"><thead><tr><th style="width:38%">Name</th><th style="width:15%">Opened</th><th style="width:17%">Owner</th><th>Activity</th><th style="width:220px"></th></tr></thead><tbody>${rows.map(fileRecentRow).join('')}</tbody></table>`;
 }
 

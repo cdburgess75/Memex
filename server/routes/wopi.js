@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../lib/db');
 const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
+const { extractText } = require('../lib/textExtraction');
 
 // GET /wopi/files/:fileId — CheckFileInfo
 router.get('/files/:fileId', async (req, res) => {
@@ -67,7 +68,19 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
 
     const buffer = req.body;
     await storage.upload(doc.storage_path, buffer, doc.mime_type);
-    await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
+    let documentText = null;
+    let textExtracted = false;
+    try {
+      documentText = await extractText(buffer, doc.name);
+      textExtracted = true;
+    } catch (e) {
+      console.error('Text extraction after WOPI save failed (non-fatal):', e.message);
+    }
+    if (textExtracted) {
+      await db.query('UPDATE documents SET size = $1, document_text = $2 WHERE id = $3', [buffer.length, documentText, doc.id]);
+    } else {
+      await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
+    }
     res.status(200).end();
   } catch (e) {
     res.status(500).json({ error: e.message });
