@@ -78,6 +78,12 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Header controls restored in file-home mode after the compact upload change.
 - Removed the old Workspace → Read rail tab from the file-first layout; stale `read`
   route requests now redirect to Files/Home.
+- Added a compact Search rail action beside Upload in the file-first layout. It can focus the
+  current Home/Files search box or open an "Ask the collection" streaming query modal without
+  leaving the file workspace.
+- Theme expansion: added 365 Dark, Aurora, and Graphite palettes alongside Light, 365, and Dark.
+  Theme state now applies one clean root class, and the file-first surfaces, rails, cards, rows,
+  modals, and file type badges follow the selected palette.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
