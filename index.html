@@ -60,6 +60,54 @@ html.office {
   --display: var(--ui);
   --body: var(--ui);
 }
+html.office-dark {
+  --paper: #0B1220;
+  --surface: #101A2D;
+  --surface-2: #17243B;
+  --ink: #F4F8FF;
+  --ink-soft: #B9C7DA;
+  --ink-faint: #7E8EA5;
+  --accent: #58A6FF;
+  --accent-soft: #2F7DD1;
+  --accent-wash: #102A44;
+  --rule: rgba(215,230,255,0.14);
+  --rule-soft: rgba(215,230,255,0.08);
+  --shadow: 0 12px 28px rgba(0,0,0,0.28), 0 0 0 1px rgba(88,166,255,0.10);
+  --display: var(--ui);
+  --body: var(--ui);
+}
+html.aurora {
+  --paper: #F7FBFA;
+  --surface: #FFFFFF;
+  --surface-2: #ECF7F5;
+  --ink: #102027;
+  --ink-soft: #354B56;
+  --ink-faint: #6A7C86;
+  --accent: #127C88;
+  --accent-soft: #2656D9;
+  --accent-wash: #E3F5F2;
+  --rule: rgba(16,32,39,0.12);
+  --rule-soft: rgba(16,32,39,0.07);
+  --shadow: 0 8px 22px rgba(18,124,136,0.10), 0 0 0 1px rgba(38,86,217,0.07);
+  --display: var(--ui);
+  --body: var(--ui);
+}
+html.graphite {
+  --paper: #111315;
+  --surface: #191C1F;
+  --surface-2: #22272B;
+  --ink: #F1F3F4;
+  --ink-soft: #C2C8CC;
+  --ink-faint: #838C93;
+  --accent: #7CC7B7;
+  --accent-soft: #F0B35A;
+  --accent-wash: #18312E;
+  --rule: rgba(241,243,244,0.13);
+  --rule-soft: rgba(241,243,244,0.07);
+  --shadow: 0 14px 34px rgba(0,0,0,0.32), 0 0 0 1px rgba(124,199,183,0.10);
+  --display: var(--ui);
+  --body: var(--ui);
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--body);
@@ -181,6 +229,76 @@ html.office .file-icon.docx, html.office .file-icon.doc { background: #E8F3FF; c
 html.office .file-icon.xlsx, html.office .file-icon.xls, html.office .file-icon.csv { background: #EAF7EA; color: #107C41; }
 html.office .file-icon.pptx, html.office .file-icon.ppt { background: #FFF0EA; color: #C43E1C; }
 html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
+html.office-dark body,
+html.aurora body,
+html.graphite body { background-image: none; }
+html.office-dark .masthead,
+html.aurora .masthead,
+html.graphite .masthead { border-bottom-color: var(--rule); }
+html.office-dark .theme-option,
+html.office-dark .icon-btn,
+html.office-dark .user-chip,
+html.office-dark .run-btn,
+html.office-dark .ghost-btn,
+html.office-dark .edit-btn,
+html.office-dark .delete-btn,
+html.office-dark .provider-btn,
+html.office-dark .field-label,
+html.office-dark .mode-tab,
+html.office-dark .file-action-btn,
+html.office-dark .upload-progress,
+html.aurora .theme-option,
+html.aurora .icon-btn,
+html.aurora .user-chip,
+html.aurora .run-btn,
+html.aurora .ghost-btn,
+html.aurora .edit-btn,
+html.aurora .delete-btn,
+html.aurora .provider-btn,
+html.aurora .field-label,
+html.aurora .mode-tab,
+html.aurora .file-action-btn,
+html.aurora .upload-progress,
+html.graphite .theme-option,
+html.graphite .icon-btn,
+html.graphite .user-chip,
+html.graphite .run-btn,
+html.graphite .ghost-btn,
+html.graphite .edit-btn,
+html.graphite .delete-btn,
+html.graphite .provider-btn,
+html.graphite .field-label,
+html.graphite .mode-tab,
+html.graphite .file-action-btn,
+html.graphite .upload-progress {
+  font-family: var(--body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+html.office-dark .run-btn,
+html.aurora .run-btn,
+html.graphite .run-btn {
+  background: var(--accent);
+  color: #FFFFFF;
+  border-color: var(--accent);
+}
+html.aurora .run-btn { color: #FFFFFF; }
+html.graphite .run-btn { color: #0B1614; }
+html.office-dark .run-btn:hover,
+html.aurora .run-btn:hover,
+html.graphite .run-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); color: #FFFFFF; }
+html.office-dark .file-icon.docx, html.office-dark .file-icon.doc { background: #102A44; color: #8EC8FF; }
+html.office-dark .file-icon.xlsx, html.office-dark .file-icon.xls, html.office-dark .file-icon.csv { background: #0E3023; color: #7BE0A8; }
+html.office-dark .file-icon.pptx, html.office-dark .file-icon.ppt { background: #3A2217; color: #FFAD7A; }
+html.office-dark .file-icon.pdf { background: #3A171D; color: #FF9AA7; }
+html.aurora .file-icon.docx, html.aurora .file-icon.doc { background: #E9F0FF; color: #2656D9; }
+html.aurora .file-icon.xlsx, html.aurora .file-icon.xls, html.aurora .file-icon.csv { background: #E3F5F2; color: #127C88; }
+html.aurora .file-icon.pptx, html.aurora .file-icon.ppt { background: #FFF2DC; color: #B85E00; }
+html.aurora .file-icon.pdf { background: #FFE9EC; color: #B32636; }
+html.graphite .file-icon.docx, html.graphite .file-icon.doc { background: #18243A; color: #8DBBFF; }
+html.graphite .file-icon.xlsx, html.graphite .file-icon.xls, html.graphite .file-icon.csv { background: #18312E; color: #7CC7B7; }
+html.graphite .file-icon.pptx, html.graphite .file-icon.ppt { background: #352716; color: #F0B35A; }
+html.graphite .file-icon.pdf { background: #351A20; color: #FF9AA7; }
 .icon-btn {
   font-family: var(--mono);
   font-size: 12px;
@@ -935,16 +1053,17 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
 .file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
-.file-upload-actions { position: relative; display: block; }
+.file-rail-actions { display: grid; gap: 8px; }
+.file-upload-actions, .file-search-actions { position: relative; display: block; }
 .file-create-btn { width: 100%; border: 1px solid #BBD7F0; border-radius: 8px; padding: 12px 16px; color: #242424; background: #EAF3FF; font: 700 15px var(--body); display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; }
 .file-create-btn .plus { font-size: 25px; line-height: 0; font-weight: 300; }
 .file-create-btn .chev { margin-left: auto; font-size: 13px; line-height: 1; color: #616161; }
 .file-create-btn span:not(.plus):not(.chev) { white-space: nowrap; }
-.file-upload-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; right: 0; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
-.file-upload-menu.open { display: grid; gap: 4px; }
-.file-upload-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
-.file-upload-menu button:hover { background: #EAF3FF; }
+.file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; right: 0; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
+.file-upload-menu.open, .file-search-menu.open { display: grid; gap: 4px; }
+.file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
+.file-upload-menu button:hover, .file-search-menu button:hover { background: #EAF3FF; }
 .file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
@@ -1081,13 +1200,16 @@ html.dark .file-create-btn { background: #172638; border-color: #2E5E8A; color: 
 html.dark .file-create-btn:hover { background: #1D3046; border-color: #4F88BD; }
 html.dark .file-create-btn .chev { color: var(--ink-soft); }
 html.dark .file-upload-menu,
+html.dark .file-search-menu,
 html.dark .file-home-search,
 html.dark .file-library-search,
 html.dark .file-share-grid input,
 html.dark .file-share-grid select,
 html.dark .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
-html.dark .file-upload-menu button { color: var(--ink); }
-html.dark .file-upload-menu button:hover { background: #172638; }
+html.dark .file-upload-menu button,
+html.dark .file-search-menu button { color: var(--ink); }
+html.dark .file-upload-menu button:hover,
+html.dark .file-search-menu button:hover { background: #172638; }
 html.dark .file-home-user,
 html.dark .file-nav-section,
 html.dark .file-home-title,
@@ -1124,6 +1246,7 @@ html.dark .file-library-commandbar.has-selection,
 html.dark .file-library-table-wrap,
 html.dark .file-details-pane,
 html.dark .file-ask-answer,
+html.dark .file-ask-input,
 html.dark .file-share-item,
 html.dark .file-link-card,
 html.dark .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: none; }
@@ -1156,6 +1279,268 @@ html.dark .file-preview::before { opacity: 0.65; }
 html.dark .file-link-status { background: #172638; color: #D9ECFF; }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
+html.office-dark.file-home-mode body,
+html.aurora.file-home-mode body,
+html.graphite.file-home-mode body { background: var(--paper); background-image: none; }
+html.office-dark .file-home-shell,
+html.aurora .file-home-shell,
+html.graphite .file-home-shell { background: var(--paper); color: var(--ink); }
+html.office-dark .file-home-nav,
+html.aurora .file-home-nav,
+html.graphite .file-home-nav { background: var(--surface); border-color: var(--rule); }
+html.office-dark .file-home-shell.dragging,
+html.aurora .file-home-shell.dragging,
+html.graphite .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--accent); }
+html.office-dark .file-create-btn,
+html.aurora .file-create-btn,
+html.graphite .file-create-btn { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+html.office-dark .file-create-btn:hover,
+html.aurora .file-create-btn:hover,
+html.graphite .file-create-btn:hover { border-color: var(--accent); filter: brightness(1.03); }
+html.office-dark .file-create-btn .chev,
+html.aurora .file-create-btn .chev,
+html.graphite .file-create-btn .chev { color: var(--ink-soft); }
+html.office-dark .file-upload-menu,
+html.office-dark .file-search-menu,
+html.office-dark .file-home-search,
+html.office-dark .file-library-search,
+html.office-dark .file-share-grid input,
+html.office-dark .file-share-grid select,
+html.office-dark .file-share-url,
+html.aurora .file-upload-menu,
+html.aurora .file-search-menu,
+html.aurora .file-home-search,
+html.aurora .file-library-search,
+html.aurora .file-share-grid input,
+html.aurora .file-share-grid select,
+html.aurora .file-share-url,
+html.graphite .file-upload-menu,
+html.graphite .file-search-menu,
+html.graphite .file-home-search,
+html.graphite .file-library-search,
+html.graphite .file-share-grid input,
+html.graphite .file-share-grid select,
+html.graphite .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
+html.office-dark .file-upload-menu button,
+html.office-dark .file-search-menu button,
+html.aurora .file-upload-menu button,
+html.aurora .file-search-menu button,
+html.graphite .file-upload-menu button,
+html.graphite .file-search-menu button { color: var(--ink); }
+html.office-dark .file-upload-menu button:hover,
+html.office-dark .file-search-menu button:hover,
+html.aurora .file-upload-menu button:hover,
+html.aurora .file-search-menu button:hover,
+html.graphite .file-upload-menu button:hover,
+html.graphite .file-search-menu button:hover { background: var(--accent-wash); }
+html.office-dark .file-home-user,
+html.office-dark .file-nav-section,
+html.office-dark .file-home-title,
+html.office-dark .file-section-title,
+html.office-dark .file-library-title,
+html.office-dark .file-details-title,
+html.office-dark .file-link-title,
+html.office-dark .file-share-grid label,
+html.office-dark .file-library-selected-count,
+html.aurora .file-home-user,
+html.aurora .file-nav-section,
+html.aurora .file-home-title,
+html.aurora .file-section-title,
+html.aurora .file-library-title,
+html.aurora .file-details-title,
+html.aurora .file-link-title,
+html.aurora .file-share-grid label,
+html.aurora .file-library-selected-count,
+html.graphite .file-home-user,
+html.graphite .file-nav-section,
+html.graphite .file-home-title,
+html.graphite .file-section-title,
+html.graphite .file-library-title,
+html.graphite .file-details-title,
+html.graphite .file-link-title,
+html.graphite .file-share-grid label,
+html.graphite .file-library-selected-count { color: var(--ink); }
+html.office-dark .file-nav-link,
+html.office-dark .file-nav-label,
+html.office-dark .file-library-tool,
+html.office-dark .file-library-close,
+html.office-dark .file-library-icon-btn,
+html.aurora .file-nav-link,
+html.aurora .file-nav-label,
+html.aurora .file-library-tool,
+html.aurora .file-library-close,
+html.aurora .file-library-icon-btn,
+html.graphite .file-nav-link,
+html.graphite .file-nav-label,
+html.graphite .file-library-tool,
+html.graphite .file-library-close,
+html.graphite .file-library-icon-btn { color: var(--ink-soft); }
+html.office-dark .file-nav-link:hover,
+html.office-dark .file-nav-label:hover,
+html.office-dark .file-library-tool:hover,
+html.office-dark .file-library-close:hover,
+html.office-dark .file-library-icon-btn:hover,
+html.aurora .file-nav-link:hover,
+html.aurora .file-nav-label:hover,
+html.aurora .file-library-tool:hover,
+html.aurora .file-library-close:hover,
+html.aurora .file-library-icon-btn:hover,
+html.graphite .file-nav-link:hover,
+html.graphite .file-nav-label:hover,
+html.graphite .file-library-tool:hover,
+html.graphite .file-library-close:hover,
+html.graphite .file-library-icon-btn:hover { background: var(--accent-wash); color: var(--ink); }
+html.office-dark .file-nav-link.active,
+html.office-dark .file-filter-chip.active,
+html.office-dark .file-library-pill.active,
+html.aurora .file-nav-link.active,
+html.aurora .file-filter-chip.active,
+html.aurora .file-library-pill.active,
+html.graphite .file-nav-link.active,
+html.graphite .file-filter-chip.active,
+html.graphite .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
+html.office-dark .file-quick-pill,
+html.office-dark .file-row-sub,
+html.office-dark .file-row-hit,
+html.office-dark .file-row-activity span,
+html.office-dark .file-library-table td,
+html.office-dark .file-link-meta,
+html.office-dark .file-share-meta,
+html.office-dark .file-details-row,
+html.aurora .file-quick-pill,
+html.aurora .file-row-sub,
+html.aurora .file-row-hit,
+html.aurora .file-row-activity span,
+html.aurora .file-library-table td,
+html.aurora .file-link-meta,
+html.aurora .file-share-meta,
+html.aurora .file-details-row,
+html.graphite .file-quick-pill,
+html.graphite .file-row-sub,
+html.graphite .file-row-hit,
+html.graphite .file-row-activity span,
+html.graphite .file-library-table td,
+html.graphite .file-link-meta,
+html.graphite .file-share-meta,
+html.graphite .file-details-row { color: var(--ink-soft); }
+html.office-dark .file-rec-card,
+html.office-dark .file-table-wrap,
+html.office-dark .file-library-commandbar.has-selection,
+html.office-dark .file-library-table-wrap,
+html.office-dark .file-details-pane,
+html.office-dark .file-ask-answer,
+html.office-dark .file-ask-input,
+html.office-dark .file-share-item,
+html.office-dark .file-link-card,
+html.office-dark .file-empty-home,
+html.aurora .file-rec-card,
+html.aurora .file-table-wrap,
+html.aurora .file-library-commandbar.has-selection,
+html.aurora .file-library-table-wrap,
+html.aurora .file-details-pane,
+html.aurora .file-ask-answer,
+html.aurora .file-ask-input,
+html.aurora .file-share-item,
+html.aurora .file-link-card,
+html.aurora .file-empty-home,
+html.graphite .file-rec-card,
+html.graphite .file-table-wrap,
+html.graphite .file-library-commandbar.has-selection,
+html.graphite .file-library-table-wrap,
+html.graphite .file-details-pane,
+html.graphite .file-ask-answer,
+html.graphite .file-ask-input,
+html.graphite .file-share-item,
+html.graphite .file-link-card,
+html.graphite .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: var(--shadow); }
+html.office-dark .file-rec-head,
+html.office-dark .file-table th,
+html.office-dark .file-table td,
+html.office-dark .file-library-table th,
+html.office-dark .file-library-table td,
+html.aurora .file-rec-head,
+html.aurora .file-table th,
+html.aurora .file-table td,
+html.aurora .file-library-table th,
+html.aurora .file-library-table td,
+html.graphite .file-rec-head,
+html.graphite .file-table th,
+html.graphite .file-table td,
+html.graphite .file-library-table th,
+html.graphite .file-library-table td { border-color: var(--rule-soft); }
+html.office-dark .file-rec-title,
+html.office-dark .file-rec-activity strong,
+html.office-dark .file-row-title,
+html.office-dark .file-library-table th,
+html.office-dark .file-details-row strong,
+html.aurora .file-rec-title,
+html.aurora .file-rec-activity strong,
+html.aurora .file-row-title,
+html.aurora .file-library-table th,
+html.aurora .file-details-row strong,
+html.graphite .file-rec-title,
+html.graphite .file-rec-activity strong,
+html.graphite .file-row-title,
+html.graphite .file-library-table th,
+html.graphite .file-details-row strong { color: var(--ink); }
+html.office-dark .file-rec-activity,
+html.office-dark .file-rec-date,
+html.aurora .file-rec-activity,
+html.aurora .file-rec-date,
+html.graphite .file-rec-activity,
+html.graphite .file-rec-date { color: var(--ink-soft); }
+html.office-dark .file-rec-open,
+html.office-dark .file-filter-chip,
+html.office-dark .file-library-pill,
+html.aurora .file-rec-open,
+html.aurora .file-filter-chip,
+html.aurora .file-library-pill,
+html.graphite .file-rec-open,
+html.graphite .file-filter-chip,
+html.graphite .file-library-pill { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
+html.office-dark .file-rec-open:hover,
+html.office-dark .file-filter-chip:hover,
+html.office-dark .file-library-pill:hover,
+html.aurora .file-rec-open:hover,
+html.aurora .file-filter-chip:hover,
+html.aurora .file-library-pill:hover,
+html.graphite .file-rec-open:hover,
+html.graphite .file-filter-chip:hover,
+html.graphite .file-library-pill:hover { border-color: var(--accent); color: var(--ink); }
+html.office-dark .file-library-table tbody tr:hover,
+html.aurora .file-library-table tbody tr:hover,
+html.graphite .file-library-table tbody tr:hover { background: color-mix(in srgb, var(--accent-wash) 60%, transparent); }
+html.office-dark .file-library-table tbody tr.selected,
+html.office-dark .file-library-table tbody tr.selected:hover,
+html.aurora .file-library-table tbody tr.selected,
+html.aurora .file-library-table tbody tr.selected:hover,
+html.graphite .file-library-table tbody tr.selected,
+html.graphite .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
+html.office-dark .file-library-select,
+html.aurora .file-library-select,
+html.graphite .file-library-select { background: var(--surface-2); border-color: var(--ink-faint); color: var(--ink); }
+html.office-dark .file-library-select.selected,
+html.aurora .file-library-select.selected,
+html.graphite .file-library-select.selected { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+html.graphite .file-library-select.selected { color: #0B1614; }
+html.office-dark .file-library-person,
+html.aurora .file-library-person,
+html.graphite .file-library-person { background: var(--surface-2); color: var(--ink-soft); }
+html.office-dark .file-preview,
+html.aurora .file-preview,
+html.graphite .file-preview { background: linear-gradient(135deg, var(--surface-2), var(--surface)); border-color: var(--rule); }
+html.office-dark .file-preview::before,
+html.aurora .file-preview::before,
+html.graphite .file-preview::before { opacity: 0.72; }
+html.office-dark .file-link-status,
+html.aurora .file-link-status,
+html.graphite .file-link-status { background: var(--accent-wash); color: var(--accent); }
+html.office-dark .file-link-status.expired,
+html.office-dark .file-link-status.revoked,
+html.aurora .file-link-status.expired,
+html.aurora .file-link-status.revoked,
+html.graphite .file-link-status.expired,
+html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
@@ -1206,7 +1591,7 @@ html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 520px) {
   .file-home-main { padding: 18px 12px 30px; }
   .file-home-nav { gap: 10px; padding: 10px 12px 12px; }
-  .file-upload-actions { grid-template-columns: 1fr; }
+  .file-rail-actions { grid-template-columns: 1fr; }
   .file-folder-btn { min-height: 38px; }
   .file-create-btn { justify-content: flex-start; padding: 10px 12px; }
   .file-workspace-main, .file-actions-main, .file-theme-main, .file-nav-label { display: none; }
@@ -1397,6 +1782,9 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <div class="theme-switcher" role="group" aria-label="Theme">
       <button class="theme-option" type="button" data-theme="light" onclick="setTheme('light')">Light</button>
       <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')">365</button>
+      <button class="theme-option" type="button" data-theme="office-dark" onclick="setTheme('office-dark')">365 Dark</button>
+      <button class="theme-option" type="button" data-theme="aurora" onclick="setTheme('aurora')">Aurora</button>
+      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')">Graphite</button>
       <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')">Dark</button>
     </div>
     <button class="icon-btn" onclick="exportJSON()">Backup</button>
@@ -1796,9 +2184,10 @@ async function streamFromApi(path, body, el) {
 /* ---------- theme ---------- */
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
-  if (!['light', 'office', 'dark'].includes(theme)) theme = 'light';
-  document.documentElement.classList.toggle('dark', theme === 'dark');
-  document.documentElement.classList.toggle('office', theme === 'office');
+  const themes = ['light', 'office', 'office-dark', 'aurora', 'graphite', 'dark'];
+  if (!themes.includes(theme)) theme = 'light';
+  document.documentElement.classList.remove('dark', 'office', 'office-dark', 'aurora', 'graphite');
+  if (theme !== 'light') document.documentElement.classList.add(theme);
   document.querySelectorAll('.theme-option').forEach(btn => {
     const active = btn.dataset.theme === theme;
     btn.classList.toggle('active', active);
@@ -1807,7 +2196,7 @@ function setTheme(theme) {
   localStorage.setItem('memex_theme', theme);
 }
 function toggleTheme() {
-  const order = ['light', 'office', 'dark'];
+  const order = ['light', 'office', 'office-dark', 'aurora', 'graphite', 'dark'];
   const current = localStorage.getItem('memex_theme') || 'light';
   setTheme(order[(order.indexOf(current) + 1) % order.length]);
 }
@@ -3105,6 +3494,7 @@ function friendlyUserName() {
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
+  closeSearchMenu();
   document.getElementById('file-upload-menu')?.classList.toggle('open');
 }
 
@@ -3117,11 +3507,90 @@ function chooseUpload(kind) {
   document.getElementById(kind === 'folder' ? 'folder-picker' : 'file-picker')?.click();
 }
 
-document.addEventListener('click', closeUploadMenu);
+function toggleSearchMenu(event) {
+  event?.stopPropagation();
+  closeUploadMenu();
+  document.getElementById('file-search-menu')?.classList.toggle('open');
+}
+
+function closeSearchMenu() {
+  document.getElementById('file-search-menu')?.classList.remove('open');
+}
+
+function chooseSearch(kind) {
+  closeSearchMenu();
+  if (kind === 'files') {
+    focusFileSearch();
+  } else {
+    openCollectionAsk();
+  }
+}
+
+async function focusFileSearch() {
+  if (!document.getElementById('file-home-search')) {
+    await setTab('files');
+  }
+  setTimeout(() => {
+    const search = document.getElementById('file-home-search');
+    search?.focus();
+    search?.select?.();
+  }, 0);
+}
+
+document.addEventListener('click', () => {
+  closeUploadMenu();
+  closeSearchMenu();
+});
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<div class="file-rail-actions">
+    <div class="file-upload-actions">
+      <button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button>
+      <div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div>
+    </div>
+    <div class="file-search-actions">
+      <button class="file-create-btn" onclick="toggleSearchMenu(event)"><span class="plus">⌕</span><span>Search</span><span class="chev">⌄</span></button>
+      <div class="file-search-menu" id="file-search-menu"><button onclick="chooseSearch('ask')">Ask collection</button><button onclick="chooseSearch('files')">Search files</button></div>
+    </div>
+  </div>
+  <div class="file-home-user">${userName}</div>
+  <div class="file-nav-section file-workspace-section">Workspace</div>
+  <div class="file-nav-main file-workspace-main">
+    ${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}
+    ${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}
+    ${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}
+    ${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}
+  </div>
+  <div class="file-nav-section">Files</div>
+  <div class="file-nav-main file-files-main">
+    ${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}
+    ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
+    ${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
+    ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
+    ${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}
+    ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
+  </div>
+  <div class="file-nav-section">Actions</div>
+  <div class="file-nav-main file-actions-main">
+    ${fileNavButton('Backup', 'B', `exportJSON()`, false)}
+    ${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}
+    ${fileNavButton('Account', 'A', `openSettings()`, false)}
+  </div>
+  <div class="file-nav-section">Theme</div>
+  <div class="file-nav-main file-theme-main">
+    ${fileNavButton('Light', 'L', `setTheme('light')`, false)}
+    ${fileNavButton('365', '3', `setTheme('office')`, false)}
+    ${fileNavButton('365 Dark', 'N', `setTheme('office-dark')`, false)}
+    ${fileNavButton('Aurora', 'U', `setTheme('aurora')`, false)}
+    ${fileNavButton('Graphite', 'G', `setTheme('graphite')`, false)}
+    ${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}
+  </div>
+  <div class="file-nav-section">Browse files by</div>
+  <div class="file-nav-label"><span>People</span></div>
+  <div class="file-nav-label"><span>Media</span></div>
+  <div class="file-nav-section">Quick access</div>
+  <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -3323,6 +3792,42 @@ function renderFileDetailsPane() {
 
 function closeAskSelected() {
   document.getElementById('file-ask-scrim')?.remove();
+}
+
+function closeCollectionAsk() {
+  document.getElementById('file-collection-ask-scrim')?.remove();
+}
+
+function openCollectionAsk() {
+  closeCollectionAsk();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-collection-ask-scrim" onclick="if(event.target.id==='file-collection-ask-scrim')closeCollectionAsk()"><div class="modal file-ask-modal"><h2>Ask the collection</h2><p class="sub">Search across indexed documents and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div></div></div>`);
+  setTimeout(() => document.getElementById('file-collection-question')?.focus(), 0);
+}
+
+async function submitCollectionAsk(fileIt) {
+  const question = document.getElementById('file-collection-question')?.value.trim();
+  const answer = document.getElementById('file-collection-answer');
+  if (!question || !answer) {
+    toast('Type a question first');
+    return;
+  }
+  const goBtn = document.getElementById('file-collection-ask-go');
+  const saveBtn = document.getElementById('file-collection-ask-save');
+  const stopBtn = document.getElementById('file-collection-ask-stop');
+  answer.className = 'file-ask-answer dim';
+  answer.textContent = 'Searching the collection...';
+  if (goBtn) goBtn.disabled = true;
+  if (saveBtn) saveBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = '';
+  const result = await streamFromApi('/ai/query', { question, fileIt }, answer);
+  if (goBtn) goBtn.disabled = false;
+  if (saveBtn) saveBtn.disabled = false;
+  if (stopBtn) stopBtn.style.display = 'none';
+  if (result?.saved) {
+    state.pages.push({ ...result.saved, fresh: true });
+    renderIndex();
+    toast('Filed as: ' + result.saved.title);
+  }
 }
 
 function openAskSelected() {
