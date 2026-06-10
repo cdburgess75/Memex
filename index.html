@@ -932,15 +932,16 @@ html.file-home-mode #panel > .panel { max-width: none; min-height: calc(100vh - 
 html.file-home-mode .masthead-actions { display: none; }
 .file-workspace-content { max-width: 1120px; }
 .file-workspace-content .panel { margin: 0; }
-.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
+.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 300px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
 .file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
-.file-upload-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.file-upload-actions { display: grid; grid-template-columns: minmax(154px, 1fr) minmax(86px, auto); gap: 10px; }
 .file-create-btn { width: 100%; border: 1px solid #BBD7F0; border-radius: 8px; padding: 12px 16px; color: #242424; background: #EAF3FF; font: 700 15px var(--body); display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; }
 .file-folder-btn { border: 1px solid #BBD7F0; border-radius: 8px; padding: 0 12px; color: #242424; background: #FFFFFF; font: 700 14px var(--body); cursor: pointer; }
 .file-folder-btn:hover { background: #F8FBFF; border-color: #8FC7F4; }
 .file-create-btn .plus { font-size: 25px; line-height: 0; font-weight: 300; }
+.file-create-btn span:last-child, .file-folder-btn { white-space: nowrap; }
 .file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
@@ -955,8 +956,8 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-home-main { min-width: 0; padding: 32px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
-.file-home-title { font: 700 22px var(--body); color: #616161; }
-.file-home-search { width: min(360px, 100%); border: 1px solid #DADADA; border-radius: 999px; padding: 10px 18px; background: #FFFFFF; color: #242424; font: 15px var(--body); }
+.file-home-title { flex: 0 0 auto; font: 700 22px var(--body); color: #616161; white-space: nowrap; }
+.file-home-search { flex: 1 1 420px; width: auto; min-width: 220px; max-width: 100%; border: 1px solid #DADADA; border-radius: 999px; padding: 10px 18px; background: #FFFFFF; color: #242424; font: 15px var(--body); }
 .file-home-search:focus { outline: 2px solid rgba(15,108,189,0.2); border-color: #0F6CBD; }
 .file-rec-section { margin-bottom: 28px; }
 .file-rec-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 18px; }
@@ -1063,8 +1064,14 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-share-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #E7E7E7; border-radius: 8px; background: #FFFFFF; }
 .file-share-meta { color: #616161; font-size: 13px; margin-top: 3px; }
 .file-share-revoked { opacity: 0.55; }
+.file-links-list { display: grid; gap: 10px; }
+.file-link-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid #E7E7E7; border-radius: 10px; background: #FFFFFF; }
+.file-link-title { color: #323130; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-link-meta { color: #616161; font-size: 13px; line-height: 1.45; margin-top: 4px; }
+.file-link-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); background: #EAF3FF; color: #0F5FB5; }
+.file-link-status.expired, .file-link-status.revoked { background: #FDE7E9; color: #A4262C; }
 @media (max-width: 1100px) {
-  .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .file-home-shell { grid-template-columns: 260px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
   .file-rec-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .file-table th:nth-child(4), .file-table td:nth-child(4) { display: none; }
@@ -1093,6 +1100,7 @@ html.file-home-mode .masthead-actions { display: none; }
   .file-table td:first-child { padding-top: 14px; }
   .file-table td:last-child { padding-bottom: 14px; }
   .file-row-actions { margin-top: 8px; }
+  .file-link-card { grid-template-columns: 1fr; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
   .file-library-commandbar { align-items: stretch; flex-direction: column; }
   .file-library-command-left, .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
@@ -1392,7 +1400,7 @@ let extractedFileText = '';
 // files tab state
 let filesList = []; // cached list of uploaded files
 let trashList = []; // cached list of trashed files
-let fileView = 'active'; // 'active' | 'trash'
+let fileView = 'active'; // 'active' | 'shared' | 'favorites' | 'trash' | 'links'
 const RESUMABLE_UPLOAD_THRESHOLD = 16 * 1024 * 1024;
 const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 let selectedFileIds = new Set();
@@ -3011,7 +3019,7 @@ function friendlyUserName() {
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Upload files</span></button><button class="file-folder-btn" onclick="document.getElementById('folder-picker').click()">Folder</button></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Upload files</span></button><button class="file-folder-btn" onclick="document.getElementById('folder-picker').click()">Folder</button></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -3050,12 +3058,14 @@ function setFileView(view) {
   detailsPaneOpen = false;
   document.querySelectorAll('.file-nav-link').forEach(btn => {
     const label = btn.textContent.trim();
-    const isFilesHome = ['Files','Shared','Favorites','Trash'].includes(label);
-    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'shared' && label === 'Shared') || (view === 'trash' && label === 'Trash')));
+    const isFilesHome = ['Files','Shared','Links','Favorites','Trash'].includes(label);
+    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
   });
   if (view === 'trash') {
     document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Recycle bin</h2></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading trash...</div></div>`, 'files', 'trash');
     loadTrash();
+  } else if (view === 'links') {
+    renderShareLinks();
   } else {
     renderDocumentLibrary(view);
   }
@@ -3297,6 +3307,60 @@ async function revokeShareLink(shareId) {
     await apiDelete('/files/' + f.id + '/shares/' + shareId);
     toast('Share link revoked');
     await loadShareLinks(f.id);
+  } catch (e) {
+    toast('Revoke failed: ' + e.message);
+  }
+}
+
+function shareLinkStatus(share) {
+  if (share.revoked_at) return { label: 'Revoked', className: 'revoked' };
+  if (share.document_deleted) return { label: 'File deleted', className: 'expired' };
+  if (share.expires_at && new Date(share.expires_at).getTime() <= Date.now()) return { label: 'Expired', className: 'expired' };
+  return { label: 'Active', className: 'active' };
+}
+
+function shareLinkCard(share) {
+  const status = shareLinkStatus(share);
+  const fileName = share.document_name || 'Unknown file';
+  const canRevoke = status.label === 'Active';
+  return `<div class="file-link-card ${status.className !== 'active' ? 'file-share-revoked' : ''}">
+    <div>
+      <div class="file-link-title" title="${esc(fileName)}">${esc(fileName)}</div>
+      <div class="file-link-meta">
+        Created ${shareDate(share.created_at)} by ${esc(share.created_by_email || 'unknown')}<br>
+        Expires: ${shareDate(share.expires_at)} · Opens: ${share.access_count || 0}${share.last_accessed_at ? ` · Last opened: ${shareDate(share.last_accessed_at)}` : ''}${share.has_password ? ' · Password protected' : ''}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <span class="file-link-status ${status.className}">${status.label}</span>
+      ${canRevoke ? `<button class="file-library-tool" data-doc="${share.document_id}" data-share="${share.id}" onclick="revokeShareFromLinks(this.dataset.doc, this.dataset.share)">Revoke</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function renderShareLinks() {
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Share links</h2><button class="file-library-tool" onclick="renderShareLinks()">Refresh</button></div><div class="file-links-list" id="file-links-list"><div class="file-empty-home">Loading share links...</div></div>`, 'files', 'links');
+  const list = document.getElementById('file-links-list');
+  if (!list) return;
+  try {
+    const data = await apiGet('/files/shares');
+    const shares = data.shares || [];
+    if (!shares.length) {
+      list.innerHTML = '<div class="file-empty-home">No share links yet. Select a file, choose Share, and create a link.</div>';
+      return;
+    }
+    list.innerHTML = shares.map(shareLinkCard).join('');
+  } catch (e) {
+    list.innerHTML = `<p class="note" style="color:var(--accent)">Could not load share links: ${esc(e.message)}</p>`;
+  }
+}
+
+async function revokeShareFromLinks(documentId, shareId) {
+  if (!documentId || !shareId) return;
+  try {
+    await apiDelete('/files/' + documentId + '/shares/' + shareId);
+    toast('Share link revoked');
+    await renderShareLinks();
   } catch (e) {
     toast('Revoke failed: ' + e.message);
   }

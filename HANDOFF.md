@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-10 · Running version: **v2026.06.10.001**_
+_Last updated: 2026-06-10 · Running version: **v2026.06.10.002**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -69,6 +69,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Dynamic LAN auth URLs: `/api/config` now derives the browser-facing Keycloak URL from the
   current request host when `KEYCLOAK_URL=auto`, so changing the VM's LAN IP no longer breaks
   email/password login. Keycloak `memex-app` web origins are wildcarded for local HTTP/dev.
+- File-home polish: fixed left-rail/action/header text wrapping and added a Files → Links
+  view that lists current share links with expiration/status/access counts and revoke actions.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
