@@ -1007,6 +1007,7 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-library-create { border: 0; border-radius: 4px; background: #5B5FC7; color: #FFFFFF; padding: 10px 16px; font: 700 15px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 .file-library-create:hover { background: #4F52B2; }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.file-library-commandbar.has-selection { background: #FFFFFF; border: 1px solid #EDEBE9; border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .file-library-pill { border: 1px solid #DADADA; border-radius: 999px; background: #FFFFFF; color: #323130; padding: 8px 14px; font: 700 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; }
 .file-library-pill.active { border-color: #5B5FC7; box-shadow: 0 0 0 2px rgba(91,95,199,0.16); }
@@ -1020,13 +1021,37 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-library-table th { text-align: left; color: #424242; font: 700 14px var(--body); padding: 12px 12px; border-bottom: 1px solid #EDEBE9; white-space: nowrap; }
 .file-library-table td { padding: 10px 12px; border-bottom: 1px solid #F3F2F1; color: #616161; vertical-align: middle; font-size: 14px; }
 .file-library-table tbody tr:hover { background: #F7F7F8; }
-.file-library-select { width: 22px; height: 22px; border: 1.5px solid #8A8886; border-radius: 999px; background: #FFFFFF; display: inline-block; }
+.file-library-table tbody tr.selected { background: #F1F4FF; }
+.file-library-table tbody tr.selected:hover { background: #EDF2FF; }
+.file-library-select { width: 22px; height: 22px; border: 1.5px solid #8A8886; border-radius: 999px; background: #FFFFFF; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; line-height: 1; }
+.file-library-select:hover { border-color: #5B5FC7; box-shadow: 0 0 0 3px rgba(91,95,199,0.12); }
+.file-library-select.selected { background: #5B5FC7; border-color: #5B5FC7; }
+.file-library-select.selected::before { content: '✓'; transform: translateY(-1px); }
 .file-library-name { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
 .file-library-name .file-row-title { font-weight: 500; }
 .file-library-actions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; opacity: 0.84; }
 .file-library-icon-btn { border: 0; background: transparent; color: #605E5C; border-radius: 5px; min-width: 30px; height: 30px; padding: 0 8px; cursor: pointer; font: 700 16px var(--body); }
 .file-library-icon-btn:hover { background: #EAF3FF; color: #0F6CBD; }
 .file-library-person { display: inline-flex; align-items: center; max-width: 100%; border-radius: 999px; background: #F3F2F1; padding: 5px 10px; color: #616161; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-library-selected-count { color: #323130; font: 700 15px var(--body); display: inline-flex; align-items: center; gap: 8px; }
+.file-library-close { border: 0; background: transparent; color: #424242; cursor: pointer; border-radius: 6px; width: 34px; height: 34px; font-size: 22px; line-height: 1; }
+.file-library-close:hover { background: #F0F4FF; }
+.file-library-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.file-library-layout.details-open { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); align-items: start; }
+.file-details-pane { background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 8px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); position: sticky; top: 18px; }
+.file-details-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.file-details-title { font-size: 18px; font-weight: 700; color: #323130; line-height: 1.25; overflow-wrap: anywhere; }
+.file-details-meta { display: grid; gap: 12px; }
+.file-details-row { display: grid; gap: 3px; font-size: 14px; color: #616161; }
+.file-details-row strong { color: #323130; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.file-details-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.file-ask-modal { width: min(780px, 96vw); max-height: min(760px, 92dvh); overflow: auto; }
+.file-ask-docs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 16px; }
+.file-ask-chip { border: 1px solid #E1DFDD; background: #F8FBFF; color: #323130; border-radius: 999px; padding: 5px 10px; font-size: 13px; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-ask-input { width: 100%; min-height: 96px; resize: vertical; border: 1px solid #DADADA; border-radius: 8px; padding: 12px 14px; font: 15px var(--body); color: #242424; background: #FFFFFF; }
+.file-ask-input:focus { outline: 2px solid rgba(91,95,199,0.18); border-color: #5B5FC7; }
+.file-ask-answer { min-height: 120px; white-space: pre-wrap; margin-top: 14px; padding: 16px; border: 1px solid #E7E7E7; border-radius: 8px; background: #FAFAFA; color: #323130; line-height: 1.5; }
+.file-ask-answer.dim { color: #707070; font-style: italic; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
@@ -1065,10 +1090,13 @@ html.file-home-mode .masthead-actions { display: none; }
   .file-library-table, .file-library-table tbody, .file-library-table tr, .file-library-table td { display: block; width: 100%; min-width: 0; }
   .file-library-table thead { display: none; }
   .file-library-table tr { background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 12px; margin-bottom: 12px; padding: 10px 12px; }
+  .file-library-table tr.selected { border-color: #A7B7FF; }
   .file-library-table td { border: 0; padding: 6px 0; }
-  .file-library-table td:first-child { display: none; }
+  .file-library-table td:first-child { display: block; }
   .file-library-actions { justify-content: flex-start; flex-wrap: wrap; }
   .file-library-person { background: transparent; padding: 0; }
+  .file-library-layout.details-open { grid-template-columns: 1fr; }
+  .file-details-pane { position: static; }
 }
 @media (max-width: 520px) {
   .file-home-main { padding: 18px 12px 30px; }
@@ -1356,6 +1384,8 @@ let trashList = []; // cached list of trashed files
 let fileView = 'active'; // 'active' | 'trash'
 const RESUMABLE_UPLOAD_THRESHOLD = 16 * 1024 * 1024;
 const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
+let selectedFileIds = new Set();
+let detailsPaneOpen = false;
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -2905,10 +2935,21 @@ function fileLibraryActions(f) {
 function fileLibraryRow(f) {
   const ext = fileExt(f.name);
   const owner = fileOwner(f);
-  return `<tr><td style="width:44px"><span class="file-library-select" aria-hidden="true"></span></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}</div></div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  const selected = selectedFileIds.has(String(f.id));
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}</div></div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div class="file-library-title"><span>${esc(title)}</span><span class="chev">⌄</span></div><button class="file-library-create" onclick="document.getElementById('file-picker').click()"><span>+</span><span>Create or upload</span></button></div><div class="file-upload-status" id="upload-status"></div><div class="file-library-commandbar"><div class="file-library-command-left"><button class="file-library-pill active"><span>☰</span><span>All Documents</span><span>⌄</span></button><span class="file-library-sep"></span><button class="file-library-pill" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-library-pill" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-library-pill" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-library-pill" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-library-pill" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter documents" oninput="scheduleFileSearch()"><button class="file-library-tool" onclick="document.getElementById('folder-picker').click()">Folder upload</button><button class="file-library-tool" onclick="renderDocumentLibraryList()">Details</button></div></div><div class="file-library-table-wrap" id="file-list"><div class="file-empty-home">Loading documents...</div></div></div>`;
+  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div class="file-library-title"><span>${esc(title)}</span><span class="chev">⌄</span></div><button class="file-library-create" onclick="document.getElementById('file-picker').click()"><span>+</span><span>Create or upload</span></button></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div class="file-library-table-wrap" id="file-list"><div class="file-empty-home">Loading documents...</div></div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+}
+function fileLibraryCommandBarHtml() {
+  const selected = selectedFiles();
+  if (selected.length) {
+    const first = selected[0];
+    const many = selected.length > 1;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  }
+  const chip = filter => fileFilter === filter ? ' active' : '';
+  return `<div class="file-library-commandbar"><div class="file-library-command-left"><button class="file-library-pill active"><span>☰</span><span>All Documents</span><span>⌄</span></button><span class="file-library-sep"></span><button class="file-library-pill${chip('all')}" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-library-pill${chip('word')}" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-library-pill${chip('excel')}" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-library-pill${chip('powerpoint')}" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-library-pill${chip('pdf')}" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter documents" oninput="scheduleFileSearch()"><button class="file-library-tool" onclick="document.getElementById('folder-picker').click()">Folder upload</button><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 function quickAccessHtml(files) {
   const items = files.slice(0, 6);
@@ -2994,6 +3035,8 @@ function setFileFilter(filter) {
 
 function setFileView(view) {
   fileView = view;
+  clearFileSelection(false);
+  detailsPaneOpen = false;
   document.querySelectorAll('.file-nav-link').forEach(btn => {
     const label = btn.textContent.trim();
     const isFilesHome = ['Files','Shared','Favorites','Trash'].includes(label);
@@ -3010,6 +3053,8 @@ function setFileView(view) {
 async function renderDocumentLibrary(view = 'active') {
   fileView = view;
   fileFilter = 'all';
+  selectedFileIds = new Set();
+  detailsPaneOpen = false;
   const title = view === 'shared' ? 'Shared documents' : view === 'favorites' ? 'Favorites' : 'Documents';
   document.getElementById('panel').innerHTML = fileHomeShell(fileLibraryCommandBar(title), 'files', view === 'shared' ? 'shared' : view === 'favorites' ? 'favorites' : 'files');
   const quick = document.getElementById('file-quick-list');
@@ -3059,6 +3104,7 @@ async function loadFiles() {
 function renderDocumentLibraryList() {
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
+  selectedFileIds = new Set([...selectedFileIds].filter(id => filesList.some(f => String(f.id) === id)));
   if (quick) quick.innerHTML = quickAccessHtml(filesList);
   if (!el) return;
   const q = (document.getElementById('file-home-search')?.value || '').trim().toLowerCase();
@@ -3066,9 +3112,113 @@ function renderDocumentLibraryList() {
   const rows = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   if (!rows.length) {
     el.innerHTML = `<div class="file-empty-home">${q ? 'No documents match this filter.' : 'No documents in this view yet.'}</div>`;
+    updateFileLibraryChrome();
     return;
   }
   el.innerHTML = `<table class="file-library-table"><thead><tr><th style="width:44px"></th><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Modified By</th><th style="width:170px;text-align:right">Actions</th></tr></thead><tbody>${rows.map(fileLibraryRow).join('')}</tbody></table>`;
+  updateFileLibraryChrome();
+}
+
+function selectedFiles() {
+  return filesList.filter(f => selectedFileIds.has(String(f.id)));
+}
+
+function updateFileLibraryChrome() {
+  const commandbar = document.getElementById('file-library-commandbar');
+  if (commandbar) commandbar.innerHTML = fileLibraryCommandBarHtml();
+  renderFileDetailsPane();
+}
+
+function toggleFileSelection(fileId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const id = String(fileId);
+  if (selectedFileIds.has(id)) selectedFileIds.delete(id);
+  else selectedFileIds.add(id);
+  renderDocumentLibraryList();
+}
+
+function handleLibraryRowClick(event, fileId) {
+  if (event.target.closest('button')) return;
+  toggleFileSelection(fileId, event);
+}
+
+function clearFileSelection(render = true) {
+  selectedFileIds = new Set();
+  if (render && document.getElementById('file-library-view')) renderDocumentLibraryList();
+}
+
+function firstSelectedFile() {
+  return selectedFiles()[0] || null;
+}
+
+function openSelectedFile() {
+  const f = firstSelectedFile();
+  if (!f) return;
+  openRecommendedFile(f.id);
+}
+
+async function downloadSelectedFiles() {
+  const selected = selectedFiles();
+  if (!selected.length) return;
+  for (const f of selected) await downloadFile(f.id);
+}
+
+async function deleteSelectedFiles() {
+  const selected = selectedFiles();
+  if (!selected.length) return;
+  const label = selected.length === 1 ? `"${selected[0].name}"` : `${selected.length} documents`;
+  if (!confirm(`Move ${label} to Trash? You can restore ${selected.length === 1 ? 'it' : 'them'} later.`)) return;
+  for (const f of selected) {
+    await apiDelete('/files/' + f.id);
+    filesList = filesList.filter(x => String(x.id) !== String(f.id));
+  }
+  clearFileSelection(false);
+  renderDocumentLibraryList();
+  toast(`${label} moved to Trash`);
+}
+
+function toggleDetailsPane() {
+  detailsPaneOpen = !detailsPaneOpen;
+  renderFileDetailsPane();
+}
+
+function renderFileDetailsPane() {
+  const layout = document.getElementById('file-library-layout');
+  const pane = document.getElementById('file-details-pane');
+  if (!layout || !pane) return;
+  const f = firstSelectedFile();
+  const open = detailsPaneOpen && !!f;
+  layout.classList.toggle('details-open', open);
+  pane.style.display = open ? '' : 'none';
+  if (!open) return;
+  const ext = fileExt(f.name);
+  pane.innerHTML = `<div class="file-details-head"><div class="file-details-title">${esc(f.name)}</div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div><div class="file-details-meta"><div class="file-details-row"><strong>Type</strong><span>${esc(fileKind(ext))}</span></div><div class="file-details-row"><strong>Size</strong><span>${fileSizeLabel(f.size || 0)}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div></div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">History</button>` : ''}</div>`;
+}
+
+function closeAskSelected() {
+  document.getElementById('file-ask-scrim')?.remove();
+}
+
+function openAskSelected() {
+  const selected = selectedFiles();
+  if (!selected.length) return;
+  closeAskSelected();
+  const docs = selected.map(f => `<span class="file-ask-chip" title="${esc(f.name)}">${esc(f.name)}</span>`).join('');
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-ask-scrim" onclick="if(event.target.id==='file-ask-scrim')closeAskSelected()"><div class="modal file-ask-modal"><h2>Ask selected documents</h2><p class="sub">Claude will answer only from the files you selected.</p><div class="file-ask-docs">${docs}</div><textarea class="file-ask-input" id="file-ask-question" placeholder="Ask a question about these documents"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" onclick="submitAskSelected()">Ask Claude</button><button class="ghost-btn" onclick="stopStream()">Stop</button><button class="ghost-btn" onclick="closeAskSelected()">Close</button></div><div class="file-ask-answer dim" id="file-ask-answer">Answer will stream here.</div></div></div>`);
+  setTimeout(() => document.getElementById('file-ask-question')?.focus(), 0);
+}
+
+async function submitAskSelected() {
+  const question = document.getElementById('file-ask-question')?.value.trim();
+  const answer = document.getElementById('file-ask-answer');
+  const selected = selectedFiles();
+  if (!question || !answer || !selected.length) return;
+  answer.className = 'file-ask-answer dim';
+  answer.textContent = 'Reading selected documents...';
+  await streamFromApi('/files/ask', { ids: selected.map(f => f.id), question }, answer);
 }
 
 async function renderFileList() {

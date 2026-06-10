@@ -957,4 +957,77 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
+function sseHeaders(res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+}
+
+// POST /api/files/ask — ask Claude about a selected set of documents (SSE streaming)
+router.post('/ask', auth, async (req, res) => {
+  const { ids, question } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids required' });
+  if (!question || !String(question).trim()) return res.status(400).json({ error: 'question required' });
+
+  sseHeaders(res);
+  try {
+    const docs = await db.query(
+      `SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents
+       WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+      [ids]
+    );
+    if (!docs.length) { res.write(`data: ${JSON.stringify({ error: 'No matching documents found' })}\n\n`); return res.end(); }
+
+    const PER_DOC = 20000;
+    const TOTAL_BUDGET = 80000;
+    let combined = '';
+    let used = 0;
+    const included = [];
+    for (const doc of docs) {
+      if (used >= TOTAL_BUDGET) break;
+      let text = doc.document_text || '';
+      if (!text || !text.trim()) {
+        try {
+          const buffer = await storage.download(doc.storage_path);
+          text = (await extractText(buffer, doc.name)) || '';
+        } catch { text = ''; }
+      }
+      if (!text.trim()) continue;
+      const slice = text.slice(0, Math.min(PER_DOC, TOTAL_BUDGET - used));
+      combined += `\n\n=== ${doc.name} ===\n${slice}`;
+      used += slice.length;
+      included.push(doc.name);
+    }
+    if (!combined.trim()) { res.write(`data: ${JSON.stringify({ error: 'Could not read text from the selected documents (they may be images or unsupported types)' })}\n\n`); return res.end(); }
+
+    const system = `You answer questions about the SPECIFIC documents the user selected. Ground every claim in these documents and cite them by filename. If the answer is not present in them, say so plainly rather than guessing.\n\nSelected documents:\n${combined}`;
+    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
+    const stream = ai.messages.stream({
+      model,
+      max_tokens: 1400,
+      system,
+      messages: [{ role: 'user', content: String(question) }],
+    });
+
+    for await (const chunk of await stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    const final = await stream.finalMessage();
+    await db.query(
+      'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
+      [req.user.id, req.user.email, 'ask-documents', model, final.usage.input_tokens, final.usage.output_tokens]
+    );
+    await logEvent(`ask · ${included.length} doc${included.length === 1 ? '' : 's'} · ${String(question).slice(0, 40)}`, req.user.id, req.user.email);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (e) {
+    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+    res.end();
+  }
+});
+
 module.exports = router;
