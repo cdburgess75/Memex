@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.006**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.007**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -62,6 +62,10 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Files commander selection upgrade: selection circles now toggle real selected state, selected
   rows get a reactive command bar, bulk download/delete, a details pane with document metadata,
   and selected-document Ask Claude streaming Q&A.
+- Secure share links: authenticated users can create expiring, revocable file links with optional
+  password protection; public download validates token hash, expiration, revocation, and password,
+  then records audit events/access counts. Commander UI has Share modal, copy link, existing links,
+  and revoke.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
@@ -111,7 +115,7 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
    - `.021` Object-storage multipart uploads for S3/R2/B2 when production storage moves beyond local disk.
    - `.022` Remaining dependency audit cleanup: `googleapis`/`uuid` requires a breaking
      `googleapis` upgrade path; `xlsx` has no npm audit fix and likely needs replacement or isolation.
-4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: secure share links, external/guest upload tokens,
+4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: external/guest upload tokens,
    large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
    envelope encryption, backups.
 

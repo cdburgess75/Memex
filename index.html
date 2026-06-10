@@ -1052,6 +1052,17 @@ html.file-home-mode .masthead-actions { display: none; }
 .file-ask-input:focus { outline: 2px solid rgba(91,95,199,0.18); border-color: #5B5FC7; }
 .file-ask-answer { min-height: 120px; white-space: pre-wrap; margin-top: 14px; padding: 16px; border: 1px solid #E7E7E7; border-radius: 8px; background: #FAFAFA; color: #323130; line-height: 1.5; }
 .file-ask-answer.dim { color: #707070; font-style: italic; }
+.file-share-modal { width: min(760px, 96vw); max-height: min(760px, 92dvh); overflow: auto; }
+.file-share-grid { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: center; margin: 16px 0; }
+.file-share-grid label { color: #424242; font-weight: 700; }
+.file-share-grid input, .file-share-grid select { border: 1px solid #DADADA; border-radius: 8px; padding: 10px 12px; font: 15px var(--body); color: #242424; background: #FFFFFF; }
+.file-share-result { display: none; gap: 8px; margin-top: 14px; }
+.file-share-result.open { display: grid; }
+.file-share-url { width: 100%; border: 1px solid #DADADA; border-radius: 8px; padding: 10px 12px; font: 13px var(--mono); color: #242424; background: #FAFAFA; }
+.file-share-list { display: grid; gap: 8px; margin-top: 18px; }
+.file-share-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #E7E7E7; border-radius: 8px; background: #FFFFFF; }
+.file-share-meta { color: #616161; font-size: 13px; margin-top: 3px; }
+.file-share-revoked { opacity: 0.55; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
@@ -2946,7 +2957,7 @@ function fileLibraryCommandBarHtml() {
   if (selected.length) {
     const first = selected[0];
     const many = selected.length > 1;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const chip = filter => fileFilter === filter ? ' active' : '';
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><button class="file-library-pill active"><span>☰</span><span>All Documents</span><span>⌄</span></button><span class="file-library-sep"></span><button class="file-library-pill${chip('all')}" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-library-pill${chip('word')}" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-library-pill${chip('excel')}" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-library-pill${chip('powerpoint')}" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-library-pill${chip('pdf')}" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter documents" oninput="scheduleFileSearch()"><button class="file-library-tool" onclick="document.getElementById('folder-picker').click()">Folder upload</button><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
@@ -3195,7 +3206,7 @@ function renderFileDetailsPane() {
   pane.style.display = open ? '' : 'none';
   if (!open) return;
   const ext = fileExt(f.name);
-  pane.innerHTML = `<div class="file-details-head"><div class="file-details-title">${esc(f.name)}</div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div><div class="file-details-meta"><div class="file-details-row"><strong>Type</strong><span>${esc(fileKind(ext))}</span></div><div class="file-details-row"><strong>Size</strong><span>${fileSizeLabel(f.size || 0)}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div></div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">History</button>` : ''}</div>`;
+  pane.innerHTML = `<div class="file-details-head"><div class="file-details-title">${esc(f.name)}</div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div><div class="file-details-meta"><div class="file-details-row"><strong>Type</strong><span>${esc(fileKind(ext))}</span></div><div class="file-details-row"><strong>Size</strong><span>${fileSizeLabel(f.size || 0)}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div></div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button><button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">History</button>` : ''}</div>`;
 }
 
 function closeAskSelected() {
@@ -3219,6 +3230,93 @@ async function submitAskSelected() {
   answer.className = 'file-ask-answer dim';
   answer.textContent = 'Reading selected documents...';
   await streamFromApi('/files/ask', { ids: selected.map(f => f.id), question }, answer);
+}
+
+function closeShareSelected() {
+  document.getElementById('file-share-scrim')?.remove();
+}
+
+async function openShareSelected() {
+  const f = firstSelectedFile();
+  if (!f) return;
+  closeShareSelected();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share file</h2><p class="sub">${esc(f.name)}</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><h3 style="margin-top:22px">Existing links</h3><div class="file-share-list" id="file-share-list"><div class="file-empty-home">Loading links...</div></div></div></div>`);
+  await loadShareLinks(f.id);
+}
+
+function shareDate(value) {
+  return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+}
+
+async function loadShareLinks(fileId = firstSelectedFile()?.id) {
+  const list = document.getElementById('file-share-list');
+  if (!fileId || !list) return;
+  try {
+    const data = await apiGet('/files/' + fileId + '/shares');
+    const shares = data.shares || [];
+    if (!shares.length) {
+      list.innerHTML = '<div class="file-empty-home">No share links yet.</div>';
+      return;
+    }
+    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
+  } catch (e) {
+    list.innerHTML = `<p class="note" style="color:var(--accent)">Could not load shares: ${esc(e.message)}</p>`;
+  }
+}
+
+async function createShareLink() {
+  const f = firstSelectedFile();
+  if (!f) return;
+  const days = document.getElementById('share-expiry')?.value || '7';
+  const password = document.getElementById('share-password')?.value || '';
+  try {
+    const data = await apiPost('/files/' + f.id + '/shares', {
+      expiresInDays: days,
+      neverExpires: days === '0',
+      password
+    });
+    const url = data.share?.url;
+    const result = document.getElementById('file-share-result');
+    const input = document.getElementById('file-share-url');
+    if (url && result && input) {
+      input.value = url;
+      result.classList.add('open');
+      await copyText(url).catch(() => {});
+      toast('Share link created');
+    }
+    await loadShareLinks(f.id);
+  } catch (e) {
+    toast('Share failed: ' + e.message);
+  }
+}
+
+async function revokeShareLink(shareId) {
+  const f = firstSelectedFile();
+  if (!f || !shareId) return;
+  try {
+    await apiDelete('/files/' + f.id + '/shares/' + shareId);
+    toast('Share link revoked');
+    await loadShareLinks(f.id);
+  } catch (e) {
+    toast('Revoke failed: ' + e.message);
+  }
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+async function copyShareUrl() {
+  const url = document.getElementById('file-share-url')?.value;
+  if (!url) return;
+  await copyText(url);
+  toast('Link copied');
 }
 
 async function renderFileList() {
