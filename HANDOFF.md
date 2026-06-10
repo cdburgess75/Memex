@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-10 · Running version: **v2026.06.10.005**_
+_Last updated: 2026-06-10 · Running version: **v2026.06.10.006**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -76,6 +76,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Upload rail polish: replaced separate Upload files / Folder buttons with one compact
   Upload menu that lets the user choose Files or Folder, and restored a narrower file rail.
 - Header controls restored in file-home mode after the compact upload change.
+- Removed the old Workspace → Read rail tab from the file-first layout; stale `read`
+  route requests now redirect to Files/Home.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
