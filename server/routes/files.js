@@ -26,6 +26,7 @@ const ALLOWED_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.
 const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
 let uploadSessionsEnsured = false;
+let shareLinksEnsured = false;
 
 function cleanDisplayName(name) {
   return String(name || '')
@@ -157,6 +158,71 @@ async function ensureUploadSessionsTable() {
   uploadSessionsEnsured = true;
 }
 
+async function ensureShareLinksTable() {
+  if (shareLinksEnsured) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS document_share_links (
+      id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      document_id          UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      token_hash           TEXT        NOT NULL UNIQUE,
+      password_salt        TEXT,
+      password_hash        TEXT,
+      expires_at           TIMESTAMPTZ,
+      revoked_at           TIMESTAMPTZ,
+      revoked_by           UUID,
+      revoked_by_email     TEXT,
+      created_by           UUID,
+      created_by_email     TEXT,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_accessed_at      TIMESTAMPTZ,
+      access_count         INTEGER     NOT NULL DEFAULT 0
+    )
+  `);
+  await db.query('CREATE INDEX IF NOT EXISTS document_share_links_document_idx ON document_share_links(document_id, created_at DESC)');
+  await db.query('CREATE INDEX IF NOT EXISTS document_share_links_active_idx ON document_share_links(token_hash) WHERE revoked_at IS NULL');
+  shareLinksEnsured = true;
+}
+
+function tokenHash(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function passwordParts(password) {
+  if (!password) return { salt: null, hash: null };
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 32).toString('hex');
+  return { salt, hash };
+}
+
+function verifySharePassword(password, salt, expectedHash) {
+  if (!expectedHash) return true;
+  if (!password || !salt) return false;
+  const actual = crypto.scryptSync(String(password), salt, 32);
+  const expected = Buffer.from(expectedHash, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function shareLinkClientShape(row, url = null) {
+  return {
+    id: row.id,
+    document_id: row.document_id,
+    expires_at: row.expires_at,
+    revoked_at: row.revoked_at,
+    created_at: row.created_at,
+    created_by_email: row.created_by_email,
+    last_accessed_at: row.last_accessed_at,
+    access_count: Number(row.access_count || 0),
+    has_password: !!row.password_hash,
+    url
+  };
+}
+
+async function publicAppBase(req) {
+  const configured = (await settings.getOrEnv('app_url') || '').replace(/\/$/, '');
+  if (configured) return configured;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
 function clampChunkSize(value) {
   const n = Number.parseInt(value || DEFAULT_CHUNK_SIZE, 10);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_CHUNK_SIZE;
@@ -263,6 +329,42 @@ router.get('/local-download', async (req, res) => {
   const path = require('path');
   res.setHeader('Content-Disposition', `attachment; filename="${path.basename(entry.storagePath)}"`);
   res.send(buffer);
+});
+
+// GET /api/files/share/:token — public, revocable, expiring share-link download.
+router.get('/share/:token', async (req, res) => {
+  await ensureShareLinksTable();
+  const hash = tokenHash(req.params.token);
+  try {
+    const share = await db.queryOne(
+      `SELECT s.*, d.name, d.mime_type, d.storage_path, d.deleted_at
+       FROM document_share_links s
+       JOIN documents d ON d.id = s.document_id
+       WHERE s.token_hash = $1`,
+      [hash]
+    );
+    if (!share || share.revoked_at || share.deleted_at) return res.status(404).json({ error: 'Share link not found' });
+    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Share link expired' });
+    }
+    const password = req.query.password || req.headers['x-share-password'];
+    if (!verifySharePassword(password, share.password_salt, share.password_hash)) {
+      return res.status(401).json({ error: 'Share password required' });
+    }
+
+    const buffer = await storage.download(share.storage_path);
+    await db.query(
+      'UPDATE document_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1',
+      [share.id]
+    );
+    await logDocumentEvent(share.document_id, 'share_downloaded', null, null, 'public share link');
+    await logEvent(`share download · ${share.name}`, null, null);
+    res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name)}"`);
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/files
@@ -547,6 +649,76 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
        WHERE id = $1 AND status = 'active'`,
       [session.id]
     );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/files/:id/shares — list share links for a document.
+router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureShareLinksTable();
+  try {
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const rows = await db.query(
+      `SELECT id, document_id, expires_at, revoked_at, created_at, created_by_email,
+              last_accessed_at, access_count, password_hash
+       FROM document_share_links
+       WHERE document_id = $1
+       ORDER BY created_at DESC`,
+      [doc.id]
+    );
+    res.json({ shares: rows.map(row => shareLinkClientShape(row)) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/:id/shares — create a secure public share link.
+router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureShareLinksTable();
+  try {
+    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
+    const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
+    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+    const token = crypto.randomBytes(32).toString('base64url');
+    const { salt, hash } = passwordParts(String(req.body?.password || '').trim());
+
+    const share = await db.queryOne(
+      `INSERT INTO document_share_links
+       (document_id, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, document_id, expires_at, revoked_at, created_at, created_by_email,
+                 last_accessed_at, access_count, password_hash`,
+      [doc.id, tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email]
+    );
+    const url = `${await publicAppBase(req)}/api/files/share/${token}`;
+    await logDocumentEvent(doc.id, 'share_created', req.user.id, req.user.email, `${expiresAt ? `expires ${expiresAt}` : 'no expiration'}${hash ? ' · password protected' : ''}`);
+    await logEvent(`share create · ${doc.name}`, req.user.id, req.user.email);
+    res.json({ share: shareLinkClientShape(share, url) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/files/:id/shares/:shareId — revoke a share link.
+router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureShareLinksTable();
+  try {
+    const share = await db.queryOne(
+      `UPDATE document_share_links
+       SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
+       WHERE id = $3 AND document_id = $4 AND revoked_at IS NULL
+       RETURNING id, document_id`,
+      [req.user.id, req.user.email, req.params.shareId, req.params.id]
+    );
+    if (!share) return res.status(404).json({ error: 'Share link not found' });
+    await logDocumentEvent(req.params.id, 'share_revoked', req.user.id, req.user.email, `share ${req.params.shareId}`);
+    await logEvent(`share revoke · ${req.params.id}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

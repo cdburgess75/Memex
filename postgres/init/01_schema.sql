@@ -178,6 +178,28 @@ CREATE TABLE IF NOT EXISTS upload_sessions (
 
 CREATE INDEX IF NOT EXISTS upload_sessions_user_status_idx ON upload_sessions(uploaded_by, status, updated_at DESC);
 
+-- Secure file share links. Raw tokens are shown only at creation; token_hash is stored.
+CREATE TABLE IF NOT EXISTS document_share_links (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id          UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  token_hash           TEXT        NOT NULL UNIQUE,
+  password_salt        TEXT,
+  password_hash        TEXT,
+  expires_at           TIMESTAMPTZ,
+  revoked_at           TIMESTAMPTZ,
+  revoked_by           UUID,
+  revoked_by_email     TEXT,
+  created_by           UUID,
+  created_by_email     TEXT,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_accessed_at      TIMESTAMPTZ,
+  access_count         INTEGER     NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS document_share_links_document_idx ON document_share_links(document_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS document_share_links_active_idx ON document_share_links(token_hash)
+  WHERE revoked_at IS NULL;
+
 DROP FUNCTION IF EXISTS search_documents(TEXT);
 
 CREATE OR REPLACE FUNCTION search_documents(query_text TEXT)
