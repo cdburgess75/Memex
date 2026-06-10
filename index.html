@@ -1475,7 +1475,7 @@ const CATS = {
 };
 const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
 
-let state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
+let state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
 let _kc = null; // Keycloak config { url, realm, clientId }
 let currentUser = null; // { id, email, role, name }
 
@@ -1675,7 +1675,7 @@ async function signOut() {
   const refresh = localStorage.getItem('memex_refresh_token');
   _clearTokens();
   closeSettings();
-  state = { pages: [WELCOME], activePage: 'overview', tab: 'read', log: [] };
+  state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
   renderIndex();
   document.getElementById('user-chip').textContent = '';
   document.getElementById('login-scrim').classList.add('open');
@@ -2036,11 +2036,11 @@ function gotoTitle(title) {
 
 /* ---------- tabs / routing ---------- */
 async function setTab(tab) {
+  if (tab === 'read') tab = 'files';
   state.tab = tab;
   document.documentElement.classList.add('file-home-mode');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   if (tab === 'files') { await renderFiles(); return; }
-  if (tab === 'read') { openPage(state.activePage); return; }
   if (tab === 'ingest') { renderIngest(); return; }
   if (tab === 'query') { renderQuery(); return; }
   if (tab === 'lint') { renderLint(); return; }
@@ -2055,7 +2055,7 @@ function openPage(id) {
     document.getElementById('panel').innerHTML = `<div class="panel article" style="padding-top:48px">
       <h1 style="font-family:var(--display);font-weight:600;font-size:32px;margin-bottom:12px">Page not found</h1>
       <p class="note" style="margin-bottom:24px">This page doesn't exist or may have been deleted.</p>
-      <button class="ghost-btn" onclick="openPage('overview')">Go to Reading room</button>
+      <button class="ghost-btn" onclick="setTab('files')">Go to Files</button>
     </div>`;
     renderIndex();
     return;
@@ -3121,7 +3121,7 @@ document.addEventListener('click', closeUploadMenu);
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
