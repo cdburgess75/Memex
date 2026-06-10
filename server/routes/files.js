@@ -675,6 +675,31 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
   }
 });
 
+// GET /api/files/shares — list share links across documents.
+router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureShareLinksTable();
+  try {
+    const rows = await db.query(
+      `SELECT s.id, s.document_id, d.name AS document_name, s.expires_at, s.revoked_at,
+              s.created_at, s.created_by_email, s.last_accessed_at, s.access_count,
+              s.password_hash, d.deleted_at
+       FROM document_share_links s
+       JOIN documents d ON d.id = s.document_id
+       WHERE ($1 = 'admin' OR s.created_by = $2)
+       ORDER BY s.revoked_at IS NULL DESC, s.expires_at NULLS LAST, s.created_at DESC
+       LIMIT 250`,
+      [req.user.role, req.user.id]
+    );
+    res.json({ shares: rows.map(row => ({
+      ...shareLinkClientShape(row),
+      document_name: row.document_name,
+      document_deleted: !!row.deleted_at
+    })) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/files/:id/shares — create a secure public share link.
 router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();
