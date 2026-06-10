@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-10 · Running version: **v2026.06.10.002**_
+_Last updated: 2026-06-10 · Running version: **v2026.06.10.003**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -71,6 +71,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   email/password login. Keycloak `memex-app` web origins are wildcarded for local HTTP/dev.
 - File-home polish: fixed left-rail/action/header text wrapping and added a Files → Links
   view that lists current share links with expiration/status/access counts and revoke actions.
+- Dark theme repair: file-home, document library, share modal, and Links view now use the
+  dark palette instead of hard-coded light backgrounds.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
