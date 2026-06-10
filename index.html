@@ -932,16 +932,19 @@ html.file-home-mode #panel > .panel { max-width: none; min-height: calc(100vh - 
 html.file-home-mode .masthead-actions { display: none; }
 .file-workspace-content { max-width: 1120px; }
 .file-workspace-content .panel { margin: 0; }
-.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 300px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
+.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
 .file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
-.file-upload-actions { display: grid; grid-template-columns: minmax(154px, 1fr) minmax(86px, auto); gap: 10px; }
+.file-upload-actions { position: relative; display: block; }
 .file-create-btn { width: 100%; border: 1px solid #BBD7F0; border-radius: 8px; padding: 12px 16px; color: #242424; background: #EAF3FF; font: 700 15px var(--body); display: flex; align-items: center; gap: 10px; justify-content: center; cursor: pointer; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; }
-.file-folder-btn { border: 1px solid #BBD7F0; border-radius: 8px; padding: 0 12px; color: #242424; background: #FFFFFF; font: 700 14px var(--body); cursor: pointer; }
-.file-folder-btn:hover { background: #F8FBFF; border-color: #8FC7F4; }
 .file-create-btn .plus { font-size: 25px; line-height: 0; font-weight: 300; }
-.file-create-btn span:last-child, .file-folder-btn { white-space: nowrap; }
+.file-create-btn .chev { margin-left: auto; font-size: 13px; line-height: 1; color: #616161; }
+.file-create-btn span:not(.plus):not(.chev) { white-space: nowrap; }
+.file-upload-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; right: 0; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
+.file-upload-menu.open { display: grid; gap: 4px; }
+.file-upload-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
+.file-upload-menu button:hover { background: #EAF3FF; }
 .file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
@@ -1076,12 +1079,15 @@ html.dark .file-home-nav { background: var(--surface); border-color: var(--rule)
 html.dark .file-home-shell.dragging { background: #182433; outline-color: #6AA9E9; }
 html.dark .file-create-btn { background: #172638; border-color: #2E5E8A; color: var(--ink); box-shadow: inset 3px 0 0 #6AA9E9; }
 html.dark .file-create-btn:hover { background: #1D3046; border-color: #4F88BD; }
-html.dark .file-folder-btn,
+html.dark .file-create-btn .chev { color: var(--ink-soft); }
+html.dark .file-upload-menu,
 html.dark .file-home-search,
 html.dark .file-library-search,
 html.dark .file-share-grid input,
 html.dark .file-share-grid select,
 html.dark .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
+html.dark .file-upload-menu button { color: var(--ink); }
+html.dark .file-upload-menu button:hover { background: #172638; }
 html.dark .file-home-user,
 html.dark .file-nav-section,
 html.dark .file-home-title,
@@ -1151,7 +1157,7 @@ html.dark .file-link-status { background: #172638; color: #D9ECFF; }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
-  .file-home-shell { grid-template-columns: 260px minmax(0, 1fr); }
+  .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
   .file-rec-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .file-table th:nth-child(4), .file-table td:nth-child(4) { display: none; }
@@ -3097,9 +3103,25 @@ function friendlyUserName() {
   return email || 'Dave Ptech';
 }
 
+function toggleUploadMenu(event) {
+  event?.stopPropagation();
+  document.getElementById('file-upload-menu')?.classList.toggle('open');
+}
+
+function closeUploadMenu() {
+  document.getElementById('file-upload-menu')?.classList.remove('open');
+}
+
+function chooseUpload(kind) {
+  closeUploadMenu();
+  document.getElementById(kind === 'folder' ? 'folder-picker' : 'file-picker')?.click();
+}
+
+document.addEventListener('click', closeUploadMenu);
+
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const userName = esc(friendlyUserName());
-  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="document.getElementById('file-picker').click()"><span class="plus">+</span><span>Upload files</span></button><button class="file-folder-btn" onclick="document.getElementById('folder-picker').click()">Folder</button></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  return `<div class="file-upload-actions"><button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div></div><div class="file-home-user">${userName}</div><div class="file-nav-section file-workspace-section">Workspace</div><div class="file-nav-main file-workspace-main">${fileNavButton('Read', 'R', `setTab('read')`, activeWorkspace === 'read')}${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}</div><div class="file-nav-section">Files</div><div class="file-nav-main file-files-main">${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}</div><div class="file-nav-section">Actions</div><div class="file-nav-main file-actions-main">${fileNavButton('Backup', 'B', `exportJSON()`, false)}${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}${fileNavButton('Account', 'A', `openSettings()`, false)}</div><div class="file-nav-section">Theme</div><div class="file-nav-main file-theme-main">${fileNavButton('Light', 'L', `setTheme('light')`, false)}${fileNavButton('365', '3', `setTheme('office')`, false)}${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}</div><div class="file-nav-section">Browse files by</div><div class="file-nav-label"><span>People</span></div><div class="file-nav-label"><span>Media</span></div><div class="file-nav-section">Quick access</div><div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
