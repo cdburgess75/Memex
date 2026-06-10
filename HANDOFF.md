@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.007**_
+_Last updated: 2026-06-10 · Running version: **v2026.06.10.001**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -10,17 +10,17 @@ file store (external upload, secure share links, large files, compliance readine
 `RECOMMENDATIONS.md` and `COMPLIANCE_ROADMAP.md`.
 
 ## Deployment
-- **Host:** Ubuntu ARM64 box at `192.168.1.32`, root SSH (password auth). Repo at `/opt/memex`.
+- **Host:** Ubuntu ARM64 box currently at `10.5.91.18`, root SSH (password auth). Repo at `/opt/memex`.
 - **Stack:** `docker compose` — services `app` (:3000), `keycloak` (:8080), `postgres` (:5432).
 - **Bring up:** `cd /opt/memex && docker compose up -d` (add `--build app` after code changes).
-- **Currently reachable only over plain HTTP at `http://192.168.1.32:3000`** (see HTTPS open loop).
+- **Currently reachable only over plain HTTP at `http://10.5.91.18:3000`** (see HTTPS open loop).
 - **Document storage:** `/dev/sdb` (25 GB ext4, label `memex-documents`) mounted at
   `/srv/memex-documents`; app bind-mounts it to `/data/documents`.
 
 ### Credentials / config
-- **App login (interim):** `dave@ptechllc.com` / `Memex#2026!` (Keycloak local user, admin role).
-  - NOTE (2026-06-09): this password drifted (an agent changed it) and was **reset back to
-    `Memex#2026!`** via the Keycloak admin API. If login fails, reset again with admin creds.
+- **App login (interim):** `dave@ptechllc.com` / `decade0123` (Keycloak local user, admin role).
+  - NOTE (2026-06-10): this password was reset via the Keycloak admin API and direct-grant
+    login was verified against the current LAN address.
 - **Keycloak admin:** user `admin`, password in `/opt/memex/.env` (`KEYCLOAK_ADMIN_PASSWORD`).
 - **Postgres / app secrets:** all in `/opt/memex/.env` (gitignored). Anthropic key set there.
 - `ADMIN_EMAILS=dave@ptechllc.com` → admin role on first login.
@@ -66,6 +66,9 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   password protection; public download validates token hash, expiration, revocation, and password,
   then records audit events/access counts. Commander UI has Share modal, copy link, existing links,
   and revoke.
+- Dynamic LAN auth URLs: `/api/config` now derives the browser-facing Keycloak URL from the
+  current request host when `KEYCLOAK_URL=auto`, so changing the VM's LAN IP no longer breaks
+  email/password login. Keycloak `memex-app` web origins are wildcarded for local HTTP/dev.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and

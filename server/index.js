@@ -47,10 +47,29 @@ const { apiLimiter, authLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
 app.use('/api', apiLimiter);
 
+function browserUrlFromRequest(req, fallbackPort) {
+  const proto = req.protocol || 'http';
+  const host = req.get('host') || '';
+  if (!host) return null;
+
+  const bracketedIpv6 = host.startsWith('[');
+  const hostname = bracketedIpv6
+    ? host.slice(0, host.indexOf(']') + 1)
+    : host.split(':')[0];
+
+  return `${proto}://${hostname}:${fallbackPort}`;
+}
+
+function browserKeycloakUrl(req) {
+  const configured = (process.env.KEYCLOAK_URL || '').trim();
+  if (configured && configured.toLowerCase() !== 'auto') return configured;
+  return browserUrlFromRequest(req, process.env.KEYCLOAK_PUBLIC_PORT || 8080) || configured || 'http://localhost:8080';
+}
+
 // Public config — lets the frontend bootstrap auth without a build step
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', (req, res) => {
   res.json({
-    keycloakUrl: process.env.KEYCLOAK_URL,
+    keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
     version: VERSION,

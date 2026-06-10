@@ -44,6 +44,7 @@ services:
       DATABASE_URL: postgres://memex:${POSTGRES_PASSWORD:-changeme}@postgres:5432/memex
       # KEYCLOAK_URL is the browser-visible URL (used in /api/config for the frontend PKCE flow)
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
+      KEYCLOAK_PUBLIC_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
       # KEYCLOAK_INTERNAL_URL is the server-to-server URL for JWKS verification
       KEYCLOAK_INTERNAL_URL: ${KEYCLOAK_INTERNAL_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-memex}
