@@ -3411,7 +3411,7 @@ async function deleteFile(fileId, name) {
   try {
     await apiDelete('/files/' + fileId);
     filesList = filesList.filter(f => f.id !== fileId);
-    renderFileList();
+    document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
     toast(`${name} moved to Trash`);
   } catch (e) { toast('Delete failed: ' + e.message); }
 }

@@ -1,6 +1,6 @@
 # Memex — Session Handoff
 
-_Last updated: 2026-06-09 · Running version: **v2026.06.09.004**_
+_Last updated: 2026-06-09 · Running version: **v2026.06.09.005**_
 
 ## What Memex is
 Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
@@ -57,6 +57,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
   multipart, streaming, and chunked upload smoke tests passed after rebuild.
 - Files nav now opens a SharePoint-style document library/commander view with a command bar,
   document filters, compact rows, mobile card rendering, and upload refresh that stays in-place.
+- Files commander view review/polish: verified the rendered DOM structure and fixed the delete
+  refresh path so trashing a document keeps the user in the document-library view.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
