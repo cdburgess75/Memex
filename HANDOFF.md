@@ -84,6 +84,8 @@ Surfaced via `/api/config` and the masthead colophon. Each release gets a git ta
 - Theme expansion: added 365 Dark, Aurora, and Graphite palettes alongside Light, 365, and Dark.
   Theme state now applies one clean root class, and the file-first surfaces, rails, cards, rows,
   modals, and file type badges follow the selected palette.
+- Rail action polish: Upload and Search are now compact two-column command buttons with softer
+  borders, lighter icon treatment, and dropdowns sized independently of the button width.
 - Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
   fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
   trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
