@@ -76,19 +76,37 @@ html.office-dark {
   --display: var(--ui);
   --body: var(--ui);
 }
-html.aurora {
-  --paper: #F7FBFA;
+html.drive {
+  /* Google Drive-inspired: white canvas, blue action color, green success accents. */
+  --paper: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-2: #ECF7F5;
-  --ink: #102027;
-  --ink-soft: #354B56;
-  --ink-faint: #6A7C86;
-  --accent: #127C88;
-  --accent-soft: #2656D9;
-  --accent-wash: #E3F5F2;
-  --rule: rgba(16,32,39,0.12);
-  --rule-soft: rgba(16,32,39,0.07);
-  --shadow: 0 8px 22px rgba(18,124,136,0.10), 0 0 0 1px rgba(38,86,217,0.07);
+  --surface-2: #F7F9FC;
+  --ink: #202124;
+  --ink-soft: #3C4043;
+  --ink-faint: #6F7782;
+  --accent: #1A73E8;
+  --accent-soft: #1558B0;
+  --accent-wash: #E8F0FE;
+  --rule: rgba(32,33,36,0.13);
+  --rule-soft: rgba(32,33,36,0.07);
+  --shadow: 0 2px 8px rgba(60,64,67,0.10), 0 0 0 1px rgba(26,115,232,0.06);
+  --display: var(--ui);
+  --body: var(--ui);
+}
+html.dropbox {
+  /* Dropbox-inspired: crisp blue on restrained file-manager neutrals. */
+  --paper: #F7F9FC;
+  --surface: #FFFFFF;
+  --surface-2: #EEF4FF;
+  --ink: #1E1919;
+  --ink-soft: #4B4A4A;
+  --ink-faint: #737373;
+  --accent: #0061FF;
+  --accent-soft: #0046B8;
+  --accent-wash: #EAF2FF;
+  --rule: rgba(30,25,25,0.12);
+  --rule-soft: rgba(30,25,25,0.07);
+  --shadow: 0 3px 10px rgba(0,97,255,0.09), 0 0 0 1px rgba(0,97,255,0.06);
   --display: var(--ui);
   --body: var(--ui);
 }
@@ -197,11 +215,6 @@ body {
   cursor: pointer;
 }
 .app-menu-item:hover { background: var(--accent-wash); color: var(--accent); }
-.app-menu-theme {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
 .theme-switcher {
   display: inline-flex;
   align-items: center;
@@ -212,6 +225,12 @@ body {
   background: var(--surface-2);
   box-shadow: var(--shadow);
 }
+.theme-switcher.top-theme-switcher {
+  max-width: min(52vw, 420px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.theme-switcher.top-theme-switcher::-webkit-scrollbar { display: none; }
 .theme-option {
   font-family: var(--mono);
   font-size: 11px;
@@ -284,10 +303,12 @@ html.office .file-icon.xlsx, html.office .file-icon.xls, html.office .file-icon.
 html.office .file-icon.pptx, html.office .file-icon.ppt { background: #FFF0EA; color: #C43E1C; }
 html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
 html.office-dark body,
-html.aurora body,
+html.drive body,
+html.dropbox body,
 html.graphite body { background-image: none; }
 html.office-dark .masthead,
-html.aurora .masthead,
+html.drive .masthead,
+html.dropbox .masthead,
 html.graphite .masthead { border-bottom-color: var(--rule); }
 html.office-dark .theme-option,
 html.office-dark .icon-btn,
@@ -301,18 +322,30 @@ html.office-dark .field-label,
 html.office-dark .mode-tab,
 html.office-dark .file-action-btn,
 html.office-dark .upload-progress,
-html.aurora .theme-option,
-html.aurora .icon-btn,
-html.aurora .user-chip,
-html.aurora .run-btn,
-html.aurora .ghost-btn,
-html.aurora .edit-btn,
-html.aurora .delete-btn,
-html.aurora .provider-btn,
-html.aurora .field-label,
-html.aurora .mode-tab,
-html.aurora .file-action-btn,
-html.aurora .upload-progress,
+html.drive .theme-option,
+html.drive .icon-btn,
+html.drive .user-chip,
+html.drive .run-btn,
+html.drive .ghost-btn,
+html.drive .edit-btn,
+html.drive .delete-btn,
+html.drive .provider-btn,
+html.drive .field-label,
+html.drive .mode-tab,
+html.drive .file-action-btn,
+html.drive .upload-progress,
+html.dropbox .theme-option,
+html.dropbox .icon-btn,
+html.dropbox .user-chip,
+html.dropbox .run-btn,
+html.dropbox .ghost-btn,
+html.dropbox .edit-btn,
+html.dropbox .delete-btn,
+html.dropbox .provider-btn,
+html.dropbox .field-label,
+html.dropbox .mode-tab,
+html.dropbox .file-action-btn,
+html.dropbox .upload-progress,
 html.graphite .theme-option,
 html.graphite .icon-btn,
 html.graphite .user-chip,
@@ -330,25 +363,32 @@ html.graphite .upload-progress {
   text-transform: none;
 }
 html.office-dark .run-btn,
-html.aurora .run-btn,
+html.drive .run-btn,
+html.dropbox .run-btn,
 html.graphite .run-btn {
   background: var(--accent);
   color: #FFFFFF;
   border-color: var(--accent);
 }
-html.aurora .run-btn { color: #FFFFFF; }
+html.drive .run-btn,
+html.dropbox .run-btn { color: #FFFFFF; }
 html.graphite .run-btn { color: #0B1614; }
 html.office-dark .run-btn:hover,
-html.aurora .run-btn:hover,
+html.drive .run-btn:hover,
+html.dropbox .run-btn:hover,
 html.graphite .run-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); color: #FFFFFF; }
 html.office-dark .file-icon.docx, html.office-dark .file-icon.doc { background: #102A44; color: #8EC8FF; }
 html.office-dark .file-icon.xlsx, html.office-dark .file-icon.xls, html.office-dark .file-icon.csv { background: #0E3023; color: #7BE0A8; }
 html.office-dark .file-icon.pptx, html.office-dark .file-icon.ppt { background: #3A2217; color: #FFAD7A; }
 html.office-dark .file-icon.pdf { background: #3A171D; color: #FF9AA7; }
-html.aurora .file-icon.docx, html.aurora .file-icon.doc { background: #E9F0FF; color: #2656D9; }
-html.aurora .file-icon.xlsx, html.aurora .file-icon.xls, html.aurora .file-icon.csv { background: #E3F5F2; color: #127C88; }
-html.aurora .file-icon.pptx, html.aurora .file-icon.ppt { background: #FFF2DC; color: #B85E00; }
-html.aurora .file-icon.pdf { background: #FFE9EC; color: #B32636; }
+html.drive .file-icon.docx, html.drive .file-icon.doc,
+html.dropbox .file-icon.docx, html.dropbox .file-icon.doc { background: #E8F0FE; color: #1A73E8; }
+html.drive .file-icon.xlsx, html.drive .file-icon.xls, html.drive .file-icon.csv,
+html.dropbox .file-icon.xlsx, html.dropbox .file-icon.xls, html.dropbox .file-icon.csv { background: #E6F4EA; color: #188038; }
+html.drive .file-icon.pptx, html.drive .file-icon.ppt,
+html.dropbox .file-icon.pptx, html.dropbox .file-icon.ppt { background: #FEF7E0; color: #B06000; }
+html.drive .file-icon.pdf,
+html.dropbox .file-icon.pdf { background: #FCE8E6; color: #C5221F; }
 html.graphite .file-icon.docx, html.graphite .file-icon.doc { background: #18243A; color: #8DBBFF; }
 html.graphite .file-icon.xlsx, html.graphite .file-icon.xls, html.graphite .file-icon.csv { background: #18312E; color: #7CC7B7; }
 html.graphite .file-icon.pptx, html.graphite .file-icon.ppt { background: #352716; color: #F0B35A; }
@@ -1357,28 +1397,28 @@ html.dark .file-link-status { background: #172638; color: #D9ECFF; }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 html.office-dark.file-home-mode body,
-html.aurora.file-home-mode body,
+html.drive.file-home-mode body,
 html.graphite.file-home-mode body { background: var(--paper); background-image: none; }
 html.office-dark .file-home-shell,
-html.aurora .file-home-shell,
+html.drive .file-home-shell,
 html.graphite .file-home-shell { background: var(--paper); color: var(--ink); }
 html.office-dark .file-home-nav,
-html.aurora .file-home-nav,
+html.drive .file-home-nav,
 html.graphite .file-home-nav { background: var(--surface); border-color: var(--rule); }
 html.office-dark .file-home-shell.dragging,
-html.aurora .file-home-shell.dragging,
+html.drive .file-home-shell.dragging,
 html.graphite .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--accent); }
 html.office-dark .file-create-btn,
-html.aurora .file-create-btn,
+html.drive .file-create-btn,
 html.graphite .file-create-btn { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 12%, transparent); }
 html.office-dark .file-create-btn:hover,
-html.aurora .file-create-btn:hover,
+html.drive .file-create-btn:hover,
 html.graphite .file-create-btn:hover { border-color: var(--accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 18%, transparent); filter: brightness(1.03); }
 html.office-dark .file-create-btn .plus,
-html.aurora .file-create-btn .plus,
+html.drive .file-create-btn .plus,
 html.graphite .file-create-btn .plus { background: color-mix(in srgb, var(--surface) 56%, transparent); color: var(--accent); }
 html.office-dark .file-create-btn .chev,
-html.aurora .file-create-btn .chev,
+html.drive .file-create-btn .chev,
 html.graphite .file-create-btn .chev { color: var(--ink-soft); }
 html.office-dark .file-upload-menu,
 html.office-dark .file-search-menu,
@@ -1387,13 +1427,13 @@ html.office-dark .file-library-search,
 html.office-dark .file-share-grid input,
 html.office-dark .file-share-grid select,
 html.office-dark .file-share-url,
-html.aurora .file-upload-menu,
-html.aurora .file-search-menu,
-html.aurora .file-home-search,
-html.aurora .file-library-search,
-html.aurora .file-share-grid input,
-html.aurora .file-share-grid select,
-html.aurora .file-share-url,
+html.drive .file-upload-menu,
+html.drive .file-search-menu,
+html.drive .file-home-search,
+html.drive .file-library-search,
+html.drive .file-share-grid input,
+html.drive .file-share-grid select,
+html.drive .file-share-url,
 html.graphite .file-upload-menu,
 html.graphite .file-search-menu,
 html.graphite .file-home-search,
@@ -1403,14 +1443,14 @@ html.graphite .file-share-grid select,
 html.graphite .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
 html.office-dark .file-upload-menu button,
 html.office-dark .file-search-menu button,
-html.aurora .file-upload-menu button,
-html.aurora .file-search-menu button,
+html.drive .file-upload-menu button,
+html.drive .file-search-menu button,
 html.graphite .file-upload-menu button,
 html.graphite .file-search-menu button { color: var(--ink); }
 html.office-dark .file-upload-menu button:hover,
 html.office-dark .file-search-menu button:hover,
-html.aurora .file-upload-menu button:hover,
-html.aurora .file-search-menu button:hover,
+html.drive .file-upload-menu button:hover,
+html.drive .file-search-menu button:hover,
 html.graphite .file-upload-menu button:hover,
 html.graphite .file-search-menu button:hover { background: var(--accent-wash); }
 html.office-dark .file-home-user,
@@ -1424,17 +1464,17 @@ html.office-dark .file-details-section-title,
 html.office-dark .file-link-title,
 html.office-dark .file-share-grid label,
 html.office-dark .file-library-selected-count,
-html.aurora .file-home-user,
-html.aurora .file-nav-section,
-html.aurora .file-home-title,
-html.aurora .file-section-title,
-html.aurora .file-home-card-value,
-html.aurora .file-library-title,
-html.aurora .file-details-title,
-html.aurora .file-details-section-title,
-html.aurora .file-link-title,
-html.aurora .file-share-grid label,
-html.aurora .file-library-selected-count,
+html.drive .file-home-user,
+html.drive .file-nav-section,
+html.drive .file-home-title,
+html.drive .file-section-title,
+html.drive .file-home-card-value,
+html.drive .file-library-title,
+html.drive .file-details-title,
+html.drive .file-details-section-title,
+html.drive .file-link-title,
+html.drive .file-share-grid label,
+html.drive .file-library-selected-count,
 html.graphite .file-home-user,
 html.graphite .file-nav-section,
 html.graphite .file-home-title,
@@ -1451,11 +1491,11 @@ html.office-dark .file-nav-label,
 html.office-dark .file-library-tool,
 html.office-dark .file-library-close,
 html.office-dark .file-library-icon-btn,
-html.aurora .file-nav-link,
-html.aurora .file-nav-label,
-html.aurora .file-library-tool,
-html.aurora .file-library-close,
-html.aurora .file-library-icon-btn,
+html.drive .file-nav-link,
+html.drive .file-nav-label,
+html.drive .file-library-tool,
+html.drive .file-library-close,
+html.drive .file-library-icon-btn,
 html.graphite .file-nav-link,
 html.graphite .file-nav-label,
 html.graphite .file-library-tool,
@@ -1466,11 +1506,11 @@ html.office-dark .file-nav-label:hover,
 html.office-dark .file-library-tool:hover,
 html.office-dark .file-library-close:hover,
 html.office-dark .file-library-icon-btn:hover,
-html.aurora .file-nav-link:hover,
-html.aurora .file-nav-label:hover,
-html.aurora .file-library-tool:hover,
-html.aurora .file-library-close:hover,
-html.aurora .file-library-icon-btn:hover,
+html.drive .file-nav-link:hover,
+html.drive .file-nav-label:hover,
+html.drive .file-library-tool:hover,
+html.drive .file-library-close:hover,
+html.drive .file-library-icon-btn:hover,
 html.graphite .file-nav-link:hover,
 html.graphite .file-nav-label:hover,
 html.graphite .file-library-tool:hover,
@@ -1479,9 +1519,9 @@ html.graphite .file-library-icon-btn:hover { background: var(--accent-wash); col
 html.office-dark .file-nav-link.active,
 html.office-dark .file-filter-chip.active,
 html.office-dark .file-library-pill.active,
-html.aurora .file-nav-link.active,
-html.aurora .file-filter-chip.active,
-html.aurora .file-library-pill.active,
+html.drive .file-nav-link.active,
+html.drive .file-filter-chip.active,
+html.drive .file-library-pill.active,
 html.graphite .file-nav-link.active,
 html.graphite .file-filter-chip.active,
 html.graphite .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
@@ -1496,17 +1536,17 @@ html.office-dark .file-library-table td,
 html.office-dark .file-link-meta,
 html.office-dark .file-share-meta,
 html.office-dark .file-details-row,
-html.aurora .file-quick-pill,
-html.aurora .file-home-card-label,
-html.aurora .file-home-card-note,
-html.aurora .file-details-kind,
-html.aurora .file-row-sub,
-html.aurora .file-row-hit,
-html.aurora .file-row-activity span,
-html.aurora .file-library-table td,
-html.aurora .file-link-meta,
-html.aurora .file-share-meta,
-html.aurora .file-details-row,
+html.drive .file-quick-pill,
+html.drive .file-home-card-label,
+html.drive .file-home-card-note,
+html.drive .file-details-kind,
+html.drive .file-row-sub,
+html.drive .file-row-hit,
+html.drive .file-row-activity span,
+html.drive .file-library-table td,
+html.drive .file-link-meta,
+html.drive .file-share-meta,
+html.drive .file-details-row,
 html.graphite .file-quick-pill,
 html.graphite .file-home-card-label,
 html.graphite .file-home-card-note,
@@ -1529,17 +1569,17 @@ html.office-dark .file-ask-input,
 html.office-dark .file-share-item,
 html.office-dark .file-link-card,
 html.office-dark .file-empty-home,
-html.aurora .file-rec-card,
-html.aurora .file-home-card,
-html.aurora .file-table-wrap,
-html.aurora .file-library-commandbar.has-selection,
-html.aurora .file-library-table-wrap,
-html.aurora .file-details-pane,
-html.aurora .file-ask-answer,
-html.aurora .file-ask-input,
-html.aurora .file-share-item,
-html.aurora .file-link-card,
-html.aurora .file-empty-home,
+html.drive .file-rec-card,
+html.drive .file-home-card,
+html.drive .file-table-wrap,
+html.drive .file-library-commandbar.has-selection,
+html.drive .file-library-table-wrap,
+html.drive .file-details-pane,
+html.drive .file-ask-answer,
+html.drive .file-ask-input,
+html.drive .file-share-item,
+html.drive .file-link-card,
+html.drive .file-empty-home,
 html.graphite .file-rec-card,
 html.graphite .file-home-card,
 html.graphite .file-table-wrap,
@@ -1557,12 +1597,12 @@ html.office-dark .file-table th,
 html.office-dark .file-table td,
 html.office-dark .file-library-table th,
 html.office-dark .file-library-table td,
-html.aurora .file-rec-head,
-html.aurora .file-details-section,
-html.aurora .file-table th,
-html.aurora .file-table td,
-html.aurora .file-library-table th,
-html.aurora .file-library-table td,
+html.drive .file-rec-head,
+html.drive .file-details-section,
+html.drive .file-table th,
+html.drive .file-table td,
+html.drive .file-library-table th,
+html.drive .file-library-table td,
 html.graphite .file-rec-head,
 html.graphite .file-details-section,
 html.graphite .file-table th,
@@ -1574,11 +1614,11 @@ html.office-dark .file-rec-activity strong,
 html.office-dark .file-row-title,
 html.office-dark .file-library-table th,
 html.office-dark .file-details-row strong,
-html.aurora .file-rec-title,
-html.aurora .file-rec-activity strong,
-html.aurora .file-row-title,
-html.aurora .file-library-table th,
-html.aurora .file-details-row strong,
+html.drive .file-rec-title,
+html.drive .file-rec-activity strong,
+html.drive .file-row-title,
+html.drive .file-library-table th,
+html.drive .file-details-row strong,
 html.graphite .file-rec-title,
 html.graphite .file-rec-activity strong,
 html.graphite .file-row-title,
@@ -1586,60 +1626,60 @@ html.graphite .file-library-table th,
 html.graphite .file-details-row strong { color: var(--ink); }
 html.office-dark .file-rec-activity,
 html.office-dark .file-rec-date,
-html.aurora .file-rec-activity,
-html.aurora .file-rec-date,
+html.drive .file-rec-activity,
+html.drive .file-rec-date,
 html.graphite .file-rec-activity,
 html.graphite .file-rec-date { color: var(--ink-soft); }
 html.office-dark .file-rec-open,
 html.office-dark .file-filter-chip,
 html.office-dark .file-library-pill,
-html.aurora .file-rec-open,
-html.aurora .file-filter-chip,
-html.aurora .file-library-pill,
+html.drive .file-rec-open,
+html.drive .file-filter-chip,
+html.drive .file-library-pill,
 html.graphite .file-rec-open,
 html.graphite .file-filter-chip,
 html.graphite .file-library-pill { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
 html.office-dark .file-rec-open:hover,
 html.office-dark .file-filter-chip:hover,
 html.office-dark .file-library-pill:hover,
-html.aurora .file-rec-open:hover,
-html.aurora .file-filter-chip:hover,
-html.aurora .file-library-pill:hover,
+html.drive .file-rec-open:hover,
+html.drive .file-filter-chip:hover,
+html.drive .file-library-pill:hover,
 html.graphite .file-rec-open:hover,
 html.graphite .file-filter-chip:hover,
 html.graphite .file-library-pill:hover { border-color: var(--accent); color: var(--ink); }
 html.office-dark .file-library-table tbody tr:hover,
-html.aurora .file-library-table tbody tr:hover,
+html.drive .file-library-table tbody tr:hover,
 html.graphite .file-library-table tbody tr:hover { background: color-mix(in srgb, var(--accent-wash) 60%, transparent); }
 html.office-dark .file-library-table tbody tr.selected,
 html.office-dark .file-library-table tbody tr.selected:hover,
-html.aurora .file-library-table tbody tr.selected,
-html.aurora .file-library-table tbody tr.selected:hover,
+html.drive .file-library-table tbody tr.selected,
+html.drive .file-library-table tbody tr.selected:hover,
 html.graphite .file-library-table tbody tr.selected,
 html.graphite .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
 html.office-dark .file-library-select,
-html.aurora .file-library-select,
+html.drive .file-library-select,
 html.graphite .file-library-select { background: var(--surface-2); border-color: var(--ink-faint); color: var(--ink); }
 html.office-dark .file-library-select.selected,
-html.aurora .file-library-select.selected,
+html.drive .file-library-select.selected,
 html.graphite .file-library-select.selected { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 html.graphite .file-library-select.selected { color: #0B1614; }
 html.office-dark .file-library-person,
-html.aurora .file-library-person,
+html.drive .file-library-person,
 html.graphite .file-library-person { background: var(--surface-2); color: var(--ink-soft); }
 html.office-dark .file-preview,
-html.aurora .file-preview,
+html.drive .file-preview,
 html.graphite .file-preview { background: linear-gradient(135deg, var(--surface-2), var(--surface)); border-color: var(--rule); }
 html.office-dark .file-preview::before,
-html.aurora .file-preview::before,
+html.drive .file-preview::before,
 html.graphite .file-preview::before { opacity: 0.72; }
 html.office-dark .file-link-status,
-html.aurora .file-link-status,
+html.drive .file-link-status,
 html.graphite .file-link-status { background: var(--accent-wash); color: var(--accent); }
 html.office-dark .file-link-status.expired,
 html.office-dark .file-link-status.revoked,
-html.aurora .file-link-status.expired,
-html.aurora .file-link-status.revoked,
+html.drive .file-link-status.expired,
+html.drive .file-link-status.revoked,
 html.graphite .file-link-status.expired,
 html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
@@ -1881,6 +1921,13 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <span class="colophon">a team knowledge base, kept by Claude</span>
   </div>
   <div class="masthead-actions">
+    <div class="theme-switcher top-theme-switcher" role="group" aria-label="Theme">
+      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired">365</button>
+      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired">Drive</button>
+      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired">Dropbox</button>
+      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace">Graphite</button>
+      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode">Dark</button>
+    </div>
     <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
       <button class="app-menu-btn" type="button" onclick="toggleAppMenu(event)">Menu</button>
@@ -1894,15 +1941,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button class="app-menu-item" onclick="closeAppMenu();exportJSON()">Backup</button>
         <button class="app-menu-item" onclick="closeAppMenu();document.getElementById('import-file').click()">Restore</button>
         <button class="app-menu-item" onclick="closeAppMenu();openSettings()">Account settings</button>
-        <div class="app-menu-section">Theme</div>
-        <div class="app-menu-theme" role="group" aria-label="Theme">
-          <button class="app-menu-item theme-option" type="button" data-theme="light" onclick="setTheme('light')">Light</button>
-          <button class="app-menu-item theme-option" type="button" data-theme="office" onclick="setTheme('office')">365</button>
-          <button class="app-menu-item theme-option" type="button" data-theme="office-dark" onclick="setTheme('office-dark')">365 Dark</button>
-          <button class="app-menu-item theme-option" type="button" data-theme="aurora" onclick="setTheme('aurora')">Aurora</button>
-          <button class="app-menu-item theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')">Graphite</button>
-          <button class="app-menu-item theme-option" type="button" data-theme="dark" onclick="setTheme('dark')">Dark</button>
-        </div>
       </div>
     </div>
     <span class="user-chip" id="user-chip"></span>
@@ -2068,6 +2106,10 @@ async function handleOAuthCallback(code, returnedState) {
 
 /* ---------- bootstrap ---------- */
 async function initApp() {
+  const savedTheme = localStorage.getItem('memex_theme');
+  if (savedTheme) setTheme(savedTheme);
+  else setTheme('office');
+
   let config;
   try {
     config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
@@ -2098,9 +2140,6 @@ async function initApp() {
     document.getElementById('login-scrim').classList.add('open');
   }
 
-  const savedTheme = localStorage.getItem('memex_theme');
-  if (savedTheme) setTheme(savedTheme);
-  else setTheme('office');
 }
 
 async function _afterLogin() {
@@ -2304,10 +2343,13 @@ async function streamFromApi(path, body, el) {
 /* ---------- theme ---------- */
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
-  const themes = ['light', 'office', 'office-dark', 'aurora', 'graphite', 'dark'];
-  if (!themes.includes(theme)) theme = 'light';
-  document.documentElement.classList.remove('dark', 'office', 'office-dark', 'aurora', 'graphite');
-  if (theme !== 'light') document.documentElement.classList.add(theme);
+  const aliases = { light: 'office', aurora: 'drive', 'office-dark': 'graphite' };
+  theme = aliases[theme] || theme;
+  const themes = ['office', 'drive', 'dropbox', 'graphite', 'dark'];
+  if (!themes.includes(theme)) theme = 'office';
+  document.documentElement.classList.remove('dark', 'office', 'office-dark', 'drive', 'dropbox', 'aurora', 'graphite');
+  if (theme === 'dropbox') document.documentElement.classList.add('drive', 'dropbox');
+  else document.documentElement.classList.add(theme);
   document.querySelectorAll('.theme-option').forEach(btn => {
     const active = btn.dataset.theme === theme;
     btn.classList.toggle('active', active);
@@ -2316,8 +2358,8 @@ function setTheme(theme) {
   localStorage.setItem('memex_theme', theme);
 }
 function toggleTheme() {
-  const order = ['light', 'office', 'office-dark', 'aurora', 'graphite', 'dark'];
-  const current = localStorage.getItem('memex_theme') || 'light';
+  const order = ['office', 'drive', 'dropbox', 'graphite', 'dark'];
+  const current = localStorage.getItem('memex_theme') || 'office';
   setTheme(order[(order.indexOf(current) + 1) % order.length]);
 }
 
