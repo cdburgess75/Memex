@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="auth-locked">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -148,6 +148,60 @@ body {
   padding-bottom: 3px;
 }
 .masthead-actions { display: flex; gap: 6px; align-items: center; }
+.auth-locked .masthead,
+.auth-locked .shell {
+  display: none;
+}
+.app-menu-wrap { position: relative; }
+.app-menu-btn {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 12px;
+  font: 600 13px var(--body);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.app-menu-btn:hover { border-color: var(--accent); color: var(--accent); }
+.app-menu-popover {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(280px, calc(100vw - 32px));
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.14);
+}
+.app-menu-popover.open { display: grid; gap: 4px; }
+.app-menu-section {
+  margin: 8px 8px 4px;
+  color: var(--ink-faint);
+  font: 700 11px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.app-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  padding: 9px 10px;
+  text-align: left;
+  font: 600 14px var(--body);
+  cursor: pointer;
+}
+.app-menu-item:hover { background: var(--accent-wash); color: var(--accent); }
+.app-menu-theme {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
 .theme-switcher {
   display: inline-flex;
   align-items: center;
@@ -1082,6 +1136,13 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-home-title { flex: 0 0 auto; font: 700 22px var(--body); color: #616161; white-space: nowrap; }
 .file-home-search { flex: 1 1 420px; width: auto; min-width: 220px; max-width: 100%; border: 1px solid #DADADA; border-radius: 999px; padding: 10px 18px; background: #FFFFFF; color: #242424; font: 15px var(--body); }
 .file-home-search:focus { outline: 2px solid rgba(15,108,189,0.2); border-color: #0F6CBD; }
+.file-home-overview { display: grid; gap: 22px; }
+.file-home-insights { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; }
+.file-home-card { background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); min-width: 0; }
+.file-home-card-label { color: #707070; font: 700 12px var(--body); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.file-home-card-value { color: #323130; font: 700 24px var(--body); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-home-card-note { color: #616161; font-size: 13px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-home-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
 .file-rec-section { margin-bottom: 28px; }
 .file-rec-grid { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 18px; }
 .file-rec-card { min-height: 190px; background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); padding: 18px; display: grid; grid-template-rows: auto 1fr auto; gap: 14px; overflow: hidden; }
@@ -1165,10 +1226,17 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-details-pane { background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 8px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); position: sticky; top: 18px; }
 .file-details-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .file-details-title { font-size: 18px; font-weight: 700; color: #323130; line-height: 1.25; overflow-wrap: anywhere; }
+.file-details-kind { color: #707070; font-size: 13px; margin-top: 5px; }
+.file-details-section { border-top: 1px solid #EDEBE9; padding-top: 14px; margin-top: 14px; }
+.file-details-section:first-of-type { border-top: 0; padding-top: 0; }
+.file-details-section-title { color: #323130; font: 700 13px var(--body); margin-bottom: 10px; }
 .file-details-meta { display: grid; gap: 12px; }
 .file-details-row { display: grid; gap: 3px; font-size: 14px; color: #616161; }
 .file-details-row strong { color: #323130; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-.file-details-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.file-details-actions { display: grid; gap: 6px; }
+.file-details-actions .file-library-tool { justify-content: flex-start; width: 100%; }
+.file-details-actions .danger { color: #A4262C; }
+.file-details-hint { color: #707070; font-size: 13px; line-height: 1.4; margin-top: 8px; }
 .file-ask-modal { width: min(780px, 96vw); max-height: min(760px, 92dvh); overflow: auto; }
 .file-ask-docs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 16px; }
 .file-ask-chip { border: 1px solid #E1DFDD; background: #F8FBFF; color: #323130; border-radius: 999px; padding: 5px 10px; font-size: 13px; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1216,8 +1284,10 @@ html.dark .file-home-user,
 html.dark .file-nav-section,
 html.dark .file-home-title,
 html.dark .file-section-title,
+html.dark .file-home-card-value,
 html.dark .file-library-title,
 html.dark .file-details-title,
+html.dark .file-details-section-title,
 html.dark .file-link-title,
 html.dark .file-share-grid label,
 html.dark .file-library-selected-count { color: var(--ink); }
@@ -1235,6 +1305,9 @@ html.dark .file-nav-link.active,
 html.dark .file-filter-chip.active,
 html.dark .file-library-pill.active { background: #172638; border-color: #6AA9E9; color: #D9ECFF; box-shadow: inset 3px 0 0 #6AA9E9; }
 html.dark .file-quick-pill,
+html.dark .file-home-card-label,
+html.dark .file-home-card-note,
+html.dark .file-details-kind,
 html.dark .file-row-sub,
 html.dark .file-row-hit,
 html.dark .file-row-activity span,
@@ -1243,6 +1316,7 @@ html.dark .file-link-meta,
 html.dark .file-share-meta,
 html.dark .file-details-row { color: var(--ink-soft); }
 html.dark .file-rec-card,
+html.dark .file-home-card,
 html.dark .file-table-wrap,
 html.dark .file-library-commandbar.has-selection,
 html.dark .file-library-table-wrap,
@@ -1253,6 +1327,7 @@ html.dark .file-share-item,
 html.dark .file-link-card,
 html.dark .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: none; }
 html.dark .file-rec-head,
+html.dark .file-details-section,
 html.dark .file-table th,
 html.dark .file-table td,
 html.dark .file-library-table th,
@@ -1342,8 +1417,10 @@ html.office-dark .file-home-user,
 html.office-dark .file-nav-section,
 html.office-dark .file-home-title,
 html.office-dark .file-section-title,
+html.office-dark .file-home-card-value,
 html.office-dark .file-library-title,
 html.office-dark .file-details-title,
+html.office-dark .file-details-section-title,
 html.office-dark .file-link-title,
 html.office-dark .file-share-grid label,
 html.office-dark .file-library-selected-count,
@@ -1351,8 +1428,10 @@ html.aurora .file-home-user,
 html.aurora .file-nav-section,
 html.aurora .file-home-title,
 html.aurora .file-section-title,
+html.aurora .file-home-card-value,
 html.aurora .file-library-title,
 html.aurora .file-details-title,
+html.aurora .file-details-section-title,
 html.aurora .file-link-title,
 html.aurora .file-share-grid label,
 html.aurora .file-library-selected-count,
@@ -1360,8 +1439,10 @@ html.graphite .file-home-user,
 html.graphite .file-nav-section,
 html.graphite .file-home-title,
 html.graphite .file-section-title,
+html.graphite .file-home-card-value,
 html.graphite .file-library-title,
 html.graphite .file-details-title,
+html.graphite .file-details-section-title,
 html.graphite .file-link-title,
 html.graphite .file-share-grid label,
 html.graphite .file-library-selected-count { color: var(--ink); }
@@ -1405,6 +1486,9 @@ html.graphite .file-nav-link.active,
 html.graphite .file-filter-chip.active,
 html.graphite .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
 html.office-dark .file-quick-pill,
+html.office-dark .file-home-card-label,
+html.office-dark .file-home-card-note,
+html.office-dark .file-details-kind,
 html.office-dark .file-row-sub,
 html.office-dark .file-row-hit,
 html.office-dark .file-row-activity span,
@@ -1413,6 +1497,9 @@ html.office-dark .file-link-meta,
 html.office-dark .file-share-meta,
 html.office-dark .file-details-row,
 html.aurora .file-quick-pill,
+html.aurora .file-home-card-label,
+html.aurora .file-home-card-note,
+html.aurora .file-details-kind,
 html.aurora .file-row-sub,
 html.aurora .file-row-hit,
 html.aurora .file-row-activity span,
@@ -1421,6 +1508,9 @@ html.aurora .file-link-meta,
 html.aurora .file-share-meta,
 html.aurora .file-details-row,
 html.graphite .file-quick-pill,
+html.graphite .file-home-card-label,
+html.graphite .file-home-card-note,
+html.graphite .file-details-kind,
 html.graphite .file-row-sub,
 html.graphite .file-row-hit,
 html.graphite .file-row-activity span,
@@ -1429,6 +1519,7 @@ html.graphite .file-link-meta,
 html.graphite .file-share-meta,
 html.graphite .file-details-row { color: var(--ink-soft); }
 html.office-dark .file-rec-card,
+html.office-dark .file-home-card,
 html.office-dark .file-table-wrap,
 html.office-dark .file-library-commandbar.has-selection,
 html.office-dark .file-library-table-wrap,
@@ -1439,6 +1530,7 @@ html.office-dark .file-share-item,
 html.office-dark .file-link-card,
 html.office-dark .file-empty-home,
 html.aurora .file-rec-card,
+html.aurora .file-home-card,
 html.aurora .file-table-wrap,
 html.aurora .file-library-commandbar.has-selection,
 html.aurora .file-library-table-wrap,
@@ -1449,6 +1541,7 @@ html.aurora .file-share-item,
 html.aurora .file-link-card,
 html.aurora .file-empty-home,
 html.graphite .file-rec-card,
+html.graphite .file-home-card,
 html.graphite .file-table-wrap,
 html.graphite .file-library-commandbar.has-selection,
 html.graphite .file-library-table-wrap,
@@ -1459,16 +1552,19 @@ html.graphite .file-share-item,
 html.graphite .file-link-card,
 html.graphite .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: var(--shadow); }
 html.office-dark .file-rec-head,
+html.office-dark .file-details-section,
 html.office-dark .file-table th,
 html.office-dark .file-table td,
 html.office-dark .file-library-table th,
 html.office-dark .file-library-table td,
 html.aurora .file-rec-head,
+html.aurora .file-details-section,
 html.aurora .file-table th,
 html.aurora .file-table td,
 html.aurora .file-library-table th,
 html.aurora .file-library-table td,
 html.graphite .file-rec-head,
+html.graphite .file-details-section,
 html.graphite .file-table th,
 html.graphite .file-table td,
 html.graphite .file-library-table th,
@@ -1549,6 +1645,7 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
+  .file-home-insights { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
   .file-rec-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .file-table th:nth-child(4), .file-table td:nth-child(4) { display: none; }
 }
@@ -1563,6 +1660,7 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .file-home-main { padding: 22px 16px 34px; }
   .file-home-title-row { align-items: flex-start; flex-direction: column; }
   .file-home-search { width: 100%; }
+  .file-home-insights { grid-template-columns: 1fr; }
   .file-rec-grid { display: flex; overflow-x: auto; gap: 12px; padding-bottom: 6px; }
   .file-rec-card { flex: 0 0 min(82vw, 360px); }
   .file-rec-body { grid-template-columns: 1fr 96px; }
@@ -1783,17 +1881,30 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <span class="colophon">a team knowledge base, kept by Claude</span>
   </div>
   <div class="masthead-actions">
-    <div class="theme-switcher" role="group" aria-label="Theme">
-      <button class="theme-option" type="button" data-theme="light" onclick="setTheme('light')">Light</button>
-      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')">365</button>
-      <button class="theme-option" type="button" data-theme="office-dark" onclick="setTheme('office-dark')">365 Dark</button>
-      <button class="theme-option" type="button" data-theme="aurora" onclick="setTheme('aurora')">Aurora</button>
-      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')">Graphite</button>
-      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+    <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
+    <div class="app-menu-wrap">
+      <button class="app-menu-btn" type="button" onclick="toggleAppMenu(event)">Menu</button>
+      <div class="app-menu-popover" id="app-menu">
+        <div class="app-menu-section">AI workspace</div>
+        <button class="app-menu-item" onclick="closeAppMenu();setTab('ingest')">Add knowledge</button>
+        <button class="app-menu-item" onclick="closeAppMenu();openCollectionAsk()">Ask collection</button>
+        <button class="app-menu-item" onclick="closeAppMenu();setTab('lint')">Run audit</button>
+        <button class="app-menu-item admin-menu-item" onclick="closeAppMenu();setTab('admin')">Admin</button>
+        <div class="app-menu-section">Account</div>
+        <button class="app-menu-item" onclick="closeAppMenu();exportJSON()">Backup</button>
+        <button class="app-menu-item" onclick="closeAppMenu();document.getElementById('import-file').click()">Restore</button>
+        <button class="app-menu-item" onclick="closeAppMenu();openSettings()">Account settings</button>
+        <div class="app-menu-section">Theme</div>
+        <div class="app-menu-theme" role="group" aria-label="Theme">
+          <button class="app-menu-item theme-option" type="button" data-theme="light" onclick="setTheme('light')">Light</button>
+          <button class="app-menu-item theme-option" type="button" data-theme="office" onclick="setTheme('office')">365</button>
+          <button class="app-menu-item theme-option" type="button" data-theme="office-dark" onclick="setTheme('office-dark')">365 Dark</button>
+          <button class="app-menu-item theme-option" type="button" data-theme="aurora" onclick="setTheme('aurora')">Aurora</button>
+          <button class="app-menu-item theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')">Graphite</button>
+          <button class="app-menu-item theme-option" type="button" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+      </div>
     </div>
-    <button class="icon-btn" onclick="exportJSON()">Backup</button>
-    <button class="icon-btn" onclick="document.getElementById('import-file').click()">Restore</button>
-    <button class="icon-btn" onclick="openSettings()">Account</button>
     <span class="user-chip" id="user-chip"></span>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
   </div>
@@ -1993,6 +2104,7 @@ async function initApp() {
 }
 
 async function _afterLogin() {
+  document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim').classList.remove('open');
   await loadFromServer();
   currentUser = await apiGet('/auth/me');
@@ -2016,6 +2128,9 @@ function applyRoleUI() {
   const role = currentUser?.role || 'viewer';
   // Admin tab: only admin
   document.querySelectorAll('.tab[data-tab="admin"]').forEach(el => {
+    el.style.display = role === 'admin' ? '' : 'none';
+  });
+  document.querySelectorAll('.admin-menu-item').forEach(el => {
     el.style.display = role === 'admin' ? '' : 'none';
   });
   // Update user chip to show role
@@ -2070,6 +2185,7 @@ async function signOut() {
   state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
   renderIndex();
   document.getElementById('user-chip').textContent = '';
+  document.documentElement.classList.add('auth-locked');
   document.getElementById('login-scrim').classList.add('open');
   if (refresh && _kc) {
     fetch(`${_kcAuthUrl()}/logout`, {
@@ -2203,6 +2319,15 @@ function toggleTheme() {
   const order = ['light', 'office', 'office-dark', 'aurora', 'graphite', 'dark'];
   const current = localStorage.getItem('memex_theme') || 'light';
   setTheme(order[(order.indexOf(current) + 1) % order.length]);
+}
+
+function toggleAppMenu(event) {
+  event?.stopPropagation();
+  document.getElementById('app-menu')?.classList.toggle('open');
+}
+
+function closeAppMenu() {
+  document.getElementById('app-menu')?.classList.remove('open');
 }
 
 /* ---------- toast ---------- */
@@ -3394,23 +3519,27 @@ function highlightSearchHeadline(headline) {
 function fileActionButtons(f) {
   const ext = fileExt(f.name);
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
-  const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  const isAdmin = currentUser?.role === 'admin';
-  const dName = f.name.replace(/"/g, '&quot;');
   return `${isOffice ? `<button class="file-action-btn primary" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">Open</button>` : `<button class="file-action-btn primary" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Open</button>`}
-    ${isOffice ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Google Docs</button>` : ''}
-    ${f.google_drive_id && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export</button>` : ''}
-    ${canIngest && canEdit ? `<button class="file-action-btn" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Index</button>` : ''}
-    <button class="file-action-btn" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">Download</button>
-    ${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}
-    ${canEdit ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Trash</button>` : ''}`;
+    <button class="file-action-btn" data-fid="${f.id}" onclick="openAskFile(this.dataset.fid)">Ask</button>
+    <button class="file-action-btn" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">Share</button>
+    <button class="file-action-btn" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">More</button>`;
 }
 function fileRecommendationCard(f, idx) {
   const ext = fileExt(f.name);
   const owner = fileOwner(f);
   const activity = isSharedFile(f) ? `<strong>${esc(owner)}</strong> shared this with you` : idx === 0 ? `<strong>${esc(owner)}</strong> edited this recently` : 'This file was edited recently';
   return `<article class="file-rec-card"><div class="file-rec-head">${fileIconHtml(ext)}<div class="file-rec-title" title="${esc(f.name)}">${esc(f.name)}</div></div><div class="file-rec-body"><div class="file-rec-activity">${activity}<span class="file-rec-date">${fileDate(f.created_at)}</span></div><div class="file-preview ${ext}" aria-hidden="true"></div></div><button class="file-rec-open" data-fid="${f.id}" onclick="openRecommendedFile(this.dataset.fid)">Open</button></article>`;
+}
+function renderHomeInsights(list = filesList) {
+  const el = document.getElementById('file-home-insights');
+  if (!el) return;
+  const shared = list.filter(isSharedFile);
+  const office = list.filter(f => ['docx','doc','xlsx','xls','pptx','ppt'].includes(fileExt(f.name)));
+  const latest = list[0];
+  el.innerHTML = `<div class="file-home-card"><div class="file-home-card-label">Documents</div><div class="file-home-card-value">${list.length}</div><div class="file-home-card-note">Total files in the workspace</div></div>
+    <div class="file-home-card"><div class="file-home-card-label">Shared</div><div class="file-home-card-value">${shared.length}</div><div class="file-home-card-note">Items from other people</div></div>
+    <div class="file-home-card"><div class="file-home-card-label">Office files</div><div class="file-home-card-value">${office.length}</div><div class="file-home-card-note">Openable in Office tools</div></div>
+    <div class="file-home-card"><div class="file-home-card-label">Latest</div><div class="file-home-card-value">${latest ? esc(fileDate(latest.created_at)) : 'None'}</div><div class="file-home-card-note">${latest ? esc(latest.name) : 'Upload files to get started'}</div></div>`;
 }
 function fileRecentRow(f) {
   const ext = fileExt(f.name);
@@ -3419,16 +3548,18 @@ function fileRecentRow(f) {
   const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
   return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${isSharedFile(f) ? `${esc(owner)}'s files` : 'My files'}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td>${esc(owner)}</td><td><div class="file-row-activity"><span>${esc(activity)} · ${fileDate(f.created_at)}</span></div></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
+function fileHomeRow(f) {
+  const ext = fileExt(f.name);
+  const owner = fileOwner(f);
+  const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
+  return `<tr><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
+}
 function fileLibraryActions(f) {
   const ext = fileExt(f.name);
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  const isAdmin = currentUser?.role === 'admin';
-  const dName = f.name.replace(/"/g, '&quot;');
   return `${isOffice ? `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">↗</button>` : `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">↗</button>`}
-    <button class="file-library-icon-btn" title="Download" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">↓</button>
-    ${isAdmin ? `<button class="file-library-icon-btn" title="History" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">⋯</button>` : ''}
-    ${canEdit ? `<button class="file-library-icon-btn" title="Trash" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">×</button>` : ''}`;
+    <button class="file-library-icon-btn" title="Share" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">S</button>
+    <button class="file-library-icon-btn" title="Details" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">⋯</button>`;
 }
 function fileLibraryRow(f) {
   const ext = fileExt(f.name);
@@ -3481,7 +3612,10 @@ let fileSearchSeq = 0;
 
 function scheduleFileSearch() {
   clearTimeout(fileSearchTimer);
-  fileSearchTimer = setTimeout(() => renderFileList(), 180);
+  fileSearchTimer = setTimeout(() => {
+    if (document.getElementById('file-library-view')) renderDocumentLibraryList();
+    else renderFileList();
+  }, 180);
 }
 
 function fileNavButton(label, symbol, action, active) {
@@ -3544,6 +3678,7 @@ async function focusFileSearch() {
 document.addEventListener('click', () => {
   closeUploadMenu();
   closeSearchMenu();
+  closeAppMenu();
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
@@ -3559,40 +3694,14 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
     </div>
   </div>
   <div class="file-home-user">${userName}</div>
-  <div class="file-nav-section file-workspace-section">Workspace</div>
-  <div class="file-nav-main file-workspace-main">
-    ${fileNavButton('Ingest', '+', `setTab('ingest')`, activeWorkspace === 'ingest')}
-    ${fileNavButton('Query', '?', `setTab('query')`, activeWorkspace === 'query')}
-    ${fileNavButton('Lint', 'L', `setTab('lint')`, activeWorkspace === 'lint')}
-    ${currentUser?.role === 'admin' ? fileNavButton('Admin', 'A', `setTab('admin')`, activeWorkspace === 'admin') : ''}
-  </div>
   <div class="file-nav-section">Files</div>
   <div class="file-nav-main file-files-main">
     ${fileNavButton('Home', 'H', `setTab('files')`, activeWorkspace === 'files' && activeFile === 'home')}
     ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
     ${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
     ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
-    ${fileNavButton('Favorites', '*', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'favorites')}
     ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
   </div>
-  <div class="file-nav-section">Actions</div>
-  <div class="file-nav-main file-actions-main">
-    ${fileNavButton('Backup', 'B', `exportJSON()`, false)}
-    ${fileNavButton('Restore', 'R', `document.getElementById('import-file').click()`, false)}
-    ${fileNavButton('Account', 'A', `openSettings()`, false)}
-  </div>
-  <div class="file-nav-section">Theme</div>
-  <div class="file-nav-main file-theme-main">
-    ${fileNavButton('Light', 'L', `setTheme('light')`, false)}
-    ${fileNavButton('365', '3', `setTheme('office')`, false)}
-    ${fileNavButton('365 Dark', 'N', `setTheme('office-dark')`, false)}
-    ${fileNavButton('Aurora', 'U', `setTheme('aurora')`, false)}
-    ${fileNavButton('Graphite', 'G', `setTheme('graphite')`, false)}
-    ${fileNavButton('Dark', 'D', `setTheme('dark')`, false)}
-  </div>
-  <div class="file-nav-section">Browse files by</div>
-  <div class="file-nav-label"><span>People</span></div>
-  <div class="file-nav-label"><span>Media</span></div>
   <div class="file-nav-section">Quick access</div>
   <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
 }
@@ -3606,15 +3715,13 @@ function wrapPanelInFileHome(activeWorkspace) {
   const panel = document.getElementById('panel');
   const content = panel.innerHTML;
   panel.innerHTML = fileHomeShell(`<div class="file-workspace-content">${content}</div>`, activeWorkspace, '');
-  quickAccessHtml().then(html => {
-    const quick = document.getElementById('file-quick-list');
-    if (quick) quick.innerHTML = html;
-  });
+  const quick = document.getElementById('file-quick-list');
+  if (quick) quick.innerHTML = quickAccessHtml(filesList);
 }
 
 async function renderFiles() {
   document.documentElement.classList.add('file-home-mode');
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">For you</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Filter by name, person, or document text" oninput="scheduleFileSearch()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-rec-section"><div class="file-rec-grid" id="file-recommendations"><div class="file-empty-home">Loading files...</div></div></section><section><div class="file-recent-bar"><div class="file-recent-left"><span class="file-section-title">Recent</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading...</div></div></section>`, 'files', 'home');
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-overview"><div class="file-home-title-row"><h2 class="file-home-title">Home</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Search files, people, or document text" oninput="scheduleFileSearch()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-home-insights" id="file-home-insights"><div class="file-empty-home">Loading workspace summary...</div></section><section><div class="file-home-section-head"><div class="file-recent-left"><span class="file-section-title">Recent documents</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><button class="file-library-tool" onclick="setFileView('active')">View all</button></div><div class="file-library-table-wrap" id="file-list"><div class="file-empty-home">Loading documents...</div></div></section></div>`, 'files', 'home');
   fileView = 'active';
   fileFilter = 'all';
   await loadFiles();
@@ -3719,6 +3826,29 @@ function selectedFiles() {
   return filesList.filter(f => selectedFileIds.has(String(f.id)));
 }
 
+function selectSingleFile(fileId) {
+  selectedFileIds = new Set([String(fileId)]);
+}
+
+function openAskFile(fileId) {
+  selectSingleFile(fileId);
+  openAskSelected();
+}
+
+function openShareFile(fileId) {
+  selectSingleFile(fileId);
+  openShareSelected();
+}
+
+async function openFileDetails(fileId) {
+  if (!document.getElementById('file-library-view')) {
+    await renderDocumentLibrary('active');
+  }
+  selectSingleFile(fileId);
+  detailsPaneOpen = true;
+  renderDocumentLibraryList();
+}
+
 function updateFileLibraryChrome() {
   const commandbar = document.getElementById('file-library-commandbar');
   if (commandbar) commandbar.innerHTML = fileLibraryCommandBarHtml();
@@ -3791,7 +3921,17 @@ function renderFileDetailsPane() {
   pane.style.display = open ? '' : 'none';
   if (!open) return;
   const ext = fileExt(f.name);
-  pane.innerHTML = `<div class="file-details-head"><div class="file-details-title">${esc(f.name)}</div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div><div class="file-details-meta"><div class="file-details-row"><strong>Type</strong><span>${esc(fileKind(ext))}</span></div><div class="file-details-row"><strong>Size</strong><span>${fileSizeLabel(f.size || 0)}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div></div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button><button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">History</button>` : ''}</div>`;
+  const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
+  const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const isAdmin = currentUser?.role === 'admin';
+  const dName = f.name.replace(/"/g, '&quot;');
+  pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(f.name)}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
+    <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${isSharedFile(f) ? 'Shared with me' : 'My files'}</span></div></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button>${canIngest && canEdit ? `<button class="file-library-tool" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Index with AI</button>` : ''}</div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable document text.</div></section>
+    ${isOffice || f.google_drive_id || isAdmin ? `<section class="file-details-section"><div class="file-details-section-title">Editing & history</div><div class="file-details-actions">${isOffice ? `<button class="file-library-tool" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Open in Google Docs</button>` : ''}${f.google_drive_id && canEdit ? `<button class="file-library-tool" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export Google edits</button>` : ''}${isAdmin ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">Version history</button>` : ''}</div></section>` : ''}
+    ${canEdit ? `<section class="file-details-section"><div class="file-details-section-title">Danger zone</div><div class="file-details-actions"><button class="file-library-tool danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Move to Trash</button></div></section>` : ''}`;
 }
 
 function closeAskSelected() {
@@ -3999,6 +4139,7 @@ async function renderFileList() {
   const rec = document.getElementById('file-recommendations');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml(filesList);
+  renderHomeInsights(filesList);
   if (!el) return;
   const q = (document.getElementById('file-home-search')?.value || '').trim();
   let searchableFiles = filesList;
@@ -4017,11 +4158,9 @@ async function renderFileList() {
     fileSearchSeq += 1;
   }
   const source = fileView === 'shared' ? searchableFiles.filter(isSharedFile) : searchableFiles;
-  const recommendations = source.slice(0, 3);
-  if (rec) rec.innerHTML = recommendations.length ? recommendations.map(fileRecommendationCard).join('') : '<div class="file-empty-home">Upload or share files to see recommendations here.</div>';
   const rows = filterFilesForHome(fileFilter, searchableFiles, !q).filter(f => fileView === 'shared' ? isSharedFile(f) : true);
   if (!rows.length) { el.innerHTML = `<div class="file-empty-home">${q ? 'No files match this search.' : 'No files match this view.'}</div>`; return; }
-  el.innerHTML = `<table class="file-table"><thead><tr><th style="width:38%">Name</th><th style="width:15%">Opened</th><th style="width:17%">Owner</th><th>Activity</th><th style="width:220px"></th></tr></thead><tbody>${rows.map(fileRecentRow).join('')}</tbody></table>`;
+  el.innerHTML = `<table class="file-library-table"><thead><tr><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:230px;text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
 }
 
 function handleFilePickerChange(event) {
