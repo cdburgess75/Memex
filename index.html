@@ -243,6 +243,10 @@ body {
   cursor: pointer;
   text-transform: uppercase;
   transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 .theme-option:hover { color: var(--ink); background: var(--surface); }
 .theme-option.active {
@@ -250,6 +254,19 @@ body {
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--rule-soft), 0 1px 2px rgba(0,0,0,0.04);
 }
+.theme-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  background: var(--swatch, var(--accent));
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.65);
+}
+.theme-swatch.office { --swatch: linear-gradient(135deg, #0078D4 0 50%, #FFFFFF 50% 100%); }
+.theme-swatch.drive { --swatch: linear-gradient(135deg, #1A73E8 0 44%, #34A853 44% 72%, #FFFFFF 72% 100%); }
+.theme-swatch.dropbox { --swatch: linear-gradient(135deg, #0061FF 0 58%, #EEF4FF 58% 100%); }
+.theme-swatch.graphite { --swatch: linear-gradient(135deg, #111315 0 52%, #7CC7B7 52% 100%); }
+.theme-swatch.dark { --swatch: linear-gradient(135deg, #1A1916 0 55%, #D97757 55% 100%); }
 html.office body { background-image: none; }
 html.office .masthead { border-bottom-color: var(--rule); }
 html.office .brand h1 { font-family: var(--display); font-weight: 600; }
@@ -719,34 +736,38 @@ textarea { min-height: 120px; line-height: 1.55; }
 select { cursor: pointer; }
 
 .run-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
   background: var(--accent);
   color: #FFFFFF;
   border: 1px solid var(--accent);
-  padding: 12px 22px;
-  border-radius: 4px;
+  padding: 10px 18px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
+  min-height: 40px;
 }
 .run-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
 .run-btn:disabled { opacity: 0.4; cursor: wait; }
 .ghost-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
   background: transparent;
   color: var(--ink-soft);
   border: 1px solid var(--rule);
-  padding: 12px 18px;
-  border-radius: 4px;
+  padding: 10px 16px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
+  min-height: 40px;
 }
-.ghost-btn:hover { border-color: var(--ink); color: var(--ink); }
+.ghost-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
 .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .result {
@@ -836,9 +857,35 @@ html.dark .chip { color: var(--accent-soft); }
 .modal .sub { font-size: 15px; color: var(--ink-soft); margin-bottom: 22px; line-height: 1.5; }
 
 /* login screen */
-.login-modal { text-align: center; max-width: 420px; padding: 34px 36px 36px; }
-.login-modal h2 { font-size: 34px; line-height: 1.08; margin-bottom: 10px; }
-.login-modal .sub { margin: 0 auto 26px; max-width: 300px; font-size: 15px; }
+.login-modal { text-align: center; max-width: 440px; padding: 24px 34px 34px; }
+.login-theme-switcher {
+  justify-content: center;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 auto 24px;
+  scrollbar-width: none;
+}
+.login-theme-switcher::-webkit-scrollbar { display: none; }
+.login-mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  color: #FFFFFF;
+  display: grid;
+  place-items: center;
+  font: 700 22px var(--ui);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
+.login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
+.login-note {
+  margin-top: 16px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
 .login-form { display: flex; flex-direction: column; gap: 10px; }
 .login-form input {
@@ -1224,7 +1271,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-status .upload-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #424242; }
 .file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: #DDEEFF; overflow: hidden; border: 1px solid #BBD7F0; }
 .file-upload-status .upload-fill { height: 100%; width: var(--pct, 0%); background: linear-gradient(90deg, #0F6CBD, #5B5FC7); transition: width 120ms ease; }
-.file-empty-home { background: #FFFFFF; border: 1px dashed #D8D8D8; border-radius: 12px; padding: 36px; color: #707070; }
+.file-empty-home { background: #FFFFFF; border: 1px dashed #D8D8D8; border-radius: 12px; padding: 32px; color: #707070; }
+.file-empty-title { color: #323130; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.file-empty-text { color: #616161; font-size: 14px; line-height: 1.45; max-width: 560px; }
+.file-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .file-library { display: grid; gap: 18px; }
 .file-library-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .file-library-title { display: flex; align-items: center; gap: 8px; font: 700 22px var(--body); color: #323130; }
@@ -1375,8 +1425,10 @@ html.dark .file-library-table td { border-color: var(--rule-soft); }
 html.dark .file-rec-title,
 html.dark .file-rec-activity strong,
 html.dark .file-row-title,
+html.dark .file-empty-title,
 html.dark .file-library-table th,
 html.dark .file-details-row strong { color: var(--ink); }
+html.dark .file-empty-text { color: var(--ink-soft); }
 html.dark .file-rec-activity,
 html.dark .file-rec-date { color: var(--ink-soft); }
 html.dark .file-rec-open,
@@ -1612,18 +1664,24 @@ html.graphite .file-library-table td { border-color: var(--rule-soft); }
 html.office-dark .file-rec-title,
 html.office-dark .file-rec-activity strong,
 html.office-dark .file-row-title,
+html.office-dark .file-empty-title,
 html.office-dark .file-library-table th,
 html.office-dark .file-details-row strong,
 html.drive .file-rec-title,
 html.drive .file-rec-activity strong,
 html.drive .file-row-title,
+html.drive .file-empty-title,
 html.drive .file-library-table th,
 html.drive .file-details-row strong,
 html.graphite .file-rec-title,
 html.graphite .file-rec-activity strong,
 html.graphite .file-row-title,
+html.graphite .file-empty-title,
 html.graphite .file-library-table th,
 html.graphite .file-details-row strong { color: var(--ink); }
+html.office-dark .file-empty-text,
+html.drive .file-empty-text,
+html.graphite .file-empty-text { color: var(--ink-soft); }
 html.office-dark .file-rec-activity,
 html.office-dark .file-rec-date,
 html.drive .file-rec-activity,
@@ -1890,8 +1948,16 @@ html.dark .file-action-btn.danger { color: #E57373; }
 <!-- Login screen — shown until auth is confirmed -->
 <div class="scrim open" id="login-scrim">
   <div class="modal login-modal">
+    <div class="theme-switcher login-theme-switcher" role="group" aria-label="Theme">
+      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button>
+      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button>
+      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button>
+      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button>
+      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button>
+    </div>
+    <div class="login-mark" aria-hidden="true">M</div>
     <h2>Memex</h2>
-    <p class="sub">Sign in to access your team's knowledge base.</p>
+    <p class="sub">Your team's files, notes, and AI answers in one private workspace.</p>
     <div class="login-providers">
       <button class="provider-btn" onclick="signIn('google')">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.3 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.8 6.1C12.5 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.5-5.8c-2.1 1.4-4.8 2.3-8 2.3-6.2 0-11.5-3.7-13.4-9l-7.8 6.1C6.7 42.6 14.7 48 24 48z"/></svg>
@@ -1911,6 +1977,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
           Sign in with email &amp; password
         </button>
       </form>
+      <div class="login-note">Theme choices are saved on this device. Your files stay permission-scoped after sign-in.</div>
     </div>
   </div>
 </div>
@@ -1922,11 +1989,11 @@ html.dark .file-action-btn.danger { color: #E57373; }
   </div>
   <div class="masthead-actions">
     <div class="theme-switcher top-theme-switcher" role="group" aria-label="Theme">
-      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired">365</button>
-      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired">Drive</button>
-      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired">Dropbox</button>
-      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace">Graphite</button>
-      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode">Dark</button>
+      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button>
+      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button>
+      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button>
+      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button>
+      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button>
     </div>
     <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
@@ -2114,7 +2181,8 @@ async function initApp() {
   try {
     config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
   } catch (e) {
-    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><h2>Memex</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Is it running?</p></div>`;
+    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="theme-switcher login-theme-switcher" role="group" aria-label="Theme"><button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button><button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button><button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button><button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button><button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button></div><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
+    setTheme(localStorage.getItem('memex_theme') || 'office');
     return;
   }
 
@@ -2470,6 +2538,10 @@ function renderSearchResults(q, results) {
 
 /* ---------- markdown ---------- */
 function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+function emptyState(title, text, action = '') {
+  return `<div class="file-empty-home"><div class="file-empty-title">${esc(title)}</div><div class="file-empty-text">${esc(text)}</div>${action ? `<div class="file-empty-actions">${action}</div>` : ''}</div>`;
+}
 
 function mdToHtml(md) {
   // 1. Extract fenced code blocks before escaping
@@ -3610,7 +3682,7 @@ function fileLibraryRow(f) {
   return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}</div></div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div class="file-library-title"><span>${esc(title)}</span><span class="chev">⌄</span></div><button class="file-library-create" onclick="document.getElementById('file-picker').click()"><span>+</span><span>Create or upload</span></button></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div class="file-library-table-wrap" id="file-list"><div class="file-empty-home">Loading documents...</div></div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div class="file-library-title"><span>${esc(title)}</span><span class="chev">⌄</span></div><button class="file-library-create" onclick="document.getElementById('file-picker').click()"><span>+</span><span>Create or upload</span></button></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div class="file-library-table-wrap" id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
@@ -3763,7 +3835,7 @@ function wrapPanelInFileHome(activeWorkspace) {
 
 async function renderFiles() {
   document.documentElement.classList.add('file-home-mode');
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-overview"><div class="file-home-title-row"><h2 class="file-home-title">Home</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Search files, people, or document text" oninput="scheduleFileSearch()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-home-insights" id="file-home-insights"><div class="file-empty-home">Loading workspace summary...</div></section><section><div class="file-home-section-head"><div class="file-recent-left"><span class="file-section-title">Recent documents</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><button class="file-library-tool" onclick="setFileView('active')">View all</button></div><div class="file-library-table-wrap" id="file-list"><div class="file-empty-home">Loading documents...</div></div></section></div>`, 'files', 'home');
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-overview"><div class="file-home-title-row"><h2 class="file-home-title">Home</h2><input class="file-home-search" id="file-home-search" type="search" placeholder="Search files, people, or document text" oninput="scheduleFileSearch()"></div><div class="file-upload-status" id="upload-status"></div><section class="file-home-insights" id="file-home-insights">${emptyState('Loading workspace summary', 'Checking recent documents, shared files, and indexed content.')}</section><section><div class="file-home-section-head"><div class="file-recent-left"><span class="file-section-title">Recent documents</span><button class="file-filter-chip active" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-filter-chip" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-filter-chip" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-filter-chip" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-filter-chip" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><button class="file-library-tool" onclick="setFileView('active')">View all</button></div><div class="file-library-table-wrap" id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div></section></div>`, 'files', 'home');
   fileView = 'active';
   fileFilter = 'all';
   await loadFiles();
@@ -3786,7 +3858,7 @@ function setFileView(view) {
     btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
   });
   if (view === 'trash') {
-    document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Recycle bin</h2></div><div class="file-table-wrap" id="file-list"><div class="file-empty-home">Loading trash...</div></div>`, 'files', 'trash');
+    document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Recycle bin</h2></div><div class="file-table-wrap" id="file-list">${emptyState('Loading trash', 'Checking recently deleted files.')}</div>`, 'files', 'trash');
     loadTrash();
   } else if (view === 'links') {
     renderShareLinks();
@@ -3815,17 +3887,17 @@ async function renderDocumentLibrary(view = 'active') {
 
 async function loadTrash() {
   const el = document.getElementById('file-list');
-  if (el) el.innerHTML = '<div class="file-empty-home">Loading trash...</div>';
+  if (el) el.innerHTML = emptyState('Loading trash', 'Checking recently deleted files.');
   try { trashList = await apiGet('/files/trash'); renderTrashList(); }
-  catch (e) { if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load trash: ${esc(e.message)}</p>`; }
+  catch (e) { if (el) el.innerHTML = emptyState('Could not load trash', e.message || 'Try refreshing the page.'); }
 }
 
 function renderTrashList() {
   const el = document.getElementById('file-list');
   const rec = document.getElementById('file-recommendations');
-  if (rec) rec.innerHTML = '<div class="file-empty-home">Recycle bin</div>';
+  if (rec) rec.innerHTML = emptyState('Recycle bin', 'Deleted files appear here before permanent removal.');
   if (!el) return;
-  if (!trashList.length) { el.innerHTML = '<div class="file-empty-home">Trash is empty.</div>'; return; }
+  if (!trashList.length) { el.innerHTML = emptyState('Trash is empty', 'Deleted files will appear here when there is something to restore or permanently remove.'); return; }
   const isAdmin = currentUser?.role === 'admin';
   el.innerHTML = `<table class="file-table"><thead><tr><th>Name</th><th>Deleted</th><th>Owner</th><th>Activity</th><th></th></tr></thead><tbody>${trashList.map(f => { const ext = fileExt(f.name); const when = fileDate(f.deleted_at); const dName = f.name.replace(/"/g, '&quot;'); const actor = f.deleted_by_email ? ` by ${esc(f.deleted_by_email)}` : ''; return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)}</div></div></div></td><td>${when}</td><td>${esc(fileOwner(f))}</td><td>Deleted${actor} ${when}</td><td><div class="file-row-actions">${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}<button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table>`;
 }
@@ -3843,7 +3915,7 @@ async function purgeFile(fileId, name) {
 
 async function loadFiles() {
   try { filesList = await apiGet('/files'); document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList(); }
-  catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`; }
+  catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
 }
 
 function renderDocumentLibraryList() {
@@ -3856,7 +3928,9 @@ function renderDocumentLibraryList() {
   const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.slice(0, 12) : filesList;
   const rows = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   if (!rows.length) {
-    el.innerHTML = `<div class="file-empty-home">${q ? 'No documents match this filter.' : 'No documents in this view yet.'}</div>`;
+    el.innerHTML = q
+      ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
+      : emptyState('No documents in this view', 'Upload files or switch views to see shared and recent documents.');
     updateFileLibraryChrome();
     return;
   }
@@ -4043,7 +4117,7 @@ async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share file</h2><p class="sub">${esc(f.name)}</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><h3 style="margin-top:22px">Existing links</h3><div class="file-share-list" id="file-share-list"><div class="file-empty-home">Loading links...</div></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share file</h2><p class="sub">${esc(f.name)}</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><h3 style="margin-top:22px">Existing links</h3><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></div></div>`);
   await loadShareLinks(f.id);
 }
 
@@ -4058,12 +4132,12 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
     const data = await apiGet('/files/' + fileId + '/shares');
     const shares = data.shares || [];
     if (!shares.length) {
-      list.innerHTML = '<div class="file-empty-home">No share links yet.</div>';
+      list.innerHTML = emptyState('No share links yet', 'Create a link when you are ready to share this file outside the workspace.');
       return;
     }
     list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
   } catch (e) {
-    list.innerHTML = `<p class="note" style="color:var(--accent)">Could not load shares: ${esc(e.message)}</p>`;
+    list.innerHTML = emptyState('Could not load shares', e.message || 'Try opening the share dialog again.');
   }
 }
 
@@ -4132,19 +4206,19 @@ function shareLinkCard(share) {
 }
 
 async function renderShareLinks() {
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Share links</h2><button class="file-library-tool" onclick="renderShareLinks()">Refresh</button></div><div class="file-links-list" id="file-links-list"><div class="file-empty-home">Loading share links...</div></div>`, 'files', 'links');
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Share links</h2><button class="file-library-tool" onclick="renderShareLinks()">Refresh</button></div><div class="file-links-list" id="file-links-list">${emptyState('Loading share links', 'Collecting active, expired, and revoked links.')}</div>`, 'files', 'links');
   const list = document.getElementById('file-links-list');
   if (!list) return;
   try {
     const data = await apiGet('/files/shares');
     const shares = data.shares || [];
     if (!shares.length) {
-      list.innerHTML = '<div class="file-empty-home">No share links yet. Select a file, choose Share, and create a link.</div>';
+      list.innerHTML = emptyState('No share links yet', 'Select a file, choose Share, and create your first link.');
       return;
     }
     list.innerHTML = shares.map(shareLinkCard).join('');
   } catch (e) {
-    list.innerHTML = `<p class="note" style="color:var(--accent)">Could not load share links: ${esc(e.message)}</p>`;
+    list.innerHTML = emptyState('Could not load share links', e.message || 'Try refreshing this view.');
   }
 }
 
@@ -4187,7 +4261,7 @@ async function renderFileList() {
   let searchableFiles = filesList;
   if (q) {
     const seq = ++fileSearchSeq;
-    el.innerHTML = '<div class="file-empty-home">Searching document text...</div>';
+    el.innerHTML = emptyState('Searching document text', 'Looking through filenames, owners, and indexed content.');
     try {
       searchableFiles = await apiGet('/files/search?q=' + encodeURIComponent(q));
       if (seq !== fileSearchSeq) return;
@@ -4201,7 +4275,12 @@ async function renderFileList() {
   }
   const source = fileView === 'shared' ? searchableFiles.filter(isSharedFile) : searchableFiles;
   const rows = filterFilesForHome(fileFilter, searchableFiles, !q).filter(f => fileView === 'shared' ? isSharedFile(f) : true);
-  if (!rows.length) { el.innerHTML = `<div class="file-empty-home">${q ? 'No files match this search.' : 'No files match this view.'}</div>`; return; }
+  if (!rows.length) {
+    el.innerHTML = q
+      ? emptyState('No files match this search', 'Try a shorter search, another file type, or clear the search field.')
+      : emptyState('No files in this view', 'Upload files or switch to Shared, Links, or Trash.');
+    return;
+  }
   el.innerHTML = `<table class="file-library-table"><thead><tr><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:230px;text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
 }
 
