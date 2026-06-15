@@ -21,6 +21,7 @@ file store (external upload, secure share links, large files, compliance readine
 - **App login (interim):** local Keycloak admin user exists for `dave@ptechllc.com`.
   - Do not store app passwords in tracked docs. Reset/rotate the interim password from
     Keycloak when needed and keep the value in the operator password manager only.
+  - Rotation helper: run `scripts/rotate-keycloak-interim-password.sh` on the Memex host.
   - NOTE (2026-06-10): direct-grant login was verified against the current LAN address.
     Rotate this interim credential before treating the instance as production-ready.
 - **Keycloak admin:** user `admin`, password in `/opt/memex/.env` (`KEYCLOAK_ADMIN_PASSWORD`).
