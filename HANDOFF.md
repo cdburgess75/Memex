@@ -1,148 +1,732 @@
-# Memex — Session Handoff
+# Memex Complete Handoff
 
-_Last updated: 2026-06-10 · Running version: **v2026.06.10.006**_
+Last updated: 2026-06-15  
+Current deployed commit: `998c3f1 Polish file library header`  
+Current branch: `claude/url-request-GwwHe`  
+Local repo: `/Users/dave/Documents/Memex`  
+Live host repo: `/opt/memex`
 
-## What Memex is
-Self-hosted, LLM-assisted team knowledge base **and** file store. Vanilla-JS single-page
-frontend (`index.html`) + Node.js/Express backend, Postgres, Keycloak OIDC auth, pluggable
-storage (local / S3 / Supabase). Goal in progress: make it a small business's secure primary
-file store (external upload, secure share links, large files, compliance readiness). See
-`RECOMMENDATIONS.md` and `COMPLIANCE_ROADMAP.md`.
+Important: this document intentionally does not print live passwords, API keys, private keys, service-account JSON, or database passwords. Those values must stay in the operator password manager and in `.env`/host secret stores only. The secret inventory below names every known credential and where it is configured.
 
-## Deployment
-- **Host:** Ubuntu ARM64 box currently at `10.5.91.18`, root SSH (password auth). Repo at `/opt/memex`.
-- **Stack:** `docker compose` — services `app` (:3000), `keycloak` (:8080), `postgres` (:5432).
-- **Bring up:** `cd /opt/memex && docker compose up -d` (add `--build app` after code changes).
-- **Currently reachable only over plain HTTP at `http://10.5.91.18:3000`** (see HTTPS open loop).
-- **Document storage:** `/dev/sdb` (25 GB ext4, label `memex-documents`) mounted at
-  `/srv/memex-documents`; app bind-mounts it to `/data/documents`.
+## Executive Summary
 
-### Credentials / config
-- **App login (interim):** local Keycloak admin user exists for `dave@ptechllc.com`.
-  - Do not store app passwords in tracked docs. Reset/rotate the interim password from
-    Keycloak when needed and keep the value in the operator password manager only.
-  - Rotation helper: run `scripts/rotate-keycloak-interim-password.sh` on the Memex host.
-  - NOTE (2026-06-10): direct-grant login was verified against the current LAN address.
-    Rotate this interim credential before treating the instance as production-ready.
-- **Keycloak admin:** user `admin`, password in `/opt/memex/.env` (`KEYCLOAK_ADMIN_PASSWORD`).
-- **Postgres / app secrets:** all in `/opt/memex/.env` (gitignored). Anthropic key set there.
-- `ADMIN_EMAILS=dave@ptechllc.com` → admin role on first login.
+Memex is a self-hosted file library and knowledge workspace. It is currently a single-page frontend (`index.html`) backed by a Node/Express API (`server/`), Postgres, Keycloak, local document storage, and optional Anthropic/Google/S3 integrations.
 
-## Versioning scheme
-`vYYYY.MM.DD.NNN` — calendar date + 3-digit same-day counter (e.g. `v2026.06.04.001`, then
-`.002` later that day; resets next day). Source of truth: `VERSION` file at repo root.
-Surfaced via `/api/config` and the masthead colophon. Each release gets a git tag.
-**To cut a release:** edit `VERSION` → `docker compose up -d --build app` → `git commit` + `git tag -a vYYYY.MM.DD.NNN`.
+The current live deployment is on the Ubuntu host `frog` at `192.168.1.32`.
 
-## Working today (verified)
-- Email/password login (Keycloak direct grant; PKCE/SSO can't run on plain-HTTP origin).
-- File upload (fixed a latent bug — the data volume was root-owned vs the non-root container user, so uploads previously failed with EACCES).
-- Trash: soft-delete → Restore / Delete-forever, with a Files/Trash toggle in the UI.
-- Audit logging of download / view / trash / restore / purge to `activity_log`.
-- Date-based version scheme in masthead + `/api/config`.
-- Rate limiting on `/api/*` via `express-rate-limit` with configurable `.env` knobs; verified `RateLimit` headers on `/api/config`.
-- Microsoft 365-inspired theme option added next to Light and Dark in the masthead.
-- Files tab rebuilt as a full-screen Microsoft 365-style home with left rail, For you cards, Recent table, Shared view, Trash view, and responsive iPad/iPhone layouts.
-- Large-file upload path now streams raw file bodies to storage via `/api/files/upload-stream`
-  instead of holding multipart uploads in server memory. Small files still get text extracted
-  for document search; very large files are stored first and need chunk-aware indexing later.
-- File lifecycle history: admin-only file history modal, structured document events,
-  deleted/restored actor metadata, configurable trash retention days, previous-version records,
-  and restore-from-previous-version support for overwrite paths.
-- Dedicated document storage moved off the root filesystem for the dev VM:
-  `/srv/memex-documents` on `/dev/sdb`, bind-mounted into the app container.
-- Backup tooling added under `scripts/`: `backup-memex.sh` creates a Postgres dump plus
-  document archive; `verify-backup.sh` checks checksums/catalog/archive and writes restore-check evidence.
-- Resumable/chunked upload sessions for local-backed storage: large browser uploads use
-  `/api/files/uploads` sessions, raw chunk PUTs, completion assembly, resume metadata in
-  localStorage, and progress UI. API smoke test verified two-chunk upload/complete/cleanup.
-- Dependency/security cleanup: upgraded `multer` from 1.x to 2.1.1. Jest passed and live
-  multipart, streaming, and chunked upload smoke tests passed after rebuild.
-- Files nav now opens a SharePoint-style document library/commander view with a command bar,
-  document filters, compact rows, mobile card rendering, and upload refresh that stays in-place.
-- Files commander view review/polish: verified the rendered DOM structure and fixed the delete
-  refresh path so trashing a document keeps the user in the document-library view.
-- Files commander selection upgrade: selection circles now toggle real selected state, selected
-  rows get a reactive command bar, bulk download/delete, a details pane with document metadata,
-  and selected-document Ask Claude streaming Q&A.
-- Secure share links: authenticated users can create expiring, revocable file links with optional
-  password protection; public download validates token hash, expiration, revocation, and password,
-  then records audit events/access counts. Commander UI has Share modal, copy link, existing links,
-  and revoke.
-- Dynamic LAN auth URLs: `/api/config` now derives the browser-facing Keycloak URL from the
-  current request host when `KEYCLOAK_URL=auto`, so changing the VM's LAN IP no longer breaks
-  email/password login. Keycloak `memex-app` web origins are wildcarded for local HTTP/dev.
-- File-home polish: fixed left-rail/action/header text wrapping and added a Files → Links
-  view that lists current share links with expiration/status/access counts and revoke actions.
-- Dark theme repair: file-home, document library, share modal, and Links view now use the
-  dark palette instead of hard-coded light backgrounds.
-- Upload rail polish: replaced separate Upload files / Folder buttons with one compact
-  Upload menu that lets the user choose Files or Folder, and restored a narrower file rail.
-- Header controls restored in file-home mode after the compact upload change.
-- Removed the old Workspace → Read rail tab from the file-first layout; stale `read`
-  route requests now redirect to Files/Home.
-- Added a compact Search rail action beside Upload in the file-first layout. It can focus the
-  current Home/Files search box or open an "Ask the collection" streaming query modal without
-  leaving the file workspace.
-- Theme expansion: added 365 Dark, Aurora, and Graphite palettes alongside Light, 365, and Dark.
-  Theme state now applies one clean root class, and the file-first surfaces, rails, cards, rows,
-  modals, and file type badges follow the selected palette.
-- Rail action polish: Upload and Search are now compact two-column command buttons with softer
-  borders, lighter icon treatment, and dropdowns sized independently of the button width.
-- Reconciled with origin (2026-06-09, `v2026.06.09.004`): merged the other agent's code-review
-  fixes into the local feature branch — `settings.set` falsy-zero guard, CORS fail-safe +
-  trust-proxy set-on-change, `server/lib/upload.js` multer factory, `ai.js` fetchUrl dedup, and
-  an auth-test mock fix. Kept local `index.html` (M365 redesign) and `files.js` (streaming/chunked
-  uploads). Full jest suite green (62/62) on the merged tree.
+Current exposed LAN services:
 
-## Git state
-- **Branch:** `claude/url-request-GwwHe`. **Origin tip is `cdeaf78`** (another agent pushed two
-  commits — `3a27481` light-mode palette, `cdeaf78` code-review fixes — on top of `98ddcfe`).
-  Those two are now **merged into the local branch** (merge commit `21e4d62`), so local is a
-  superset of origin. **Local is the source of truth; origin is behind by the whole local line
-  and needs the merged branch pushed.** Nothing has been pushed to origin since `cdeaf78`.
-  (`git fetch` has been run, so the local `origin/...` tracking ref is now accurate.)
-- Local-only commits: `RECOMMENDATIONS.md`; Caddy TLS overlay; trash/audit/perms;
-  `v2026.06.04.001` version scheme; `v2026.06.04.002` Trash UI; handoff update; `v2026.06.08.003` rate limiting; `v2026.06.08.004` Microsoft 365 theme; `v2026.06.08.005` full-screen file home; `v2026.06.08.006` file-home cleanup and 365 default; `v2026.06.08.007` unified new layout routing/default home; `v2026.06.08.008` workspace shell polish for edit/history/query/lint/admin; `v2026.06.08.009` file-home shell enforcement and responsive nav polish; `v2026.06.08.010` Office-style menu selection and upload styling; `v2026.06.08.011` badge-free nav and compact iPhone menu; `v2026.06.08.012` folder picker and drag/drop uploads; `v2026.06.08.013` typography and login modal polish; `v2026.06.08.014` document full-text search; `v2026.06.08.015` streaming large-file uploads; `v2026.06.08.016` file lifecycle history and version restore; dev storage moved to dedicated `/dev/sdb` disk.
-- Local-only tags: `v2026.06.04.001`, `v2026.06.04.002`, `v2026.06.08.003`, `v2026.06.08.004`, `v2026.06.08.005`, `v2026.06.08.006`, `v2026.06.08.007`, `v2026.06.08.008`, `v2026.06.08.009`, `v2026.06.08.010`, `v2026.06.08.011`, `v2026.06.08.012`, `v2026.06.08.013`, `v2026.06.08.014`, `v2026.06.08.015`, `v2026.06.08.016`, `v2026.06.09.001`, `v2026.06.09.002`, `v2026.06.09.003`, `v2026.06.09.004`.
-- `main` is the **stale Supabase v2** (predates this work); branch is 30 ahead / main 1 ahead — a future merge to main will be a deliberate "replace v2" merge, not fast-forward.
+- Memex app: `http://192.168.1.32:3000`
+- Keycloak: `http://192.168.1.32:8080`
+- SSH: `root@192.168.1.32`
+- Postgres: internal Docker network only
 
-## Key fixes made this session (real bugs)
-1. `server/middleware/auth.js` — jwks-rsa v3 API: default export is a factory not a constructor
-   (use `{ JwksClient }`); `getSigningKeyAsync` → `getSigningKey`. Was rejecting **every** request.
-2. `Dockerfile` — pre-create `/data/documents` owned by `memex` so a fresh named volume is writable.
-3. Login over plain HTTP: added an email/password form (direct grant) since `crypto.subtle` (PKCE) is unavailable on insecure origins.
+Current container status verified 2026-06-15:
 
-## TO-DO / open loops
-1. **Push to GitHub** — needs a fine-grained PAT (Contents: read/write on `cdburgess75/Memex`).
-   Push is done inline without persisting the token. Origin is at `cdeaf78`; the entire local
-   line (merge `21e4d62` + release `v2026.06.09.004` and everything before) is unpushed.
-   **Multiple agents work this branch — push from the box regularly to avoid re-diverging.**
-2. **HTTPS cutover** (unblocks real SSO + safe external sharing). Caddy config is staged
-   (`Caddyfile` + `docker-compose.prod.yml`). Requires, on your side:
-   - DNS A record: `files.ptechllc.com → 153.66.221.62` (at directnic). Confirm the public IP is static.
-   - Router port-forward: TCP 80 + 443 → `192.168.1.32`.
-   - Then: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`, set
-     `APP_URL`/`KEYCLOAK_URL=https://files.ptechllc.com`, `TRUST_PROXY=true`,
-     `CORS_ORIGINS=https://files.ptechllc.com`, update Keycloak client redirect URIs, verify SSO.
-3. **Next Phase 1 build items** (each its own version bump):
-   - `.017` Production storage sizing/pattern: replicate the dev bind-mount pattern on a larger
-     dedicated disk/NAS/ZFS dataset. Dev VM now proves the separation with `/dev/sdb`.
-   - `.018` Configure ZFS snapshots once production-style storage exists, plus off-box backups to NAS/cloud.
-     Snapshots protect local recovery; backups protect against host loss.
-   - `.019` Configure scheduled/off-box backups and retention around `scripts/backup-memex.sh`;
-     current tooling creates local backup evidence only.
-   - `.020` Compliance readiness workstream from `COMPLIANCE_ROADMAP.md`: HTTPS/SSO/MFA,
-     immutable audit logs, malware scanning, access review exports, retention/legal hold,
-     backup restore evidence, vulnerability management, and evidence binder.
-   - `.021` Object-storage multipart uploads for S3/R2/B2 when production storage moves beyond local disk.
-   - `.022` Remaining dependency audit cleanup: `googleapis`/`uuid` requires a breaking
-     `googleapis` upgrade path; `xlsx` has no npm audit fix and likely needs replacement or isolation.
-4. **Phase 2+ roadmap** in `RECOMMENDATIONS.md`: external/guest upload tokens,
-   large-file presigned multipart/object-storage support, folders + ACLs, ClamAV scanning,
-   envelope encryption, backups.
+- `memex-app-1`: up, published `3000:3000`
+- `memex-keycloak-1`: up, published `8080:8080`
+- `memex-postgres-1`: up and healthy
+- UFW status: inactive
 
-## How to resume
-SSH: password auth still works; Codex key generated locally but not yet installed on host. Code edits: edit under `/opt/memex`,
-`docker compose up -d --build app`, verify, commit, tag. Get a fresh token via Keycloak direct
-grant for API testing (see prior session commands).
+## Security Note
+
+Do not treat the app as a firewall. UFW should be enabled and managed on the Ubuntu host. The app now has a small `Security` indicator and `/api/security/status` endpoint for future host-firewall visibility, but enforcement must stay in UFW, the reverse proxy, SSH hardening, identity controls, patching, backups, and network controls.
+
+## Verified Network / Host Details
+
+Live host:
+
+- Hostname: `frog`
+- Current verified LAN IP: `192.168.1.32`
+- User previously mentioned `10.0.2.15`; current deploy and checks were performed against `192.168.1.32`.
+- SSH user: `root`
+- App URL: `http://192.168.1.32:3000`
+- Keycloak URL: `http://192.168.1.32:8080`
+- Production domain plan: `files.ptechllc.com`
+
+Current listening ports verified:
+
+- `22/tcp`: SSH
+- `3000/tcp`: Memex app via Docker proxy
+- `8080/tcp`: Keycloak via Docker proxy
+
+Production reverse proxy plan:
+
+- `Caddyfile` routes `files.ptechllc.com`.
+- `/realms/*` and `/resources/*` proxy to Keycloak.
+- Everything else proxies to app.
+- Adds HSTS, `X-Content-Type-Options`, and referrer policy.
+- Production overlay: `docker-compose.prod.yml`.
+
+HTTPS prerequisites:
+
+- DNS A record: `files.ptechllc.com -> public IP`
+- Router port-forward: TCP `80` and `443` to `192.168.1.32`
+- Then run:
+
+```bash
+cd /opt/memex
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+After HTTPS is live, update:
+
+- `APP_URL=https://files.ptechllc.com`
+- `KEYCLOAK_URL=https://files.ptechllc.com`
+- `TRUST_PROXY=true` or a narrower trusted proxy setting
+- `CORS_ORIGINS=https://files.ptechllc.com`
+- Keycloak client redirect/web origins
+
+## Current Git State
+
+Branch:
+
+```text
+claude/url-request-GwwHe
+```
+
+Current latest commits:
+
+```text
+998c3f1 Polish file library header
+6fa38d5 Make file rail library based
+f39fa6f Add host security alert indicator
+8b2d104 Add folder commander file view
+77a9e8b Contain compliance control lists
+3e54faa Ignore local secret handoff files
+afe2060 Add document access management
+458c20b Add document ACL foundation
+6cabad8 Fix Keycloak password rotation helper
+e782d06 Add interim Keycloak password rotation helper
+69e2279 Remove plaintext app credential from handoff
+550eaf5 Harden public share link access
+f9ea5c5 Bind WOPI tokens to requested files
+cf7362c Add compliance readiness admin panel
+```
+
+Local status at handoff:
+
+```text
+## claude/url-request-GwwHe...origin/claude/url-request-GwwHe
+```
+
+No uncommitted changes at the time of this handoff.
+
+## Deployment Commands
+
+Normal deploy from the server:
+
+```bash
+cd /opt/memex
+git pull --ff-only
+docker compose up -d --build app
+```
+
+Full stack start:
+
+```bash
+cd /opt/memex
+docker compose up -d
+```
+
+Check services:
+
+```bash
+cd /opt/memex
+docker compose ps
+docker compose logs --tail=100 app
+docker compose logs --tail=100 keycloak
+docker compose logs --tail=100 postgres
+```
+
+Smoke checks:
+
+```bash
+curl http://192.168.1.32:3000/api/config
+curl http://192.168.1.32:8080/realms/memex/.well-known/openid-configuration
+```
+
+## Current Docker Compose
+
+Primary file: `docker-compose.yml`
+
+Services:
+
+- `postgres`
+  - Image: `postgres:16-alpine`
+  - DBs initialized by `postgres/init`
+  - Data volume: `postgres_data`
+  - Healthcheck: `pg_isready -U memex -d memex`
+
+- `keycloak`
+  - Image: `quay.io/keycloak/keycloak:24.0`
+  - Command: `start-dev --import-realm`
+  - Realm import: `keycloak/memex-realm.json`
+  - Public port: `8080`
+
+- `app`
+  - Built from `Dockerfile`
+  - Public port: `${PORT:-3000}:3000`
+  - Local documents mount: `/srv/memex-documents:/data/documents`
+
+Production overlay: `docker-compose.prod.yml`
+
+- Adds `caddy`
+- Publishes `80` and `443`
+- Uses `Caddyfile`
+
+## Application Architecture
+
+Frontend:
+
+- `index.html`
+- Vanilla JS single-page app
+- Theme switcher
+- File-first workspace
+- Library rail and commander/list file views
+- Admin/compliance panel
+- Security indicator
+
+Backend:
+
+- `server/index.js`
+- Express API
+- JWT auth through Keycloak JWKS
+- Postgres via `pg`
+- Optional Anthropic, Google Drive, Supabase, S3 integrations
+
+Core libraries:
+
+- `server/lib/db.js`
+- `server/lib/settings.js`
+- `server/lib/storage.js`
+- `server/lib/documentAccess.js`
+- `server/lib/encryption.js`
+- `server/lib/wopiTokens.js`
+- `server/lib/rateLimiters.js`
+- `server/lib/compliance.js`
+
+Database/schema:
+
+- `postgres/init/01_schema.sql`
+- Supabase-era migrations retained under `supabase/migrations`
+
+Auth:
+
+- Keycloak realm: `memex`
+- Keycloak client: `memex-app`
+- Roles used in app: `admin`, `contributor`, `viewer`
+
+## API Route Map
+
+Public/config:
+
+- `GET /api/config`
+- `GET *` serves `index.html`
+- Static assets from repo root
+
+Auth:
+
+- `GET /api/auth/me`
+
+Pages:
+
+- `GET /api/pages`
+- `GET /api/pages/search?q=...`
+- `GET /api/pages/:id/versions`
+- `POST /api/pages/:id/restore/:versionId`
+- `PUT /api/pages/:id`
+- `DELETE /api/pages/:id`
+- `DELETE /api/pages`
+
+AI:
+
+- `POST /api/ai/ingest`
+- `POST /api/ai/query`
+- `POST /api/ai/lint`
+- `POST /api/ai/extract`
+
+Log:
+
+- `GET /api/log`
+
+Security status:
+
+- `GET /api/security/status`
+
+Admin:
+
+- `GET /api/admin/stats`
+- `GET /api/admin/users`
+- `PUT /api/admin/users/:userId/role`
+- `GET /api/admin/usage`
+- `GET /api/admin/compliance`
+- `PUT /api/admin/compliance`
+- `GET /api/admin/settings`
+- `PUT /api/admin/settings`
+
+Files:
+
+- `GET /api/files`
+- `GET /api/files/trash`
+- `GET /api/files/search?q=...`
+- `POST /api/files/upload`
+- `POST /api/files/upload-stream`
+- `POST /api/files/uploads`
+- `GET /api/files/uploads/:sessionId`
+- `PUT /api/files/uploads/:sessionId/chunks/:index`
+- `POST /api/files/uploads/:sessionId/complete`
+- `DELETE /api/files/uploads/:sessionId`
+- `GET /api/files/local-download`
+- `GET /api/files/share/:token`
+- `GET /api/files/:id/shares`
+- `POST /api/files/:id/shares`
+- `DELETE /api/files/:id/shares/:shareId`
+- `GET /api/files/shares`
+- `GET /api/files/:id/access`
+- `PUT /api/files/:id/access`
+- `DELETE /api/files/:id/access/:grantId`
+- `POST /api/files/:id/ingest`
+- `GET /api/files/:id/url`
+- `GET /api/files/:id/office`
+- `POST /api/files/:id/google`
+- `POST /api/files/:id/google/export`
+- `GET /api/files/:id/history`
+- `POST /api/files/:id/restore-version/:versionId`
+- `DELETE /api/files/:id`
+- `POST /api/files/:id/restore`
+- `DELETE /api/files/:id/purge`
+- `POST /api/files/ask`
+
+WOPI:
+
+- `GET /wopi/files/:fileId`
+- `GET /wopi/files/:fileId/contents`
+- `POST /wopi/files/:fileId/contents`
+- `POST /wopi/files/:fileId`
+
+## Rate Limiting
+
+Configured in `server/lib/rateLimiters.js`.
+
+Defaults:
+
+- General API: 300 requests / 15 minutes
+- Auth: 20 requests / 15 minutes
+- Share links: 60 requests / 15 minutes
+
+Env knobs:
+
+- `RATE_LIMIT_ENABLED`
+- `RATE_LIMIT_WINDOW_MS`
+- `RATE_LIMIT_API_MAX`
+- `RATE_LIMIT_AUTH_MAX`
+- `RATE_LIMIT_SHARE_WINDOW_MS`
+- `RATE_LIMIT_SHARE_MAX`
+
+## Secret Inventory
+
+Live secret values are not printed here.
+
+Configured in `.env`, Docker environment, DB-backed settings, or operator password manager:
+
+- `DATABASE_URL`
+- `KEYCLOAK_URL`
+- `KEYCLOAK_INTERNAL_URL`
+- `KEYCLOAK_REALM`
+- `KEYCLOAK_CLIENT_ID`
+- `KEYCLOAK_ADMIN_USER`
+- `KEYCLOAK_ADMIN_PASSWORD`
+- `POSTGRES_PASSWORD`
+- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_MODEL`
+- `ADMIN_EMAILS`
+- `PORT`
+- `APP_URL`
+- `STORAGE_PROVIDER`
+- `STORAGE_LOCAL_PATH`
+- `KEYCLOAK_PUBLIC_PORT`
+- `GOOGLE_SERVICE_ACCOUNT_KEY`
+- `GOOGLE_DRIVE_FOLDER_ID`
+- `STORAGE_S3_BUCKET`
+- `STORAGE_S3_REGION`
+- `STORAGE_S3_ACCESS_KEY_ID`
+- `STORAGE_S3_SECRET_ACCESS_KEY`
+- `STORAGE_S3_ENDPOINT`
+- `STORAGE_S3_FORCE_PATH_STYLE`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `STORAGE_ENCRYPTION_KEY`
+- `BIND_ADDRESS`
+- `TRUST_PROXY`
+- `CORS_ORIGINS`
+- `HTTP_PROXY`
+- `MAX_UPLOAD_MB`
+- `TRASH_RETENTION_DAYS`
+- `COMPLIANCE_SOC2_ENABLED`
+- `COMPLIANCE_HIPAA_ENABLED`
+- `COMPLIANCE_GDPR_ENABLED`
+- `COMPLIANCE_PCI_DSS_ENABLED`
+- `COMPLIANCE_ISO27001_ENABLED`
+- `COMPLIANCE_CMMC_ENABLED`
+- `SECURITY_STATUS_FILE`
+- `SECURITY_ALERT_LEVEL`
+- `SECURITY_RECENT_CONNECTIONS`
+- `SECURITY_MONITOR_CONFIGURED`
+- `SECURITY_FIREWALL`
+- `SECURITY_ALERT_WINDOW`
+- `SECURITY_ALERT_MESSAGE`
+
+Known operational credentials and handling:
+
+- Root SSH credential for `root@192.168.1.32`
+  - Supplied out-of-band during development.
+  - Do not commit or paste into docs.
+  - Rotate before production.
+
+- Keycloak admin credential
+  - User is controlled by `KEYCLOAK_ADMIN_USER`.
+  - Password is `KEYCLOAK_ADMIN_PASSWORD` in `/opt/memex/.env`.
+  - Do not print or commit.
+
+- App user credential for `dave@ptechllc.com`
+  - A development password was set per operator instruction.
+  - Do not rotate during active development unless explicitly instructed.
+  - Do not print in docs or commit history.
+  - Store in the password manager.
+
+- Postgres credential
+  - Controlled by `POSTGRES_PASSWORD`.
+  - Used by Postgres, Keycloak DB, and app `DATABASE_URL`.
+  - Rotation requires coordinated container/app updates.
+
+- Anthropic API key
+  - `ANTHROPIC_API_KEY`.
+  - Server-only.
+  - Never sent to browser.
+
+- Google service account JSON
+  - `GOOGLE_SERVICE_ACCOUNT_KEY`.
+  - Optional.
+  - High sensitivity; rotate if ever pasted in chat or logs.
+
+- S3-compatible storage keys
+  - `STORAGE_S3_ACCESS_KEY_ID`
+  - `STORAGE_S3_SECRET_ACCESS_KEY`
+  - Optional.
+
+- Storage encryption key
+  - `STORAGE_ENCRYPTION_KEY`.
+  - If lost, encrypted local files are unrecoverable.
+  - If changed incorrectly, old encrypted files become unreadable.
+
+## Current Product State
+
+Working and recently implemented:
+
+- Keycloak-backed login.
+- Admin/contributor/viewer roles.
+- File upload, drag/drop, folder upload path preservation.
+- Large streaming uploads.
+- Resumable chunked uploads for local-backed storage.
+- Local document storage under `/srv/memex-documents`.
+- File list and commander modes.
+- Folder grouping based on uploaded relative paths.
+- Library-style rail with collapsible library section.
+- Professionalized library header and compact Upload/Search rail actions.
+- Shared files, links, trash, restore, purge.
+- Public share links with token hash, expiration, optional password, revoke, access counts.
+- Document ACL foundation and access management.
+- File details pane.
+- Ask selected documents.
+- AI ingest/query/lint/extract.
+- Page version history and restore.
+- File version history and restore.
+- WOPI token binding to requested files.
+- Google Drive edit/export hooks.
+- Admin usage/cost dashboard.
+- Compliance profile toggles and readiness control summaries.
+- Security indicator plus read-only `/api/security/status`.
+- Rate limiting.
+- Local backup and non-destructive verify scripts.
+- Caddy production reverse proxy plan.
+
+## Recent UI Direction
+
+The current design direction is a file-first product:
+
+- Users are in libraries, similar to rooms or SharePoint sites.
+- The left rail should not feel like a personal profile area.
+- The rail library name should be the primary context.
+- Items beneath the library should collapse.
+- `Home` and `Files` were merged conceptually.
+- Commander/list view is optional via toggle.
+- True libraries/rooms/sites are still future work; currently the UI uses a temporary library name derived from the user.
+
+## Compliance / Update Work
+
+Documents:
+
+- `COMPLIANCE_ROADMAP.md`
+- `docs/UPDATE_AND_COMPLIANCE_DESIGN.md`
+
+Compliance profiles in UI:
+
+- SOC 2
+- HIPAA
+- GDPR
+- PCI-DSS
+- ISO/IEC 27001
+- CMMC
+
+Important semantics:
+
+- Toggles track readiness profiles.
+- They do not certify the organization.
+- They do not make the product compliant by themselves.
+- They should feed future evidence exports.
+
+Update architecture target:
+
+```text
+Admin UI -> /api/admin/update-jobs -> queue row -> host runner -> allowlisted root-owned script -> evidence log
+```
+
+Do not let the app container run arbitrary host commands as root.
+
+## UFW / Security Monitor Plan
+
+Current state:
+
+- UFW is installed or available but currently inactive on `frog`.
+- App has `Security` indicator.
+- Backend has `GET /api/security/status`.
+- Route is authenticated.
+- It can read `SECURITY_STATUS_FILE` JSON in the future.
+
+Recommended next steps:
+
+1. Enable UFW with explicit allow rules:
+
+```bash
+ufw allow 22/tcp
+ufw allow 3000/tcp
+ufw allow 8080/tcp
+# After HTTPS cutover:
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw enable
+ufw status verbose
+```
+
+2. After HTTPS/reverse proxy is live, strongly consider limiting direct `3000` and `8080` exposure to LAN/admin only.
+
+3. Add root-owned host script that summarizes:
+
+- Recent rejected connections
+- Top source IPs
+- SSH auth failures
+- UFW deny counts
+- Time window
+- Severity level
+
+4. Write JSON to a mounted file, for example:
+
+```json
+{
+  "level": "ok",
+  "configured": true,
+  "firewall": "UFW",
+  "recentConnections": 0,
+  "window": "15 minutes",
+  "message": "No unusual connection pressure reported.",
+  "updatedAt": "2026-06-15T21:00:00Z"
+}
+```
+
+5. Point app env at it:
+
+```env
+SECURITY_STATUS_FILE=/data/security/status.json
+```
+
+## Backup / Restore
+
+Backup script:
+
+```bash
+scripts/backup-memex.sh
+```
+
+Defaults:
+
+- `MEMEX_ROOT=/opt/memex`
+- `MEMEX_DOCS_DIR=/srv/memex-documents`
+- `MEMEX_BACKUP_DIR=/srv/memex-backups`
+
+Backup output:
+
+- `postgres-memex.dump`
+- `documents.tar.gz`
+- `manifest.txt`
+- `SHA256SUMS`
+
+Verify script:
+
+```bash
+scripts/verify-backup.sh /srv/memex-backups/<backup-id>
+```
+
+Important:
+
+- Current backup is local staging only.
+- Configure off-host backups before production use.
+- Schedule restore tests and save evidence.
+
+## Testing
+
+Node tests:
+
+```bash
+cd server
+npm test
+```
+
+Targeted tests that have been useful:
+
+```bash
+cd server
+npm test -- --runInBand __tests__/routes/admin.compliance.test.js
+npm test -- --runInBand __tests__/routes/files.access.test.js
+npm test -- --runInBand __tests__/routes/wopi.test.js
+npm test -- --runInBand __tests__/lib/documentAccess.test.js
+```
+
+Frontend syntax check for embedded JS:
+
+```bash
+node -e "const fs=require('fs');const html=fs.readFileSync('index.html','utf8');const js=html.match(/<script>([\s\S]*)<\/script>/)[1];new Function(js);console.log('embedded script ok')"
+```
+
+Whitespace check:
+
+```bash
+git diff --check
+```
+
+## Operational Commands
+
+Local development:
+
+```bash
+cd /Users/dave/Documents/Memex
+node server/index.js
+```
+
+Install/update server dependencies:
+
+```bash
+cd server
+npm install
+```
+
+Run local tests:
+
+```bash
+cd server
+npm test
+```
+
+Deploy live app:
+
+```bash
+ssh root@192.168.1.32
+cd /opt/memex
+git pull --ff-only
+docker compose up -d --build app
+```
+
+Check live app:
+
+```bash
+curl http://192.168.1.32:3000/api/config
+```
+
+Check live Docker services:
+
+```bash
+cd /opt/memex
+docker compose ps
+```
+
+Check UFW:
+
+```bash
+ufw status verbose
+```
+
+## Known Gaps / Backlog
+
+Security and production readiness:
+
+- Enable HTTPS for `files.ptechllc.com`.
+- Move to real SSO/MFA and disable interim direct-password development flow.
+- Enable/configure UFW.
+- Add host-side UFW/security monitor feeding `/api/security/status`.
+- Harden SSH.
+- Tighten CORS and reverse proxy trust after domain cutover.
+- Add malware scanning for uploads.
+- Add immutable or append-only audit log.
+- Add access review export.
+- Configure off-host backups and scheduled restore tests.
+- Add vulnerability/dependency scanning evidence.
+
+Product:
+
+- Real libraries/rooms/sites data model.
+- True server-side folder metadata and APIs.
+- Create/rename/move folders.
+- Drag files between folders.
+- Folder-level permissions and inheritance.
+- Group notifications for file changes.
+- Notification center beside Security indicator.
+- File classification labels.
+- Retention policies.
+- Legal hold.
+- DLP/sensitive-pattern detection.
+- AI governance controls and no-AI zones.
+- Evidence export package.
+
+Storage:
+
+- Production-grade dedicated storage, NAS, ZFS dataset, or object storage.
+- Off-box backups.
+- S3 multipart support for object storage.
+- Encryption key custody and rotation policy.
+
+Compliance:
+
+- SOC 2-style control matrix.
+- HIPAA/CMMC readiness only after policies, access review, audit export, retention, and legal hold are ready.
+- ISO 27001 requires organization-wide ISMS work, not just product features.
+
+## Do Not Do
+
+- Do not commit `.env`.
+- Do not paste passwords/API keys into docs, chats, issue trackers, screenshots, or commits.
+- Do not run destructive git commands such as `git reset --hard` unless explicitly requested.
+- Do not rotate the development app password during active development unless Dave explicitly asks.
+- Do not claim compliance certification from the UI toggles.
+- Do not make the app container a root host-command executor.
+- Do not treat the Security indicator as firewall enforcement.
+
+## Immediate Next Good Steps
+
+1. Hard refresh browser and inspect latest file library UI.
+2. Enable UFW safely with SSH preserved.
+3. Add host-side security status writer for UFW/SSH connection pressure.
+4. Start the real libraries/rooms/sites model.
+5. Add grouped file-change notifications.
+6. Plan HTTPS cutover for `files.ptechllc.com`.
+7. Configure off-host backups.
+8. Decide storage target for production.
