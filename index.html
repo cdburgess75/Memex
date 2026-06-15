@@ -1360,6 +1360,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-share-grid { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: center; margin: 16px 0; }
 .file-share-grid label { color: #424242; font-weight: 700; }
 .file-share-grid input, .file-share-grid select { border: 1px solid #DADADA; border-radius: 8px; padding: 10px 12px; font: 15px var(--body); color: #242424; background: #FFFFFF; }
+.file-access-form { display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; gap: 8px; align-items: center; margin-top: 12px; }
+.file-access-form input, .file-access-form select { border: 1px solid #DADADA; border-radius: 8px; padding: 10px 12px; font: 15px var(--body); color: #242424; background: #FFFFFF; min-width: 0; }
 .file-share-result { display: none; gap: 8px; margin-top: 14px; }
 .file-share-result.open { display: grid; }
 .file-share-url { width: 100%; border: 1px solid #DADADA; border-radius: 8px; padding: 10px 12px; font: 13px var(--mono); color: #242424; background: #FAFAFA; }
@@ -1367,6 +1369,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-share-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #E7E7E7; border-radius: 8px; background: #FFFFFF; }
 .file-share-meta { color: #616161; font-size: 13px; margin-top: 3px; }
 .file-share-revoked { opacity: 0.55; }
+.file-share-section { border-top: 1px solid #E7E7E7; margin-top: 22px; padding-top: 18px; }
 .file-links-list { display: grid; gap: 10px; }
 .file-link-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid #E7E7E7; border-radius: 10px; background: #FFFFFF; }
 .file-link-title { color: #323130; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1387,6 +1390,8 @@ html.dark .file-home-search,
 html.dark .file-library-search,
 html.dark .file-share-grid input,
 html.dark .file-share-grid select,
+html.dark .file-access-form input,
+html.dark .file-access-form select,
 html.dark .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
 html.dark .file-upload-menu button,
 html.dark .file-search-menu button { color: var(--ink); }
@@ -1436,6 +1441,7 @@ html.dark .file-details-pane,
 html.dark .file-ask-answer,
 html.dark .file-ask-input,
 html.dark .file-share-item,
+html.dark .file-share-section,
 html.dark .file-link-card,
 html.dark .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: none; }
 html.dark .file-rec-head,
@@ -1500,6 +1506,8 @@ html.office-dark .file-home-search,
 html.office-dark .file-library-search,
 html.office-dark .file-share-grid input,
 html.office-dark .file-share-grid select,
+html.office-dark .file-access-form input,
+html.office-dark .file-access-form select,
 html.office-dark .file-share-url,
 html.drive .file-upload-menu,
 html.drive .file-search-menu,
@@ -1507,6 +1515,8 @@ html.drive .file-home-search,
 html.drive .file-library-search,
 html.drive .file-share-grid input,
 html.drive .file-share-grid select,
+html.drive .file-access-form input,
+html.drive .file-access-form select,
 html.drive .file-share-url,
 html.graphite .file-upload-menu,
 html.graphite .file-search-menu,
@@ -1514,6 +1524,8 @@ html.graphite .file-home-search,
 html.graphite .file-library-search,
 html.graphite .file-share-grid input,
 html.graphite .file-share-grid select,
+html.graphite .file-access-form input,
+html.graphite .file-access-form select,
 html.graphite .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
 html.office-dark .file-upload-menu button,
 html.office-dark .file-search-menu button,
@@ -1641,6 +1653,7 @@ html.office-dark .file-details-pane,
 html.office-dark .file-ask-answer,
 html.office-dark .file-ask-input,
 html.office-dark .file-share-item,
+html.office-dark .file-share-section,
 html.office-dark .file-link-card,
 html.office-dark .file-empty-home,
 html.drive .file-rec-card,
@@ -1652,6 +1665,7 @@ html.drive .file-details-pane,
 html.drive .file-ask-answer,
 html.drive .file-ask-input,
 html.drive .file-share-item,
+html.drive .file-share-section,
 html.drive .file-link-card,
 html.drive .file-empty-home,
 html.graphite .file-rec-card,
@@ -1663,6 +1677,7 @@ html.graphite .file-details-pane,
 html.graphite .file-ask-answer,
 html.graphite .file-ask-input,
 html.graphite .file-share-item,
+html.graphite .file-share-section,
 html.graphite .file-link-card,
 html.graphite .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: var(--shadow); }
 html.office-dark .file-rec-head,
@@ -1795,6 +1810,7 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .file-table td:last-child { padding-bottom: 14px; }
   .file-row-actions { margin-top: 8px; }
   .file-link-card { grid-template-columns: 1fr; }
+  .file-access-form { grid-template-columns: 1fr; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
   .file-library-commandbar { align-items: stretch; flex-direction: column; }
   .file-library-command-left, .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
@@ -4207,7 +4223,8 @@ async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share file</h2><p class="sub">${esc(f.name)}</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><h3 style="margin-top:22px">Existing links</h3><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share file</h2><p class="sub">${esc(f.name)}</p><section><h3>Workspace access</h3><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><section class="file-share-section"><h3>Public link</h3><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><h3 style="margin-top:22px">Existing links</h3><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section></div></div>`);
+  await loadFileAccess(f.id);
   await loadShareLinks(f.id);
 }
 
@@ -4228,6 +4245,55 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
     list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
   } catch (e) {
     list.innerHTML = emptyState('Could not load shares', e.message || 'Try opening the share dialog again.');
+  }
+}
+
+function permissionLabel(permission) {
+  return permission === 'admin' ? 'Can manage' : permission === 'write' ? 'Can edit' : 'Can view';
+}
+
+async function loadFileAccess(fileId = firstSelectedFile()?.id) {
+  const list = document.getElementById('file-access-list');
+  if (!fileId || !list) return;
+  try {
+    const data = await apiGet('/files/' + fileId + '/access');
+    const grants = data.grants || [];
+    if (!grants.length) {
+      list.innerHTML = emptyState('No additional workspace access', 'The owner and admins can manage this file.');
+      return;
+    }
+    list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${permissionLabel(g.permission)} · Granted ${shareDate(g.created_at)}</div></div><button class="file-library-tool" data-grant="${g.id}" onclick="revokeFileAccess(this.dataset.grant)">Revoke</button></div>`).join('');
+  } catch (e) {
+    list.innerHTML = emptyState('Could not load access', e.message || 'Try opening the share dialog again.');
+  }
+}
+
+async function grantFileAccess() {
+  const f = firstSelectedFile();
+  if (!f) return;
+  const email = document.getElementById('file-access-email')?.value.trim();
+  const permission = document.getElementById('file-access-permission')?.value || 'read';
+  if (!email) return toast('Enter an email address');
+  try {
+    await apiPut('/files/' + f.id + '/access', { email, permission });
+    const input = document.getElementById('file-access-email');
+    if (input) input.value = '';
+    toast('Access granted');
+    await loadFileAccess(f.id);
+  } catch (e) {
+    toast('Grant failed: ' + e.message);
+  }
+}
+
+async function revokeFileAccess(grantId) {
+  const f = firstSelectedFile();
+  if (!f || !grantId) return;
+  try {
+    await apiDelete('/files/' + f.id + '/access/' + grantId);
+    toast('Access revoked');
+    await loadFileAccess(f.id);
+  } catch (e) {
+    toast('Revoke failed: ' + e.message);
   }
 }
 

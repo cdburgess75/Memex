@@ -75,4 +75,42 @@ describe('file route document access checks', () => {
     expect(listQuery[0]).toContain('FROM document_acl da');
     expect(listQuery[1]).toEqual(['contributor', mockUser.id, mockUser.id, 'user@test.com', ['read', 'write', 'admin']]);
   });
+
+  test('grants internal document access when caller has document admin access', async () => {
+    db.queryOne
+      .mockResolvedValueOnce({ id: 'doc-1', name: 'Plan.pdf' })
+      .mockResolvedValueOnce({ id: 'grant-1', subject_email: 'reader@test.com', permission: 'read' });
+
+    const res = await request(makeApp())
+      .put('/api/files/doc-1/access')
+      .send({ email: 'Reader@Test.com', permission: 'read' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.grant.subject_email).toBe('reader@test.com');
+    expect(db.queryOne.mock.calls[0][0]).toContain('FROM document_acl da');
+    expect(db.queryOne.mock.calls[1][0]).toContain('INSERT INTO document_acl');
+  });
+
+  test('rejects internal access grant when caller lacks document admin access', async () => {
+    db.queryOne.mockResolvedValueOnce(null);
+
+    const res = await request(makeApp())
+      .put('/api/files/doc-1/access')
+      .send({ email: 'reader@test.com', permission: 'read' });
+
+    expect(res.status).toBe(404);
+    expect(db.queryOne).toHaveBeenCalledTimes(1);
+  });
+
+  test('revokes internal document access when caller has document admin access', async () => {
+    db.queryOne
+      .mockResolvedValueOnce({ id: 'doc-1', name: 'Plan.pdf' })
+      .mockResolvedValueOnce({ id: 'grant-1', subject_email: 'reader@test.com', permission: 'read' });
+
+    const res = await request(makeApp()).delete('/api/files/doc-1/access/grant-1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(db.queryOne.mock.calls[1][0]).toContain('DELETE FROM document_acl');
+  });
 });
