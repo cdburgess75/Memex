@@ -18,9 +18,11 @@ file store (external upload, secure share links, large files, compliance readine
   `/srv/memex-documents`; app bind-mounts it to `/data/documents`.
 
 ### Credentials / config
-- **App login (interim):** `dave@ptechllc.com` / `decade0123` (Keycloak local user, admin role).
-  - NOTE (2026-06-10): this password was reset via the Keycloak admin API and direct-grant
-    login was verified against the current LAN address.
+- **App login (interim):** local Keycloak admin user exists for `dave@ptechllc.com`.
+  - Do not store app passwords in tracked docs. Reset/rotate the interim password from
+    Keycloak when needed and keep the value in the operator password manager only.
+  - NOTE (2026-06-10): direct-grant login was verified against the current LAN address.
+    Rotate this interim credential before treating the instance as production-ready.
 - **Keycloak admin:** user `admin`, password in `/opt/memex/.env` (`KEYCLOAK_ADMIN_PASSWORD`).
 - **Postgres / app secrets:** all in `/opt/memex/.env` (gitignored). Anthropic key set there.
 - `ADMIN_EMAILS=dave@ptechllc.com` → admin role on first login.
