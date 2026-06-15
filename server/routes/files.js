@@ -9,6 +9,7 @@ const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
+const documentAccess = require('../lib/documentAccess');
 const { extractText } = require('../lib/textExtraction');
 const fsSync = require('fs');
 const fs = fsSync.promises;
@@ -315,6 +316,7 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
     [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText]
   );
+  await documentAccess.grantOwnerAdmin(doc.id, user);
   await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
   await logEvent(`upload · ${displayName}`, user.id, user.email);
   return { doc, canIngest };
@@ -376,7 +378,15 @@ router.get('/share/:token', async (req, res) => {
 // GET /api/files
 router.get('/', auth, async (req, res) => {
   try {
-    const rows = await db.query(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC`);
+    await documentAccess.ensureDocumentAclTable();
+    const rows = await db.query(
+      `SELECT ${DOCUMENT_COLUMNS}
+       FROM documents d
+       WHERE d.deleted_at IS NULL
+         AND ${documentAccess.condition('d', 1)}
+       ORDER BY d.created_at DESC`,
+      documentAccess.userParams(req.user, 'read')
+    );
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -386,7 +396,15 @@ router.get('/', auth, async (req, res) => {
 // GET /api/files/trash — list soft-deleted documents (admin/contributor)
 router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const rows = await db.query(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`);
+    await documentAccess.ensureDocumentAclTable();
+    const rows = await db.query(
+      `SELECT ${DOCUMENT_COLUMNS}
+       FROM documents d
+       WHERE d.deleted_at IS NOT NULL
+         AND ${documentAccess.condition('d', 1)}
+       ORDER BY d.deleted_at DESC`,
+      documentAccess.userParams(req.user, 'write')
+    );
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -399,9 +417,29 @@ router.get('/search', auth, async (req, res) => {
   if (!q) return res.json([]);
 
   try {
+    await documentAccess.ensureDocumentAclTable();
     const rows = await db.query(
-      'SELECT * FROM search_documents($1)',
-      [q]
+      `SELECT
+         d.id, d.name, d.size, d.mime_type, d.storage_path, d.google_drive_id,
+         d.uploaded_by, d.uploaded_by_email, d.created_at, d.deleted_at, d.deleted_by,
+         ts_headline(
+           'english',
+           coalesce(d.document_text, ''),
+           websearch_to_tsquery('english', $1),
+           'StartSel=<<, StopSel=>>, MaxFragments=2, MaxWords=18, MinWords=5'
+         ) AS search_headline,
+         ts_rank(d.document_fts, websearch_to_tsquery('english', $1)) AS search_rank
+       FROM documents d
+       WHERE d.deleted_at IS NULL
+         AND (
+           d.document_fts @@ websearch_to_tsquery('english', $1)
+           OR d.name ILIKE '%' || $1 || '%'
+           OR d.uploaded_by_email ILIKE '%' || $1 || '%'
+         )
+         AND ${documentAccess.condition('d', 2)}
+       ORDER BY search_rank DESC NULLS LAST, d.created_at DESC
+       LIMIT 50`,
+      [q, ...documentAccess.userParams(req.user, 'read')]
     );
     res.json(rows);
   } catch (e) {
@@ -440,6 +478,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
       [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText]
     );
+    await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
 
     res.json({ doc, canIngest });
@@ -489,6 +528,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
       [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText]
     );
+    await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
 
     res.json({ doc, canIngest, streamed: true });
@@ -665,7 +705,12 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
 router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'read',
+      columns: DOCUMENT_COLUMNS,
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     const rows = await db.query(
       `SELECT id, document_id, expires_at, revoked_at, created_at, created_by_email,
@@ -685,16 +730,17 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
 router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();
   try {
+    await documentAccess.ensureDocumentAclTable();
     const rows = await db.query(
       `SELECT s.id, s.document_id, d.name AS document_name, s.expires_at, s.revoked_at,
               s.created_at, s.created_by_email, s.last_accessed_at, s.access_count,
               s.password_hash, d.deleted_at
        FROM document_share_links s
        JOIN documents d ON d.id = s.document_id
-       WHERE ($1 = 'admin' OR s.created_by = $2)
+       WHERE ${documentAccess.condition('d', 1)}
        ORDER BY s.revoked_at IS NULL DESC, s.expires_at NULLS LAST, s.created_at DESC
        LIMIT 250`,
-      [req.user.role, req.user.id]
+      documentAccess.userParams(req.user, 'read')
     );
     res.json({ shares: rows.map(row => ({
       ...shareLinkClientShape(row),
@@ -710,7 +756,12 @@ router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res
 router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: DOCUMENT_COLUMNS,
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
@@ -740,6 +791,13 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
 router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();
   try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: 'd.id',
+    });
+    if (!doc) return res.status(404).json({ error: 'Share link not found' });
     const share = await db.queryOne(
       `UPDATE document_share_links
        SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
@@ -761,7 +819,13 @@ router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req
   const { focus } = req.body;
 
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'read',
+      columns: `${DOCUMENT_COLUMNS}, d.document_text`,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     let buffer;
@@ -846,7 +910,13 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 // GET /api/files/:id/url
 router.get('/:id/url', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'read',
+      columns: `${DOCUMENT_COLUMNS}, d.document_text`,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const url = await storage.getUrl(doc.storage_path, 3600);
@@ -860,7 +930,13 @@ router.get('/:id/url', auth, async (req, res) => {
 // GET /api/files/:id/office
 router.get('/:id/office', auth, async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'read',
+      columns: `${DOCUMENT_COLUMNS}, d.document_text`,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const signedUrl = await storage.getUrl(doc.storage_path, 3600);
@@ -903,7 +979,13 @@ router.post('/:id/google', auth, async (req, res) => {
   }
 
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     let buffer;
@@ -977,7 +1059,13 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
   }
 
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     if (!doc.google_drive_id) return res.status(400).json({ error: 'Document has not been pushed to Google Drive' });
 
@@ -1046,7 +1134,13 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
 // GET /api/files/:id/history — admin-only file audit timeline and versions
 router.get('/:id/history', auth, requireRole('admin'), async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'admin',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'any',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     const [events, versions, retention] = await Promise.all([
@@ -1077,7 +1171,13 @@ router.get('/:id/history', auth, requireRole('admin'), async (req, res) => {
 // POST /api/files/:id/restore-version/:versionId — restore a previous stored file version
 router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents WHERE id = $1`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: `${DOCUMENT_COLUMNS}, d.document_text`,
+      deleted: 'any',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     const version = await db.queryOne(
       `SELECT id, version_number, name, size, mime_type, storage_path, document_text
@@ -1111,7 +1211,13 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
 // DELETE /api/files/:id — soft-delete (move to trash); storage object is retained
 router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'active',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
     await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1', [req.params.id, req.user.id, req.user.email]);
@@ -1126,7 +1232,13 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
 router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'write',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'deleted',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
     await db.query(
@@ -1147,7 +1259,13 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
 // DELETE /api/files/:id/purge — permanently delete a trashed document (admin only)
 router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
   try {
-    const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, [req.params.id]);
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'admin',
+      columns: DOCUMENT_COLUMNS,
+      deleted: 'deleted',
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
     await logDocumentEvent(doc.id, 'purged', req.user.id, req.user.email, 'permanent delete');
@@ -1175,10 +1293,12 @@ router.post('/ask', auth, async (req, res) => {
 
   sseHeaders(res);
   try {
+    await documentAccess.ensureDocumentAclTable();
     const docs = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents
-       WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
-      [ids]
+       WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+         AND ${documentAccess.condition('documents', 2)}`,
+      [ids, ...documentAccess.userParams(req.user, 'read')]
     );
     if (!docs.length) { res.write(`data: ${JSON.stringify({ error: 'No matching documents found' })}\n\n`); return res.end(); }
 

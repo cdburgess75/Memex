@@ -126,6 +126,24 @@ ALTER TABLE documents
 
 CREATE INDEX IF NOT EXISTS documents_fts_idx ON documents USING GIN(document_fts);
 
+-- Document access grants. Uploaders retain owner/admin access; explicit grants
+-- make permission checks queryable across list/search/download/AI routes.
+CREATE TABLE IF NOT EXISTS document_acl (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id          UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  subject_type         TEXT        NOT NULL DEFAULT 'user' CHECK (subject_type IN ('user')),
+  subject_id           TEXT        NOT NULL,
+  subject_email        TEXT,
+  permission           TEXT        NOT NULL CHECK (permission IN ('read','write','admin')),
+  granted_by           UUID,
+  granted_by_email     TEXT,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(document_id, subject_type, subject_id)
+);
+
+CREATE INDEX IF NOT EXISTS document_acl_document_idx ON document_acl(document_id);
+CREATE INDEX IF NOT EXISTS document_acl_subject_idx ON document_acl(subject_type, subject_id);
+
 -- File audit timeline and version history
 CREATE TABLE IF NOT EXISTS document_events (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
