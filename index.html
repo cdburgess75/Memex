@@ -1193,6 +1193,13 @@ html.office .provider-btn:hover {
 .compliance-note { font-size: 12px; color: var(--ink-faint); line-height: 1.45; }
 .compliance-toggle { display: inline-flex; align-items: center; gap: 6px; font: 700 12px var(--body); color: var(--ink-soft); white-space: nowrap; }
 .compliance-toggle input { width: auto; }
+.compliance-controls { display: grid; gap: 8px; margin-top: 10px; }
+.compliance-control-row { display: grid; grid-template-columns: auto minmax(88px, 0.8fr) minmax(0, 1.2fr); gap: 10px 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--rule); min-width: 0; }
+.compliance-control-row:first-child { border-top: 0; padding-top: 0; }
+.compliance-control-title { color: var(--ink); font-weight: 700; line-height: 1.35; min-width: 0; }
+.compliance-control-copy { color: var(--ink-soft); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.compliance-control-gap { grid-column: 2 / -1; color: var(--ink-faint); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.compliance-control-gap strong { color: var(--ink-soft); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
 .control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
 .control-ready { background: #EAF7EA; color: #107C41; }
 .control-partial { background: #FFF7E6; color: #9A5B00; }
@@ -1811,6 +1818,8 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .file-row-actions { margin-top: 8px; }
   .file-link-card { grid-template-columns: 1fr; }
   .file-access-form { grid-template-columns: 1fr; }
+  .compliance-control-row { grid-template-columns: 1fr; }
+  .compliance-control-gap { grid-column: 1; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
   .file-library-commandbar { align-items: stretch; flex-direction: column; }
   .file-library-command-left, .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
@@ -3142,12 +3151,12 @@ function complianceHtml(data) {
     return `<div class="usage-section"><h3>Compliance &amp; Updates</h3><p class="settings-notice">Compliance status is unavailable.</p></div>`;
   }
   const frameworkCards = data.frameworks.map(f => {
-    const controlRows = (f.controls || []).map(c => `<tr>
-      <td><span class="control-pill ${complianceStatusClass(c.ready)}">${complianceStatusLabel(c.ready)}</span></td>
-      <td>${esc(c.label || c.id)}</td>
-      <td>${esc(c.evidence || '')}</td>
-      <td>${esc(c.gap || '')}</td>
-    </tr>`).join('');
+    const controlRows = (f.controls || []).map(c => `<div class="compliance-control-row">
+      <span class="control-pill ${complianceStatusClass(c.ready)}">${complianceStatusLabel(c.ready)}</span>
+      <div class="compliance-control-title">${esc(c.label || c.id)}</div>
+      <div class="compliance-control-copy">${esc(c.evidence || '')}</div>
+      <div class="compliance-control-gap"><strong>Gap</strong>${esc(c.gap || '')}</div>
+    </div>`).join('');
     return `<div class="compliance-card">
       <div class="compliance-card-head">
         <div><h4>${esc(f.name)}</h4><p>${esc(f.scope)}</p></div>
@@ -3155,11 +3164,8 @@ function complianceHtml(data) {
       </div>
       <div class="compliance-note">${esc(f.note)}</div>
       <details style="margin-top:10px">
-        <summary class="file-library-tool" style="display:inline-flex">Controls and gaps</summary>
-        <table class="data-table" style="margin-top:8px">
-          <thead><tr><th>Status</th><th>Control</th><th>Evidence</th><th>Gap</th></tr></thead>
-          <tbody>${controlRows}</tbody>
-        </table>
+        <summary>Controls and gaps</summary>
+        <div class="compliance-controls">${controlRows}</div>
       </details>
     </div>`;
   }).join('');
