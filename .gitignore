@@ -6,3 +6,4 @@ memex-wiki.md
 
 # Local environment
 .env
+.local-secrets/
