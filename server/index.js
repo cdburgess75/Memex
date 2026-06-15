@@ -43,8 +43,9 @@ app.use((_req, _res, next) => {
 
 app.use(express.json());
 
-const { apiLimiter, authLimiter } = makeRateLimiters();
+const { apiLimiter, authLimiter, shareLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
+app.use('/api/files/share', shareLimiter);
 app.use('/api', apiLimiter);
 
 function browserUrlFromRequest(req, fallbackPort) {

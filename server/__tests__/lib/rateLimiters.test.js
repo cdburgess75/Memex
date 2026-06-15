@@ -12,6 +12,8 @@ describe('rateLimiters', () => {
     delete process.env.RATE_LIMIT_WINDOW_MS;
     delete process.env.RATE_LIMIT_API_MAX;
     delete process.env.RATE_LIMIT_AUTH_MAX;
+    delete process.env.RATE_LIMIT_SHARE_MAX;
+    delete process.env.RATE_LIMIT_SHARE_WINDOW_MS;
   });
 
   afterAll(() => {
@@ -37,9 +39,17 @@ describe('rateLimiters', () => {
     expect(rateLimitEnabled()).toBe(false);
   });
 
-  test('returns middleware functions for api and auth limiters', () => {
+  test('returns middleware functions for api, auth, and share limiters', () => {
     const limiters = makeRateLimiters();
     expect(typeof limiters.apiLimiter).toBe('function');
     expect(typeof limiters.authLimiter).toBe('function');
+    expect(typeof limiters.shareLimiter).toBe('function');
+  });
+
+  test('uses share-specific environment values', () => {
+    process.env.RATE_LIMIT_SHARE_MAX = '12';
+    process.env.RATE_LIMIT_SHARE_WINDOW_MS = '60000';
+    expect(intFromEnv('RATE_LIMIT_SHARE_MAX', 60)).toBe(12);
+    expect(intFromEnv('RATE_LIMIT_SHARE_WINDOW_MS', 900000)).toBe(60000);
   });
 });

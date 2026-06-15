@@ -106,6 +106,12 @@ async function logDocumentEvent(documentId, eventType, userId, userEmail, detail
   );
 }
 
+function requestAuditDetail(req) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const userAgent = String(req.get('user-agent') || 'unknown').replace(/\s+/g, ' ').slice(0, 160);
+  return `ip ${ip} · user-agent ${userAgent}`;
+}
+
 async function trashRetentionDays() {
   const days = parseInt(await settings.getOrEnv('trash_retention_days') || '30', 10);
   return Number.isFinite(days) && days > 0 ? days : 30;
@@ -357,7 +363,7 @@ router.get('/share/:token', async (req, res) => {
       'UPDATE document_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1',
       [share.id]
     );
-    await logDocumentEvent(share.document_id, 'share_downloaded', null, null, 'public share link');
+    await logDocumentEvent(share.document_id, 'share_downloaded', null, null, `public share link · ${requestAuditDetail(req)}`);
     await logEvent(`share download · ${share.name}`, null, null);
     res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name)}"`);
