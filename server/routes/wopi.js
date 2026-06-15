@@ -6,6 +6,15 @@ const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiToken
 const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
 
+function validateFileToken(req, res) {
+  const entry = validateToken(req.query.access_token);
+  if (!entry || String(entry.fileId) !== String(req.params.fileId)) {
+    res.status(401).json({ error: 'Invalid or expired access token' });
+    return null;
+  }
+  return entry;
+}
+
 async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
   const path = require('path');
   const safeName = path.basename(doc.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -30,8 +39,8 @@ async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
 
 // GET /wopi/files/:fileId — CheckFileInfo
 router.get('/files/:fileId', async (req, res) => {
-  const entry = validateToken(req.query.access_token);
-  if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
+  const entry = validateFileToken(req, res);
+  if (!entry) return;
 
   try {
     const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
@@ -56,8 +65,8 @@ router.get('/files/:fileId', async (req, res) => {
 
 // GET /wopi/files/:fileId/contents — GetFile
 router.get('/files/:fileId/contents', async (req, res) => {
-  const entry = validateToken(req.query.access_token);
-  if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
+  const entry = validateFileToken(req, res);
+  if (!entry) return;
 
   try {
     const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
@@ -74,8 +83,8 @@ router.get('/files/:fileId/contents', async (req, res) => {
 
 // POST /wopi/files/:fileId/contents — PutFile
 router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
-  const entry = validateToken(req.query.access_token);
-  if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
+  const entry = validateFileToken(req, res);
+  if (!entry) return;
 
   try {
     const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
@@ -116,8 +125,8 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
 
 // POST /wopi/files/:fileId — Operations (Lock, Unlock, etc.)
 router.post('/files/:fileId', async (req, res) => {
-  const entry = validateToken(req.query.access_token);
-  if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
+  const entry = validateFileToken(req, res);
+  if (!entry) return;
 
   const override = req.headers['x-wopi-override'];
   const requestedLock = req.headers['x-wopi-lock'];
