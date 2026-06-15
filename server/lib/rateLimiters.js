@@ -24,6 +24,7 @@ function createLimiter(options) {
 
 function makeRateLimiters() {
   const windowMs = intFromEnv('RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000);
+  const shareWindowMs = intFromEnv('RATE_LIMIT_SHARE_WINDOW_MS', windowMs);
   return {
     apiLimiter: createLimiter({
       windowMs,
@@ -34,6 +35,11 @@ function makeRateLimiters() {
       windowMs,
       limit: intFromEnv('RATE_LIMIT_AUTH_MAX', 20),
       message: 'Too many login attempts. Please wait and try again shortly.',
+    }),
+    shareLimiter: createLimiter({
+      windowMs: shareWindowMs,
+      limit: intFromEnv('RATE_LIMIT_SHARE_MAX', 60),
+      message: 'Too many share-link attempts. Please wait and try again shortly.',
     }),
   };
 }
