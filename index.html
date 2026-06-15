@@ -1252,15 +1252,15 @@ html.file-home-mode #panel > .panel { max-width: none; min-height: calc(100vh - 
 html.file-home-mode .masthead-actions { display: flex; }
 .file-workspace-content { max-width: 1120px; }
 .file-workspace-content .panel { margin: 0; }
-.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 252px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
-.file-home-nav { padding: 24px 16px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
+.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 248px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
+.file-home-nav { padding: 18px 14px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
 .file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
-.file-rail-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
-.file-create-btn { width: 100%; min-height: 44px; border: 1px solid #BBD7F0; border-radius: 8px; padding: 8px 11px; color: #242424; background: #EAF3FF; font: 700 14px var(--body); display: flex; align-items: center; gap: 8px; justify-content: flex-start; cursor: pointer; box-shadow: 0 1px 2px rgba(15,108,189,0.06); }
-.file-create-btn:hover { background: #DDEEFF; border-color: #8FC7F4; box-shadow: 0 2px 8px rgba(15,108,189,0.12); }
-.file-create-btn .plus { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; font-weight: 300; color: #0F6CBD; background: rgba(255,255,255,0.42); flex: 0 0 auto; }
-.file-create-btn .chev { margin-left: auto; font-size: 13px; line-height: 1; color: #616161; }
+.file-create-btn { width: 100%; min-height: 36px; border: 1px solid #DADADA; border-radius: 6px; padding: 7px 10px; color: #323130; background: #FFFFFF; font: 700 14px var(--body); display: flex; align-items: center; gap: 9px; justify-content: flex-start; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.file-create-btn:hover { background: #F8FBFF; border-color: #B7D4F5; color: #0F5FB5; box-shadow: 0 1px 4px rgba(15,108,189,0.10); }
+.file-create-btn .plus { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; font-weight: 500; color: #0F6CBD; background: transparent; flex: 0 0 auto; }
+.file-create-btn .chev { margin-left: auto; font-size: 12px; line-height: 1; color: #707070; }
 .file-create-btn span:not(.plus):not(.chev) { white-space: nowrap; }
 .file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 152px; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
 .file-search-menu { min-width: 174px; }
@@ -1273,7 +1273,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-nav-link.active { color: #242424; background: #EAF3FF; font-weight: 700; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
-.file-library-nav { margin-top: 24px; display: grid; gap: 8px; }
+.file-library-nav { display: grid; gap: 8px; }
 .file-library-heading { width: 100%; border: 0; border-radius: 8px; background: transparent; color: #323130; padding: 10px 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; font: 800 16px var(--body); cursor: pointer; }
 .file-library-heading:hover { background: #F8FBFF; }
 .file-library-heading span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1286,7 +1286,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-quick-pill { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; color: #5F5F61; font-size: 14px; }
 .file-quick-badge { width: 22px; height: 22px; border-radius: 5px; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font: 700 9px var(--mono); }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-home-main { min-width: 0; padding: 32px 36px 48px; overflow-x: hidden; }
+.file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .file-home-title { flex: 0 0 auto; font: 700 22px var(--body); color: #616161; white-space: nowrap; }
 .file-home-search { flex: 1 1 420px; width: auto; min-width: 220px; max-width: 100%; border: 1px solid #DADADA; border-radius: 999px; padding: 10px 18px; background: #FFFFFF; color: #242424; font: 15px var(--body); }
@@ -1343,12 +1343,12 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-empty-title { color: #323130; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .file-empty-text { color: #616161; font-size: 14px; line-height: 1.45; max-width: 560px; }
 .file-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.file-library { display: grid; gap: 18px; }
-.file-library-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.file-library-title { display: flex; align-items: center; gap: 8px; font: 700 22px var(--body); color: #323130; }
-.file-library-title .chev { color: #616161; font-size: 18px; }
-.file-library-create { border: 0; border-radius: 4px; background: #5B5FC7; color: #FFFFFF; padding: 10px 16px; font: 700 15px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-.file-library-create:hover { background: #4F52B2; }
+.file-library { display: grid; gap: 16px; }
+.file-library-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #E5E5E5; }
+.file-library-title { display: flex; align-items: center; gap: 8px; font: 750 28px var(--body); color: #242424; letter-spacing: 0; line-height: 1.15; }
+.file-library-title .chev { color: #707070; font-size: 16px; }
+.file-library-create { border: 1px solid #DADADA; border-radius: 6px; background: #FFFFFF; color: #323130; padding: 8px 13px; font: 700 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.file-library-create:hover { background: #F8FBFF; border-color: #B7D4F5; color: #0F5FB5; }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .file-library-commandbar.has-selection { background: #FFFFFF; border: 1px solid #EDEBE9; border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
@@ -1509,6 +1509,7 @@ html.dark .file-share-section,
 html.dark .file-link-card,
 html.dark .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: none; }
 html.dark .file-rec-head,
+html.dark .file-library-head,
 html.dark .file-details-section,
 html.dark .file-table th,
 html.dark .file-table td,
@@ -1745,18 +1746,21 @@ html.graphite .file-share-section,
 html.graphite .file-link-card,
 html.graphite .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: var(--shadow); }
 html.office-dark .file-rec-head,
+html.office-dark .file-library-head,
 html.office-dark .file-details-section,
 html.office-dark .file-table th,
 html.office-dark .file-table td,
 html.office-dark .file-library-table th,
 html.office-dark .file-library-table td,
 html.drive .file-rec-head,
+html.drive .file-library-head,
 html.drive .file-details-section,
 html.drive .file-table th,
 html.drive .file-table td,
 html.drive .file-library-table th,
 html.drive .file-library-table td,
 html.graphite .file-rec-head,
+html.graphite .file-library-head,
 html.graphite .file-details-section,
 html.graphite .file-table th,
 html.graphite .file-table td,
@@ -4203,7 +4207,7 @@ async function renderDocumentLibrary(view = 'active') {
   fileFilter = 'all';
   selectedFileIds = new Set();
   detailsPaneOpen = false;
-  const title = view === 'shared' ? 'Shared files' : view === 'favorites' ? 'Favorites' : 'Files';
+  const title = view === 'shared' ? 'Shared with me' : view === 'favorites' ? 'Favorites' : currentLibraryName();
   document.getElementById('panel').innerHTML = fileHomeShell(fileLibraryCommandBar(title), 'files', view === 'shared' ? 'shared' : view === 'favorites' ? 'favorites' : 'files');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml(filesList);
