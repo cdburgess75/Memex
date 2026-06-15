@@ -64,4 +64,39 @@ describe('documentAccess', () => {
       ['doc-1', user.id, 'user@test.com']
     );
   });
+
+  test('grantUserAccess validates and upserts email grants', async () => {
+    db.queryOne.mockResolvedValueOnce({ id: 'grant-1', subject_email: 'reader@test.com', permission: 'read' });
+
+    const grant = await access.grantUserAccess('doc-1', {
+      email: ' Reader@Test.com ',
+      permission: 'read',
+      grantedBy: user,
+    });
+
+    expect(grant.id).toBe('grant-1');
+    expect(db.queryOne).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO document_acl'),
+      ['doc-1', 'reader@test.com', 'read', user.id, 'user@test.com']
+    );
+  });
+
+  test('grantUserAccess rejects invalid input', async () => {
+    await expect(access.grantUserAccess('doc-1', { email: 'nope', permission: 'read', grantedBy: user }))
+      .rejects.toThrow(/Valid user email/);
+    await expect(access.grantUserAccess('doc-1', { email: 'reader@test.com', permission: 'owner', grantedBy: user }))
+      .rejects.toThrow(/Permission/);
+  });
+
+  test('revokeUserAccess deletes one grant by document and grant id', async () => {
+    db.queryOne.mockResolvedValueOnce({ id: 'grant-1' });
+
+    const grant = await access.revokeUserAccess('doc-1', 'grant-1');
+
+    expect(grant.id).toBe('grant-1');
+    expect(db.queryOne).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM document_acl'),
+      ['doc-1', 'grant-1']
+    );
+  });
 });

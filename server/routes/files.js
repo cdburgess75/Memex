@@ -726,6 +726,67 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
   }
 });
 
+// GET /api/files/:id/access — list internal user access grants for a document.
+router.get('/:id/access', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'admin',
+      columns: 'd.id, d.uploaded_by, d.uploaded_by_email',
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const grants = await documentAccess.listGrants(doc.id);
+    res.json({ grants });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/files/:id/access — grant or update internal user access.
+router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'admin',
+      columns: 'd.id, d.name',
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const grant = await documentAccess.grantUserAccess(doc.id, {
+      email: req.body?.email,
+      permission: req.body?.permission || 'read',
+      grantedBy: req.user,
+    });
+    await logDocumentEvent(doc.id, 'access_granted', req.user.id, req.user.email, `${grant.subject_email} · ${grant.permission}`);
+    await logEvent(`access grant · ${doc.name} · ${grant.subject_email}`, req.user.id, req.user.email);
+    res.json({ grant });
+  } catch (e) {
+    const status = /required|Permission/.test(e.message) ? 400 : 500;
+    res.status(status).json({ error: e.message });
+  }
+});
+
+// DELETE /api/files/:id/access/:grantId — revoke an internal user access grant.
+router.delete('/:id/access/:grantId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'admin',
+      columns: 'd.id, d.name',
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const grant = await documentAccess.revokeUserAccess(doc.id, req.params.grantId);
+    if (!grant) return res.status(404).json({ error: 'Access grant not found' });
+    await logDocumentEvent(doc.id, 'access_revoked', req.user.id, req.user.email, `${grant.subject_email} · ${grant.permission}`);
+    await logEvent(`access revoke · ${doc.name} · ${grant.subject_email}`, req.user.id, req.user.email);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/files/shares — list share links across documents.
 router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureShareLinksTable();

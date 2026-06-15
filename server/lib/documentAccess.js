@@ -34,6 +34,14 @@ function permissionsFor(required = 'read') {
   return PERMISSION_LEVELS[required] || PERMISSION_LEVELS.read;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function validPermission(permission) {
+  return Object.prototype.hasOwnProperty.call(PERMISSION_LEVELS, permission);
+}
+
 function userParams(user, required = 'read') {
   return [
     user?.role || '',
@@ -89,6 +97,54 @@ async function grantOwnerAdmin(documentId, user) {
   );
 }
 
+async function listGrants(documentId) {
+  await ensureDocumentAclTable();
+  return db.query(
+    `SELECT id, document_id, subject_type, subject_id, subject_email, permission,
+            granted_by, granted_by_email, created_at
+     FROM document_acl
+     WHERE document_id = $1
+     ORDER BY created_at ASC`,
+    [documentId]
+  );
+}
+
+async function grantUserAccess(documentId, { email, permission, grantedBy }) {
+  const subjectEmail = normalizeEmail(email);
+  if (!subjectEmail || !subjectEmail.includes('@')) throw new Error('Valid user email is required');
+  if (!validPermission(permission)) throw new Error('Permission must be read, write, or admin');
+  await ensureDocumentAclTable();
+  return db.queryOne(
+    `INSERT INTO document_acl
+     (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
+     VALUES ($1, 'user', $2, $2, $3, $4, $5)
+     ON CONFLICT (document_id, subject_type, subject_id)
+     DO UPDATE SET permission = EXCLUDED.permission,
+                   subject_email = EXCLUDED.subject_email,
+                   granted_by = EXCLUDED.granted_by,
+                   granted_by_email = EXCLUDED.granted_by_email
+     RETURNING id, document_id, subject_type, subject_id, subject_email, permission,
+               granted_by, granted_by_email, created_at`,
+    [
+      documentId,
+      subjectEmail,
+      permission,
+      grantedBy?.id || null,
+      normalizeEmail(grantedBy?.email),
+    ]
+  );
+}
+
+async function revokeUserAccess(documentId, grantId) {
+  await ensureDocumentAclTable();
+  return db.queryOne(
+    `DELETE FROM document_acl
+     WHERE document_id = $1 AND id = $2
+     RETURNING id, document_id, subject_type, subject_id, subject_email, permission`,
+    [documentId, grantId]
+  );
+}
+
 function _resetForTests() {
   ensured = false;
 }
@@ -97,8 +153,13 @@ module.exports = {
   ensureDocumentAclTable,
   getAccessibleDocument,
   grantOwnerAdmin,
+  listGrants,
+  grantUserAccess,
+  revokeUserAccess,
   condition,
   userParams,
   permissionsFor,
+  normalizeEmail,
+  validPermission,
   _resetForTests,
 };
