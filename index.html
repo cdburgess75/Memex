@@ -215,6 +215,38 @@ body {
   cursor: pointer;
 }
 .app-menu-item:hover { background: var(--accent-wash); color: var(--accent); }
+.security-indicator {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  padding: 8px 12px 8px 28px;
+  font: 700 13px var(--body);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+.security-indicator::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--ink-faint);
+  transform: translateY(-50%);
+}
+.security-indicator.ok::before { background: #2E7D32; }
+.security-indicator.info::before { background: #0F6CBD; }
+.security-indicator.warning::before { background: #B7791F; }
+.security-indicator.critical::before { background: #C0392B; box-shadow: 0 0 0 4px rgba(192,57,43,0.12); }
+.security-indicator:hover { border-color: var(--accent); color: var(--ink); }
+.security-modal-grid { display: grid; gap: 12px; margin-top: 16px; }
+.security-status-card { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
+.security-status-card strong { display: block; color: var(--ink); margin-bottom: 4px; }
+.security-status-card span { color: var(--ink-soft); font-size: 14px; }
 .theme-switcher {
   display: inline-flex;
   align-items: center;
@@ -2060,6 +2092,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button>
       <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button>
     </div>
+    <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
     <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
       <button class="app-menu-btn" type="button" onclick="toggleAppMenu(event)">Menu</button>
@@ -2166,6 +2199,7 @@ let selectedFileIds = new Set();
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
+let securityStatus = null;
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -2284,6 +2318,7 @@ async function _afterLogin() {
   currentUser = await apiGet('/auth/me');
   if (currentUser) document.getElementById('user-chip').textContent = `${currentUser.email}  ·  ${currentUser.role}`;
   applyRoleUI();
+  loadSecurityStatus();
 }
 
 async function loadFromServer() {
@@ -2514,6 +2549,58 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function securityLevelLabel(level) {
+  if (level === 'critical') return 'High pressure';
+  if (level === 'warning') return 'Watch';
+  if (level === 'ok') return 'Normal';
+  return 'Monitor';
+}
+
+function updateSecurityIndicator(status = securityStatus) {
+  const btn = document.getElementById('security-indicator');
+  if (!btn) return;
+  const level = status?.level || 'info';
+  btn.className = `security-indicator ${level}`;
+  btn.textContent = level === 'critical' ? 'Security alert' : 'Security';
+  btn.title = status?.message || 'Host firewall monitoring';
+}
+
+async function loadSecurityStatus() {
+  try {
+    securityStatus = await apiGet('/security/status');
+  } catch {
+    securityStatus = {
+      level: 'info',
+      configured: false,
+      firewall: 'UFW',
+      recentConnections: 0,
+      window: '15 minutes',
+      message: 'Host firewall monitoring is not connected yet.',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  updateSecurityIndicator(securityStatus);
+}
+
+function closeSecurityStatus() {
+  document.getElementById('security-status-scrim')?.remove();
+}
+
+function openSecurityStatus() {
+  const status = securityStatus || {
+    level: 'info',
+    configured: false,
+    firewall: 'UFW',
+    recentConnections: 0,
+    window: '15 minutes',
+    message: 'Host firewall monitoring is not connected yet.',
+    updatedAt: new Date().toISOString(),
+  };
+  const recent = Number(status.recentConnections || 0);
+  closeSecurityStatus();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="security-status-scrim" onclick="if(event.target.id==='security-status-scrim')closeSecurityStatus()"><div class="modal"><h2>Security monitor</h2><p class="sub">This is an added host-firewall visibility signal. It does not replace UFW, a reverse proxy, MFA, patching, or network controls.</p><div class="security-modal-grid"><div class="security-status-card"><strong>${esc(securityLevelLabel(status.level))}</strong><span>${esc(status.message || 'No unusual connection pressure reported.')}</span></div><div class="security-status-card"><strong>${esc(status.firewall || 'UFW')}</strong><span>${status.configured ? 'Monitoring connected' : 'Monitoring not connected yet'}</span></div><div class="security-status-card"><strong>${recent} recent connection${recent === 1 ? '' : 's'}</strong><span>Window: ${esc(status.window || '15 minutes')}</span></div></div><div class="btn-row" style="margin-top:20px"><button class="ghost-btn" onclick="loadSecurityStatus()">Refresh</button><button class="run-btn" onclick="closeSecurityStatus()">Close</button></div></div></div>`);
 }
 
 /* ---------- sidebar ---------- */

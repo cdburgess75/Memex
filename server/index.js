@@ -81,6 +81,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pages', require('./routes/pages'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/log', require('./routes/log'));
+app.use('/api/security', require('./routes/security'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
