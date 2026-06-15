@@ -1267,14 +1267,21 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-menu.open, .file-search-menu.open { display: grid; gap: 4px; }
 .file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
 .file-upload-menu button:hover, .file-search-menu button:hover { background: #EAF3FF; }
-.file-home-user { margin: 30px 8px 16px; font-size: 15px; font-weight: 600; color: #323130; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
 .file-nav-link:hover, .file-nav-label:hover { background: #F8FBFF; color: #242424; }
 .file-nav-link.active { color: #242424; background: #EAF3FF; font-weight: 700; box-shadow: inset 3px 0 0 #0F6CBD; }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
-.file-nav-section { margin: 24px 8px 8px; font-size: 13px; font-weight: 700; color: #323130; }
+.file-library-nav { margin-top: 24px; display: grid; gap: 8px; }
+.file-library-heading { width: 100%; border: 0; border-radius: 8px; background: transparent; color: #323130; padding: 10px 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; font: 800 16px var(--body); cursor: pointer; }
+.file-library-heading:hover { background: #F8FBFF; }
+.file-library-heading span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-library-heading .chev { color: #707070; font-size: 13px; }
+.file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
+.file-library-nav-body { display: grid; gap: 12px; }
+.file-library-nav.collapsed .file-library-nav-body { display: none; }
+.file-nav-section { margin: 8px 8px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #707070; }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
 .file-quick-pill { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; color: #5F5F61; font-size: 14px; }
 .file-quick-badge { width: 22px; height: 22px; border-radius: 5px; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font: 700 9px var(--mono); }
@@ -1454,7 +1461,7 @@ html.dark .file-upload-menu button,
 html.dark .file-search-menu button { color: var(--ink); }
 html.dark .file-upload-menu button:hover,
 html.dark .file-search-menu button:hover { background: #172638; }
-html.dark .file-home-user,
+html.dark .file-library-heading,
 html.dark .file-nav-section,
 html.dark .file-home-title,
 html.dark .file-section-title,
@@ -1596,7 +1603,7 @@ html.drive .file-upload-menu button:hover,
 html.drive .file-search-menu button:hover,
 html.graphite .file-upload-menu button:hover,
 html.graphite .file-search-menu button:hover { background: var(--accent-wash); }
-html.office-dark .file-home-user,
+html.office-dark .file-library-heading,
 html.office-dark .file-nav-section,
 html.office-dark .file-home-title,
 html.office-dark .file-section-title,
@@ -1607,7 +1614,7 @@ html.office-dark .file-details-section-title,
 html.office-dark .file-link-title,
 html.office-dark .file-share-grid label,
 html.office-dark .file-library-selected-count,
-html.drive .file-home-user,
+html.drive .file-library-heading,
 html.drive .file-nav-section,
 html.drive .file-home-title,
 html.drive .file-section-title,
@@ -1618,7 +1625,7 @@ html.drive .file-details-section-title,
 html.drive .file-link-title,
 html.drive .file-share-grid label,
 html.drive .file-library-selected-count,
-html.graphite .file-home-user,
+html.graphite .file-library-heading,
 html.graphite .file-nav-section,
 html.graphite .file-home-title,
 html.graphite .file-section-title,
@@ -1845,7 +1852,10 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   html.file-home-mode .masthead { align-items: flex-start; }
   .file-home-shell { display: block; }
   .file-home-nav { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid #E5E5E5; }
-  .file-home-user, .file-nav-section, .file-quick-list { display: none; }
+  .file-library-nav { margin-top: 0; }
+  .file-library-heading { padding: 8px 10px; }
+  .file-library-nav-body { gap: 8px; }
+  .file-nav-section, .file-quick-list { display: none; }
   .file-nav-main { display: flex; gap: 8px; flex-wrap: wrap; overflow: visible; padding-bottom: 2px; }
   .file-nav-link { flex: 0 0 auto; width: auto; white-space: nowrap; padding: 8px 12px; }
   .file-nav-icon { width: auto; }
@@ -2200,6 +2210,7 @@ let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
 let securityStatus = null;
+let fileLibraryNavCollapsed = localStorage.getItem('memex_library_nav_collapsed') === 'true';
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -4052,6 +4063,17 @@ function friendlyUserName() {
   return email || 'Dave Ptech';
 }
 
+function currentLibraryName() {
+  return `${friendlyUserName()} Library`;
+}
+
+function toggleLibraryNav() {
+  fileLibraryNavCollapsed = !fileLibraryNavCollapsed;
+  localStorage.setItem('memex_library_nav_collapsed', fileLibraryNavCollapsed ? 'true' : 'false');
+  document.getElementById('file-library-nav')?.classList.toggle('collapsed', fileLibraryNavCollapsed);
+  document.querySelector('.file-library-heading')?.setAttribute('aria-expanded', fileLibraryNavCollapsed ? 'false' : 'true');
+}
+
 function toggleUploadMenu(event) {
   event?.stopPropagation();
   closeSearchMenu();
@@ -4104,7 +4126,8 @@ document.addEventListener('click', () => {
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
-  const userName = esc(friendlyUserName());
+  const libraryName = esc(currentLibraryName());
+  const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
   return `<div class="file-rail-actions">
     <div class="file-upload-actions">
       <button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button>
@@ -4115,16 +4138,19 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
       <div class="file-search-menu" id="file-search-menu"><button onclick="chooseSearch('ask')">Ask collection</button><button onclick="chooseSearch('files')">Search files</button></div>
     </div>
   </div>
-  <div class="file-home-user">${userName}</div>
-  <div class="file-nav-section">Files</div>
-  <div class="file-nav-main file-files-main">
-    ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
-    ${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
-    ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
-    ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
-  </div>
-  <div class="file-nav-section">Quick access</div>
-  <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>`;
+  <section class="file-library-nav${collapsed}" id="file-library-nav">
+    <button class="file-library-heading" type="button" onclick="toggleLibraryNav()" aria-expanded="${fileLibraryNavCollapsed ? 'false' : 'true'}"><span>${libraryName}</span><span class="chev">⌄</span></button>
+    <div class="file-library-nav-body">
+      <div class="file-nav-main file-files-main">
+        ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
+        ${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
+        ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
+        ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
+      </div>
+      <div class="file-nav-section">Quick access</div>
+      <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>
+    </div>
+  </section>`;
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
