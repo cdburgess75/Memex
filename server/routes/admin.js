@@ -4,6 +4,8 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const db = require('../lib/db');
+const settings = require('../lib/settings');
+const compliance = require('../lib/compliance');
 
 // GET /api/admin/stats
 router.get('/stats', auth, requireRole('admin'), async (req, res) => {
@@ -122,6 +124,40 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
       byOperation,
       daily,
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/compliance — readiness profiles and update posture
+router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const [frameworks, updates] = await Promise.all([
+      compliance.profileStatus(),
+      compliance.updateStatus(),
+    ]);
+    res.json({
+      disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Memex or the operating organization.',
+      frameworks,
+      updates,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/compliance — enable/disable readiness profiles
+router.put('/compliance', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const enabled = req.body?.enabled || {};
+    const allowed = new Map(compliance.FRAMEWORKS.map(f => [f.id, f.setting]));
+    for (const [id, value] of Object.entries(enabled)) {
+      const settingKey = allowed.get(id);
+      if (!settingKey) continue;
+      await settings.set(settingKey, value ? 'true' : 'false', req.user.id);
+    }
+    await settings.refresh();
+    res.json({ ok: true, frameworks: await compliance.profileStatus() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

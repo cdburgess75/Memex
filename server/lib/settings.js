@@ -25,6 +25,12 @@ const ENV_MAP = {
   http_proxy:                     'HTTP_PROXY',
   max_upload_mb:                  'MAX_UPLOAD_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
+  compliance_soc2_enabled:        'COMPLIANCE_SOC2_ENABLED',
+  compliance_hipaa_enabled:       'COMPLIANCE_HIPAA_ENABLED',
+  compliance_gdpr_enabled:        'COMPLIANCE_GDPR_ENABLED',
+  compliance_pci_dss_enabled:     'COMPLIANCE_PCI_DSS_ENABLED',
+  compliance_iso27001_enabled:    'COMPLIANCE_ISO27001_ENABLED',
+  compliance_cmmc_enabled:        'COMPLIANCE_CMMC_ENABLED',
 };
 
 const cache = new Map();

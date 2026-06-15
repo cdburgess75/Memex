@@ -1179,6 +1179,28 @@ html.office .provider-btn:hover {
 .data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
 .data-table td:first-child { color: var(--ink); }
 .data-table select { font-family: var(--mono); font-size: 12px; padding: 3px 6px; }
+.compliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.compliance-card {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+.compliance-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.compliance-card h4 { font-size: 16px; margin: 0; color: var(--ink); }
+.compliance-card p { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin: 0 0 8px; }
+.compliance-note { font-size: 12px; color: var(--ink-faint); line-height: 1.45; }
+.compliance-toggle { display: inline-flex; align-items: center; gap: 6px; font: 700 12px var(--body); color: var(--ink-soft); white-space: nowrap; }
+.compliance-toggle input { width: auto; }
+.control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
+.control-ready { background: #EAF7EA; color: #107C41; }
+.control-partial { background: #FFF7E6; color: #9A5B00; }
+.control-gap { background: #FDECEC; color: #B32636; }
+.update-posture { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.update-card { border: 1px solid var(--rule); border-radius: 8px; padding: 14px; background: var(--surface); }
+.update-card strong { display: block; color: var(--ink); margin-bottom: 5px; }
+.update-card span { display: block; color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
 
 /* Files home */
 html.file-home-mode body { background: #F7F7F8; background-image: none; }
@@ -3087,16 +3109,83 @@ async function adminDeleteFile(fileId, fileName) {
   } catch (e) { toast('Delete failed: ' + e.message); }
 }
 
+function complianceStatusClass(value) {
+  if (value === true) return 'control-ready';
+  if (value === false) return 'control-gap';
+  return 'control-partial';
+}
+
+function complianceStatusLabel(value) {
+  if (value === true) return 'Ready';
+  if (value === false) return 'Gap';
+  return 'Partial';
+}
+
+function complianceHtml(data) {
+  if (!data || !Array.isArray(data.frameworks)) {
+    return `<div class="usage-section"><h3>Compliance &amp; Updates</h3><p class="settings-notice">Compliance status is unavailable.</p></div>`;
+  }
+  const frameworkCards = data.frameworks.map(f => {
+    const controlRows = (f.controls || []).map(c => `<tr>
+      <td><span class="control-pill ${complianceStatusClass(c.ready)}">${complianceStatusLabel(c.ready)}</span></td>
+      <td>${esc(c.label || c.id)}</td>
+      <td>${esc(c.evidence || '')}</td>
+      <td>${esc(c.gap || '')}</td>
+    </tr>`).join('');
+    return `<div class="compliance-card">
+      <div class="compliance-card-head">
+        <div><h4>${esc(f.name)}</h4><p>${esc(f.scope)}</p></div>
+        <label class="compliance-toggle"><input type="checkbox" data-compliance="${esc(f.id)}" ${f.enabled ? 'checked' : ''}> Enabled</label>
+      </div>
+      <div class="compliance-note">${esc(f.note)}</div>
+      <details style="margin-top:10px">
+        <summary class="file-library-tool" style="display:inline-flex">Controls and gaps</summary>
+        <table class="data-table" style="margin-top:8px">
+          <thead><tr><th>Status</th><th>Control</th><th>Evidence</th><th>Gap</th></tr></thead>
+          <tbody>${controlRows}</tbody>
+        </table>
+      </details>
+    </div>`;
+  }).join('');
+  const app = data.updates?.app || {};
+  const ubuntu = data.updates?.ubuntu || {};
+  const deps = data.updates?.dependencyAudit || {};
+  return `<div class="usage-section">
+    <h3>Compliance &amp; Updates</h3>
+    <p class="settings-notice">${esc(data.disclaimer || 'Profiles track readiness only; they do not certify the organization.')}</p>
+    <div class="update-posture">
+      <div class="update-card"><strong>Application</strong><span>Version: ${esc(app.version || 'unknown')}</span><span>Git: ${esc(app.git?.branch || 'unknown')} ${esc(app.git?.commit || '')}</span><span>${esc(app.updateMethod || 'GitHub + Docker Compose')}</span></div>
+      <div class="update-card"><strong>Ubuntu host</strong><span>${ubuntu.supportedFromApp ? 'Host updater configured.' : 'Host updates require a hardened runner.'}</span><span>${esc(ubuntu.recommendedMethod || '')}</span></div>
+      <div class="update-card"><strong>Dependency audit</strong><span>${deps.available ? 'Node package lock found.' : 'Package audit metadata unavailable.'}</span><span>${esc(deps.recommendedCommand || '')}</span></div>
+    </div>
+    <div class="compliance-grid">${frameworkCards}</div>
+    <button class="ghost-btn" onclick="saveComplianceProfiles()">Save compliance profiles</button>
+  </div>`;
+}
+
+async function saveComplianceProfiles() {
+  const enabled = {};
+  document.querySelectorAll('[data-compliance]').forEach(el => { enabled[el.dataset.compliance] = el.checked; });
+  try {
+    await apiPut('/admin/compliance', { enabled });
+    toast('Compliance profiles saved');
+    await renderAdmin();
+  } catch (e) {
+    toast('Save failed: ' + e.message);
+  }
+}
+
 async function renderAdmin() {
   const panel = document.getElementById('panel');
   setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`, 'admin');
   try {
-    const [stats, usage, users, files, sysSettings] = await Promise.all([
+    const [stats, usage, users, files, sysSettings, compliance] = await Promise.all([
       apiGet('/admin/stats'),
       apiGet('/admin/usage').catch(() => null),
       apiGet('/admin/users').catch(() => []),
       apiGet('/files').catch(() => []),
-      apiGet('/admin/settings').catch(() => ({}))
+      apiGet('/admin/settings').catch(() => ({})),
+      apiGet('/admin/compliance').catch(() => null)
     ]);
     const pageCount = stats.pageCount ?? 0;
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
@@ -3351,6 +3440,7 @@ async function renderAdmin() {
     </div>`;
 
     setWorkspacePanel(`<div class="panel">
+      ${complianceHtml(compliance)}
       ${usageHtml}
       ${storageHtml}
       <div class="stat-grid">
