@@ -46,18 +46,19 @@ USER_ID="$(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh get users 
   -q "email=${TARGET_EMAIL}" \
   --fields id \
   --format csv \
-  --noquotes | tr -d '\r' | awk 'NR == 2 { print $1 }')"
+  --noquotes | tr -d '\r' | awk -F, 'NF { print $1; exit }')"
 
 if [[ -z "$USER_ID" ]]; then
   echo "No Keycloak user found for ${TARGET_EMAIL} in realm ${REALM}" >&2
   exit 1
 fi
 
-docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password \
-  -r "$REALM" \
-  --userid "$USER_ID" \
-  --new-password "$NEW_PASSWORD" \
-  --temporary "$TEMPORARY" >/dev/null
+SET_PASSWORD_ARGS=(-r "$REALM" --userid "$USER_ID" --new-password "$NEW_PASSWORD")
+if [[ "$TEMPORARY" == "true" ]]; then
+  SET_PASSWORD_ARGS+=(--temporary)
+fi
+
+docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh set-password "${SET_PASSWORD_ARGS[@]}" >/dev/null
 
 umask 077
 {
