@@ -126,6 +126,21 @@ ALTER TABLE documents
 
 CREATE INDEX IF NOT EXISTS documents_fts_idx ON documents USING GIN(document_fts);
 
+-- Libraries (shared rooms). Documents belong to one library; the app seeds a
+-- default "Ptech Workspace" and backfills existing docs at runtime (lib/libraries.js).
+CREATE TABLE IF NOT EXISTS libraries (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             TEXT        NOT NULL,
+  created_by       UUID,
+  created_by_email TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS library_id UUID;
+
+CREATE INDEX IF NOT EXISTS documents_library_idx ON documents(library_id);
+
 -- Document access grants. Uploaders retain owner/admin access; explicit grants
 -- make permission checks queryable across list/search/download/AI routes.
 CREATE TABLE IF NOT EXISTS document_acl (

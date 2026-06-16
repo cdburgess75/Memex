@@ -7,165 +7,126 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  /* Claude light mode palette */
-  --paper: #F9F7F4;
+  /* Memex signature — light */
+  --paper: #FBFBFA;
   --surface: #FFFFFF;
-  --surface-2: #F0EBE3;
-  --ink: #1A1916;
-  --ink-soft: #5C5650;
-  --ink-faint: #8C877E;
-  --accent: #D97757;
-  --accent-soft: #C4603D;
-  --accent-wash: #FAECE4;
-  --rule: rgba(26,25,22,0.10);
-  --rule-soft: rgba(26,25,22,0.06);
-  --shadow: 0 1px 3px rgba(26,25,22,0.06), 0 0 0 1px rgba(26,25,22,0.04);
-  --ui: "Segoe UI", Aptos, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  --display: 'Fraunces', Georgia, serif;
-  --body: 'Newsreader', Georgia, serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --surface-2: #F4F4F2;
+  --ink: #1B1B19;
+  --ink-soft: #5B5A56;
+  --ink-faint: #8E8C87;
+  --accent: #C2603D;
+  --accent-soft: #A94E2F;
+  --accent-wash: #F8ECE6;
+  --rule: rgba(27,27,25,0.09);
+  --rule-soft: rgba(27,27,25,0.05);
+  --shadow: 0 1px 2px rgba(20,19,17,0.05), 0 0 0 1px rgba(20,19,17,0.04);
+  --ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --display: var(--ui);
+  --body: var(--ui);
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 html.dark {
-  /* Claude dark mode palette */
-  --paper: #1A1916;
-  --surface: #232119;
-  --surface-2: #2C2A22;
-  --ink: #EDE8E0;
-  --ink-soft: #A8A298;
-  --ink-faint: #736E65;
-  --accent: #D97757;
-  --accent-soft: #C4603D;
-  --accent-wash: #2D1E14;
-  --rule: rgba(237,232,224,0.11);
-  --rule-soft: rgba(237,232,224,0.06);
-  --shadow: 0 1px 3px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.18);
-}
-html.office {
-  /* Microsoft 365-inspired palette */
-  --paper: #FFFFFF;
-  --surface: #FFFFFF;
-  --surface-2: #F5F8FC;
-  --ink: #111827;
-  --ink-soft: #24324A;
-  --ink-faint: #667085;
-  --accent: #0078D4;
-  --accent-soft: #005A9E;
-  --accent-wash: #E8F3FF;
-  --rule: rgba(17,24,39,0.14);
-  --rule-soft: rgba(17,24,39,0.07);
-  --shadow: 0 2px 8px rgba(31,48,74,0.08), 0 0 0 1px rgba(0,120,212,0.08);
-  --display: var(--ui);
-  --body: var(--ui);
-}
-html.office-dark {
-  --paper: #0B1220;
-  --surface: #101A2D;
-  --surface-2: #17243B;
-  --ink: #F4F8FF;
-  --ink-soft: #B9C7DA;
-  --ink-faint: #7E8EA5;
-  --accent: #58A6FF;
-  --accent-soft: #2F7DD1;
-  --accent-wash: #102A44;
-  --rule: rgba(215,230,255,0.14);
-  --rule-soft: rgba(215,230,255,0.08);
-  --shadow: 0 12px 28px rgba(0,0,0,0.28), 0 0 0 1px rgba(88,166,255,0.10);
-  --display: var(--ui);
-  --body: var(--ui);
-}
-html.drive {
-  /* Google Drive-inspired: white canvas, blue action color, green success accents. */
-  --paper: #FFFFFF;
-  --surface: #FFFFFF;
-  --surface-2: #F7F9FC;
-  --ink: #202124;
-  --ink-soft: #3C4043;
-  --ink-faint: #6F7782;
-  --accent: #1A73E8;
-  --accent-soft: #1558B0;
-  --accent-wash: #E8F0FE;
-  --rule: rgba(32,33,36,0.13);
-  --rule-soft: rgba(32,33,36,0.07);
-  --shadow: 0 2px 8px rgba(60,64,67,0.10), 0 0 0 1px rgba(26,115,232,0.06);
-  --display: var(--ui);
-  --body: var(--ui);
-}
-html.dropbox {
-  /* Dropbox-inspired: crisp blue on restrained file-manager neutrals. */
-  --paper: #F7F9FC;
-  --surface: #FFFFFF;
-  --surface-2: #EEF4FF;
-  --ink: #1E1919;
-  --ink-soft: #4B4A4A;
-  --ink-faint: #737373;
-  --accent: #0061FF;
-  --accent-soft: #0046B8;
-  --accent-wash: #EAF2FF;
-  --rule: rgba(30,25,25,0.12);
-  --rule-soft: rgba(30,25,25,0.07);
-  --shadow: 0 3px 10px rgba(0,97,255,0.09), 0 0 0 1px rgba(0,97,255,0.06);
-  --display: var(--ui);
-  --body: var(--ui);
-}
-html.graphite {
-  --paper: #111315;
-  --surface: #191C1F;
-  --surface-2: #22272B;
-  --ink: #F1F3F4;
-  --ink-soft: #C2C8CC;
-  --ink-faint: #838C93;
-  --accent: #7CC7B7;
-  --accent-soft: #F0B35A;
-  --accent-wash: #18312E;
-  --rule: rgba(241,243,244,0.13);
-  --rule-soft: rgba(241,243,244,0.07);
-  --shadow: 0 14px 34px rgba(0,0,0,0.32), 0 0 0 1px rgba(124,199,183,0.10);
-  --display: var(--ui);
-  --body: var(--ui);
+  /* Memex signature — dark */
+  --paper: #16151A;
+  --surface: #1D1C22;
+  --surface-2: #26242C;
+  --ink: #ECEAF0;
+  --ink-soft: #A9A6B2;
+  --ink-faint: #74717E;
+  --accent: #E08A66;
+  --accent-soft: #C2603D;
+  --accent-wash: #2A1E18;
+  --rule: rgba(236,234,240,0.11);
+  --rule-soft: rgba(236,234,240,0.06);
+  --shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--body);
   background-color: var(--paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   color: var(--ink);
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
 ::selection { background: var(--accent-wash); }
 
 .masthead {
-  border-bottom: 1px solid var(--ink);
-  padding: 22px 32px 16px;
+  border-bottom: 1px solid var(--rule);
+  padding: 13px 28px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   max-width: 1240px;
   margin: 0 auto;
 }
-.brand { display: flex; align-items: baseline; gap: 14px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
 .brand h1 {
-  font-family: var(--display);
+  font-family: var(--ui);
   font-weight: 600;
-  font-size: 34px;
-  letter-spacing: 0;
+  font-size: 19px;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
-.brand .colophon {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.masthead-actions { display: flex; gap: 8px; align-items: center; }
+.masthead-search {
+  flex: 1 1 auto;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 9px;
   color: var(--ink-faint);
-  padding-bottom: 3px;
 }
-.masthead-actions { display: flex; gap: 6px; align-items: center; }
+.masthead-search:focus-within { border-color: var(--rule); background: var(--surface); }
+.masthead-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 14px var(--ui); color: var(--ink); }
+.masthead-upload-wrap { position: relative; }
+.masthead-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 13px var(--ui);
+  cursor: pointer;
+}
+.masthead-upload:hover { filter: brightness(1.06); }
+.masthead-upload .plus { font-size: 16px; line-height: 1; }
+.masthead-upload .chev { font-size: 11px; opacity: 0.85; }
+.app-menu-version {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  padding: 10px 12px 4px;
+  border-top: 1px solid var(--rule-soft);
+  margin-top: 4px;
+}
 .auth-locked .masthead,
 .auth-locked .shell {
   display: none;
@@ -443,32 +404,48 @@ html.graphite .file-icon.xlsx, html.graphite .file-icon.xls, html.graphite .file
 html.graphite .file-icon.pptx, html.graphite .file-icon.ppt { background: #352716; color: #F0B35A; }
 html.graphite .file-icon.pdf { background: #351A20; color: #FF9AA7; }
 .icon-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 500;
   background: transparent;
   border: 1px solid var(--rule);
   color: var(--ink-soft);
-  padding: 7px 11px;
-  border-radius: 2px;
+  padding: 7px 13px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
-  text-transform: uppercase;
 }
-.icon-btn:hover { border-color: var(--ink); color: var(--ink); background: var(--surface); }
+.icon-btn:hover { border-color: var(--ink-faint); color: var(--ink); background: var(--surface-2); }
 .user-chip {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--ink-faint);
-  padding: 7px 11px;
-  border: 1px solid var(--rule-soft);
-  border-radius: 2px;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  padding: 5px 9px 5px 6px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  max-width: 230px;
+  cursor: pointer;
 }
+.user-chip:hover { background: var(--surface-2); }
+.user-chip-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 10.5px var(--ui);
+}
+.user-chip-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-chip .chev { flex: 0 0 auto; font-size: 11px; color: var(--ink-faint); }
 
 .shell {
   display: grid;
@@ -1274,10 +1251,22 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
 .file-library-nav { display: grid; gap: 8px; }
-.file-library-heading { width: 100%; border: 0; border-radius: 8px; background: transparent; color: #323130; padding: 10px 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; font: 800 16px var(--body); cursor: pointer; }
-.file-library-heading:hover { background: #F8FBFF; }
-.file-library-heading span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-library-heading .chev { color: #707070; font-size: 13px; }
+.file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 10px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
+.file-library-heading:hover { background: var(--surface-2); }
+.file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--accent-wash); color: var(--accent); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
+.file-library-heading-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.file-library-heading-name { font: 600 13.5px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-library-heading-sub { font-size: 11.5px; color: var(--ink-faint); }
+.file-library-heading .chev { flex: 0 0 auto; color: var(--ink-faint); font-size: 13px; }
+.library-switch-wrap { position: relative; }
+.library-menu { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.library-menu.open { display: grid; gap: 2px; }
+.library-menu-label { font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 6px 8px 4px; }
+.library-menu-item { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 7px; font: 500 13px var(--ui); cursor: pointer; }
+.library-menu-item:hover { background: var(--surface-2); }
+.library-menu-item.active { color: var(--accent); font-weight: 600; }
+.library-menu-item.new { color: var(--accent); font-weight: 600; }
+.library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
@@ -1344,56 +1333,66 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-empty-text { color: #616161; font-size: 14px; line-height: 1.45; max-width: 560px; }
 .file-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .file-library { display: grid; gap: 16px; }
-.file-library-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #E5E5E5; }
-.file-library-title { display: flex; align-items: center; gap: 8px; font: 750 28px var(--body); color: #242424; letter-spacing: 0; line-height: 1.15; }
-.file-library-title .chev { color: #707070; font-size: 16px; }
-.file-library-create { border: 1px solid #DADADA; border-radius: 6px; background: #FFFFFF; color: #323130; padding: 8px 13px; font: 700 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
-.file-library-create:hover { background: #F8FBFF; border-color: #B7D4F5; color: #0F5FB5; }
+.file-library-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; }
+.file-library-title { display: flex; align-items: center; gap: 8px; font: 600 22px var(--ui); color: var(--ink); letter-spacing: -0.015em; line-height: 1.2; }
+.file-library-title .chev { color: var(--ink-faint); font-size: 16px; }
+.file-library-create { border: 0; border-radius: 9px; background: var(--accent); color: #fff; padding: 9px 15px; font: 600 13.5px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: var(--shadow); }
+.file-library-create:hover { filter: brightness(1.06); }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.file-library-commandbar.has-selection { background: #FFFFFF; border: 1px solid #EDEBE9; border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.file-library-commandbar.has-selection { background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 10px 12px; box-shadow: var(--shadow-sm, var(--shadow)); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.file-library-pill { border: 1px solid #DADADA; border-radius: 999px; background: #FFFFFF; color: #323130; padding: 8px 14px; font: 700 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; }
-.file-library-pill.active { border-color: #5B5FC7; box-shadow: 0 0 0 2px rgba(91,95,199,0.16); }
-.file-library-tool { border: 0; background: transparent; color: #424242; padding: 8px 10px; border-radius: 6px; font: 500 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; }
-.file-library-tool:hover { background: #F0F4FF; color: #242424; }
-.file-library-sep { width: 1px; height: 28px; background: #DADADA; margin: 0 4px; }
-.file-library-search { width: min(320px, 100%); border: 1px solid #DADADA; border-radius: 999px; padding: 9px 16px; background: #FFFFFF; color: #242424; font: 14px var(--body); }
-.file-library-search:focus { outline: 2px solid rgba(91,95,199,0.18); border-color: #5B5FC7; }
-.file-library-breadcrumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: #616161; font-size: 14px; }
-.file-library-breadcrumb button { border: 1px solid transparent; background: transparent; color: #424242; border-radius: 6px; padding: 5px 8px; font: 700 14px var(--body); cursor: pointer; }
-.file-library-breadcrumb button:hover { border-color: #DADADA; background: #F8FBFF; }
-.file-layout-toggle { display: inline-flex; border: 1px solid #DADADA; border-radius: 999px; padding: 2px; background: #FFFFFF; }
-.file-layout-toggle button { border: 0; border-radius: 999px; padding: 6px 10px; background: transparent; color: #616161; font: 700 13px var(--body); cursor: pointer; }
-.file-layout-toggle button.active { background: #EAF3FF; color: #0F5FB5; }
-.file-library-table-wrap { background: #FFFFFF; border-top: 1px solid #E5E5E5; overflow-x: auto; }
-.file-library-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 820px; }
-.file-library-table th { text-align: left; color: #424242; font: 700 14px var(--body); padding: 12px 12px; border-bottom: 1px solid #EDEBE9; white-space: nowrap; }
-.file-library-table td { padding: 10px 12px; border-bottom: 1px solid #F3F2F1; color: #616161; vertical-align: middle; font-size: 14px; }
-.file-library-table tbody tr:hover { background: #F7F7F8; }
-.file-library-table tbody tr.selected { background: #F1F4FF; }
-.file-library-table tbody tr.selected:hover { background: #EDF2FF; }
-.file-library-select { width: 22px; height: 22px; border: 1.5px solid #8A8886; border-radius: 999px; background: #FFFFFF; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; line-height: 1; }
-.file-library-select:hover { border-color: #5B5FC7; box-shadow: 0 0 0 3px rgba(91,95,199,0.12); }
-.file-library-select.selected { background: #5B5FC7; border-color: #5B5FC7; }
-.file-library-select.selected::before { content: '✓'; transform: translateY(-1px); }
-.file-library-name { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
-.file-library-name .file-row-title { font-weight: 500; }
+.file-library-filter { appearance: none; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 8px 32px 8px 13px; font: 500 13px var(--ui); cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8C87' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
+.file-library-filter:hover { background-color: var(--surface-2); }
+.file-library-tool { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft); padding: 8px 12px; border-radius: 8px; font: 500 13px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.file-library-tool:hover { background: var(--surface-2); color: var(--ink); }
+.file-library-sep { width: 1px; height: 24px; background: var(--rule); margin: 0 2px; }
+.file-library-search { width: min(240px, 100%); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 13px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
+.file-library-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.file-library-breadcrumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--ink-faint); font-size: 13px; }
+.file-library-breadcrumb button { border: 0; background: transparent; color: var(--ink-soft); border-radius: 6px; padding: 4px 7px; font: 500 13px var(--ui); cursor: pointer; }
+.file-library-breadcrumb button:hover { background: var(--surface-2); color: var(--ink); }
+.file-layout-toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.file-layout-toggle button { border: 0; padding: 7px 12px; background: var(--surface); color: var(--ink-faint); font: 500 12.5px var(--ui); cursor: pointer; }
+.file-layout-toggle button + button { border-left: 1px solid var(--rule); }
+.file-layout-toggle button.active { background: var(--accent-wash); color: var(--accent); }
+.file-library-table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+.file-library-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px; }
+.file-library-table th { text-align: left; color: var(--ink-faint); font: 600 11.5px var(--ui); letter-spacing: 0.03em; text-transform: uppercase; padding: 11px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
+.file-library-table tbody tr:last-child td { border-bottom: 0; }
+.file-library-table tbody tr { cursor: pointer; }
+.file-library-table tbody tr:hover { background: var(--surface-2); }
+.file-library-table tbody tr.selected { background: var(--accent-wash); }
+.file-library-select { width: 18px; height: 18px; border: 1.5px solid var(--ink-faint); border-radius: 5px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; line-height: 1; opacity: 0; transition: opacity 0.12s; }
+.file-library-table tbody tr:hover .file-library-select, .file-library-select.selected { opacity: 1; }
+.file-library-select.selected { background: var(--accent); border-color: var(--accent); }
+.file-library-select.selected::before { content: '✓'; }
+.file-select-all { opacity: 1; }
+.file-select-all.partial { background: var(--accent); border-color: var(--accent); }
+.file-select-all.partial::before { content: '–'; }
+.file-library-name { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; }
+.file-library-name .file-row-title { font-weight: 500; color: var(--ink); }
 .file-folder-row { cursor: pointer; }
-.file-folder-row .file-row-title { font-weight: 700; }
-.file-folder-icon { position: relative; width: 32px; height: 25px; border-radius: 5px; background: #F8D775; color: #6B4A00; display: inline-flex; align-items: center; justify-content: center; font: 700 13px var(--body); box-shadow: inset 0 0 0 1px rgba(107,74,0,0.12); }
-.file-folder-icon::before { content: ''; width: 15px; height: 4px; border-radius: 4px 4px 0 0; background: #E6B94E; position: absolute; transform: translate(-5px, -12px); }
-.file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); border-top: 1px solid #E5E5E5; background: #FFFFFF; min-height: 420px; }
-.file-commander-folders { border-right: 1px solid #EDEBE9; padding: 12px; overflow: auto; }
-.file-commander-title { color: #707070; font: 700 12px var(--body); letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 6px 10px; }
-.file-commander-folder { width: 100%; border: 0; border-radius: 7px; background: transparent; color: #424242; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; text-align: left; font: 600 14px var(--body); cursor: pointer; }
-.file-commander-folder:hover, .file-commander-folder.active { background: #EAF3FF; color: #0F5FB5; }
+.file-folder-row .file-row-title { font-weight: 600; }
+.file-folder-icon { position: relative; width: 34px; height: 34px; border-radius: 8px; background: var(--accent-wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.file-folder-icon::after { content: ''; width: 16px; height: 13px; border-radius: 0 2px 2px 2px; border: 2px solid currentColor; border-top-width: 5px; }
+.file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); gap: 14px; }
+.file-commander-folders { border: 1px solid var(--rule); border-radius: 10px; padding: 10px; overflow: auto; background: var(--surface); }
+.file-commander-title { color: var(--ink-faint); font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 6px 8px; }
+.file-commander-folder { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; text-align: left; font: 500 13px var(--ui); cursor: pointer; }
+.file-commander-folder:hover { background: var(--surface-2); color: var(--ink); }
+.file-commander-folder.active { background: var(--accent-wash); color: var(--accent); }
 .file-commander-folder span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-commander-count { color: #707070; font-size: 12px; }
+.file-commander-count { color: var(--ink-faint); font-size: 12px; }
 .file-commander-main { min-width: 0; overflow-x: auto; }
-.file-library-actions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; opacity: 0.84; }
-.file-library-icon-btn { border: 0; background: transparent; color: #605E5C; border-radius: 5px; min-width: 30px; height: 30px; padding: 0 8px; cursor: pointer; font: 700 16px var(--body); }
-.file-library-icon-btn:hover { background: #EAF3FF; color: #0F6CBD; }
-.file-library-person { display: inline-flex; align-items: center; max-width: 100%; border-radius: 999px; background: #F3F2F1; padding: 5px 10px; color: #616161; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
+.file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
+.file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+.file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
+.file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
+.file-owner-muted { color: var(--ink-faint); }
+.file-library-person { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-library-selected-count { color: #323130; font: 700 15px var(--body); display: inline-flex; align-items: center; gap: 8px; }
 .file-library-close { border: 0; background: transparent; color: #424242; cursor: pointer; border-radius: 6px; width: 34px; height: 34px; font-size: 22px; line-height: 1; }
 .file-library-close:hover { background: #F0F4FF; }
@@ -1945,16 +1944,20 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   gap: 16px;
 }
 .file-icon {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-family: var(--ui);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   background: var(--accent-wash);
   color: var(--accent);
-  padding: 4px 8px;
-  border-radius: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 .file-icon.pdf  { background: #FCEAE8; color: #C0392B; }
 .file-icon.xlsx, .file-icon.xls, .file-icon.csv { background: #E8F5E9; color: #2E7D32; }
@@ -2059,13 +2062,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
 <!-- Login screen — shown until auth is confirmed -->
 <div class="scrim open" id="login-scrim">
   <div class="modal login-modal">
-    <div class="theme-switcher login-theme-switcher" role="group" aria-label="Theme">
-      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button>
-      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button>
-      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button>
-      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button>
-      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button>
-    </div>
     <div class="login-mark" aria-hidden="true">M</div>
     <h2>Memex</h2>
     <p class="sub">Your team's files, notes, and AI answers in one private workspace.</p>
@@ -2095,34 +2091,38 @@ html.dark .file-action-btn.danger { color: #E57373; }
 
 <header class="masthead">
   <div class="brand">
+    <span class="brand-logo" aria-hidden="true">M</span>
     <h1>Memex</h1>
-    <span class="colophon">a team knowledge base, kept by Claude</span>
+  </div>
+  <div class="masthead-search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="global-search" type="search" placeholder="Search files…" oninput="globalSearch(this.value)" autocomplete="off" aria-label="Search files">
   </div>
   <div class="masthead-actions">
-    <div class="theme-switcher top-theme-switcher" role="group" aria-label="Theme">
-      <button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button>
-      <button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button>
-      <button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button>
-      <button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button>
-      <button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button>
+    <div class="file-upload-actions masthead-upload-wrap">
+      <button class="masthead-upload" type="button" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button>
+      <div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div>
     </div>
     <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
     <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
-      <button class="app-menu-btn" type="button" onclick="toggleAppMenu(event)">Menu</button>
+      <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
         <div class="app-menu-section">AI workspace</div>
         <button class="app-menu-item" onclick="closeAppMenu();setTab('ingest')">Add knowledge</button>
         <button class="app-menu-item" onclick="closeAppMenu();openCollectionAsk()">Ask collection</button>
         <button class="app-menu-item" onclick="closeAppMenu();setTab('lint')">Run audit</button>
         <button class="app-menu-item admin-menu-item" onclick="closeAppMenu();setTab('admin')">Admin</button>
+        <div class="app-menu-section">Appearance</div>
+        <button class="app-menu-item" id="theme-toggle-item" onclick="toggleTheme()">Switch to dark mode</button>
         <div class="app-menu-section">Account</div>
         <button class="app-menu-item" onclick="closeAppMenu();exportJSON()">Backup</button>
         <button class="app-menu-item" onclick="closeAppMenu();document.getElementById('import-file').click()">Restore</button>
         <button class="app-menu-item" onclick="closeAppMenu();openSettings()">Account settings</button>
+        <button class="app-menu-item" onclick="closeAppMenu();signOut()">Sign out</button>
+        <div class="app-menu-version" id="app-menu-version"></div>
       </div>
     </div>
-    <span class="user-chip" id="user-chip"></span>
     <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
   </div>
 </header>
@@ -2205,11 +2205,14 @@ let extractedFileText = '';
 
 // files tab state
 let filesList = []; // cached list of uploaded files
+let librariesList = []; // available libraries
+let currentLibraryId = localStorage.getItem('memex_library_id') || null; // active library
 let trashList = []; // cached list of trashed files
 let fileView = 'active'; // 'active' | 'shared' | 'favorites' | 'trash' | 'links'
 const RESUMABLE_UPLOAD_THRESHOLD = 16 * 1024 * 1024;
 const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 let selectedFileIds = new Set();
+let lastRenderedFileIds = []; // file ids currently shown in the library table (for select-all)
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
@@ -2290,23 +2293,22 @@ async function handleOAuthCallback(code, returnedState) {
 /* ---------- bootstrap ---------- */
 async function initApp() {
   const savedTheme = localStorage.getItem('memex_theme');
-  if (savedTheme) setTheme(savedTheme);
-  else setTheme('office');
+  setTheme(savedTheme || 'light');
 
   let config;
   try {
     config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
   } catch (e) {
-    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="theme-switcher login-theme-switcher" role="group" aria-label="Theme"><button class="theme-option" type="button" data-theme="office" onclick="setTheme('office')" title="Microsoft 365-inspired"><span class="theme-swatch office"></span>365</button><button class="theme-option" type="button" data-theme="drive" onclick="setTheme('drive')" title="Google Drive-inspired"><span class="theme-swatch drive"></span>Drive</button><button class="theme-option" type="button" data-theme="dropbox" onclick="setTheme('dropbox')" title="Dropbox-inspired"><span class="theme-swatch dropbox"></span>Dropbox</button><button class="theme-option" type="button" data-theme="graphite" onclick="setTheme('graphite')" title="Dark neutral workspace"><span class="theme-swatch graphite"></span>Graphite</button><button class="theme-option" type="button" data-theme="dark" onclick="setTheme('dark')" title="Warm dark mode"><span class="theme-swatch dark"></span>Dark</button></div><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
-    setTheme(localStorage.getItem('memex_theme') || 'office');
+    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
+    setTheme(localStorage.getItem('memex_theme') || 'light');
     return;
   }
 
   _kc = { url: config.keycloakUrl, realm: config.keycloakRealm, clientId: config.keycloakClientId };
 
   if (config.version) {
-    const colophon = document.querySelector('.brand .colophon');
-    if (colophon) colophon.textContent = `a team knowledge base, kept by Claude · ${config.version}`;
+    const versionEl = document.getElementById('app-menu-version');
+    if (versionEl) versionEl.textContent = `Memex · ${config.version}`;
   }
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -2331,7 +2333,8 @@ async function _afterLogin() {
   document.getElementById('login-scrim').classList.remove('open');
   await loadFromServer();
   currentUser = await apiGet('/auth/me');
-  if (currentUser) document.getElementById('user-chip').textContent = `${currentUser.email}  ·  ${currentUser.role}`;
+  await loadLibraries();
+  renderUserChip();
   applyRoleUI();
   loadSecurityStatus();
 }
@@ -2357,11 +2360,8 @@ function applyRoleUI() {
   document.querySelectorAll('.admin-menu-item').forEach(el => {
     el.style.display = role === 'admin' ? '' : 'none';
   });
-  // Update user chip to show role
-  const chip = document.getElementById('user-chip');
-  if (chip && currentUser) {
-    chip.textContent = `${currentUser.email}  ·  ${role}`;
-  }
+  // Update user chip
+  renderUserChip();
 }
 
 /* ---------- auth ---------- */
@@ -2528,24 +2528,16 @@ async function streamFromApi(path, body, el) {
 /* ---------- theme ---------- */
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
-  const aliases = { light: 'office', aurora: 'drive', 'office-dark': 'graphite' };
-  theme = aliases[theme] || theme;
-  const themes = ['office', 'drive', 'dropbox', 'graphite', 'dark'];
-  if (!themes.includes(theme)) theme = 'office';
+  // Memex has one signature look + dark mode; migrate any legacy theme name to light.
+  theme = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.classList.remove('dark', 'office', 'office-dark', 'drive', 'dropbox', 'aurora', 'graphite');
-  if (theme === 'dropbox') document.documentElement.classList.add('drive', 'dropbox');
-  else document.documentElement.classList.add(theme);
-  document.querySelectorAll('.theme-option').forEach(btn => {
-    const active = btn.dataset.theme === theme;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
+  if (theme === 'dark') document.documentElement.classList.add('dark');
+  const toggleItem = document.getElementById('theme-toggle-item');
+  if (toggleItem) toggleItem.textContent = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   localStorage.setItem('memex_theme', theme);
 }
 function toggleTheme() {
-  const order = ['office', 'drive', 'dropbox', 'graphite', 'dark'];
-  const current = localStorage.getItem('memex_theme') || 'office';
-  setTheme(order[(order.indexOf(current) + 1) % order.length]);
+  setTheme(localStorage.getItem('memex_theme') === 'dark' ? 'light' : 'dark');
 }
 
 function toggleAppMenu(event) {
@@ -3955,25 +3947,32 @@ function fileHomeRow(f) {
   const folder = fileFolderPath(f);
   return `<tr><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
+const ICON_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>';
+const ICON_SHARE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5"/></svg>';
+const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 function fileLibraryActions(f) {
   const ext = fileExt(f.name);
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
-  return `${isOffice ? `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="openInOffice(this.dataset.fid)">↗</button>` : `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="downloadFile(this.dataset.fid)">↗</button>`}
-    <button class="file-library-icon-btn" title="Share" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">S</button>
-    <button class="file-library-icon-btn" title="Details" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">⋯</button>`;
+  return `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="${isOffice ? 'openInOffice' : 'downloadFile'}(this.dataset.fid)">${ICON_OPEN}</button>
+    <button class="file-library-icon-btn" title="Share" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">${ICON_SHARE}</button>
+    <button class="file-library-icon-btn" title="Details" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">${ICON_MORE}</button>`;
+}
+function ownerCellHtml(owner) {
+  const initials = (owner || '').split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
+  return `<span class="file-owner"><span class="file-owner-avatar">${esc(initials)}</span><span class="file-owner-name">${esc(owner)}</span></span>`;
 }
 function fileLibraryRow(f) {
   const ext = fileExt(f.name);
   const owner = fileOwner(f);
   const selected = selectedFileIds.has(String(f.id));
   const folder = fileFolderPath(f);
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div></div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div></div></div></td><td>${fileDate(f.created_at)}</td><td>${ownerCellHtml(owner)}</td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
-  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td><td></td><td><span class="file-library-person">Folder</span></td><td><div class="file-library-actions"><button class="file-library-icon-btn" title="Open folder" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolder(this.dataset.folder)">↗</button></div></td></tr>`;
+  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td><td></td><td><span class="file-owner-name file-owner-muted">—</span></td><td><div class="file-library-actions"><button class="file-library-icon-btn" title="Open folder" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolder(this.dataset.folder)">${ICON_OPEN}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div><div class="file-library-title"><span>${esc(title)}</span><span class="chev">⌄</span></div><div id="file-library-breadcrumb">${fileBreadcrumbHtml()}</div></div><button class="file-library-create" onclick="document.getElementById('file-picker').click()"><span>+</span><span>Create or upload</span></button></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+  return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div><div class="file-library-title"><span>${esc(title)}</span></div><div id="file-library-breadcrumb">${fileBreadcrumbHtml()}</div></div></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
 }
 function fileBreadcrumbHtml() {
   const parts = currentFolderPath.split('/').filter(Boolean);
@@ -4014,8 +4013,8 @@ function fileLibraryCommandBarHtml() {
     const many = selected.length > 1;
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
-  const chip = filter => fileFilter === filter ? ' active' : '';
-  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileLayoutToggleHtml()}<span class="file-library-sep"></span><button class="file-library-pill${chip('all')}" data-filter="all" onclick="setFileFilter('all')">All</button><button class="file-library-pill${chip('word')}" data-filter="word" onclick="setFileFilter('word')">Word</button><button class="file-library-pill${chip('excel')}" data-filter="excel" onclick="setFileFilter('excel')">Excel</button><button class="file-library-pill${chip('powerpoint')}" data-filter="powerpoint" onclick="setFileFilter('powerpoint')">PowerPoint</button><button class="file-library-pill${chip('pdf')}" data-filter="pdf" onclick="setFileFilter('pdf')">PDF</button></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter documents" oninput="scheduleFileSearch()"><button class="file-library-tool" onclick="document.getElementById('folder-picker').click()">Folder upload</button><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  const sel = filter => fileFilter === filter ? ' selected' : '';
+  return `<div class="file-library-commandbar"><div class="file-library-command-left"><select class="file-library-filter" aria-label="Filter by type" onchange="setFileFilter(this.value)"><option value="all"${sel('all')}>All types</option><option value="word"${sel('word')}>Word</option><option value="excel"${sel('excel')}>Excel</option><option value="powerpoint"${sel('powerpoint')}>PowerPoint</option><option value="pdf"${sel('pdf')}>PDF</option></select></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 function quickAccessHtml(files) {
   const items = files.slice(0, 6);
@@ -4067,16 +4066,92 @@ function friendlyUserName() {
   return email || 'Dave Ptech';
 }
 
-function currentLibraryName() {
-  return `${friendlyUserName()} Library`;
+function renderUserChip() {
+  if (!currentUser) return;
+  const email = currentUser.email || '';
+  const av = document.getElementById('user-chip-avatar');
+  const em = document.getElementById('user-chip-email');
+  if (av) av.textContent = (currentUser.name || email).split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
+  if (em) em.textContent = email;
 }
 
-function toggleLibraryNav() {
-  fileLibraryNavCollapsed = !fileLibraryNavCollapsed;
-  localStorage.setItem('memex_library_nav_collapsed', fileLibraryNavCollapsed ? 'true' : 'false');
-  document.getElementById('file-library-nav')?.classList.toggle('collapsed', fileLibraryNavCollapsed);
-  document.querySelector('.file-library-heading')?.setAttribute('aria-expanded', fileLibraryNavCollapsed ? 'false' : 'true');
+// Masthead global search → ensure the Files view and apply the query through the
+// existing document-library filter path.
+function globalSearch(value) {
+  if (!document.getElementById('file-library-view')) setFileView('active');
+  const cmd = document.getElementById('file-home-search');
+  if (cmd) cmd.value = value;
+  scheduleFileSearch();
 }
+
+function currentLibraryName() {
+  const lib = librariesList.find(l => String(l.id) === String(currentLibraryId));
+  return lib ? lib.name : (librariesList[0]?.name || 'Ptech Workspace');
+}
+
+// Files endpoint scoped to the active library.
+function filesEndpoint() {
+  return currentLibraryId ? `/files?library=${encodeURIComponent(currentLibraryId)}` : '/files';
+}
+
+async function loadLibraries() {
+  try {
+    librariesList = await apiGet('/libraries');
+    if (!Array.isArray(librariesList) || !librariesList.length) librariesList = [{ id: null, name: 'Ptech Workspace' }];
+  } catch {
+    // Backend without the libraries API yet — fall back to a single default.
+    librariesList = [{ id: null, name: 'Ptech Workspace' }];
+  }
+  if (!currentLibraryId || !librariesList.some(l => String(l.id) === String(currentLibraryId))) {
+    currentLibraryId = librariesList[0].id || null;
+  }
+  if (currentLibraryId) localStorage.setItem('memex_library_id', currentLibraryId);
+  else localStorage.removeItem('memex_library_id');
+}
+
+function toggleLibraryMenu(event) {
+  event?.stopPropagation();
+  document.getElementById('library-menu')?.classList.toggle('open');
+}
+function closeLibraryMenu() {
+  document.getElementById('library-menu')?.classList.remove('open');
+}
+function switchLibrary(id) {
+  closeLibraryMenu();
+  currentLibraryId = (!id || id === 'null') ? null : id;
+  if (currentLibraryId) localStorage.setItem('memex_library_id', currentLibraryId);
+  else localStorage.removeItem('memex_library_id');
+  setFileView('active');
+}
+async function createLibraryFlow(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return;
+  try {
+    const lib = await apiPost('/libraries', { name: trimmed });
+    await loadLibraries();
+    if (lib?.id) currentLibraryId = lib.id;
+    if (currentLibraryId) localStorage.setItem('memex_library_id', currentLibraryId);
+    setFileView('active');
+    toast(`Library "${trimmed}" created`);
+  } catch (e) {
+    toast('Could not create library: ' + e.message);
+  }
+}
+function openNewLibraryModal() {
+  closeLibraryMenu();
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open';
+  scrim.innerHTML = `<div class="modal" style="max-width:420px"><h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div></div>`;
+  document.body.appendChild(scrim);
+  const close = () => scrim.remove();
+  const input = scrim.querySelector('#new-library-name');
+  scrim.querySelector('#new-library-cancel').onclick = close;
+  scrim.querySelector('#new-library-create').onclick = () => { const v = input.value; close(); createLibraryFlow(v); };
+  input.onkeydown = (e) => { if (e.key === 'Enter') { const v = input.value; close(); createLibraryFlow(v); } if (e.key === 'Escape') close(); };
+  scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
+  input.focus();
+}
+
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
@@ -4127,23 +4202,25 @@ document.addEventListener('click', () => {
   closeUploadMenu();
   closeSearchMenu();
   closeAppMenu();
+  closeLibraryMenu();
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const libraryName = esc(currentLibraryName());
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
-  return `<div class="file-rail-actions">
-    <div class="file-upload-actions">
-      <button class="file-create-btn" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button>
-      <div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div>
+  const libMenuItems = librariesList.map(l =>
+    `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')">${esc(l.name)}</button>`
+  ).join('');
+  return `<section class="file-library-nav${collapsed}" id="file-library-nav">
+    <div class="library-switch-wrap">
+      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">Shared library</span></span><span class="chev">⌄</span></button>
+      <div class="library-menu" id="library-menu">
+        <div class="library-menu-label">Libraries</div>
+        ${libMenuItems}
+        <div class="library-menu-sep"></div>
+        <button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>
+      </div>
     </div>
-    <div class="file-search-actions">
-      <button class="file-create-btn" onclick="toggleSearchMenu(event)"><span class="plus">⌕</span><span>Search</span><span class="chev">⌄</span></button>
-      <div class="file-search-menu" id="file-search-menu"><button onclick="chooseSearch('ask')">Ask collection</button><button onclick="chooseSearch('files')">Search files</button></div>
-    </div>
-  </div>
-  <section class="file-library-nav${collapsed}" id="file-library-nav">
-    <button class="file-library-heading" type="button" onclick="toggleLibraryNav()" aria-expanded="${fileLibraryNavCollapsed ? 'false' : 'true'}"><span>${libraryName}</span><span class="chev">⌄</span></button>
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
@@ -4207,12 +4284,12 @@ async function renderDocumentLibrary(view = 'active') {
   fileFilter = 'all';
   selectedFileIds = new Set();
   detailsPaneOpen = false;
-  const title = view === 'shared' ? 'Shared with me' : view === 'favorites' ? 'Favorites' : currentLibraryName();
+  const title = view === 'shared' ? 'Shared' : view === 'favorites' ? 'Favorites' : 'Files';
   document.getElementById('panel').innerHTML = fileHomeShell(fileLibraryCommandBar(title), 'files', view === 'shared' ? 'shared' : view === 'favorites' ? 'favorites' : 'files');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml(filesList);
   try {
-    filesList = await apiGet('/files');
+    filesList = await apiGet(filesEndpoint());
     renderDocumentLibraryList();
   } catch (e) {
     const el = document.getElementById('file-list');
@@ -4249,7 +4326,7 @@ async function purgeFile(fileId, name) {
 }
 
 async function loadFiles() {
-  try { filesList = await apiGet('/files'); document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList(); }
+  try { filesList = await apiGet(filesEndpoint()); document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList(); }
   catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
 }
 
@@ -4265,6 +4342,10 @@ function renderDocumentLibraryList() {
   const rows = q ? searched : searched.filter(fileMatchesCurrentFolder);
   const folders = q ? [] : childFoldersForPath(source);
   const tableRows = [...folders.map(folderLibraryRow), ...rows.map(fileLibraryRow)].join('');
+  lastRenderedFileIds = rows.map(f => String(f.id));
+  const allSelected = lastRenderedFileIds.length > 0 && lastRenderedFileIds.every(id => selectedFileIds.has(id));
+  const someSelected = !allSelected && lastRenderedFileIds.some(id => selectedFileIds.has(id));
+  const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
   const breadcrumb = document.getElementById('file-library-breadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = fileBreadcrumbHtml();
   if (!folders.length && !rows.length) {
@@ -4274,7 +4355,7 @@ function renderDocumentLibraryList() {
     updateFileLibraryChrome();
     return;
   }
-  const table = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"></th><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Modified By</th><th style="width:170px;text-align:right">Actions</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
+  const table = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
   el.innerHTML = fileLayoutMode === 'commander'
     ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${table}</div></div>`
     : table;
@@ -4322,6 +4403,13 @@ function toggleFileSelection(fileId, event) {
   const id = String(fileId);
   if (selectedFileIds.has(id)) selectedFileIds.delete(id);
   else selectedFileIds.add(id);
+  renderDocumentLibraryList();
+}
+
+function toggleSelectAllFiles() {
+  const allSelected = lastRenderedFileIds.length > 0 && lastRenderedFileIds.every(id => selectedFileIds.has(id));
+  if (allSelected) lastRenderedFileIds.forEach(id => selectedFileIds.delete(id));
+  else lastRenderedFileIds.forEach(id => selectedFileIds.add(id));
   renderDocumentLibraryList();
 }
 
@@ -4757,7 +4845,7 @@ function setUploadStatus(statusEl, label, doneBytes = 0, totalBytes = 0) {
 
 async function uploadFileStream(file, displayName) {
   const token = await getToken();
-  const res = await fetch('/api/files/upload-stream?displayName=' + encodeURIComponent(displayName), {
+  const res = await fetch('/api/files/upload-stream?displayName=' + encodeURIComponent(displayName) + (currentLibraryId ? '&libraryId=' + encodeURIComponent(currentLibraryId) : ''), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -4832,7 +4920,7 @@ async function uploadFileResumable(file, displayName, statusEl, ordinal, totalIt
     setUploadStatus(statusEl, `Uploading ${ordinal} of ${totalItems}: ${displayName}`, Math.min(file.size, end), file.size);
   }
 
-  const completed = await apiPost('/files/uploads/' + session.id + '/complete', {});
+  const completed = await apiPost('/files/uploads/' + session.id + '/complete', { libraryId: currentLibraryId });
   localStorage.removeItem(key);
   setUploadStatus(statusEl, `Uploaded ${displayName}`, file.size, file.size);
   return completed;

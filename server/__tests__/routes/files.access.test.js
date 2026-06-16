@@ -73,7 +73,7 @@ describe('file route document access checks', () => {
     expect(db.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS document_acl'));
     const listQuery = db.query.mock.calls.find(call => String(call[0]).includes('ORDER BY d.created_at DESC'));
     expect(listQuery[0]).toContain('FROM document_acl da');
-    expect(listQuery[1]).toEqual(['contributor', mockUser.id, mockUser.id, 'user@test.com', ['read', 'write', 'admin']]);
+    expect(listQuery[1]).toEqual(['contributor', mockUser.id, mockUser.id, 'user@test.com', ['read', 'write', 'admin'], null]);
   });
 
   test('grants internal document access when caller has document admin access', async () => {
