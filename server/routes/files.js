@@ -429,6 +429,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     }
     res.json({ ok: true, mode, count: accessible.length });
   } catch (e) {
+    console.error('library-transfer failed:', e);
     res.status(500).json({ error: e.message });
   }
 });
