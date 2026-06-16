@@ -9,6 +9,7 @@ const ALL_KEYS = Object.keys(settings.ENV_MAP);
 
 const SENSITIVE = new Set([
   'anthropic_api_key',
+  'openai_api_key',
   'storage_s3_access_key_id',
   'storage_s3_secret_access_key',
   'supabase_service_role_key',

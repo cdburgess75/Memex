@@ -2,9 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const Anthropic = require('@anthropic-ai/sdk');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
+const aiProviders = require('../lib/aiProviders');
 const cheerio = require('cheerio');
 const pdfParse = require('pdf-parse');
 const { makeUploadMiddleware } = require('../lib/upload');
@@ -33,14 +33,6 @@ async function fetchUrl(url) {
 }
 
 const getAiUpload = makeUploadMiddleware(['.txt', '.md', '.pdf'], 10);
-
-async function anthropic() {
-  return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
-}
-
-async function MODEL() {
-  return (await settings.getOrEnv('anthropic_model')) || 'claude-sonnet-4-6';
-}
 
 function buildContext(pages) {
   return (pages || [])
@@ -107,20 +99,18 @@ Return ONLY valid JSON, no markdown fences, in this shape:
 
 Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
 
-    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
-    const message = await ai.messages.create({
-      model,
-      max_tokens: 1400,
+    const result = await aiProviders.run({
       system,
-      messages: [{ role: 'user', content: 'Source:\n\n' + source.slice(0, 8000) }],
+      prompt: 'Source:\n\n' + source.slice(0, 8000),
+      maxTokens: 1400,
     });
 
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'ingest', model, message.usage.input_tokens, message.usage.output_tokens]
+      [req.user.id, req.user.email, 'ingest', result.model, result.usage.input_tokens, result.usage.output_tokens]
     );
 
-    const raw = message.content.map(b => b.text || '').join('');
+    const raw = result.text;
     let parsed;
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
@@ -154,21 +144,14 @@ router.post('/query', auth, async (req, res) => {
 
     const system = `You answer questions from a team knowledge base. Ground every claim in the pages below and name the pages you draw on. If the knowledge base lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
 
-    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
-    const stream = ai.messages.stream({
-      model,
-      max_tokens: 1400,
+    const result = await aiProviders.run({
       system,
-      messages: [{ role: 'user', content: question }],
+      prompt: question,
+      maxTokens: 1400,
+      stream: true,
+      onDelta: (t) => res.write(`data: ${JSON.stringify({ text: t })}\n\n`),
     });
-
-    let fullText = '';
-    for await (const chunk of await stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
-        fullText += chunk.delta.text;
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
-      }
-    }
+    const fullText = result.text;
 
     if (fileIt && fullText.includes('SAVE_AS:')) {
       const m = fullText.match(/SAVE_AS:\s*(.+?)\s*\|\s*(\w+)/);
@@ -185,10 +168,9 @@ router.post('/query', auth, async (req, res) => {
       }
     }
 
-    const final = await stream.finalMessage();
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'query', model, final.usage.input_tokens, final.usage.output_tokens]
+      [req.user.id, req.user.email, 'query', result.model, result.usage.input_tokens, result.usage.output_tokens]
     );
 
     await logEvent(`query · ${question.slice(0, 48)}`, req.user.id, req.user.email);
@@ -211,24 +193,17 @@ router.post('/lint', auth, async (req, res) => {
 
     const system = `You audit a team knowledge base for health. Report, as a short numbered list: contradictions between pages, orphaned pages with no inbound [[links]], important ideas mentioned but lacking their own page, missing cross-references, and gaps worth investigating (with concrete next sources or questions). Be specific and actionable.${focus ? '\nFocus: ' + focus : ''}`;
 
-    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
-    const stream = ai.messages.stream({
-      model,
-      max_tokens: 1400,
+    const result = await aiProviders.run({
       system,
-      messages: [{ role: 'user', content: 'Knowledge base:\n\n' + (ctx || '(empty)') }],
+      prompt: 'Knowledge base:\n\n' + (ctx || '(empty)'),
+      maxTokens: 1400,
+      stream: true,
+      onDelta: (t) => res.write(`data: ${JSON.stringify({ text: t })}\n\n`),
     });
 
-    for await (const chunk of await stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
-      }
-    }
-
-    const final = await stream.finalMessage();
     await db.query(
       'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'lint', model, final.usage.input_tokens, final.usage.output_tokens]
+      [req.user.id, req.user.email, 'lint', result.model, result.usage.input_tokens, result.usage.output_tokens]
     );
 
     await logEvent('lint · audit run', req.user.id, req.user.email);
@@ -259,6 +234,28 @@ router.post('/extract', auth, (req, res, next) => getAiUpload().then(mw => mw(re
     res.json({ text, title: '' });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ai/models — enabled models + active selection (no secrets); powers the masthead picker
+router.get('/models', auth, async (req, res) => {
+  try {
+    const [models, active] = await Promise.all([aiProviders.listModels(), aiProviders.activeModel()]);
+    res.json({ active: `${active.provider}:${active.model}`, models });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/ai/active — switch the global active model (any signed-in user)
+router.put('/active', auth, async (req, res) => {
+  try {
+    const value = (req.body?.model || '').trim();
+    if (!value) return res.status(400).json({ error: 'model required' });
+    await aiProviders.setActiveModel(value);
+    res.json({ ok: true, active: value });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
