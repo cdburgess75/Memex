@@ -61,7 +61,7 @@ describe('documentAccess', () => {
     expect(db.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS document_acl'));
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO document_acl'),
-      ['doc-1', user.id, 'user@test.com']
+      ['doc-1', user.id, 'user@test.com', user.id]
     );
   });
 

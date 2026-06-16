@@ -90,10 +90,10 @@ async function grantOwnerAdmin(documentId, user) {
   await db.query(
     `INSERT INTO document_acl
      (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
-     VALUES ($1, 'user', $2, $3, 'admin', $2, $3)
+     VALUES ($1, 'user', $2, $3, 'admin', $4, $3)
      ON CONFLICT (document_id, subject_type, subject_id)
      DO UPDATE SET permission = 'admin', subject_email = EXCLUDED.subject_email`,
-    [documentId, String(user.id), String(user.email || '').toLowerCase()]
+    [documentId, String(user.id), String(user.email || '').toLowerCase(), user.id]
   );
 }
 
