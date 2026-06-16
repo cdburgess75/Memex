@@ -1267,6 +1267,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
+.lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px; color: var(--ink); }
+.lib-member-row:last-child { border-bottom: 0; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
@@ -4152,6 +4154,43 @@ function openNewLibraryModal() {
   input.focus();
 }
 
+async function openLibraryMembers() {
+  closeLibraryMenu();
+  const libId = currentLibraryId;
+  if (!libId) { toast('This library has no server id yet.'); return; }
+  const libName = currentLibraryName();
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open';
+  scrim.innerHTML = `<div class="modal" style="max-width:460px"><h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div></div>`;
+  document.body.appendChild(scrim);
+  const close = () => scrim.remove();
+  scrim.querySelector('#lib-members-close').onclick = close;
+  scrim.addEventListener('click', e => { if (e.target === scrim) close(); });
+  const emailInput = scrim.querySelector('#lib-member-email');
+  const render = async () => {
+    const listEl = scrim.querySelector('#lib-members-list');
+    try {
+      const members = await apiGet(`/libraries/${libId}/members`);
+      if (!members.length) { listEl.innerHTML = `<div class="sub" style="padding:6px 0">Open to everyone — no members yet.</div>`; return; }
+      listEl.innerHTML = members.map(m => `<div class="lib-member-row"><span>${esc(m.subject_email)}</span><button class="file-library-icon-btn" title="Remove" data-mid="${esc(String(m.id))}">✕</button></div>`).join('');
+      listEl.querySelectorAll('button[data-mid]').forEach(b => b.onclick = async () => {
+        try { await apiDelete(`/libraries/${libId}/members/${b.dataset.mid}`); await loadLibraries(); render(); }
+        catch (e) { toast('Remove failed: ' + e.message); }
+      });
+    } catch (e) { listEl.innerHTML = `<div class="sub" style="color:var(--accent)">Could not load members: ${esc(e.message)}</div>`; }
+  };
+  const add = async () => {
+    const email = emailInput.value.trim();
+    if (!email) return;
+    try { await apiPost(`/libraries/${libId}/members`, { email }); emailInput.value = ''; await loadLibraries(); render(); }
+    catch (e) { toast('Add failed: ' + e.message); }
+  };
+  scrim.querySelector('#lib-member-add').onclick = add;
+  emailInput.onkeydown = e => { if (e.key === 'Enter') add(); if (e.key === 'Escape') close(); };
+  render();
+  emailInput.focus();
+}
+
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
@@ -4218,6 +4257,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         <div class="library-menu-label">Libraries</div>
         ${libMenuItems}
         <div class="library-menu-sep"></div>
+        ${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}
         <button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>
       </div>
     </div>
