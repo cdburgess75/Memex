@@ -141,6 +141,20 @@ ALTER TABLE documents
 
 CREATE INDEX IF NOT EXISTS documents_library_idx ON documents(library_id);
 
+-- Library membership. Open by default: a library with no members is visible to
+-- all signed-in users; once members exist, only members (+admins) can access it.
+CREATE TABLE IF NOT EXISTS library_members (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  library_id        UUID        NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  subject_email     TEXT        NOT NULL,
+  added_by          UUID,
+  added_by_email    TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(library_id, subject_email)
+);
+
+CREATE INDEX IF NOT EXISTS library_members_library_idx ON library_members(library_id);
+
 -- Document access grants. Uploaders retain owner/admin access; explicit grants
 -- make permission checks queryable across list/search/download/AI routes.
 CREATE TABLE IF NOT EXISTS document_acl (
