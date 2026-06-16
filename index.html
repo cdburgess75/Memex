@@ -1269,6 +1269,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
+.library-pick-list { display: grid; gap: 2px; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
@@ -1325,7 +1326,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-row-activity { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .file-row-activity span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .file-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.file-upload-status { min-height: 24px; color: #0F5FB5; font-size: 14px; margin-bottom: 10px; }
+.file-upload-status { color: #0F5FB5; font-size: 14px; }
+.file-upload-status:empty { display: none; }
 .file-upload-status .upload-line { display: grid; gap: 6px; color: #0F5FB5; }
 .file-upload-status .upload-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #424242; }
 .file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: #DDEEFF; overflow: hidden; border: 1px solid #BBD7F0; }
@@ -1334,8 +1336,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-empty-title { color: #323130; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .file-empty-text { color: #616161; font-size: 14px; line-height: 1.45; max-width: 560px; }
 .file-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
-.file-library { display: grid; gap: 16px; }
-.file-library-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; }
+.file-library { display: grid; gap: 14px; }
+.file-library-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 4px; }
 .file-library-title { display: flex; align-items: center; gap: 8px; font: 600 22px var(--ui); color: var(--ink); letter-spacing: -0.015em; line-height: 1.2; }
 .file-library-title .chev { color: var(--ink-faint); font-size: 16px; }
 .file-library-create { border: 0; border-radius: 9px; background: var(--accent); color: #fff; padding: 9px 15px; font: 600 13.5px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: var(--shadow); }
@@ -1343,6 +1345,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .file-library-commandbar.has-selection { background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 10px 12px; box-shadow: var(--shadow-sm, var(--shadow)); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.file-library-command-right { flex-wrap: nowrap; }
 .file-library-filter { appearance: none; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 8px 32px 8px 13px; font: 500 13px var(--ui); cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8C87' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
 .file-library-filter:hover { background-color: var(--surface-2); }
 .file-library-tool { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft); padding: 8px 12px; border-radius: 8px; font: 500 13px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
@@ -4013,7 +4016,7 @@ function fileLibraryCommandBarHtml() {
   if (selected.length) {
     const first = selected[0];
     const many = selected.length > 1;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button><button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const sel = filter => fileFilter === filter ? ' selected' : '';
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><select class="file-library-filter" aria-label="Filter by type" onchange="setFileFilter(this.value)"><option value="all"${sel('all')}>All types</option><option value="word"${sel('word')}>Word</option><option value="excel"${sel('excel')}>Excel</option><option value="powerpoint"${sel('powerpoint')}>PowerPoint</option><option value="pdf"${sel('pdf')}>PDF</option></select></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
@@ -4111,9 +4114,18 @@ async function loadLibraries() {
   else localStorage.removeItem('memex_library_id');
 }
 
+function libraryMenuInnerHtml() {
+  const items = librariesList.map(l =>
+    `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')">${esc(l.name)}</button>`
+  ).join('');
+  return `<div class="library-menu-label">Libraries</div>${items}<div class="library-menu-sep"></div>${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>`;
+}
 function toggleLibraryMenu(event) {
   event?.stopPropagation();
-  document.getElementById('library-menu')?.classList.toggle('open');
+  const menu = document.getElementById('library-menu');
+  if (!menu) return;
+  if (!menu.classList.contains('open')) menu.innerHTML = libraryMenuInnerHtml(); // refresh from current list on open
+  menu.classList.toggle('open');
 }
 function closeLibraryMenu() {
   document.getElementById('library-menu')?.classList.remove('open');
@@ -4191,6 +4203,32 @@ async function openLibraryMembers() {
   emailInput.focus();
 }
 
+function openLibraryTransfer(mode) {
+  closeLibraryMenu();
+  const selected = selectedFiles();
+  if (!selected.length) return;
+  const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId));
+  if (!targets.length) { toast('No other library yet — create one first.'); return; }
+  const verb = mode === 'copy' ? 'Copy' : 'Move';
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open';
+  scrim.innerHTML = `<div class="modal" style="max-width:420px"><h2>${verb} ${selected.length} file${selected.length > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
+  document.body.appendChild(scrim);
+  const close = () => scrim.remove();
+  scrim.querySelector('#lib-transfer-cancel').onclick = close;
+  scrim.addEventListener('click', e => { if (e.target === scrim) close(); });
+  scrim.querySelectorAll('button[data-lib]').forEach(b => b.onclick = async () => {
+    close();
+    try {
+      const res = await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
+      clearFileSelection(false);
+      await loadFiles();
+      const target = librariesList.find(l => String(l.id) === b.dataset.lib);
+      toast(`${mode === 'copy' ? 'Copied' : 'Moved'} ${res.count} file${res.count === 1 ? '' : 's'} to ${target?.name || 'library'}`);
+    } catch (e) { toast(`${verb} failed: ` + e.message); }
+  });
+}
+
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
@@ -4247,19 +4285,10 @@ document.addEventListener('click', () => {
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const libraryName = esc(currentLibraryName());
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
-  const libMenuItems = librariesList.map(l =>
-    `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')">${esc(l.name)}</button>`
-  ).join('');
   return `<section class="file-library-nav${collapsed}" id="file-library-nav">
     <div class="library-switch-wrap">
       <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">Shared library</span></span><span class="chev">⌄</span></button>
-      <div class="library-menu" id="library-menu">
-        <div class="library-menu-label">Libraries</div>
-        ${libMenuItems}
-        <div class="library-menu-sep"></div>
-        ${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}
-        <button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>
-      </div>
+      <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">

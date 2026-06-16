@@ -397,6 +397,42 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// POST /api/files/library-transfer — move or copy selected files into a library
+router.post('/library-transfer', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    await libraries.ensureLibraries();
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const libraryId = req.body?.libraryId;
+    const mode = req.body?.mode === 'copy' ? 'copy' : 'move';
+    if (!ids.length || !libraryId) return res.status(400).json({ error: 'ids and libraryId required' });
+    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
+
+    // Restrict to documents the caller can access.
+    const accessible = await db.query(
+      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path
+       FROM documents d
+       WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
+      [...documentAccess.userParams(req.user, 'read'), ids]
+    );
+
+    if (mode === 'move') {
+      await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, accessible.map(d => d.id)]);
+      return res.json({ ok: true, mode, count: accessible.length });
+    }
+
+    // copy: duplicate the stored object + create a new document record per file
+    for (const d of accessible) {
+      const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
+      await storage.copy(d.storage_path, newPath, d.mime_type);
+      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
+    }
+    res.json({ ok: true, mode, count: accessible.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/files/trash — list soft-deleted documents (admin/contributor)
 router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
