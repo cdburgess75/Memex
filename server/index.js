@@ -85,6 +85,7 @@ app.use('/api/security', require('./routes/security'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
+app.use('/api/libraries', require('./routes/libraries'));
 app.use('/wopi', require('./routes/wopi'));
 
 app.use(express.static(path.join(__dirname, '..')));

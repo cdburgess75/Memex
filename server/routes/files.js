@@ -10,6 +10,7 @@ const storage = require('../lib/storage');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
+const libraries = require('../lib/libraries');
 const { extractText } = require('../lib/textExtraction');
 const fsSync = require('fs');
 const fs = fsSync.promises;
@@ -297,7 +298,7 @@ async function chunkedFileStream(session) {
   })());
 }
 
-async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail }) {
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId }) {
   let canIngest = false;
   let documentText = null;
   const extractionLimit = (await maxUploadMb()) * 1024 * 1024;
@@ -312,9 +313,9 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   }
 
   const doc = await db.queryOne(
-    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
-    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText]
+    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
+    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, libraryId || (await libraries.defaultLibraryId())]
   );
   await documentAccess.grantOwnerAdmin(doc.id, user);
   await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
@@ -379,13 +380,16 @@ router.get('/share/:token', async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     await documentAccess.ensureDocumentAclTable();
+    await libraries.ensureLibraries();
+    const libParam = req.query.library || null;
     const rows = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}
        FROM documents d
        WHERE d.deleted_at IS NULL
          AND ${documentAccess.condition('d', 1)}
+         AND ($6::uuid IS NULL OR d.library_id = $6)
        ORDER BY d.created_at DESC`,
-      documentAccess.userParams(req.user, 'read')
+      [...documentAccess.userParams(req.user, 'read'), libParam]
     );
     res.json(rows);
   } catch (e) {
@@ -474,9 +478,9 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     }
 
     const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText]
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, await libraries.resolveLibraryId(req)]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
@@ -524,9 +528,9 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     }
 
     const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText]
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, await libraries.resolveLibraryId(req)]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
@@ -662,7 +666,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       mimetype: session.mime_type,
       storedSize,
       user: req.user,
-      sourceDetail: 'resumable upload'
+      sourceDetail: 'resumable upload',
+      libraryId: await libraries.resolveLibraryId(req)
     });
 
     const updated = await db.queryOne(
