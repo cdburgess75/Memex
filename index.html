@@ -2197,6 +2197,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
   <div class="modal">
     <h2>Account</h2>
     <p class="sub" id="settings-user-info"></p>
+    <div id="settings-ai"></div>
     <div class="btn-row" style="margin-top:24px">
       <button class="run-btn" onclick="signOut()">Sign out</button>
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
@@ -3537,23 +3538,7 @@ async function renderAdmin() {
     const settingsHtml = `<div class="usage-section">
       <h3>System Settings</h3>
 
-      <div class="settings-sub">AI providers</div>
-      <p class="settings-notice">Add the models you want available, then pick the active one from the model selector in the top bar. Self-hosted: point the OpenAI-compatible base URL at your server (e.g. Ollama <code>http://host:11434/v1</code>).</p>
-      <div class="settings-grid">
-        <label>Anthropic API key</label>
-        <input type="password" id="cfg-ai-key" value="${esc(s.anthropic_api_key||'')}" autocomplete="new-password" placeholder="sk-ant-… (blank = keep current)">
-        <label>Claude models</label>
-        <input type="text" id="cfg-anthropic-models" value="${esc(s.anthropic_models||'claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5')}" placeholder="comma-separated model ids">
-        <label>OpenAI-compatible base URL</label>
-        <input type="text" id="cfg-openai-base" value="${esc(s.openai_base_url||'')}" placeholder="https://api.openai.com/v1  ·  or self-hosted">
-        <label>OpenAI-compatible API key</label>
-        <input type="password" id="cfg-openai-key" value="${esc(s.openai_api_key||'')}" autocomplete="new-password" placeholder="blank = keep current (or none for self-hosted)">
-        <label>OpenAI-compatible models</label>
-        <input type="text" id="cfg-openai-models" value="${esc(s.openai_models||'')}" placeholder="gpt-4o, gpt-4o-mini, llama3.1 …">
-      </div>
-      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveAISettings()">Save AI providers</button>
-
-      <div class="settings-sub" style="margin-top:20px">File Storage</div>
+      <div class="settings-sub">File Storage</div>
       <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
       <div class="settings-grid">
         <label>Provider</label>
@@ -3854,12 +3839,39 @@ async function doLint() {
 }
 
 /* ---------- settings / account ---------- */
-function openSettings() {
+function aiProvidersSettingsHtml(s) {
+  return `<div class="settings-sub" style="margin-top:18px">AI providers</div>
+    <p class="settings-notice">Add the models you want available, then pick the active one from the ✦ model selector in the top bar. Self-hosted: point the OpenAI-compatible base URL at your server (e.g. Ollama <code>http://host:11434/v1</code>).</p>
+    <div class="settings-grid">
+      <label>Anthropic API key</label>
+      <input type="password" id="cfg-ai-key" value="${esc(s.anthropic_api_key||'')}" autocomplete="new-password" placeholder="sk-ant-… (blank = keep current)">
+      <label>Claude models</label>
+      <input type="text" id="cfg-anthropic-models" value="${esc(s.anthropic_models||'claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5')}" placeholder="comma-separated model ids">
+      <label>OpenAI-compatible base URL</label>
+      <input type="text" id="cfg-openai-base" value="${esc(s.openai_base_url||'')}" placeholder="https://api.openai.com/v1  ·  or self-hosted">
+      <label>OpenAI-compatible API key</label>
+      <input type="password" id="cfg-openai-key" value="${esc(s.openai_api_key||'')}" autocomplete="new-password" placeholder="blank = keep current (or none for self-hosted)">
+      <label>OpenAI-compatible models</label>
+      <input type="text" id="cfg-openai-models" value="${esc(s.openai_models||'')}" placeholder="gpt-4o, gpt-4o-mini, llama3.1 …">
+    </div>
+    <button class="run-btn" style="margin-top:4px" onclick="saveAISettings()">Save AI providers</button>`;
+}
+async function openSettings() {
   document.getElementById('settings-user-info').textContent =
     `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
   document.getElementById('erase-kb-btn').style.display =
     currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
+  const aiEl = document.getElementById('settings-ai');
+  if (aiEl) {
+    if (currentUser?.role === 'admin') {
+      aiEl.innerHTML = '<p class="sub">Loading AI providers…</p>';
+      try { aiEl.innerHTML = aiProvidersSettingsHtml(await apiGet('/admin/settings')); }
+      catch (e) { aiEl.innerHTML = `<p class="sub" style="color:var(--accent)">Could not load: ${esc(e.message)}</p>`; }
+    } else {
+      aiEl.innerHTML = '';
+    }
+  }
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
 
