@@ -1209,6 +1209,20 @@ html.office .provider-btn:hover {
 .compliance-control-copy { color: var(--ink-soft); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
 .compliance-control-gap { grid-column: 2 / -1; color: var(--ink-faint); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
 .compliance-control-gap strong { color: var(--ink-soft); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
+.cmp-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+.cmp-card { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
+.cmp-head { display: flex; align-items: center; gap: 8px; }
+.cmp-head strong { flex: 1; font-size: 14px; color: var(--ink); }
+.cmp-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-faint); }
+.cmp-dot.ok { background: #2E7D32; } .cmp-dot.warn { background: #B7791F; } .cmp-dot.crit { background: #C0392B; } .cmp-dot.off { background: var(--ink-faint); }
+.cmp-badge { font: 600 10.5px var(--ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 8px; }
+.cmp-badge.on { color: var(--accent); border-color: var(--accent-wash); background: var(--accent-wash); }
+.cmp-meta { font-size: 12px; color: var(--ink-soft); margin: 7px 0 9px; }
+.cmp-checks { display: grid; gap: 5px; }
+.cmp-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); }
+.cmp-tick { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; display: inline-block; }
+.cmp-tick.ok { background: #2E7D32; } .cmp-tick.no { background: var(--surface-2); border: 1px solid var(--rule); } .cmp-tick.partial { background: #E6B94E; }
+@media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
 .control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
 .control-ready { background: #EAF7EA; color: #107C41; }
 .control-partial { background: #FFF7E6; color: #9A5B00; }
@@ -1229,8 +1243,11 @@ html.file-home-mode #panel > .panel { max-width: none; min-height: calc(100vh - 
 html.file-home-mode .masthead-actions { display: flex; }
 .file-workspace-content { max-width: 1120px; }
 .file-workspace-content .panel { margin: 0; }
-.file-home-shell { min-height: calc(100vh - 76px); display: grid; grid-template-columns: 248px minmax(0, 1fr); background: #F7F7F8; color: #242424; }
+.file-home-shell { position: relative; min-height: calc(100vh - 76px); display: grid; grid-template-columns: var(--memex-rail-w, 248px) minmax(0, 1fr); background: #F7F7F8; color: #242424; }
 .file-home-nav { padding: 18px 14px 28px; border-right: 1px solid #E5E5E5; background: #F3F3F4; overflow-y: auto; }
+.rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
+.rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
+.rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
 .file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
 .file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
@@ -1345,13 +1362,14 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .file-library-commandbar.has-selection { background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 10px 12px; box-shadow: var(--shadow-sm, var(--shadow)); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.file-library-command-right { flex-wrap: nowrap; }
-.file-library-filter { appearance: none; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 8px 32px 8px 13px; font: 500 13px var(--ui); cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8C87' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
+.file-library-command-left { flex: 1; flex-wrap: nowrap; }
+.file-library-command-right { flex-wrap: nowrap; flex: 0 0 auto; }
+.file-library-filter { appearance: none; flex: 0 0 auto; width: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 8px 32px 8px 13px; font: 500 13px var(--ui); cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238E8C87' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
 .file-library-filter:hover { background-color: var(--surface-2); }
 .file-library-tool { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft); padding: 8px 12px; border-radius: 8px; font: 500 13px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
 .file-library-tool:hover { background: var(--surface-2); color: var(--ink); }
 .file-library-sep { width: 1px; height: 24px; background: var(--rule); margin: 0 2px; }
-.file-library-search { width: min(240px, 100%); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 13px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
+.file-library-search { flex: 1; width: auto; min-width: 0; max-width: 560px; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 13px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
 .file-library-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 .file-library-breadcrumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--ink-faint); font-size: 13px; }
 .file-library-breadcrumb button { border: 0; background: transparent; color: var(--ink-soft); border-radius: 6px; padding: 4px 7px; font: 500 13px var(--ui); cursor: pointer; }
@@ -2109,6 +2127,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div>
     </div>
     <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
+    <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="openComplianceStatus()" title="Compliance readiness">Compliance</button>
     <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
@@ -2223,6 +2242,7 @@ let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
 let securityStatus = null;
 let fileLibraryNavCollapsed = localStorage.getItem('memex_library_nav_collapsed') === 'true';
+let railWidth = parseInt(localStorage.getItem('memex_rail_w') || '', 10) || 0; // resizable rail width (px)
 
 // sidebar category filter
 let activeCatFilter = null;
@@ -2613,6 +2633,30 @@ function openSecurityStatus() {
   const recent = Number(status.recentConnections || 0);
   closeSecurityStatus();
   document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="security-status-scrim" onclick="if(event.target.id==='security-status-scrim')closeSecurityStatus()"><div class="modal"><h2>Security monitor</h2><p class="sub">This is an added host-firewall visibility signal. It does not replace UFW, a reverse proxy, MFA, patching, or network controls.</p><div class="security-modal-grid"><div class="security-status-card"><strong>${esc(securityLevelLabel(status.level))}</strong><span>${esc(status.message || 'No unusual connection pressure reported.')}</span></div><div class="security-status-card"><strong>${esc(status.firewall || 'UFW')}</strong><span>${status.configured ? 'Monitoring connected' : 'Monitoring not connected yet'}</span></div><div class="security-status-card"><strong>${recent} recent connection${recent === 1 ? '' : 's'}</strong><span>Window: ${esc(status.window || '15 minutes')}</span></div></div><div class="btn-row" style="margin-top:20px"><button class="ghost-btn" onclick="loadSecurityStatus()">Refresh</button><button class="run-btn" onclick="closeSecurityStatus()">Close</button></div></div></div>`);
+}
+
+function closeComplianceStatus() { document.getElementById('compliance-status-scrim')?.remove(); }
+async function openComplianceStatus() {
+  closeComplianceStatus();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="compliance-status-scrim" onclick="if(event.target.id==='compliance-status-scrim')closeComplianceStatus()"><div class="modal" style="max-width:620px"><h2>Compliance readiness</h2><p class="sub">Loading…</p></div></div>`);
+  try {
+    renderComplianceModal(await apiGet('/admin/compliance'));
+  } catch (e) {
+    const m = document.querySelector('#compliance-status-scrim .modal');
+    if (m) m.innerHTML = `<h2>Compliance readiness</h2><p class="sub" style="color:var(--accent)">Could not load compliance: ${esc(e.message)}</p><div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+  }
+}
+function renderComplianceModal(data) {
+  const m = document.querySelector('#compliance-status-scrim .modal');
+  if (!m) return;
+  const cards = (data.frameworks || []).map(f => {
+    const total = f.controls.length;
+    const ready = f.controls.filter(c => c.ready === true).length;
+    const dot = !f.enabled ? 'off' : ready === total ? 'ok' : ready > 0 ? 'warn' : 'crit';
+    const checks = f.controls.map(c => `<div class="cmp-check"><span class="cmp-tick ${c.ready === true ? 'ok' : c.ready === false ? 'no' : 'partial'}"></span>${esc(c.label)}</div>`).join('');
+    return `<div class="cmp-card"><div class="cmp-head"><span class="cmp-dot ${dot}"></span><strong>${esc(f.name)}</strong><span class="cmp-badge${f.enabled ? ' on' : ''}">${f.enabled ? 'On' : 'Off'}</span></div><div class="cmp-meta">${ready}/${total} controls ready</div><div class="cmp-checks">${checks}</div></div>`;
+  }).join('');
+  m.innerHTML = `<h2>Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only — they do not certify the organization.')}</p><div class="cmp-grid">${cards}</div><div class="btn-row" style="margin-top:18px"><button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Manage in Admin</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
 }
 
 /* ---------- sidebar ---------- */
@@ -4019,7 +4063,7 @@ function fileLibraryCommandBarHtml() {
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button><button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const sel = filter => fileFilter === filter ? ' selected' : '';
-  return `<div class="file-library-commandbar"><div class="file-library-command-left"><select class="file-library-filter" aria-label="Filter by type" onchange="setFileFilter(this.value)"><option value="all"${sel('all')}>All types</option><option value="word"${sel('word')}>Word</option><option value="excel"${sel('excel')}>Excel</option><option value="powerpoint"${sel('powerpoint')}>PowerPoint</option><option value="pdf"${sel('pdf')}>PDF</option></select></div><div class="file-library-command-right"><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left"><select class="file-library-filter" aria-label="Filter by type" onchange="setFileFilter(this.value)"><option value="all"${sel('all')}>All types</option><option value="word"${sel('word')}>Word</option><option value="excel"${sel('excel')}>Excel</option><option value="powerpoint"${sel('powerpoint')}>PowerPoint</option><option value="pdf"${sel('pdf')}>PDF</option></select><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 function quickAccessHtml(files) {
   const items = files.slice(0, 6);
@@ -4119,6 +4163,28 @@ function libraryMenuInnerHtml() {
     `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')">${esc(l.name)}</button>`
   ).join('');
   return `<div class="library-menu-label">Libraries</div>${items}<div class="library-menu-sep"></div>${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>`;
+}
+function startRailResize(event) {
+  event.preventDefault();
+  const shell = document.getElementById('file-home-shell');
+  if (!shell) return;
+  const resizer = shell.querySelector('.rail-resizer');
+  resizer?.classList.add('active');
+  document.body.style.userSelect = 'none';
+  const move = ev => {
+    const w = Math.max(190, Math.min(460, ev.clientX - shell.getBoundingClientRect().left));
+    railWidth = Math.round(w);
+    shell.style.setProperty('--memex-rail-w', railWidth + 'px');
+  };
+  const up = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    resizer?.classList.remove('active');
+    document.body.style.userSelect = '';
+    if (railWidth) localStorage.setItem('memex_rail_w', String(railWidth));
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
 }
 function toggleLibraryMenu(event) {
   event?.stopPropagation();
@@ -4305,7 +4371,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
