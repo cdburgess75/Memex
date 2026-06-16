@@ -5,6 +5,11 @@ const db = require('./db');
 const ENV_MAP = {
   anthropic_api_key:              'ANTHROPIC_API_KEY',
   anthropic_model:                'ANTHROPIC_MODEL',
+  anthropic_models:               'ANTHROPIC_MODELS',
+  openai_api_key:                 'OPENAI_API_KEY',
+  openai_base_url:                'OPENAI_BASE_URL',
+  openai_models:                  'OPENAI_MODELS',
+  ai_active_model:                'AI_ACTIVE_MODEL',
   storage_provider:               'STORAGE_PROVIDER',
   storage_local_path:             'STORAGE_LOCAL_PATH',
   storage_s3_bucket:              'STORAGE_S3_BUCKET',
