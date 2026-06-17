@@ -9,6 +9,7 @@ const ENV_MAP = {
   openai_api_key:                 'OPENAI_API_KEY',
   openai_base_url:                'OPENAI_BASE_URL',
   openai_models:                  'OPENAI_MODELS',
+  ai_endpoints:                   'AI_ENDPOINTS',
   ai_active_model:                'AI_ACTIVE_MODEL',
   storage_provider:               'STORAGE_PROVIDER',
   storage_local_path:             'STORAGE_LOCAL_PATH',

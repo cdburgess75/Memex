@@ -16,25 +16,58 @@ function parseList(s) {
 }
 
 async function anthropicKey() { return settings.getOrEnv('anthropic_api_key'); }
-async function openaiKey() { return settings.getOrEnv('openai_api_key'); }
-async function openaiBaseUrl() { return (await settings.getOrEnv('openai_base_url')) || DEFAULT_OPENAI_BASE_URL; }
 
-// Enabled models, grouped by configured provider. A provider appears only if it's
-// usable: Anthropic needs a key; OpenAI-compatible needs a key OR an explicit base URL
-// (self-hosted endpoints like Ollama often need no key).
+function slugify(s, fallback) {
+  const v = String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return v || fallback;
+}
+
+// Normalized list of OpenAI-compatible endpoints, each: { id, label, base_url, api_key, models[] }.
+// Source of truth is the JSON `ai_endpoints` setting. If it's empty/unset, fall back to the
+// legacy single-endpoint settings (openai_base_url / openai_api_key / openai_models) so existing
+// installs keep working and their `openai:<model>` selections stay valid.
+async function listEndpoints() {
+  const raw = await settings.getOrEnv('ai_endpoints');
+  let arr = [];
+  if (raw) { try { const p = JSON.parse(raw); if (Array.isArray(p)) arr = p; } catch { /* ignore bad JSON */ } }
+  if (arr.length) {
+    const seen = new Set();
+    return arr.map((e, i) => {
+      let id = slugify(e.id || e.label, `endpoint-${i + 1}`);
+      while (seen.has(id)) id = `${id}-${i + 1}`;
+      seen.add(id);
+      return {
+        id,
+        label: (e.label || e.id || `Endpoint ${i + 1}`).trim(),
+        base_url: (e.base_url || '').trim(),
+        api_key: (e.api_key || '').trim(),
+        models: parseList(e.models),
+      };
+    });
+  }
+  // Legacy fallback
+  const base = await settings.getOrEnv('openai_base_url');
+  const key = await settings.getOrEnv('openai_api_key');
+  const models = parseList(await settings.getOrEnv('openai_models'));
+  if ((base || key) && models.length) {
+    return [{ id: 'openai', label: 'OpenAI-compatible', base_url: (base || '').trim(), api_key: (key || '').trim(), models }];
+  }
+  return [];
+}
+
+// Enabled models, grouped by provider. Anthropic appears if it has a key; each OpenAI-compatible
+// endpoint appears if it has models AND (a key OR a base URL — self-hosted endpoints often need no key).
 async function listModels() {
   const out = [];
   if (await anthropicKey()) {
     const list = parseList(await settings.getOrEnv('anthropic_models'));
     for (const id of (list.length ? list : parseList(DEFAULT_ANTHROPIC_MODELS))) {
-      out.push({ provider: 'anthropic', id, label: id });
+      out.push({ provider: 'anthropic', id, label: id, group: 'Claude (Anthropic)' });
     }
   }
-  const hasOpenAI = (await openaiKey()) || (await settings.get('openai_base_url'));
-  if (hasOpenAI) {
-    for (const id of parseList(await settings.getOrEnv('openai_models'))) {
-      out.push({ provider: 'openai', id, label: id });
-    }
+  for (const ep of await listEndpoints()) {
+    if (!ep.models.length || !(ep.api_key || ep.base_url)) continue;
+    for (const id of ep.models) out.push({ provider: ep.id, id, label: id, group: ep.label });
   }
   return out;
 }
@@ -71,8 +104,10 @@ async function run({ system, prompt, maxTokens = 1400, stream = false, onDelta }
     throw new Error('AI is turned off. Pick a model from the ✦ selector in the top bar to enable AI.');
   }
 
-  if (provider === 'openai') {
-    const client = new OpenAI({ apiKey: (await openaiKey()) || 'not-required', baseURL: await openaiBaseUrl() });
+  if (provider !== 'anthropic') {
+    const ep = (await listEndpoints()).find(e => e.id === provider);
+    if (!ep) throw new Error(`AI endpoint "${provider}" is not configured. Pick a model from the ✦ selector.`);
+    const client = new OpenAI({ apiKey: ep.api_key || 'not-required', baseURL: ep.base_url || DEFAULT_OPENAI_BASE_URL });
     const messages = [];
     if (system) messages.push({ role: 'system', content: system });
     messages.push({ role: 'user', content: prompt });
@@ -119,4 +154,4 @@ async function run({ system, prompt, maxTokens = 1400, stream = false, onDelta }
   };
 }
 
-module.exports = { listModels, activeModel, setActiveModel, run };
+module.exports = { listModels, listEndpoints, activeModel, setActiveModel, run };
