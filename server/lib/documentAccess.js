@@ -165,9 +165,34 @@ async function backfillOwnerGrants() {
   return rows.length;
 }
 
+// Documents the user may read whose text is relevant to `query`, ranked by full-text
+// relevance (with a name match fallback). Used to ground AI answers in uploaded files.
+async function searchAccessibleDocuments(user, query, limit = 6) {
+  await ensureDocumentAclTable();
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const cap = Math.max(1, Math.min(20, limit));
+  return db.query(
+    `SELECT d.id, d.name, d.document_text
+     FROM documents d
+     WHERE d.deleted_at IS NULL
+       AND d.document_text IS NOT NULL
+       AND d.document_text <> ''
+       AND (
+         d.document_fts @@ websearch_to_tsquery('english', $1)
+         OR d.name ILIKE '%' || $1 || '%'
+       )
+       AND ${condition('d', 2)}
+     ORDER BY ts_rank(d.document_fts, websearch_to_tsquery('english', $1)) DESC NULLS LAST, d.created_at DESC
+     LIMIT ${cap}`,
+    [q, ...userParams(user, 'read')]
+  );
+}
+
 module.exports = {
   ensureDocumentAclTable,
   backfillOwnerGrants,
+  searchAccessibleDocuments,
   getAccessibleDocument,
   grantOwnerAdmin,
   listGrants,

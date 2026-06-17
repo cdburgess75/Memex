@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const aiProviders = require('../lib/aiProviders');
+const documentAccess = require('../lib/documentAccess');
 const cheerio = require('cheerio');
 const pdfParse = require('pdf-parse');
 const { makeUploadMiddleware } = require('../lib/upload');
@@ -39,6 +40,23 @@ function buildContext(pages) {
     .filter(p => p.id !== 'overview')
     .map(p => `### [[${p.title}]]  (${p.category})\n${p.content}`)
     .join('\n\n---\n\n');
+}
+
+// Fold relevant uploaded-file text into the query context, truncated per file and overall
+// so a large document can't blow the model's context window.
+function buildDocContext(docs) {
+  const PER_DOC = 4000;
+  const TOTAL = 24000;
+  let used = 0;
+  const parts = [];
+  for (const d of (docs || [])) {
+    if (used >= TOTAL) break;
+    const text = String(d.document_text || '').slice(0, PER_DOC).trim();
+    if (!text) continue;
+    parts.push(`### File: ${d.name}\n${text}`);
+    used += text.length;
+  }
+  return parts.length ? `Uploaded files:\n\n${parts.join('\n\n---\n\n')}` : '';
 }
 
 function sseHeaders(res) {
@@ -140,9 +158,10 @@ router.post('/query', auth, async (req, res) => {
 
   try {
     const pages = await db.query('SELECT * FROM pages');
-    const ctx = buildContext(pages);
+    const docs = await documentAccess.searchAccessibleDocuments(req.user, question, 6);
+    const ctx = [buildContext(pages), buildDocContext(docs)].filter(Boolean).join('\n\n---\n\n');
 
-    const system = `You answer questions from a team knowledge base. Ground every claim in the pages below and name the pages you draw on. If the knowledge base lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to ingest sources first)'}`;
+    const system = `You answer questions from a team knowledge base made up of pages and uploaded files. Ground every claim in the material below and name the page or file you drew it from. If the material lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to add knowledge or upload files first)'}`;
 
     const result = await aiProviders.run({
       system,
