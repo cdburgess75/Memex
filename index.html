@@ -854,8 +854,9 @@ html.dark .chip { color: var(--accent-soft); }
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 6px;
-  max-width: 460px;
-  width: 100%;
+  width: min(680px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
   padding: 30px 32px;
   box-shadow: var(--shadow), 0 16px 48px rgba(0,0,0,0.18);
 }
@@ -1306,9 +1307,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ai-model-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
 /* settings hub — fixed-size popout; only the tab body scrolls */
 .settings-modal {
-  width: min(560px, 96vw);
-  max-width: none;
-  height: min(660px, 88vh);
+  width: min(680px, 94vw);
+  height: min(720px, 88vh);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 22px 0 0;
@@ -2268,7 +2269,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 
 <!-- Version preview modal -->
 <div class="scrim" id="version-preview-scrim">
-  <div class="modal" style="max-width:680px;max-height:80vh;overflow-y:auto">
+  <div class="modal">
     <h2 id="version-preview-title"></h2>
     <div class="prose" id="version-preview-body" style="margin-top:18px;font-size:16px"></div>
     <div class="btn-row" style="margin-top:24px">
@@ -2741,7 +2742,7 @@ function openSecurityStatus() {
 function closeComplianceStatus() { document.getElementById('compliance-status-scrim')?.remove(); }
 async function openComplianceStatus() {
   closeComplianceStatus();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="compliance-status-scrim" onclick="if(event.target.id==='compliance-status-scrim')closeComplianceStatus()"><div class="modal" style="max-width:620px"><h2>Compliance readiness</h2><p class="sub">Loading…</p></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="compliance-status-scrim" onclick="if(event.target.id==='compliance-status-scrim')closeComplianceStatus()"><div class="modal"><h2>Compliance readiness</h2><p class="sub">Loading…</p></div></div>`);
   try {
     renderComplianceModal(await apiGet('/admin/compliance'));
   } catch (e) {
@@ -4690,7 +4691,7 @@ function openNewLibraryModal() {
   closeLibraryMenu();
   const scrim = document.createElement('div');
   scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal" style="max-width:420px"><h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div></div>`;
+  scrim.innerHTML = `<div class="modal"><h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div></div>`;
   document.body.appendChild(scrim);
   const close = () => scrim.remove();
   const input = scrim.querySelector('#new-library-name');
@@ -4708,7 +4709,7 @@ async function openLibraryMembers() {
   const libName = currentLibraryName();
   const scrim = document.createElement('div');
   scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal" style="max-width:460px"><h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div></div>`;
+  scrim.innerHTML = `<div class="modal"><h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div></div>`;
   document.body.appendChild(scrim);
   const close = () => scrim.remove();
   scrim.querySelector('#lib-members-close').onclick = close;
@@ -4747,7 +4748,7 @@ function openLibraryTransfer(mode) {
   const verb = mode === 'copy' ? 'Copy' : 'Move';
   const scrim = document.createElement('div');
   scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal" style="max-width:420px"><h2>${verb} ${selected.length} file${selected.length > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
+  scrim.innerHTML = `<div class="modal"><h2>${verb} ${selected.length} file${selected.length > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
   document.body.appendChild(scrim);
   const close = () => scrim.remove();
   scrim.querySelector('#lib-transfer-cancel').onclick = close;
