@@ -149,8 +149,25 @@ function _resetForTests() {
   ensured = false;
 }
 
+// One-time, idempotent: give every existing document an owner/admin grant for its
+// uploader. Needed because grantOwnerAdmin historically failed (text-vs-uuid bug),
+// so pre-existing documents have no owner-ACL rows. Safe to re-run.
+async function backfillOwnerGrants() {
+  await ensureDocumentAclTable();
+  const rows = await db.query(
+    `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
+     SELECT d.id, 'user', d.uploaded_by::text, lower(d.uploaded_by_email), 'admin', d.uploaded_by, d.uploaded_by_email
+     FROM documents d
+     WHERE d.uploaded_by IS NOT NULL
+     ON CONFLICT (document_id, subject_type, subject_id) DO NOTHING
+     RETURNING document_id`
+  );
+  return rows.length;
+}
+
 module.exports = {
   ensureDocumentAclTable,
+  backfillOwnerGrants,
   getAccessibleDocument,
   grantOwnerAdmin,
   listGrants,
