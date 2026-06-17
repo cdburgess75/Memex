@@ -133,17 +133,31 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
 // GET /api/admin/compliance — readiness profiles and update posture
 router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
   try {
-    const [frameworks, updates] = await Promise.all([
+    const [frameworks, updates, summary] = await Promise.all([
       compliance.profileStatus(),
       compliance.updateStatus(),
+      compliance.summary(),
     ]);
     res.json({
       disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Memex or the operating organization.',
       frameworks,
       updates,
+      summary,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/compliance/attest — record a manual control attestation (who/when/note)
+router.put('/compliance/attest', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { control_id, met, note } = req.body || {};
+    if (!control_id) return res.status(400).json({ error: 'control_id required' });
+    await compliance.setAttestation(control_id, { met, note }, req.user);
+    res.json({ ok: true, frameworks: await compliance.profileStatus(), summary: await compliance.summary() });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 
