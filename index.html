@@ -1324,6 +1324,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .settings-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 8px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
 .settings-tab:hover { color: var(--ink); }
 .settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.ai-endpoint-card { border: 1px solid var(--rule-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+.ai-endpoint-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.ai-endpoint-head .ep-label { flex: 1 1 auto; font-weight: 600; }
+.ai-endpoint-head .ep-remove { flex: 0 0 auto; padding: 5px 12px; color: var(--accent); border-color: transparent; }
 .profile-row { display: flex; align-items: center; gap: 16px; }
 .profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font: 700 22px var(--ui); overflow: hidden; flex: 0 0 auto; }
 .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -3630,18 +3634,22 @@ function updateStorageFields() {
 }
 
 async function saveAISettings() {
+  syncAiEndpointsFromDom();
+  const endpoints = aiEndpointsDraft
+    .filter(e => e.label || e.base_url || e.models)
+    .map(e => ({ id: e.id || '', label: e.label, base_url: e.base_url, api_key: e.api_key, models: e.models }));
   const body = {
     anthropic_models: document.getElementById('cfg-anthropic-models').value.trim(),
-    openai_base_url: document.getElementById('cfg-openai-base').value.trim(),
-    openai_models: document.getElementById('cfg-openai-models').value.trim(),
+    ai_endpoints: JSON.stringify(endpoints),
   };
   const aKey = document.getElementById('cfg-ai-key').value;
-  const oKey = document.getElementById('cfg-openai-key').value;
   if (aKey.trim()) body.anthropic_api_key = aKey;
-  if (oKey.trim()) body.openai_api_key = oKey;
   try {
     await apiPut('/admin/settings', body);
+    settingsSys = await apiGet('/admin/settings');
+    aiEndpointsDraft = seedAiEndpoints(settingsSys);
     await loadAiModels();
+    switchSettingsTab('ai');
     toast('AI providers saved');
   } catch (e) { toast('Save failed: ' + e.message); }
 }
@@ -3785,26 +3793,93 @@ async function doLint() {
 
 /* ---------- settings / account ---------- */
 function aiProvidersSettingsHtml(s) {
-  return `<div class="settings-sub" style="margin-top:18px">AI providers</div>
-    <p class="settings-notice">Add the models you want available, then pick the active one from the ✦ model selector in the top bar. Self-hosted: point the OpenAI-compatible base URL at your server (e.g. Ollama <code>http://host:11434/v1</code>).</p>
+  const cards = aiEndpointsDraft.map((ep, i) => aiEndpointCardHtml(ep, i)).join('')
+    || '<p class="settings-notice" style="font-style:italic">No endpoints yet — add one to use OpenAI, Groq, or a self-hosted model.</p>';
+  return `<div class="settings-sub" style="margin-top:18px">Anthropic (Claude)</div>
     <div class="settings-grid">
-      <label>Anthropic API key</label>
+      <label>API key</label>
       <input type="password" id="cfg-ai-key" value="${esc(s.anthropic_api_key||'')}" autocomplete="new-password" placeholder="sk-ant-… (blank = keep current)">
-      <label>Claude models</label>
+      <label>Models</label>
       <input type="text" id="cfg-anthropic-models" value="${esc(s.anthropic_models||'claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5')}" placeholder="comma-separated model ids">
-      <label>OpenAI-compatible base URL</label>
-      <input type="text" id="cfg-openai-base" value="${esc(s.openai_base_url||'')}" placeholder="https://api.openai.com/v1  ·  or self-hosted">
-      <label>OpenAI-compatible API key</label>
-      <input type="password" id="cfg-openai-key" value="${esc(s.openai_api_key||'')}" autocomplete="new-password" placeholder="blank = keep current (or none for self-hosted)">
-      <label>OpenAI-compatible models</label>
-      <input type="text" id="cfg-openai-models" value="${esc(s.openai_models||'')}" placeholder="gpt-4o, gpt-4o-mini, llama3.1 …">
     </div>
-    <button class="run-btn" style="margin-top:4px" onclick="saveAISettings()">Save AI providers</button>`;
+
+    <div class="settings-sub" style="margin-top:20px">OpenAI-compatible endpoints</div>
+    <p class="settings-notice">Add one or more endpoints — OpenAI, Groq, Together, OpenRouter, or self-hosted (Ollama / vLLM / LM Studio at e.g. <code>http://host:11434/v1</code>). Each has its own base URL, key, and models. Pick the active model from the ✦ selector in the top bar.</p>
+    <div id="ai-endpoints">${cards}</div>
+    <button class="ghost-btn" style="margin-top:4px" onclick="addAiEndpoint()">+ Add endpoint</button>
+
+    <div style="margin-top:16px"><button class="run-btn" onclick="saveAISettings()">Save AI providers</button></div>`;
+}
+function aiEndpointCardHtml(ep, i) {
+  return `<div class="ai-endpoint-card" data-idx="${i}">
+    <div class="ai-endpoint-head">
+      <input class="ep-label" type="text" value="${esc(ep.label||'')}" placeholder="Name (e.g. Local Ollama)">
+      <button class="ghost-btn ep-remove" onclick="removeAiEndpoint(${i})">Remove</button>
+    </div>
+    <div class="settings-grid">
+      <label>Base URL</label>
+      <input class="ep-base" type="text" value="${esc(ep.base_url||'')}" placeholder="https://api.openai.com/v1 · http://host:11434/v1">
+      <label>API key</label>
+      <input class="ep-key" type="password" value="${esc(ep.api_key||'')}" autocomplete="new-password" placeholder="blank = none (self-hosted) or keep current">
+      <label>Models</label>
+      <input class="ep-models" type="text" value="${esc(ep.models||'')}" placeholder="gpt-4o-mini, llama3.1:8b …">
+    </div>
+  </div>`;
+}
+// Read the endpoint cards back into the draft (preserving each row's id) before any re-render.
+function syncAiEndpointsFromDom() {
+  const container = document.getElementById('ai-endpoints');
+  if (!container) return; // AI tab not rendered — nothing to read
+  const cards = container.querySelectorAll('.ai-endpoint-card');
+  const next = [];
+  cards.forEach(card => {
+    const i = +card.dataset.idx;
+    next.push({
+      id: (aiEndpointsDraft[i] && aiEndpointsDraft[i].id) || '',
+      label: card.querySelector('.ep-label').value.trim(),
+      base_url: card.querySelector('.ep-base').value.trim(),
+      api_key: card.querySelector('.ep-key').value,
+      models: card.querySelector('.ep-models').value.trim(),
+    });
+  });
+  aiEndpointsDraft = next;
+  // Preserve the Anthropic fields too, so add/remove re-renders don't drop in-progress edits.
+  const kEl = document.getElementById('cfg-ai-key');
+  const mEl = document.getElementById('cfg-anthropic-models');
+  if (kEl) settingsSys.anthropic_api_key = kEl.value;
+  if (mEl) settingsSys.anthropic_models = mEl.value;
+}
+function addAiEndpoint() {
+  syncAiEndpointsFromDom();
+  aiEndpointsDraft.push({ id: '', label: '', base_url: '', api_key: '', models: '' });
+  switchSettingsTab('ai');
+}
+function removeAiEndpoint(i) {
+  syncAiEndpointsFromDom();
+  aiEndpointsDraft.splice(i, 1);
+  switchSettingsTab('ai');
 }
 let settingsTab = 'profile';
 let settingsSys = {};
 let settingsProfile = { display_name: '', avatar: '' };
 let settingsAvatarDraft = null; // pending data URL, '' to clear, or null = unchanged
+let aiEndpointsDraft = []; // editable OpenAI-compatible endpoints for the AI tab
+const AI_MASKED = '●●●●●●●●';
+
+// Parse the masked ai_endpoints JSON into the editable draft; migrate the legacy
+// single-endpoint settings (openai_*) when no endpoints are defined yet.
+function seedAiEndpoints(s) {
+  let arr = [];
+  try { const p = JSON.parse(s.ai_endpoints || '[]'); if (Array.isArray(p)) arr = p; } catch { /* ignore */ }
+  arr = arr.map(e => ({
+    id: e.id || '', label: e.label || '', base_url: e.base_url || '', api_key: e.api_key || '',
+    models: Array.isArray(e.models) ? e.models.join(', ') : (e.models || ''),
+  }));
+  if (!arr.length && (s.openai_base_url || s.openai_models)) {
+    arr.push({ id: 'openai', label: 'OpenAI-compatible', base_url: s.openai_base_url || '', api_key: s.openai_api_key || '', models: s.openai_models || '' });
+  }
+  return arr;
+}
 
 async function openSettings() {
   document.getElementById('settings-user-info').textContent =
@@ -3817,6 +3892,7 @@ async function openSettings() {
   document.getElementById('settings-body').innerHTML = '<p class="sub">Loading…</p>';
   try { settingsProfile = await apiGet('/auth/profile'); } catch { settingsProfile = { display_name: '', avatar: '' }; }
   if (currentUser?.role === 'admin') { try { settingsSys = await apiGet('/admin/settings'); } catch { settingsSys = {}; } }
+  aiEndpointsDraft = seedAiEndpoints(settingsSys);
   switchSettingsTab(settingsTab);
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
@@ -4426,11 +4502,18 @@ function aiModelMenuInnerHtml() {
     return html;
   }
   html += `<div class="library-menu-sep"></div>`;
-  const groups = { anthropic: 'Claude (Anthropic)', openai: 'OpenAI-compatible' };
-  for (const provider of Object.keys(groups)) {
+  // Group dynamically: one section per provider, in first-seen order, using each model's group label.
+  const order = [];
+  const labels = {};
+  for (const m of aiModels) {
+    if (!(m.provider in labels)) {
+      order.push(m.provider);
+      labels[m.provider] = m.provider === 'anthropic' ? 'Claude (Anthropic)' : (m.group || m.provider);
+    }
+  }
+  for (const provider of order) {
     const items = aiModels.filter(m => m.provider === provider);
-    if (!items.length) continue;
-    html += `<div class="ai-model-group">${groups[provider]}</div>`;
+    html += `<div class="ai-model-group">${esc(labels[provider])}</div>`;
     html += items.map(m => {
       const value = `${m.provider}:${m.id}`;
       return `<button class="ai-model-item${value === aiActive ? ' active' : ''}" onclick="switchAiModel('${esc(value)}')">${esc(m.label || m.id)}</button>`;
