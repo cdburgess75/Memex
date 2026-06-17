@@ -240,21 +240,93 @@ async function setAttestation(controlId, { met, note }, user) {
   );
 }
 
-// One evaluated control: live signal for auto controls, attestation for manual ones.
+// ---- Runtime probes (on-demand; slower than config reads, so cached) ----
+// Each returns { status: 'ok' | 'gap' | 'unknown', detail }. 'unknown' means the
+// probe couldn't run here (e.g. the backup dir isn't mounted into the container),
+// in which case the control falls back to its config-based signal.
+let _probes = { at: 0, results: null };
+
+function probeHttps(url) {
+  return new Promise(resolve => {
+    if (!/^https:\/\//i.test(url || '')) return resolve({ status: 'gap', detail: 'app_url is not set to HTTPS.' });
+    let done = false;
+    const fin = r => { if (!done) { done = true; resolve(r); } };
+    try {
+      const req = require('https').request(url, { method: 'HEAD', timeout: 4000 }, res => {
+        fin({ status: res.statusCode < 500 ? 'ok' : 'gap', detail: `HTTPS reachable with a valid certificate (HTTP ${res.statusCode}).` });
+        res.destroy();
+      });
+      req.on('timeout', () => { req.destroy(); fin({ status: 'unknown', detail: 'HTTPS probe timed out.' }); });
+      req.on('error', e => fin({ status: 'gap', detail: `HTTPS probe failed: ${e.message}` }));
+      req.end();
+    } catch (e) { fin({ status: 'unknown', detail: e.message }); }
+  });
+}
+
+async function probeNpmAudit() {
+  const r = await execFileSafe('npm', ['audit', '--omit=dev', '--json'], { cwd: path.join(ROOT, 'server'), timeout: 25000, maxBuffer: 8 * 1024 * 1024 });
+  try {
+    const v = JSON.parse(r.value || '{}').metadata?.vulnerabilities || {};
+    const crit = v.critical || 0, high = v.high || 0, mod = v.moderate || 0, low = v.low || 0;
+    const total = v.total ?? (crit + high + mod + low);
+    return { status: (crit + high) === 0 ? 'ok' : 'gap', detail: `${total} known advisories (critical ${crit}, high ${high}, moderate ${mod}, low ${low}).` };
+  } catch {
+    return { status: 'unknown', detail: 'Dependency audit could not run in this environment.' };
+  }
+}
+
+function probeBackupFreshness() {
+  const dir = process.env.MEMEX_BACKUP_DIR || '/srv/memex-backups';
+  try {
+    const entries = fs.readdirSync(dir)
+      .map(n => { try { return { n, t: fs.statSync(path.join(dir, n)).mtimeMs }; } catch { return null; } })
+      .filter(Boolean);
+    if (!entries.length) return { status: 'gap', detail: `No backups found in ${dir}.` };
+    const newest = entries.sort((a, b) => b.t - a.t)[0];
+    const ageDays = (Date.now() - newest.t) / 86400000;
+    const age = ageDays < 1 ? 'today' : `${Math.floor(ageDays)}d ago`;
+    return { status: ageDays <= 7 ? 'ok' : 'gap', detail: `Most recent backup ${age} (${newest.n}).` };
+  } catch {
+    return { status: 'unknown', detail: `Backup directory not visible to the app (${dir}).` };
+  }
+}
+
+async function runProbes() {
+  const appUrl = await settings.getOrEnv('app_url');
+  const [https, audit, backup] = await Promise.all([probeHttps(appUrl), probeNpmAudit(), probeBackupFreshness()]);
+  _probes = { at: Date.now(), results: { https, audit, backup } };
+  return _probes;
+}
+
+function probeMeta() {
+  return { lastRun: _probes.at || null, results: _probes.results };
+}
+
+// One evaluated control: live signal for auto controls, attestation for manual ones,
+// overridden by a runtime probe result when one is available and definitive.
 async function evaluateControls() {
   const [attest, git] = await Promise.all([getAttestations(), gitInfo()]);
+  const probes = _probes.results || {};
+  const definitive = p => p && p.status !== 'unknown';
   const out = {};
   for (const [id, base] of Object.entries(CONTROL_CATALOG)) {
     if (base.manual) {
       const a = attest[id];
+      let ready = !!a?.met;
+      let evidence = a?.met ? (a.note ? `Attested: ${a.note}` : 'Attested as met.') : base.evidence;
+      // A dependency-audit probe can satisfy vulnerability management on its own.
+      if (id === 'vulnerability_management' && definitive(probes.audit)) {
+        ready = ready || probes.audit.status === 'ok';
+        evidence = probes.audit.detail + (a?.met ? ' · attested' : '');
+      }
       out[id] = {
-        id, label: base.label, gap: base.gap, manual: true,
-        ready: !!a?.met,
-        evidence: a?.met ? (a.note ? `Attested: ${a.note}` : 'Attested as met.') : base.evidence,
+        id, label: base.label, gap: base.gap, manual: true, ready, evidence,
         attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
       };
     } else {
-      const r = await CHECKS[id]({ git });
+      let r = await CHECKS[id]({ git });
+      if (id === 'network_security' && definitive(probes.https)) r = { ready: probes.https.status === 'ok', evidence: probes.https.detail };
+      if (id === 'backup_restore' && definitive(probes.backup)) r = { ready: probes.backup.status === 'ok', evidence: probes.backup.detail };
       out[id] = { id, label: base.label, gap: base.gap, manual: false, ready: r.ready, evidence: r.evidence };
     }
   }
@@ -267,7 +339,7 @@ function boolValue(v) {
 
 function execFileSafe(cmd, args, opts = {}) {
   return new Promise(resolve => {
-    execFile(cmd, args, { cwd: ROOT, timeout: opts.timeout || 3000 }, (error, stdout, stderr) => {
+    execFile(cmd, args, { cwd: opts.cwd || ROOT, timeout: opts.timeout || 3000, maxBuffer: opts.maxBuffer || 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({
         ok: !error,
         value: (stdout || '').trim(),
@@ -342,4 +414,4 @@ async function updateStatus() {
   };
 }
 
-module.exports = { FRAMEWORKS, CONTROL_CATALOG, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations };
+module.exports = { FRAMEWORKS, CONTROL_CATALOG, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };

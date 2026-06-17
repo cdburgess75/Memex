@@ -143,7 +143,19 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       frameworks,
       updates,
       summary,
+      probes: compliance.probeMeta(),
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/compliance/probe — run the runtime checks (HTTPS, npm audit, backup freshness)
+router.post('/compliance/probe', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const probe = await compliance.runProbes();
+    const [frameworks, summary] = await Promise.all([compliance.profileStatus(), compliance.summary()]);
+    res.json({ ok: true, frameworks, summary, probes: { lastRun: probe.at, results: probe.results } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

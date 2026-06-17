@@ -1235,6 +1235,8 @@ html.office .provider-btn:hover {
 .cmp-att-meta { font-size: 11px; color: var(--ink-faint); }
 .cmp-att-btn { border: 1px solid var(--rule); background: transparent; color: var(--accent); border-radius: 6px; padding: 2px 9px; font: 600 11px var(--ui); cursor: pointer; }
 .cmp-att-btn:hover { background: var(--accent-wash); }
+.cmp-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.cmp-probe-meta { font-size: 12px; color: var(--ink-faint); }
 @media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
 .control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
 .control-ready { background: #EAF7EA; color: #107C41; }
@@ -2775,7 +2777,50 @@ function renderComplianceModal(data) {
     }).join('');
     return `<div class="cmp-card"><div class="cmp-head"><span class="cmp-dot ${dot}"></span><strong>${esc(f.name)}</strong><span class="cmp-badge${f.enabled ? ' on' : ''}">${f.enabled ? 'On' : 'Off'}</span></div><div class="cmp-meta">${ready}/${total} controls ready</div><div class="cmp-checks">${checks}</div></div>`;
   }).join('');
-  m.innerHTML = `<h2>Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only — they do not certify the organization.')}</p><div class="cmp-grid">${cards}</div><div class="btn-row" style="margin-top:18px"><button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Manage in Admin</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+  const probeLine = data.probes?.lastRun
+    ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}`
+    : 'Live checks not run yet';
+  const toolbar = `<div class="cmp-toolbar"><span class="cmp-probe-meta">${esc(probeLine)}</span><span style="flex:1"></span><button class="ghost-btn" onclick="exportComplianceReport()">Export evidence</button>${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button>` : ''}</div>`;
+  m.innerHTML = `<h2>Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only — they do not certify the organization.')}</p>${toolbar}<div class="cmp-grid">${cards}</div><div class="btn-row" style="margin-top:18px"><button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Manage in Admin</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+}
+async function runComplianceProbes(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  try {
+    const r = await apiPost('/admin/compliance/probe', {});
+    updateComplianceIndicator(r.summary);
+    renderComplianceModal({ ...complianceData, frameworks: r.frameworks, summary: r.summary, probes: r.probes });
+    toast('Live checks complete');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run live checks'; }
+    toast('Live checks failed: ' + e.message);
+  }
+}
+function exportComplianceReport() {
+  const data = complianceData || {};
+  const x = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const app = data.updates?.app || {};
+  const statusWord = r => r === true ? 'READY' : r === false ? 'GAP' : 'PARTIAL';
+  const sections = (data.frameworks || []).map(f => {
+    const ready = f.controls.filter(c => c.ready === true).length;
+    const rows = f.controls.map(c => {
+      const att = c.attestation?.by ? `Attested by ${x(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ' — ' + x(c.attestation.note) : ''}` : '';
+      return `<tr><td class="s ${c.ready === true ? 'ok' : c.ready === false ? 'no' : 'pa'}">${statusWord(c.ready)}</td><td>${x(c.label)}${c.manual ? ' (manual)' : ''}</td><td>${x(c.evidence)}${att ? `<div class="att">${att}</div>` : ''}</td></tr>`;
+    }).join('');
+    return `<h2>${x(f.name)} <span class="${f.enabled ? 'on' : 'off'}">${f.enabled ? 'ENABLED' : 'not enabled'}</span> · ${ready}/${f.controls.length} ready</h2><p class="scope">${x(f.scope || '')}</p><table><thead><tr><th>Status</th><th>Control</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join('');
+  const probeLine = data.probes?.lastRun ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}` : 'Live checks not run';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Memex compliance evidence — ${x(new Date().toISOString().slice(0,10))}</title>
+<style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;max-width:900px;margin:32px auto;padding:0 20px}h1{font-size:22px}h2{font-size:16px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:4px}.on{color:#2E7D32;font-size:11px}.off{color:#999;font-size:11px}.scope{color:#666;margin:2px 0 8px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{text-align:left;font-size:11px;text-transform:uppercase;color:#666;border-bottom:1px solid #ccc;padding:4px 8px}td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}.s{font-weight:700;font-size:11px;white-space:nowrap}.s.ok{color:#2E7D32}.s.no{color:#C0392B}.s.pa{color:#B7791F}.att{color:#666;font-size:12px;margin-top:3px}.meta{color:#666;font-size:12px}.disc{background:#f6f6f6;padding:10px 12px;border-radius:6px;font-size:12px;color:#555}</style></head>
+<body><h1>Memex — Compliance Evidence Report</h1>
+<p class="meta">Generated ${x(new Date().toLocaleString())} · App ${x(app.version || 'unknown')} (${x(app.git?.branch || '')} ${x(app.git?.commit || '')}) · ${x(probeLine)}</p>
+<p class="disc">${x(data.disclaimer || 'Readiness profiles track controls and evidence only; they do not certify the organization.')}</p>
+${sections}</body></html>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  a.download = `memex-compliance-${new Date().toISOString().slice(0, 10)}.html`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Evidence report downloaded');
 }
 async function attestControl(controlId, met) {
   const note = met ? (prompt('Optional note / evidence pointer for this control:', '') || '') : '';
