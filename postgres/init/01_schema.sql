@@ -155,6 +155,15 @@ CREATE TABLE IF NOT EXISTS library_members (
 
 CREATE INDEX IF NOT EXISTS library_members_library_idx ON library_members(library_id);
 
+-- Per-user profile (display name + avatar) overlaying the Keycloak identity.
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id       UUID        PRIMARY KEY,
+  email         TEXT,
+  display_name  TEXT,
+  avatar        TEXT,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Document access grants. Uploaders retain owner/admin access; explicit grants
 -- make permission checks queryable across list/search/download/AI routes.
 CREATE TABLE IF NOT EXISTS document_acl (
