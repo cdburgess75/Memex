@@ -1224,6 +1224,16 @@ html.office .provider-btn:hover {
 .cmp-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); }
 .cmp-tick { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; display: inline-block; }
 .cmp-tick.ok { background: #2E7D32; } .cmp-tick.no { background: var(--surface-2); border: 1px solid var(--rule); } .cmp-tick.partial { background: #E6B94E; }
+.cmp-check { align-items: flex-start; }
+.cmp-tick { margin-top: 2px; }
+.cmp-check-body { flex: 1; min-width: 0; }
+.cmp-check-label { color: var(--ink); font-weight: 600; }
+.cmp-manual { font: 600 9.5px var(--ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+.cmp-check-ev { color: var(--ink-soft); font-size: 12px; margin-top: 1px; }
+.cmp-attest { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.cmp-att-meta { font-size: 11px; color: var(--ink-faint); }
+.cmp-att-btn { border: 1px solid var(--rule); background: transparent; color: var(--accent); border-radius: 6px; padding: 2px 9px; font: 600 11px var(--ui); cursor: pointer; }
+.cmp-att-btn:hover { background: var(--accent-wash); }
 @media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
 .control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
 .control-ready { background: #EAF7EA; color: #107C41; }
@@ -2436,6 +2446,7 @@ async function _afterLogin() {
   renderUserChip();
   applyRoleUI();
   loadSecurityStatus();
+  loadComplianceSummary();
 }
 
 async function loadFromServer() {
@@ -2673,6 +2684,24 @@ function updateSecurityIndicator(status = securityStatus) {
   btn.title = status?.message || 'Host firewall monitoring';
 }
 
+let complianceData = null;
+function updateComplianceIndicator(summary) {
+  const btn = document.getElementById('compliance-indicator');
+  if (!btn) return;
+  const cls = { ok: 'ok', warn: 'warning', crit: 'critical', off: 'info' };
+  const status = summary?.status || 'info';
+  btn.className = `security-indicator ${cls[status] || 'info'} admin-menu-item`;
+  btn.textContent = (summary && summary.total) ? `Compliance ${summary.ready}/${summary.total}` : 'Compliance';
+  btn.title = (summary && summary.enabledFrameworks)
+    ? `${summary.ready} of ${summary.total} controls ready · ${summary.enabledFrameworks} framework(s) enabled`
+    : 'Compliance readiness';
+}
+async function loadComplianceSummary() {
+  if (currentUser?.role !== 'admin') return;
+  try { complianceData = await apiGet('/admin/compliance'); updateComplianceIndicator(complianceData.summary); }
+  catch { /* leave default pill */ }
+}
+
 async function loadSecurityStatus() {
   try {
     securityStatus = await apiGet('/security/status');
@@ -2721,16 +2750,40 @@ async function openComplianceStatus() {
   }
 }
 function renderComplianceModal(data) {
+  complianceData = data;
   const m = document.querySelector('#compliance-status-scrim .modal');
   if (!m) return;
+  const isAdmin = currentUser?.role === 'admin';
   const cards = (data.frameworks || []).map(f => {
     const total = f.controls.length;
     const ready = f.controls.filter(c => c.ready === true).length;
     const dot = !f.enabled ? 'off' : ready === total ? 'ok' : ready > 0 ? 'warn' : 'crit';
-    const checks = f.controls.map(c => `<div class="cmp-check"><span class="cmp-tick ${c.ready === true ? 'ok' : c.ready === false ? 'no' : 'partial'}"></span>${esc(c.label)}</div>`).join('');
+    const checks = f.controls.map(c => {
+      const tick = c.ready === true ? 'ok' : c.ready === false ? 'no' : 'partial';
+      let attest = '';
+      if (c.manual) {
+        const meta = c.attestation?.by ? `<span class="cmp-att-meta">${esc(c.attestation.by)} · ${new Date(c.attestation.at).toLocaleDateString()}</span>` : '';
+        const btn = isAdmin
+          ? (c.ready
+              ? `<button class="cmp-att-btn" onclick="attestControl('${esc(c.id)}', false)">Clear</button>`
+              : `<button class="cmp-att-btn" onclick="attestControl('${esc(c.id)}', true)">Mark met</button>`)
+          : '';
+        attest = `<div class="cmp-attest">${meta}${btn}</div>`;
+      }
+      return `<div class="cmp-check"><span class="cmp-tick ${tick}"></span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}${c.manual ? ' <span class="cmp-manual">manual</span>' : ''}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${attest}</div></div>`;
+    }).join('');
     return `<div class="cmp-card"><div class="cmp-head"><span class="cmp-dot ${dot}"></span><strong>${esc(f.name)}</strong><span class="cmp-badge${f.enabled ? ' on' : ''}">${f.enabled ? 'On' : 'Off'}</span></div><div class="cmp-meta">${ready}/${total} controls ready</div><div class="cmp-checks">${checks}</div></div>`;
   }).join('');
   m.innerHTML = `<h2>Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only — they do not certify the organization.')}</p><div class="cmp-grid">${cards}</div><div class="btn-row" style="margin-top:18px"><button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Manage in Admin</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+}
+async function attestControl(controlId, met) {
+  const note = met ? (prompt('Optional note / evidence pointer for this control:', '') || '') : '';
+  try {
+    const r = await apiPut('/admin/compliance/attest', { control_id: controlId, met, note });
+    updateComplianceIndicator(r.summary);
+    renderComplianceModal({ ...complianceData, frameworks: r.frameworks, summary: r.summary });
+    toast(met ? 'Marked as met' : 'Attestation cleared');
+  } catch (e) { toast('Failed: ' + e.message); }
 }
 
 /* ---------- sidebar ---------- */
