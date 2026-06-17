@@ -1,8 +1,8 @@
 # Memex Complete Handoff
 
-Last updated: 2026-06-15  
-Current deployed commit: `998c3f1 Polish file library header`  
-Current branch: `claude/url-request-GwwHe`  
+Last updated: 2026-06-17  
+Current deployed commit: `4c8f4c6 Profiles + tabbed settings hub + scoped search + AI-off`  
+Current branch: `claude/url-request-GwwHe` (pushed to origin)  
 Local repo: `/Users/dave/Documents/Memex`  
 Live host repo: `/opt/memex`
 
@@ -27,6 +27,27 @@ Current container status verified 2026-06-15:
 - `memex-keycloak-1`: up, published `8080:8080`
 - `memex-postgres-1`: up and healthy
 - UFW status: inactive
+
+## What changed since 2026-06-15 (this session)
+
+A large UI + feature pass landed on `claude/url-request-GwwHe` (commits `5ff8fee` → `4c8f4c6`), all deployed to `frog` and verified live:
+
+- **Design system overhaul** — collapsed the six imitation themes into one signature look (Inter, warm-neutral surfaces, **terracotta** accent) + a real dark mode; theme switch moved into Settings. Masthead rebuilt: logo + wordmark, centered global search, primary Upload, Security/Compliance pills, ✦ AI model picker, user chip. De-duplicated the library header; calmed the command bar; cleaner file rows (owner avatars, icon actions, select-all). Resizable rail divider (persisted).
+- **Libraries** — real `libraries` table + `documents.library_id` (runtime-migrated). Rail **library switcher** (list + "New library"), files scoped per library, **open-by-default membership** (`library_members`; a library with no members is visible to all signed-in users, else members + admins). Admin "Manage members" modal. **Move/Copy files between libraries** from the selection bar (`POST /api/files/library-transfer`).
+- **Compliance indicator** — masthead pill (admin) → readiness modal driven by `/api/admin/compliance` (per-framework control checks for SOC 2 / HIPAA / GDPR / PCI-DSS / ISO 27001 / CMMC).
+- **Multi-provider AI** — `server/lib/aiProviders.js` abstraction; Anthropic + any **OpenAI-compatible** endpoint (OpenAI/Groq/self-hosted Ollama/vLLM via base URL). Global active model in `ai_active_model`; ✦ masthead picker switches it (any signed-in user); **"AI off"** disables AI cleanly. Providers/keys configured in Settings → AI.
+- **User profiles** — `user_profiles` table + `GET/PUT /api/auth/profile`; `/api/auth/me` overlays **display name + avatar** (size-capped data URL). Chip shows the avatar.
+- **Tabbed Settings hub** (chip → Settings): **Profile · Appearance · AI · System(admin)**. System tab links to the Admin dashboard and exports settings to **XML** (secrets masked).
+- **Outlook-style search** — masthead search has a left **scope dropdown**: Contents (server full-text, default) · File names · Ask AI (only when AI on). Data-driven/extensible.
+- **Share** dialog unified to **link-first** ("Anyone with the link" on top, "People with access" below).
+- **Bug fix** — `grantOwnerAdmin` had a `$2` text-vs-uuid clash that made *every* owner-ACL insert fail (invisible because only an admin had used the app). Fixed. **Consequence: pre-existing documents have no owner-ACL rows — run a backfill before onboarding non-admin/client users.**
+
+### Open follow-ups from this session
+- **Owner-ACL backfill** for existing files (see bug above) before adding non-admin users.
+- A leftover **test-duplicate `SLFPAE_Forensic_Report_PT.pdf` in the "Winter" library** can be deleted.
+- The heavy admin **System Settings** (storage/encryption/integrations/compliance) still live in the Admin dashboard — not yet folded into the Settings hub (the hub links to them).
+- **Gemini** provider and **live** compliance checks (real UFW/backup/MFA signals vs the curated catalog) are deferred.
+- Rotate any API key that was pasted into chat during setup.
 
 ## Security Note
 
@@ -88,21 +109,22 @@ claude/url-request-GwwHe
 Current latest commits:
 
 ```text
+4c8f4c6 Profiles + tabbed settings hub + scoped search + AI-off
+2acafc6 Move AI providers config into Account settings dialog
+6296007 Add multi-provider AI model selector
+78a0377 Make Share link-first (one unified Share dialog)
+2f7db74 Command bar fill, resizable rail, masthead Compliance indicator
+f1185fc Fix grantOwnerAdmin parameter type clash (text vs uuid)
+ad25912 Log library-transfer errors server-side
+236a23f Add move/copy files between libraries; tighten file header
+f08ee90 Add open-by-default library membership
+746cb36 Release v2026.06.16.001
+5ff8fee Redesign UI to one signature look + add libraries
+87b0fe2 Update complete Memex handoff
 998c3f1 Polish file library header
-6fa38d5 Make file rail library based
-f39fa6f Add host security alert indicator
-8b2d104 Add folder commander file view
-77a9e8b Contain compliance control lists
-3e54faa Ignore local secret handoff files
-afe2060 Add document access management
-458c20b Add document ACL foundation
-6cabad8 Fix Keycloak password rotation helper
-e782d06 Add interim Keycloak password rotation helper
-69e2279 Remove plaintext app credential from handoff
-550eaf5 Harden public share link access
-f9ea5c5 Bind WOPI tokens to requested files
-cf7362c Add compliance readiness admin panel
 ```
+
+Origin is in sync (pushed). Local working tree clean.
 
 Local status at handoff:
 
@@ -205,10 +227,14 @@ Core libraries:
 - `server/lib/wopiTokens.js`
 - `server/lib/rateLimiters.js`
 - `server/lib/compliance.js`
+- `server/lib/aiProviders.js` — multi-provider AI (Anthropic + OpenAI-compatible), active-model resolution, normalized stream/create, AI-off
+- `server/lib/libraries.js` — libraries + membership, `ensureLibraries()` runtime migration + backfill
+- `server/lib/profiles.js` — user profiles (display name + avatar), `ensureProfiles()` runtime migration
 
 Database/schema:
 
 - `postgres/init/01_schema.sql`
+- Tables added this session (also runtime-ensured, no separate migration tooling): `libraries`, `library_members`, `user_profiles`, and `documents.library_id`.
 - Supabase-era migrations retained under `supabase/migrations`
 
 Auth:
@@ -225,9 +251,11 @@ Public/config:
 - `GET *` serves `index.html`
 - Static assets from repo root
 
-Auth:
+Auth / profile:
 
-- `GET /api/auth/me`
+- `GET /api/auth/me` (now overlays display name + avatar from `user_profiles`)
+- `GET /api/auth/profile`
+- `PUT /api/auth/profile` (display_name, avatar data URL ≤ ~256 KB)
 
 Pages:
 
@@ -245,6 +273,16 @@ AI:
 - `POST /api/ai/query`
 - `POST /api/ai/lint`
 - `POST /api/ai/extract`
+- `GET /api/ai/models` — enabled models + active selection (no secrets); powers the ✦ picker
+- `PUT /api/ai/active` — switch the global active model (any signed-in user; value `provider:model` or `off`)
+
+Libraries:
+
+- `GET /api/libraries` — libraries the caller can access
+- `POST /api/libraries` — create (admin/contributor)
+- `GET /api/libraries/:id/members` (admin)
+- `POST /api/libraries/:id/members` (admin)
+- `DELETE /api/libraries/:id/members/:memberId` (admin)
 
 Log:
 
@@ -267,9 +305,10 @@ Admin:
 
 Files:
 
-- `GET /api/files`
+- `GET /api/files` (accepts `?library=<id>` to scope to a library)
 - `GET /api/files/trash`
 - `GET /api/files/search?q=...`
+- `POST /api/files/library-transfer` — move/copy selected files to a library (`{ids, libraryId, mode}`)
 - `POST /api/files/upload`
 - `POST /api/files/upload-stream`
 - `POST /api/files/uploads`
@@ -339,7 +378,12 @@ Configured in `.env`, Docker environment, DB-backed settings, or operator passwo
 - `KEYCLOAK_ADMIN_PASSWORD`
 - `POSTGRES_PASSWORD`
 - `ANTHROPIC_API_KEY`
-- `ANTHROPIC_MODEL`
+- `ANTHROPIC_MODEL` (legacy fallback)
+- `ANTHROPIC_MODELS` (comma-sep enabled Claude models)
+- `OPENAI_API_KEY` (sensitive; OpenAI-compatible providers / self-hosted)
+- `OPENAI_BASE_URL` (e.g. `https://api.openai.com/v1` or a self-hosted Ollama/vLLM URL)
+- `OPENAI_MODELS` (comma-sep)
+- `AI_ACTIVE_MODEL` (global active model `provider:model`, or `off`)
 - `ADMIN_EMAILS`
 - `PORT`
 - `APP_URL`
@@ -722,11 +766,11 @@ Compliance:
 
 ## Immediate Next Good Steps
 
-1. Hard refresh browser and inspect latest file library UI.
-2. Enable UFW safely with SSH preserved.
-3. Add host-side security status writer for UFW/SSH connection pressure.
-4. Start the real libraries/rooms/sites model.
-5. Add grouped file-change notifications.
-6. Plan HTTPS cutover for `files.ptechllc.com`.
-7. Configure off-host backups.
-8. Decide storage target for production.
+1. Hard refresh browser and inspect the redesigned UI (Settings hub, ✦ AI picker, scoped search).
+2. **Owner-ACL backfill** for pre-existing documents before onboarding non-admin/client users (see "What changed" → bug fix).
+3. Delete the leftover test-duplicate in the "Winter" library; consider bumping `VERSION`.
+4. Optionally fold the admin System Settings (storage/encryption/integrations/compliance) into the Settings hub.
+5. Prove the OpenAI-compatible/self-hosted AI path against a real endpoint (Ollama/vLLM/OpenAI key).
+6. Enable UFW safely with SSH preserved; add host-side security status writer.
+7. Plan HTTPS cutover for `files.ptechllc.com`; configure off-host backups.
+8. Future: real libraries/rooms data model, Gemini provider, live compliance checks, grouped notifications.
