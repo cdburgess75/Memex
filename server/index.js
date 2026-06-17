@@ -93,4 +93,14 @@ app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html'
 
 const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
-app.listen(PORT, BIND, () => console.log(`Memex running on http://${BIND}:${PORT}`));
+app.listen(PORT, BIND, async () => {
+  console.log(`Memex running on http://${BIND}:${PORT}`);
+  // One-time, idempotent: ensure every existing document has an owner/admin ACL row
+  // (the historical grantOwnerAdmin bug left pre-existing docs without one).
+  try {
+    const granted = await require('./lib/documentAccess').backfillOwnerGrants();
+    console.log(`[startup] owner-ACL backfill: ${granted} grant(s) created`);
+  } catch (e) {
+    console.error('[startup] owner-ACL backfill failed:', e.message);
+  }
+});
