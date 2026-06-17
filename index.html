@@ -88,8 +88,9 @@ body {
 }
 .masthead-actions { display: flex; gap: 8px; align-items: center; }
 .masthead-search {
+  position: relative;
   flex: 1 1 auto;
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -1292,6 +1293,27 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ai-model-item:hover { background: var(--surface-2); }
 .ai-model-item.active { color: var(--accent); font-weight: 600; }
 .ai-model-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
+/* settings hub */
+.settings-modal { width: min(560px, 96vw); }
+.settings-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); margin: 14px 0 16px; }
+.settings-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 8px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.settings-tab:hover { color: var(--ink); }
+.settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.profile-row { display: flex; align-items: center; gap: 16px; }
+.profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font: 700 22px var(--ui); overflow: hidden; flex: 0 0 auto; }
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.user-chip-avatar.has-img { background: transparent; }
+.user-chip-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+/* search scope dropdown (Outlook-style) */
+.search-scope-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 0; border-right: 1px solid var(--rule); background: transparent; color: var(--ink-soft); font: 500 12.5px var(--ui); cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
+.search-scope-btn:hover { color: var(--ink); }
+.search-scope-btn .chev { font-size: 10px; color: var(--ink-faint); }
+.search-scope-menu { display: none; position: absolute; z-index: 31; top: calc(100% + 6px); left: 0; min-width: 250px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.search-scope-menu.open { display: grid; gap: 2px; }
+.search-scope-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 10px; border-radius: 7px; cursor: pointer; color: var(--ink); font: 500 13px var(--ui); }
+.search-scope-item:hover { background: var(--surface-2); }
+.search-scope-item.active { color: var(--accent); }
+.search-scope-hint { font-size: 11.5px; color: var(--ink-faint); font-weight: 400; }
 .library-menu-label { font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 6px 8px 4px; }
 .library-menu-item { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 7px; font: 500 13px var(--ui); cursor: pointer; }
 .library-menu-item:hover { background: var(--surface-2); }
@@ -2133,8 +2155,10 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <h1>Memex</h1>
   </div>
   <div class="masthead-search">
+    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Contents</span><span class="chev">⌄</span></button>
+    <div class="search-scope-menu" id="search-scope-menu"></div>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    <input id="global-search" type="search" placeholder="Search files…" oninput="globalSearch(this.value)" autocomplete="off" aria-label="Search files">
+    <input id="global-search" type="search" placeholder="Search files…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search files">
   </div>
   <div class="masthead-actions">
     <div class="file-upload-actions masthead-upload-wrap">
@@ -2147,7 +2171,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
       <div class="ai-model-menu" id="ai-model-menu"></div>
     </div>
-    <button class="icon-btn" onclick="openCollectionAsk()">Ask</button>
+    <button class="icon-btn" id="ask-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -2194,13 +2218,14 @@ html.dark .file-action-btn.danger { color: #E57373; }
 
 <!-- Account modal -->
 <div class="scrim" id="settings-scrim">
-  <div class="modal">
-    <h2>Account</h2>
+  <div class="modal settings-modal">
+    <h2>Settings</h2>
     <p class="sub" id="settings-user-info"></p>
-    <div id="settings-ai"></div>
-    <div class="btn-row" style="margin-top:24px">
-      <button class="run-btn" onclick="signOut()">Sign out</button>
+    <div class="settings-tabs" id="settings-tabs"></div>
+    <div id="settings-body"></div>
+    <div class="btn-row" style="margin-top:22px">
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
+      <button class="ghost-btn" onclick="signOut()">Sign out</button>
       <button id="erase-kb-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeAll()">Erase all</button>
     </div>
   </div>
@@ -2382,6 +2407,7 @@ async function _afterLogin() {
   currentUser = await apiGet('/auth/me');
   await loadLibraries();
   await loadAiModels();
+  renderSearchScope();
   renderUserChip();
   applyRoleUI();
   loadSecurityStatus();
@@ -3856,24 +3882,114 @@ function aiProvidersSettingsHtml(s) {
     </div>
     <button class="run-btn" style="margin-top:4px" onclick="saveAISettings()">Save AI providers</button>`;
 }
+let settingsTab = 'profile';
+let settingsSys = {};
+let settingsProfile = { display_name: '', avatar: '' };
+let settingsAvatarDraft = null; // pending data URL, '' to clear, or null = unchanged
+
 async function openSettings() {
   document.getElementById('settings-user-info').textContent =
     `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
-  document.getElementById('erase-kb-btn').style.display =
-    currentUser?.role === 'admin' ? '' : 'none';
+  document.getElementById('erase-kb-btn').style.display = currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
-  const aiEl = document.getElementById('settings-ai');
-  if (aiEl) {
-    if (currentUser?.role === 'admin') {
-      aiEl.innerHTML = '<p class="sub">Loading AI providers…</p>';
-      try { aiEl.innerHTML = aiProvidersSettingsHtml(await apiGet('/admin/settings')); }
-      catch (e) { aiEl.innerHTML = `<p class="sub" style="color:var(--accent)">Could not load: ${esc(e.message)}</p>`; }
-    } else {
-      aiEl.innerHTML = '';
-    }
-  }
+  settingsTab = 'profile';
+  settingsAvatarDraft = null;
+  renderSettingsTabs();
+  document.getElementById('settings-body').innerHTML = '<p class="sub">Loading…</p>';
+  try { settingsProfile = await apiGet('/auth/profile'); } catch { settingsProfile = { display_name: '', avatar: '' }; }
+  if (currentUser?.role === 'admin') { try { settingsSys = await apiGet('/admin/settings'); } catch { settingsSys = {}; } }
+  switchSettingsTab(settingsTab);
 }
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
+
+function settingsTabsList() {
+  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' }];
+  if (currentUser?.role === 'admin') tabs.push({ id: 'ai', label: 'AI' }, { id: 'system', label: 'System' });
+  return tabs;
+}
+function renderSettingsTabs() {
+  document.getElementById('settings-tabs').innerHTML = settingsTabsList()
+    .map(t => `<button class="settings-tab${t.id === settingsTab ? ' active' : ''}" onclick="switchSettingsTab('${t.id}')">${t.label}</button>`).join('');
+}
+function switchSettingsTab(tab) {
+  settingsTab = tab;
+  renderSettingsTabs();
+  const body = document.getElementById('settings-body');
+  if (tab === 'profile') body.innerHTML = profileSettingsHtml();
+  else if (tab === 'appearance') body.innerHTML = appearanceSettingsHtml();
+  else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
+  else if (tab === 'system') body.innerHTML = systemSettingsHtml();
+}
+function profileSettingsHtml() {
+  const src = settingsAvatarDraft !== null ? settingsAvatarDraft : (settingsProfile.avatar || '');
+  const initials = ((settingsProfile.display_name || currentUser?.email || '?').split(/[\s@.]+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2) || '?').toUpperCase();
+  return `<div class="profile-row">
+      <div class="profile-avatar">${src ? `<img src="${esc(src)}" alt="">` : esc(initials)}</div>
+      <div>
+        <input type="file" id="profile-avatar-input" accept="image/*" style="display:none" onchange="onAvatarPicked(event)">
+        <button class="ghost-btn" onclick="document.getElementById('profile-avatar-input').click()">Upload photo</button>
+        ${src ? `<button class="ghost-btn" onclick="clearAvatarDraft()">Remove</button>` : ''}
+        <div class="settings-notice" style="margin-top:6px">PNG or JPG, under ~256 KB.</div>
+      </div>
+    </div>
+    <div class="settings-grid" style="margin-top:14px">
+      <label>Full name</label>
+      <input type="text" id="profile-name" value="${esc(settingsProfile.display_name || '')}" placeholder="${esc(currentUser?.name || 'Your name')}">
+      <label>Email</label>
+      <input type="text" value="${esc(currentUser?.email || '')}" disabled>
+    </div>
+    <button class="run-btn" style="margin-top:6px" onclick="saveProfile()">Save profile</button>`;
+}
+function onAvatarPicked(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  if (file.size > 256 * 1024) { toast('Image too large — keep it under 256 KB'); return; }
+  const reader = new FileReader();
+  reader.onload = () => { settingsAvatarDraft = reader.result; switchSettingsTab('profile'); };
+  reader.readAsDataURL(file);
+}
+function clearAvatarDraft() { settingsAvatarDraft = ''; switchSettingsTab('profile'); }
+async function saveProfile() {
+  const body = { display_name: document.getElementById('profile-name').value.trim() };
+  if (settingsAvatarDraft !== null) body.avatar = settingsAvatarDraft;
+  try {
+    settingsProfile = await apiPut('/auth/profile', body);
+    settingsAvatarDraft = null;
+    currentUser.name = settingsProfile.display_name || currentUser.name;
+    currentUser.avatar = settingsProfile.avatar || null;
+    renderUserChip();
+    switchSettingsTab('profile');
+    toast('Profile saved');
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+function appearanceSettingsHtml() {
+  const dark = document.documentElement.classList.contains('dark');
+  return `<div class="settings-sub">Theme</div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="${dark ? 'ghost-btn' : 'run-btn'}" onclick="setTheme('light');switchSettingsTab('appearance')">Light</button>
+      <button class="${dark ? 'run-btn' : 'ghost-btn'}" onclick="setTheme('dark');switchSettingsTab('appearance')">Dark</button>
+    </div>
+    <p class="settings-notice" style="margin-top:10px">Theme is saved on this device.</p>`;
+}
+function systemSettingsHtml() {
+  return `<p class="settings-notice">Storage, encryption, integrations, compliance, and team management live in the Admin dashboard.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="ghost-btn" onclick="closeSettings();setTab('admin')">Open Admin dashboard →</button>
+      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
+    </div>`;
+}
+function exportSettingsXml() {
+  const s = settingsSys || {};
+  const x = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rows = Object.keys(s).map(k => `  <setting key="${x(k)}">${x(s[k])}</setting>`).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<memexSettings exportedAt="${new Date().toISOString()}">\n${rows}\n</memexSettings>\n`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+  a.download = 'memex-settings.xml';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Settings exported (secrets are masked)');
+}
 
 async function wipeAll() {
   if (currentUser?.role !== 'admin') { toast('Only admins can erase the knowledge base'); return; }
@@ -4162,17 +4278,96 @@ function renderUserChip() {
   const email = currentUser.email || '';
   const av = document.getElementById('user-chip-avatar');
   const em = document.getElementById('user-chip-email');
-  if (av) av.textContent = (currentUser.name || email).split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
-  if (em) em.textContent = email;
+  if (av) {
+    if (currentUser.avatar) {
+      av.innerHTML = `<img src="${esc(currentUser.avatar)}" alt="">`;
+      av.classList.add('has-img');
+    } else {
+      av.classList.remove('has-img');
+      av.textContent = (currentUser.name || email).split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
+    }
+  }
+  if (em) em.textContent = currentUser.name && currentUser.name !== email ? currentUser.name : email;
 }
 
 // Masthead global search → ensure the Files view and apply the query through the
 // existing document-library filter path.
-function globalSearch(value) {
+// ---- Outlook-style scoped search ----
+let searchScope = localStorage.getItem('memex_search_scope') || 'contents';
+let globalSearchTimer = null;
+function searchScopes() {
+  // Data-driven — add scopes here later. "ask" only when AI is on.
+  const list = [
+    { id: 'contents', label: 'Contents', hint: 'Names + document text' },
+    { id: 'names', label: 'File names', hint: 'Filename match in this library' },
+  ];
+  if (!aiOff()) list.push({ id: 'ask', label: 'Ask AI', hint: 'Answer from your files' });
+  return list;
+}
+function currentScope() {
+  return searchScopes().find(s => s.id === searchScope) || searchScopes()[0];
+}
+function renderSearchScope() {
+  const scopes = searchScopes();
+  if (!scopes.some(s => s.id === searchScope)) searchScope = 'contents'; // e.g. AI turned off while on "ask"
+  const lbl = document.getElementById('search-scope-label');
+  if (lbl) lbl.textContent = currentScope().label;
+  const input = document.getElementById('global-search');
+  if (input) input.placeholder = searchScope === 'ask' ? 'Ask AI about your files…' : 'Search files…';
+}
+function toggleSearchScopeMenu(event) {
+  event?.stopPropagation();
+  const menu = document.getElementById('search-scope-menu');
+  if (!menu) return;
+  if (!menu.classList.contains('open')) {
+    menu.innerHTML = searchScopes().map(s =>
+      `<button class="search-scope-item${s.id === searchScope ? ' active' : ''}" onclick="pickSearchScope('${s.id}')"><span>${esc(s.label)}</span><span class="search-scope-hint">${esc(s.hint)}</span></button>`
+    ).join('');
+  }
+  menu.classList.toggle('open');
+}
+function closeSearchScopeMenu() { document.getElementById('search-scope-menu')?.classList.remove('open'); }
+function pickSearchScope(id) {
+  searchScope = id;
+  localStorage.setItem('memex_search_scope', id);
+  closeSearchScopeMenu();
+  renderSearchScope();
+  const input = document.getElementById('global-search');
+  if (input && input.value.trim()) runSearch();
+  else if (input) input.focus();
+}
+function globalSearch() {
+  clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(runSearch, 220);
+}
+async function runSearch() {
+  const q = (document.getElementById('global-search')?.value || '').trim();
+  if (searchScope === 'ask') { if (q) { openCollectionAsk(); const box = document.getElementById('file-collection-question'); if (box) box.value = q; } return; }
   if (!document.getElementById('file-library-view')) setFileView('active');
+  if (searchScope === 'contents' && q) {
+    const el = document.getElementById('file-list');
+    if (el) el.innerHTML = emptyState('Searching…', 'Looking through file names and document text.');
+    try {
+      const results = await apiGet('/files/search?q=' + encodeURIComponent(q));
+      renderContentSearchResults(Array.isArray(results) ? results : [], q);
+    } catch (e) {
+      if (el) el.innerHTML = emptyState('Search failed', e.message || 'Try again.');
+    }
+    return;
+  }
+  // names (and empty query) → client-side filter via the library list
   const cmd = document.getElementById('file-home-search');
-  if (cmd) cmd.value = value;
+  if (cmd) cmd.value = q;
   scheduleFileSearch();
+}
+function renderContentSearchResults(rows, q) {
+  const el = document.getElementById('file-list');
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents.`); return; }
+  lastRenderedFileIds = rows.map(f => String(f.id));
+  const body = rows.map(fileLibraryRow).join('');
+  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"></th><th>Name · matched on content + name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  updateFileLibraryChrome();
 }
 
 function currentLibraryName() {
@@ -4196,7 +4391,9 @@ async function loadAiModels() {
   }
   renderAiModelLabel();
 }
+function aiOff() { return aiActive === 'off' || !aiModels.length; }
 function aiModelShortLabel(value) {
+  if (value === 'off') return 'AI off';
   if (!value) return 'AI';
   const id = value.includes(':') ? value.slice(value.indexOf(':') + 1) : value;
   return id.replace(/^claude-/, '').replace(/-/g, ' ');
@@ -4204,13 +4401,18 @@ function aiModelShortLabel(value) {
 function renderAiModelLabel() {
   const el = document.getElementById('ai-model-label');
   if (el) el.textContent = aiModelShortLabel(aiActive);
+  // AI-off hides the Ask affordance; the search "Ask AI" scope is gated separately.
+  const ask = document.getElementById('ask-btn');
+  if (ask) ask.style.display = aiOff() ? 'none' : '';
 }
 function aiModelMenuInnerHtml() {
+  let html = `<button class="ai-model-item${aiActive === 'off' ? ' active' : ''}" onclick="switchAiModel('off')">⦿ AI off</button>`;
   if (!aiModels.length) {
-    return `<div class="ai-model-empty">No models configured.${currentUser?.role === 'admin' ? ' Add a provider in Account settings.' : ' Ask an admin to add a provider.'}</div>`;
+    html += `<div class="ai-model-empty">No models configured.${currentUser?.role === 'admin' ? ' Add a provider in Settings → AI.' : ' Ask an admin to add a provider.'}</div>`;
+    return html;
   }
+  html += `<div class="library-menu-sep"></div>`;
   const groups = { anthropic: 'Claude (Anthropic)', openai: 'OpenAI-compatible' };
-  let html = '';
   for (const provider of Object.keys(groups)) {
     const items = aiModels.filter(m => m.provider === provider);
     if (!items.length) continue;
@@ -4236,7 +4438,8 @@ async function switchAiModel(value) {
     await apiPut('/ai/active', { model: value });
     aiActive = value;
     renderAiModelLabel();
-    toast(`AI model: ${aiModelShortLabel(value)}`);
+    renderSearchScope();
+    toast(value === 'off' ? 'AI turned off' : `AI model: ${aiModelShortLabel(value)}`);
   } catch (e) {
     toast('Could not switch model: ' + e.message);
   }
@@ -4446,6 +4649,7 @@ document.addEventListener('click', () => {
   closeAppMenu();
   closeLibraryMenu();
   closeAiModelMenu();
+  closeSearchScopeMenu();
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {

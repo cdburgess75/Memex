@@ -41,6 +41,7 @@ async function listModels() {
 
 async function activeModel() {
   const raw = await settings.getOrEnv('ai_active_model');
+  if (raw === 'off') return { provider: 'off', model: 'off' };
   if (raw && raw.includes(':')) {
     const idx = raw.indexOf(':');
     return { provider: raw.slice(0, idx), model: raw.slice(idx + 1) };
@@ -50,9 +51,11 @@ async function activeModel() {
 }
 
 async function setActiveModel(value) {
-  const models = await listModels();
-  if (!models.some(m => `${m.provider}:${m.id}` === value)) {
-    throw new Error('Model not available');
+  if (value !== 'off') {
+    const models = await listModels();
+    if (!models.some(m => `${m.provider}:${m.id}` === value)) {
+      throw new Error('Model not available');
+    }
   }
   await settings.set('ai_active_model', value);
   return value;
@@ -63,6 +66,10 @@ async function setActiveModel(value) {
 async function run({ system, prompt, maxTokens = 1400, stream = false, onDelta } = {}) {
   const { provider, model } = await activeModel();
   const tag = `${provider}:${model}`;
+
+  if (provider === 'off') {
+    throw new Error('AI is turned off. Pick a model from the ✦ selector in the top bar to enable AI.');
+  }
 
   if (provider === 'openai') {
     const client = new OpenAI({ apiKey: (await openaiKey()) || 'not-required', baseURL: await openaiBaseUrl() });
