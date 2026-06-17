@@ -6,6 +6,7 @@ const requireRole = require('../middleware/requireRole');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const compliance = require('../lib/compliance');
+const documentAccess = require('../lib/documentAccess');
 
 // GET /api/admin/stats
 router.get('/stats', auth, requireRole('admin'), async (req, res) => {
@@ -158,6 +159,16 @@ router.put('/compliance', auth, requireRole('admin'), async (req, res) => {
     }
     await settings.refresh();
     res.json({ ok: true, frameworks: await compliance.profileStatus() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/admin/backfill-owner-acl — one-time idempotent owner-grant backfill
+router.post('/backfill-owner-acl', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const granted = await documentAccess.backfillOwnerGrants();
+    res.json({ ok: true, granted });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
