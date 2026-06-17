@@ -3,9 +3,10 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const profiles = require('../lib/profiles');
 
-const MAX_AVATAR_CHARS = 350_000; // ~256 KB image as a base64 data URL
+const MAX_AVATAR_CHARS = 3_000_000; // generous guard (~2.2 MB); the client downscales before upload
 
-// GET /api/auth/me — Keycloak identity overlaid with the local profile (name + avatar)
+// GET /api/auth/me — Keycloak identity overlaid with the local profile (name + avatar).
+// Avatar falls back to the IdP picture (365/Google) when the user hasn't set their own.
 router.get('/me', auth, async (req, res) => {
   const keycloakName = req.user.user_metadata?.full_name ?? req.user.email;
   let profile = null;
@@ -15,7 +16,7 @@ router.get('/me', auth, async (req, res) => {
     email: req.user.email,
     role: req.user.role,
     name: (profile?.display_name || keycloakName),
-    avatar: profile?.avatar || null,
+    avatar: profile?.avatar || req.user.idp_avatar || null,
   });
 });
 
@@ -34,7 +35,7 @@ router.put('/profile', auth, async (req, res) => {
   try {
     const display_name = typeof req.body?.display_name === 'string' ? req.body.display_name.trim().slice(0, 200) : undefined;
     let avatar = typeof req.body?.avatar === 'string' ? req.body.avatar : undefined;
-    if (avatar && avatar.length > MAX_AVATAR_CHARS) return res.status(413).json({ error: 'Image too large — keep it under ~256 KB' });
+    if (avatar && avatar.length > MAX_AVATAR_CHARS) return res.status(413).json({ error: 'Image too large even after resizing — try a different photo' });
     if (avatar && !/^data:image\//.test(avatar) && avatar !== '') return res.status(400).json({ error: 'avatar must be an image data URL' });
     const saved = await profiles.setProfile(req.user, { display_name, avatar });
     res.json({ display_name: saved?.display_name || '', avatar: saved?.avatar || '' });

@@ -3916,7 +3916,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'system') body.innerHTML = systemSettingsHtml();
 }
 function profileSettingsHtml() {
-  const src = settingsAvatarDraft !== null ? settingsAvatarDraft : (settingsProfile.avatar || '');
+  const src = settingsAvatarDraft !== null ? settingsAvatarDraft : (settingsProfile.avatar || currentUser?.avatar || '');
   const initials = ((settingsProfile.display_name || currentUser?.email || '?').split(/[\s@.]+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2) || '?').toUpperCase();
   return `<div class="profile-row">
       <div class="profile-avatar">${src ? `<img src="${esc(src)}" alt="">` : esc(initials)}</div>
@@ -3924,7 +3924,7 @@ function profileSettingsHtml() {
         <input type="file" id="profile-avatar-input" accept="image/*" style="display:none" onchange="onAvatarPicked(event)">
         <button class="ghost-btn" onclick="document.getElementById('profile-avatar-input').click()">Upload photo</button>
         ${src ? `<button class="ghost-btn" onclick="clearAvatarDraft()">Remove</button>` : ''}
-        <div class="settings-notice" style="margin-top:6px">PNG or JPG, under ~256 KB.</div>
+        <div class="settings-notice" style="margin-top:6px">Any photo works — we'll resize it for you.</div>
       </div>
     </div>
     <div class="settings-grid" style="margin-top:14px">
@@ -3935,12 +3935,29 @@ function profileSettingsHtml() {
     </div>
     <button class="run-btn" style="margin-top:6px" onclick="saveProfile()">Save profile</button>`;
 }
+// Accept any image, any size: downscale to a small square JPEG client-side so the
+// upload is always tiny (no size limit for the user to worry about).
 function onAvatarPicked(ev) {
   const file = ev.target.files?.[0];
   if (!file) return;
-  if (file.size > 256 * 1024) { toast('Image too large — keep it under 256 KB'); return; }
   const reader = new FileReader();
-  reader.onload = () => { settingsAvatarDraft = reader.result; switchSettingsTab('profile'); };
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const SIZE = 320;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = SIZE;
+      const ctx = canvas.getContext('2d');
+      const scale = Math.max(SIZE / img.width, SIZE / img.height); // cover-crop, centered
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+      settingsAvatarDraft = canvas.toDataURL('image/jpeg', 0.85);
+      switchSettingsTab('profile');
+    };
+    img.onerror = () => toast("Couldn't read that image — try a JPG or PNG");
+    img.src = reader.result;
+  };
+  reader.onerror = () => toast("Couldn't read that file");
   reader.readAsDataURL(file);
 }
 function clearAvatarDraft() { settingsAvatarDraft = ''; switchSettingsTab('profile'); }

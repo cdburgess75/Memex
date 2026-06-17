@@ -58,6 +58,7 @@ module.exports = async function auth(req, res, next) {
     email: userEmail,
     role: roleRow.role,
     user_metadata: { full_name: payload.name },
+    idp_avatar: payload.picture || null, // 365/Google profile picture, when the IdP provides it
   };
 
   next();
