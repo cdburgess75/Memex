@@ -3413,12 +3413,11 @@ async function renderAdmin() {
   const panel = document.getElementById('panel');
   setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`, 'admin');
   try {
-    const [stats, usage, users, files, sysSettings, compliance] = await Promise.all([
+    const [stats, usage, users, files, compliance] = await Promise.all([
       apiGet('/admin/stats'),
       apiGet('/admin/usage').catch(() => null),
       apiGet('/admin/users').catch(() => []),
       apiGet('/files').catch(() => []),
-      apiGet('/admin/settings').catch(() => ({})),
       apiGet('/admin/compliance').catch(() => null)
     ]);
     const pageCount = stats.pageCount ?? 0;
@@ -3557,107 +3556,6 @@ async function renderAdmin() {
         <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th></th></tr></thead>
         <tbody>${fileRows}</tbody>
       </table>
-    </div>`;
-
-    const s = sysSettings;
-    const provider = s.storage_provider || 'local';
-    const settingsHtml = `<div class="usage-section">
-      <h3>System Settings</h3>
-
-      <div class="settings-sub">File Storage</div>
-      <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
-      <div class="settings-grid">
-        <label>Provider</label>
-        <select id="cfg-storage-provider" onchange="updateStorageFields()">
-          <option value="local" ${provider==='local'?'selected':''}>Local filesystem</option>
-          <option value="s3" ${provider==='s3'?'selected':''}>S3-compatible (AWS, R2, B2, MinIO…)</option>
-          <option value="supabase" ${provider==='supabase'?'selected':''}>Supabase Storage (legacy)</option>
-        </select>
-      </div>
-
-      <div id="cfg-local-fields" style="display:${provider==='local'?'':'none'}">
-        <div class="settings-grid">
-          <label>Local path</label>
-          <input type="text" id="cfg-local-path" value="${esc(s.storage_local_path||'')}" placeholder="/data/memex/documents">
-        </div>
-      </div>
-
-      <div id="cfg-s3-fields" style="display:${provider==='s3'?'':'none'}">
-        <div class="settings-grid">
-          <label>Bucket</label>
-          <input type="text" id="cfg-s3-bucket" value="${esc(s.storage_s3_bucket||'')}">
-          <label>Region</label>
-          <input type="text" id="cfg-s3-region" value="${esc(s.storage_s3_region||'us-east-1')}">
-          <label>Endpoint URL</label>
-          <input type="text" id="cfg-s3-endpoint" value="${esc(s.storage_s3_endpoint||'')}" placeholder="Leave blank for AWS; set for R2, B2, MinIO…">
-          <label>Force path style</label>
-          <select id="cfg-s3-path-style">
-            <option value="false" ${s.storage_s3_force_path_style!=='true'?'selected':''}>No (AWS, R2, B2)</option>
-            <option value="true" ${s.storage_s3_force_path_style==='true'?'selected':''}>Yes (MinIO, self-hosted)</option>
-          </select>
-          <label>Access Key ID</label>
-          <input type="password" id="cfg-s3-access-key" value="${esc(s.storage_s3_access_key_id||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
-          <label>Secret Access Key</label>
-          <input type="password" id="cfg-s3-secret" value="${esc(s.storage_s3_secret_access_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
-        </div>
-      </div>
-
-      <div id="cfg-supabase-fields" style="display:${provider==='supabase'?'':'none'}">
-        <div class="settings-grid">
-          <label>Supabase URL</label>
-          <input type="text" id="cfg-supa-url" value="${esc(s.supabase_url||'')}" placeholder="https://your-project.supabase.co">
-          <label>Service Role Key</label>
-          <input type="password" id="cfg-supa-key" value="${esc(s.supabase_service_role_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
-        </div>
-      </div>
-
-      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveStorageSettings()">Save storage settings</button>
-
-      <div class="settings-sub" style="margin-top:20px">At-rest Encryption</div>
-      <p class="settings-notice">Applies to <strong>local filesystem</strong> storage — files are encrypted with AES-256-GCM before writing to disk. For S3, enable server-side encryption (SSE) in your bucket settings instead. Existing unencrypted files remain readable; new uploads are encrypted as soon as a key is saved. <strong>If you lose the key, encrypted files cannot be recovered.</strong></p>
-      <div class="settings-grid">
-        <label>Encryption key</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="password" id="cfg-enc-key" value="${esc(s.storage_encryption_key||'')}" autocomplete="new-password" placeholder="64-char hex key or passphrase — blank = disabled" style="flex:1">
-          <button class="ghost-btn" style="white-space:nowrap;padding:5px 12px" onclick="generateEncKey()">Generate</button>
-        </div>
-      </div>
-      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveEncryptionSettings()">Save encryption settings</button>
-
-      <div class="settings-sub" style="margin-top:20px">Integrations</div>
-      <div class="settings-grid">
-        <label>App URL</label>
-        <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
-        <label>Google Drive Folder ID</label>
-        <input type="text" id="cfg-google-folder" value="${esc(s.google_drive_folder_id||'')}" placeholder="optional — default Drive root">
-        <label>Google Service Account Key</label>
-        <textarea id="cfg-google-key" placeholder='{"type":"service_account",…} — leave blank to keep current'>${esc(s.google_service_account_key||'')}</textarea>
-      </div>
-      <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
-
-      <div class="settings-sub" style="margin-top:20px">Network &amp; Security</div>
-      <p class="settings-notice">Bind address and outbound proxy require a server restart to take effect. All other settings below apply within 30 seconds.</p>
-      <div class="settings-grid">
-        <label>Bind address <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
-        <input type="text" id="cfg-bind-addr" value="${esc(s.bind_address||'')}" placeholder="0.0.0.0 — all interfaces, or 127.0.0.1 for localhost only">
-        <label>Reverse proxy trust</label>
-        <select id="cfg-trust-proxy">
-          <option value="" ${!s.trust_proxy?'selected':''}>Disabled — direct connection</option>
-          <option value="1" ${s.trust_proxy==='1'?'selected':''}>1 hop — nginx / Caddy / Traefik</option>
-          <option value="loopback" ${s.trust_proxy==='loopback'?'selected':''}>Loopback only</option>
-          <option value="linklocal" ${s.trust_proxy==='linklocal'?'selected':''}>Link-local</option>
-          <option value="true" ${s.trust_proxy==='true'?'selected':''}>Trust all proxies (not recommended)</option>
-        </select>
-        <label>Allowed CORS origins</label>
-        <input type="text" id="cfg-cors-origins" value="${esc(s.cors_origins||'')}" placeholder="* (all) or comma-separated: https://app.co, https://admin.co">
-        <label>Outbound HTTP proxy <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
-        <input type="url" id="cfg-http-proxy" value="${esc(s.http_proxy||'')}" placeholder="http://proxy.company.com:8080 — for AI URL fetching through a corporate proxy">
-        <label>Max upload size (MB)</label>
-        <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'50')}" min="1" max="2000" step="1">
-        <label>Trash retention (days)</label>
-        <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
-      </div>
-      <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
     </div>`;
 
     setWorkspacePanel(`<div class="panel">
@@ -3972,11 +3870,106 @@ function appearanceSettingsHtml() {
     <p class="settings-notice" style="margin-top:10px">Theme is saved on this device.</p>`;
 }
 function systemSettingsHtml() {
-  return `<p class="settings-notice">Storage, encryption, integrations, compliance, and team management live in the Admin dashboard.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button class="ghost-btn" onclick="closeSettings();setTab('admin')">Open Admin dashboard →</button>
-      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
-    </div>`;
+  const s = settingsSys || {};
+  const provider = s.storage_provider || 'local';
+  return `<div class="settings-sub">File Storage</div>
+      <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
+      <div class="settings-grid">
+        <label>Provider</label>
+        <select id="cfg-storage-provider" onchange="updateStorageFields()">
+          <option value="local" ${provider==='local'?'selected':''}>Local filesystem</option>
+          <option value="s3" ${provider==='s3'?'selected':''}>S3-compatible (AWS, R2, B2, MinIO…)</option>
+          <option value="supabase" ${provider==='supabase'?'selected':''}>Supabase Storage (legacy)</option>
+        </select>
+      </div>
+
+      <div id="cfg-local-fields" style="display:${provider==='local'?'':'none'}">
+        <div class="settings-grid">
+          <label>Local path</label>
+          <input type="text" id="cfg-local-path" value="${esc(s.storage_local_path||'')}" placeholder="/data/memex/documents">
+        </div>
+      </div>
+
+      <div id="cfg-s3-fields" style="display:${provider==='s3'?'':'none'}">
+        <div class="settings-grid">
+          <label>Bucket</label>
+          <input type="text" id="cfg-s3-bucket" value="${esc(s.storage_s3_bucket||'')}">
+          <label>Region</label>
+          <input type="text" id="cfg-s3-region" value="${esc(s.storage_s3_region||'us-east-1')}">
+          <label>Endpoint URL</label>
+          <input type="text" id="cfg-s3-endpoint" value="${esc(s.storage_s3_endpoint||'')}" placeholder="Leave blank for AWS; set for R2, B2, MinIO…">
+          <label>Force path style</label>
+          <select id="cfg-s3-path-style">
+            <option value="false" ${s.storage_s3_force_path_style!=='true'?'selected':''}>No (AWS, R2, B2)</option>
+            <option value="true" ${s.storage_s3_force_path_style==='true'?'selected':''}>Yes (MinIO, self-hosted)</option>
+          </select>
+          <label>Access Key ID</label>
+          <input type="password" id="cfg-s3-access-key" value="${esc(s.storage_s3_access_key_id||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+          <label>Secret Access Key</label>
+          <input type="password" id="cfg-s3-secret" value="${esc(s.storage_s3_secret_access_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+
+      <div id="cfg-supabase-fields" style="display:${provider==='supabase'?'':'none'}">
+        <div class="settings-grid">
+          <label>Supabase URL</label>
+          <input type="text" id="cfg-supa-url" value="${esc(s.supabase_url||'')}" placeholder="https://your-project.supabase.co">
+          <label>Service Role Key</label>
+          <input type="password" id="cfg-supa-key" value="${esc(s.supabase_service_role_key||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveStorageSettings()">Save storage settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">At-rest Encryption</div>
+      <p class="settings-notice">Applies to <strong>local filesystem</strong> storage — files are encrypted with AES-256-GCM before writing to disk. For S3, enable server-side encryption (SSE) in your bucket settings instead. Existing unencrypted files remain readable; new uploads are encrypted as soon as a key is saved. <strong>If you lose the key, encrypted files cannot be recovered.</strong></p>
+      <div class="settings-grid">
+        <label>Encryption key</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" id="cfg-enc-key" value="${esc(s.storage_encryption_key||'')}" autocomplete="new-password" placeholder="64-char hex key or passphrase — blank = disabled" style="flex:1">
+          <button class="ghost-btn" style="white-space:nowrap;padding:5px 12px" onclick="generateEncKey()">Generate</button>
+        </div>
+      </div>
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveEncryptionSettings()">Save encryption settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Integrations</div>
+      <div class="settings-grid">
+        <label>App URL</label>
+        <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
+        <label>Google Drive Folder ID</label>
+        <input type="text" id="cfg-google-folder" value="${esc(s.google_drive_folder_id||'')}" placeholder="optional — default Drive root">
+        <label>Google Service Account Key</label>
+        <textarea id="cfg-google-key" placeholder='{"type":"service_account",…} — leave blank to keep current'>${esc(s.google_service_account_key||'')}</textarea>
+      </div>
+      <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Network &amp; Security</div>
+      <p class="settings-notice">Bind address and outbound proxy require a server restart to take effect. All other settings below apply within 30 seconds.</p>
+      <div class="settings-grid">
+        <label>Bind address <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
+        <input type="text" id="cfg-bind-addr" value="${esc(s.bind_address||'')}" placeholder="0.0.0.0 — all interfaces, or 127.0.0.1 for localhost only">
+        <label>Reverse proxy trust</label>
+        <select id="cfg-trust-proxy">
+          <option value="" ${!s.trust_proxy?'selected':''}>Disabled — direct connection</option>
+          <option value="1" ${s.trust_proxy==='1'?'selected':''}>1 hop — nginx / Caddy / Traefik</option>
+          <option value="loopback" ${s.trust_proxy==='loopback'?'selected':''}>Loopback only</option>
+          <option value="linklocal" ${s.trust_proxy==='linklocal'?'selected':''}>Link-local</option>
+          <option value="true" ${s.trust_proxy==='true'?'selected':''}>Trust all proxies (not recommended)</option>
+        </select>
+        <label>Allowed CORS origins</label>
+        <input type="text" id="cfg-cors-origins" value="${esc(s.cors_origins||'')}" placeholder="* (all) or comma-separated: https://app.co, https://admin.co">
+        <label>Outbound HTTP proxy <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
+        <input type="url" id="cfg-http-proxy" value="${esc(s.http_proxy||'')}" placeholder="http://proxy.company.com:8080 — for AI URL fetching through a corporate proxy">
+        <label>Max upload size (MB)</label>
+        <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'50')}" min="1" max="2000" step="1">
+        <label>Trash retention (days)</label>
+        <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
+      </div>
+      <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Backup</div>
+      <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
+      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};
