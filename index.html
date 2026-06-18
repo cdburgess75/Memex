@@ -2213,7 +2213,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
       <div class="ai-model-menu" id="ai-model-menu"></div>
     </div>
-    <button class="icon-btn" id="ask-btn" onclick="openCollectionAsk()">Ask</button>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -4499,16 +4498,31 @@ function renderUserChip() {
 // Masthead global search → ensure the Files view and apply the query through the
 // existing document-library filter path.
 // ---- Outlook-style scoped search ----
-let searchScope = localStorage.getItem('memex_search_scope') || 'contents';
+let searchScope = localStorage.getItem('memex_search_scope_v2') || 'auto';
 let globalSearchTimer = null;
 function searchScopes() {
-  // Data-driven — add scopes here later. "ask" only when AI is on.
+  // Data-driven. "Auto" picks search-vs-ask from the query; "ask" only when AI is on.
   const list = [
+    { id: 'auto', label: 'Auto', hint: aiOff() ? 'Smart search' : 'Search or ask — detected' },
     { id: 'contents', label: 'Contents', hint: 'Names + document text' },
     { id: 'names', label: 'File names', hint: 'Filename match in this library' },
   ];
   if (!aiOff()) list.push({ id: 'ask', label: 'Ask AI', hint: 'Answer from your files' });
   return list;
+}
+// Auto mode: a natural-language question routes to AI; otherwise to content search.
+function looksLikeQuestion(q) {
+  const s = q.trim().toLowerCase();
+  if (s.endsWith('?')) return true;
+  // whole-word question/auxiliary openers
+  if (/^(what|whats|what's|how|why|who|whom|when|where|which|can|could|does|do|did|is|are|was|were|should|would|will|tell|list|give|compare|find me|show me)\b/.test(s)) return true;
+  // verb stems that inflect (summarize/summary, describe/describing, explain…)
+  if (/^(summar|describ|explain)/.test(s)) return true;
+  return s.split(/\s+/).filter(Boolean).length >= 6;
+}
+function resolveScope(q) {
+  if (searchScope !== 'auto') return searchScope;
+  return (!aiOff() && looksLikeQuestion(q)) ? 'ask' : 'contents';
 }
 function currentScope() {
   return searchScopes().find(s => s.id === searchScope) || searchScopes()[0];
@@ -4519,7 +4533,9 @@ function renderSearchScope() {
   const lbl = document.getElementById('search-scope-label');
   if (lbl) lbl.textContent = currentScope().label;
   const input = document.getElementById('global-search');
-  if (input) input.placeholder = searchScope === 'ask' ? 'Ask AI about your files…' : 'Search files…';
+  if (input) input.placeholder = searchScope === 'ask' ? 'Ask AI about your files…'
+    : searchScope === 'auto' ? (aiOff() ? 'Search files…' : 'Search or ask anything…')
+    : 'Search files…';
 }
 function toggleSearchScopeMenu(event) {
   event?.stopPropagation();
@@ -4535,7 +4551,7 @@ function toggleSearchScopeMenu(event) {
 function closeSearchScopeMenu() { document.getElementById('search-scope-menu')?.classList.remove('open'); }
 function pickSearchScope(id) {
   searchScope = id;
-  localStorage.setItem('memex_search_scope', id);
+  localStorage.setItem('memex_search_scope_v2', id);
   closeSearchScopeMenu();
   renderSearchScope();
   const input = document.getElementById('global-search');
@@ -4544,13 +4560,20 @@ function pickSearchScope(id) {
 }
 function globalSearch() {
   clearTimeout(globalSearchTimer);
-  globalSearchTimer = setTimeout(runSearch, 220);
+  globalSearchTimer = setTimeout(() => runSearch({ live: true }), 220);
 }
-async function runSearch() {
+function runAsk(q) {
+  openCollectionAsk();
+  const box = document.getElementById('file-collection-question');
+  if (box) { box.value = q; submitCollectionAsk(false); }
+}
+async function runSearch(opts = {}) {
   const q = (document.getElementById('global-search')?.value || '').trim();
-  if (searchScope === 'ask') { if (q) { openCollectionAsk(); const box = document.getElementById('file-collection-question'); if (box) box.value = q; } return; }
+  const scope = resolveScope(q);
+  // AI answers only fire on Enter (not while typing), and only with a query.
+  if (scope === 'ask') { if (!opts.live && q) runAsk(q); return; }
   if (!document.getElementById('file-library-view')) setFileView('active');
-  if (searchScope === 'contents' && q) {
+  if (scope === 'contents' && q) {
     const el = document.getElementById('file-list');
     if (el) el.innerHTML = emptyState('Searching…', 'Looking through file names and document text.');
     try {
@@ -4607,9 +4630,8 @@ function aiModelShortLabel(value) {
 function renderAiModelLabel() {
   const el = document.getElementById('ai-model-label');
   if (el) el.textContent = aiModelShortLabel(aiActive);
-  // AI-off hides the Ask affordance; the search "Ask AI" scope is gated separately.
-  const ask = document.getElementById('ask-btn');
-  if (ask) ask.style.display = aiOff() ? 'none' : '';
+  // AI on/off changes the available search scopes (Ask AI, and Auto's routing).
+  renderSearchScope();
 }
 function aiModelMenuInnerHtml() {
   let html = `<button class="ai-model-item${aiActive === 'off' ? ' active' : ''}" onclick="switchAiModel('off')">⦿ AI off</button>`;
