@@ -55,12 +55,15 @@ services:
       APP_URL: ${APP_URL:-}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       STORAGE_LOCAL_PATH: /data/documents
+      # Backup dir (read-only mount below) so the compliance backup-freshness probe can read it
+      MEMEX_BACKUP_DIR: ${MEMEX_BACKUP_DIR:-/srv/memex-backups}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_API_MAX: ${RATE_LIMIT_API_MAX:-300}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
     volumes:
       - /srv/memex-documents:/data/documents
+      - /srv/memex-backups:/srv/memex-backups:ro
     ports:
       - "${PORT:-3000}:3000"
     depends_on:
