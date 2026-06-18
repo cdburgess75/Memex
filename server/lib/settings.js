@@ -37,6 +37,11 @@ const ENV_MAP = {
   compliance_pci_dss_enabled:     'COMPLIANCE_PCI_DSS_ENABLED',
   compliance_iso27001_enabled:    'COMPLIANCE_ISO27001_ENABLED',
   compliance_cmmc_enabled:        'COMPLIANCE_CMMC_ENABLED',
+  backup_enabled:                 'BACKUP_ENABLED',
+  backup_interval_hours:          'BACKUP_INTERVAL_HOURS',
+  backup_retention:               'BACKUP_RETENTION',
+  backup_destinations:            'BACKUP_DESTINATIONS',
+  backup_download_secret:         'BACKUP_DOWNLOAD_SECRET',
 };
 
 const cache = new Map();

@@ -1236,6 +1236,7 @@ html.office .provider-btn:hover {
 .cmp-att-btn { border: 1px solid var(--rule); background: transparent; color: var(--accent); border-radius: 6px; padding: 2px 9px; font: 600 11px var(--ui); cursor: pointer; }
 .cmp-att-btn:hover { background: var(--accent-wash); }
 .cmp-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.cmp-toggle-inline { display: inline-flex; align-items: center; gap: 6px; font: 600 13px var(--ui); }
 .cmp-probe-meta { font-size: 12px; color: var(--ink-faint); }
 @media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
 .control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
@@ -4011,7 +4012,7 @@ function switchSettingsTab(tab) {
   if (tab === 'profile') body.innerHTML = profileSettingsHtml();
   else if (tab === 'appearance') body.innerHTML = appearanceSettingsHtml();
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
-  else if (tab === 'system') body.innerHTML = systemSettingsHtml();
+  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); }
 }
 function profileSettingsHtml() {
   const src = settingsAvatarDraft !== null ? settingsAvatarDraft : (settingsProfile.avatar || currentUser?.avatar || '');
@@ -4179,7 +4180,11 @@ function systemSettingsHtml() {
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
-      <div class="settings-sub" style="margin-top:20px">Backup</div>
+      <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
+      <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
+      <div id="backup-config">Loading…</div>
+
+      <div class="settings-sub" style="margin-top:20px">Settings export</div>
       <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
       <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>`;
 }
@@ -4194,6 +4199,116 @@ function exportSettingsXml() {
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Settings exported (secrets are masked)');
+}
+
+/* ---------- scheduled backups ---------- */
+let backupCfg = null;
+let backupDestDraft = [];
+const BACKUP_TYPES = [
+  { id: 'local', label: 'Local / NAS path' },
+  { id: 's3', label: 'Cloud object storage (S3)' },
+  { id: 'gdrive', label: 'Google Drive' },
+  { id: 'webhook', label: 'Pull + notify (webhook)' },
+];
+async function loadBackupConfig() {
+  const el = document.getElementById('backup-config');
+  if (!el) return;
+  try {
+    const data = await apiGet('/backup/config');
+    backupCfg = data;
+    backupDestDraft = (data.config.destinations || []).map((d, i) => ({ id: d.id || ('d' + i), ...d }));
+    renderBackupConfig();
+  } catch (e) { el.innerHTML = `<p class="settings-notice" style="color:var(--accent)">Could not load backups: ${esc(e.message)}</p>`; }
+}
+function backupDestCardHtml(d, i) {
+  const f = {
+    local: `<label>Path</label><input class="bd-path" type="text" value="${esc(d.path||'')}" placeholder="/mnt/nas/memex-backups">`,
+    s3: `<label>Bucket</label><input class="bd-bucket" type="text" value="${esc(d.bucket||'')}">
+      <label>Region</label><input class="bd-region" type="text" value="${esc(d.region||'us-east-1')}">
+      <label>Endpoint</label><input class="bd-endpoint" type="text" value="${esc(d.endpoint||'')}" placeholder="blank for AWS; set for R2/B2/MinIO">
+      <label>Path style</label><select class="bd-pathstyle"><option value="false" ${d.force_path_style!==true&&d.force_path_style!=='true'?'selected':''}>No</option><option value="true" ${d.force_path_style===true||d.force_path_style==='true'?'selected':''}>Yes (MinIO)</option></select>
+      <label>Access key ID</label><input class="bd-akid" type="text" value="${esc(d.access_key_id||'')}" autocomplete="off">
+      <label>Secret key</label><input class="bd-secret" type="password" value="${esc(d.secret_access_key||'')}" autocomplete="new-password" placeholder="blank = keep current">
+      <label>Prefix</label><input class="bd-prefix" type="text" value="${esc(d.prefix||'')}" placeholder="optional folder/prefix">`,
+    gdrive: `<label>Folder ID</label><input class="bd-folder" type="text" value="${esc(d.folder_id||'')}" placeholder="Drive folder ID (uses the configured service account)">`,
+    webhook: `<label>Webhook URL</label><input class="bd-url" type="text" value="${esc(d.url||'')}" placeholder="https://… — receives a JSON notify with a signed download link">`,
+  }[d.type] || '';
+  return `<div class="ai-endpoint-card" data-idx="${i}">
+    <div class="ai-endpoint-head">
+      <input class="ep-label bd-label" type="text" value="${esc(d.label||'')}" placeholder="Name (e.g. Backblaze offsite)">
+      <label style="font:600 12px var(--ui);display:flex;align-items:center;gap:5px"><input type="checkbox" class="bd-enabled" ${d.enabled!==false?'checked':''}> On</label>
+      <button class="ghost-btn ep-remove" onclick="removeBackupDest(${i})">Remove</button>
+    </div>
+    <div class="settings-grid">
+      <label>Type</label>
+      <select class="bd-type" onchange="onBackupDestType(${i}, this.value)">${BACKUP_TYPES.map(t=>`<option value="${t.id}" ${d.type===t.id?'selected':''}>${esc(t.label)}</option>`).join('')}</select>
+      ${f}
+    </div>
+  </div>`;
+}
+function renderBackupConfig() {
+  const el = document.getElementById('backup-config');
+  if (!el) return;
+  const c = backupCfg.config, st = backupCfg.status || {};
+  const cards = backupDestDraft.map((d, i) => backupDestCardHtml(d, i)).join('')
+    || '<p class="settings-notice" style="font-style:italic">No destinations yet — backups are still kept in the app. Add one to ship them off-box.</p>';
+  const last = st.lastRun ? new Date(st.lastRun).toLocaleString() : 'never';
+  const next = (c.enabled && st.nextRun) ? new Date(st.nextRun).toLocaleString() : '—';
+  const ls = st.lastStatus;
+  const lastLine = ls ? `${ls.ok ? '✓ success' : '✗ ' + esc(ls.error || 'some destinations failed')}${Array.isArray(ls.destinations)&&ls.destinations.length?' · '+ls.destinations.map(d=>`${esc(d.label||d.type)}: ${d.ok?'ok':'fail'}`).join(', '):''}` : '';
+  const arts = Array.isArray(st.artifacts) ? st.artifacts : [];
+  el.innerHTML = `
+    <div class="settings-grid">
+      <label>Enabled</label><label class="cmp-toggle-inline"><input type="checkbox" id="bk-enabled" ${c.enabled?'checked':''}> Run on a schedule</label>
+      <label>Every (hours)</label><input type="number" id="bk-interval" value="${Number(c.intervalHours)||24}" min="1" max="8760" step="1">
+      <label>Keep last</label><input type="number" id="bk-retention" value="${Number(c.retention)||7}" min="1" max="365" step="1">
+    </div>
+    <div class="settings-sub" style="margin-top:14px">Destinations</div>
+    <div id="bk-dests">${cards}</div>
+    <button class="ghost-btn" style="margin-top:4px" onclick="addBackupDest()">+ Add destination</button>
+    <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap">
+      <button class="run-btn" onclick="saveBackupConfig()">Save backup settings</button>
+      <button class="ghost-btn" onclick="runBackupNow(this)">Back up now</button>
+      <span class="cmp-probe-meta" style="margin-left:auto">Last: ${esc(last)}${lastLine?` (${lastLine})`:''} · Next: ${esc(next)}</span>
+    </div>
+    ${arts.length ? `<p class="settings-notice" style="margin-top:8px">${arts.length} backup(s) retained · newest ${esc(arts[0].name)} (${fmtBytes(arts[0].size||0)})</p>` : ''}`;
+}
+function onBackupDestType(i, type) { syncBackupDestFromDom(); backupDestDraft[i].type = type; renderBackupConfig(); }
+function syncBackupDestFromDom() {
+  const cards = document.querySelectorAll('#bk-dests .ai-endpoint-card');
+  if (!cards.length) { backupDestDraft = backupDestDraft.length && !document.getElementById('bk-dests') ? backupDestDraft : []; }
+  const next = [];
+  cards.forEach(card => {
+    const i = +card.dataset.idx;
+    const prev = backupDestDraft[i] || {};
+    const get = sel => card.querySelector(sel)?.value;
+    const type = card.querySelector('.bd-type')?.value || 'local';
+    const d = { id: prev.id || ('d' + Date.now() + i), type, label: get('.bd-label') || '', enabled: card.querySelector('.bd-enabled')?.checked !== false };
+    if (type === 'local') d.path = get('.bd-path') || '';
+    else if (type === 's3') Object.assign(d, { bucket: get('.bd-bucket')||'', region: get('.bd-region')||'', endpoint: get('.bd-endpoint')||'', force_path_style: get('.bd-pathstyle')==='true', access_key_id: get('.bd-akid')||'', secret_access_key: card.querySelector('.bd-secret')?.value ?? '', prefix: get('.bd-prefix')||'' });
+    else if (type === 'gdrive') d.folder_id = get('.bd-folder') || '';
+    else if (type === 'webhook') d.url = get('.bd-url') || '';
+    next.push(d);
+  });
+  backupDestDraft = next;
+}
+function addBackupDest() { syncBackupDestFromDom(); backupDestDraft.push({ id: 'd' + Date.now(), type: 'local', label: '', enabled: true, path: '' }); renderBackupConfig(); }
+function removeBackupDest(i) { syncBackupDestFromDom(); backupDestDraft.splice(i, 1); renderBackupConfig(); }
+async function saveBackupConfig() {
+  syncBackupDestFromDom();
+  const body = {
+    enabled: document.getElementById('bk-enabled')?.checked || false,
+    interval_hours: Number(document.getElementById('bk-interval')?.value) || 24,
+    retention: Number(document.getElementById('bk-retention')?.value) || 7,
+    destinations: backupDestDraft,
+  };
+  try { const r = await apiPut('/backup/config', body); backupCfg = r; backupDestDraft = (r.config.destinations||[]).map((d,i)=>({id:d.id||('d'+i),...d})); renderBackupConfig(); toast('Backup settings saved'); }
+  catch (e) { toast('Save failed: ' + e.message); }
+}
+async function runBackupNow(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Backing up…'; }
+  try { const r = await apiPost('/backup/run', {}); backupCfg = { config: backupCfg.config, status: r.status }; renderBackupConfig(); toast(r.result?.ok ? 'Backup complete' : 'Backup finished with errors'); }
+  catch (e) { if (btn) { btn.disabled = false; btn.textContent = 'Back up now'; } toast('Backup failed: ' + e.message); }
 }
 
 async function wipeAll() {

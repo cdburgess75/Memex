@@ -6,6 +6,9 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
+# pg_dump (matching the Postgres 16 server) for in-app database backups
+RUN apk add --no-cache postgresql16-client
+
 # Install production dependencies before copying source so this layer is cached
 COPY server/package*.json ./server/
 RUN cd server && npm ci --production && npm cache clean --force
@@ -16,7 +19,7 @@ COPY . .
 # Run as a non-root user. Pre-create the storage dir owned by memex so a fresh
 # named volume mounted at /data/documents inherits writable ownership.
 RUN addgroup -S memex && adduser -S memex -G memex && \
-    mkdir -p /data/documents && \
+    mkdir -p /data/documents /data/backups && \
     chown -R memex:memex /app /data
 USER memex
 

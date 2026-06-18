@@ -15,6 +15,7 @@ const SENSITIVE = new Set([
   'supabase_service_role_key',
   'google_service_account_key',
   'storage_encryption_key',
+  'backup_download_secret',
 ]);
 
 const MASKED = '●●●●●●●●';
@@ -54,6 +55,10 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
       result[key] = (SENSITIVE.has(key) && effective) ? MASKED : (effective ?? '');
     }
     result.ai_endpoints = maskEndpoints(result.ai_endpoints);
+    // backup_destinations is a JSON array with embedded S3 secrets — mask them too.
+    result.backup_destinations = JSON.stringify(
+      parseEndpoints(result.backup_destinations).map(d => ({ ...d, secret_access_key: d.secret_access_key ? MASKED : '' }))
+    );
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });

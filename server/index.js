@@ -86,6 +86,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/libraries', require('./routes/libraries'));
+app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));
 
 app.use(express.static(path.join(__dirname, '..')));
@@ -103,4 +104,6 @@ app.listen(PORT, BIND, async () => {
   } catch (e) {
     console.error('[startup] owner-ACL backfill failed:', e.message);
   }
+  // Arm the scheduled-backup timer (no-op unless backups are enabled).
+  try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
 });
