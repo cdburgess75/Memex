@@ -7,3 +7,6 @@ memex-wiki.md
 # Local environment
 .env
 .local-secrets/
+
+# Local tooling (preview launch config, plans)
+.claude/
