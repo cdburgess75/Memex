@@ -1467,6 +1467,17 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
 .file-library-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px; }
 .file-library-table th { text-align: left; color: var(--ink-faint); font: 600 11.5px var(--ui); letter-spacing: 0.03em; text-transform: uppercase; padding: 11px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.file-col-sort { border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0; }
+.file-col-sort:hover { color: var(--ink); }
+.file-col-sort.active { color: var(--accent); }
+.file-col-chooser { border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 7px; border-radius: 6px; }
+.file-col-chooser:hover { background: var(--surface-2); color: var(--ink); }
+.file-cols-menu { display: none; position: absolute; right: 8px; z-index: 25; margin-top: 6px; min-width: 152px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); text-align: left; }
+.file-cols-menu.open { display: block; }
+.file-cols-title { font: 700 10.5px var(--ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 8px 6px; }
+.file-cols-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font: 500 13px var(--ui); color: var(--ink); cursor: pointer; text-transform: none; letter-spacing: normal; }
+.file-cols-item:hover { background: var(--surface-2); }
+.file-cols-item.disabled { color: var(--ink-faint); cursor: default; }
 .file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
 .file-library-table tbody tr:last-child td { border-bottom: 0; }
 .file-library-table tbody tr { cursor: pointer; }
@@ -2340,6 +2351,78 @@ let lastRenderedFileIds = []; // file ids currently shown in the library table (
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
+
+// ---- file table columns (sortable + show/hide, persisted) ----
+const FILE_COLUMN_DEFS = [
+  { id: 'name', label: 'Name', always: true, sort: (a, b) => fileDisplayName(a).localeCompare(fileDisplayName(b)) },
+  { id: 'type', label: 'Type', width: '120px', sort: (a, b) => fileKind(fileExt(a.name)).localeCompare(fileKind(fileExt(b.name))) },
+  { id: 'size', label: 'Size', width: '110px', align: 'right', sort: (a, b) => (a.size || 0) - (b.size || 0) },
+  { id: 'modified', label: 'Modified', width: '160px', sort: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0) },
+  { id: 'owner', label: 'Owner', width: '210px', sort: (a, b) => fileOwner(a).localeCompare(fileOwner(b)) },
+  { id: 'library', label: 'Library', width: '150px', sort: (a, b) => fileLibraryName(a).localeCompare(fileLibraryName(b)) },
+];
+const FILE_COLS_DEFAULT = ['name', 'modified', 'owner'];
+let fileVisibleCols = (() => {
+  try { const v = JSON.parse(localStorage.getItem('memex_file_cols')); if (Array.isArray(v) && v.length) return new Set(['name', ...v.filter(id => id !== 'name')]); } catch { /* ignore */ }
+  return new Set(FILE_COLS_DEFAULT);
+})();
+let fileSort = (() => {
+  try { const v = JSON.parse(localStorage.getItem('memex_file_sort')); if (v && v.col) return v; } catch { /* ignore */ }
+  return { col: 'name', dir: 1 };
+})();
+function fileLibraryName(f) {
+  const lib = (typeof librariesList !== 'undefined' ? librariesList : []).find(l => String(l.id) === String(f.library_id));
+  return lib ? lib.name : '';
+}
+function visibleFileColumns() { return FILE_COLUMN_DEFS.filter(c => c.always || fileVisibleCols.has(c.id)); }
+function persistFileCols() { localStorage.setItem('memex_file_cols', JSON.stringify([...fileVisibleCols])); }
+function toggleFileColumn(id) {
+  if (id === 'name') return;
+  if (fileVisibleCols.has(id)) fileVisibleCols.delete(id); else fileVisibleCols.add(id);
+  persistFileCols();
+  renderDocumentLibraryList();
+}
+function setFileSort(col) {
+  if (fileSort.col === col) fileSort.dir = -fileSort.dir; else fileSort = { col, dir: 1 };
+  localStorage.setItem('memex_file_sort', JSON.stringify(fileSort));
+  renderDocumentLibraryList();
+}
+function sortFiles(list) {
+  const def = FILE_COLUMN_DEFS.find(c => c.id === fileSort.col) || FILE_COLUMN_DEFS[0];
+  return [...list].sort((a, b) => def.sort(a, b) * fileSort.dir);
+}
+function fileCellHtml(f, colId) {
+  const ext = fileExt(f.name);
+  if (colId === 'type') return esc(fileKind(ext));
+  if (colId === 'size') return fileSizeLabel(f.size || 0);
+  if (colId === 'modified') return fileDate(f.created_at);
+  if (colId === 'owner') return ownerCellHtml(fileOwner(f));
+  if (colId === 'library') return esc(fileLibraryName(f) || '—');
+  return '';
+}
+function fileTableHeadHtml(selectAllClass) {
+  const cols = visibleFileColumns().map(c => {
+    const active = fileSort.col === c.id;
+    const arrow = active ? (fileSort.dir > 0 ? ' ▲' : ' ▼') : '';
+    const style = `${c.width ? `width:${c.width};` : ''}${c.align === 'right' ? 'text-align:right;' : ''}`;
+    return `<th style="${style}"><button class="file-col-sort${active ? ' active' : ''}" onclick="setFileSort('${c.id}')">${esc(c.label)}${arrow}</button></th>`;
+  }).join('');
+  const sel = selectAllClass === null ? '<th style="width:44px"></th>'
+    : `<th style="width:44px"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th>`;
+  return `<thead><tr>${sel}${cols}<th style="width:150px;text-align:right;position:relative"><button class="file-col-chooser" title="Choose columns" onclick="toggleFileColumnsMenu(event)">⋮</button><div class="file-cols-menu" id="file-cols-menu"></div></th></tr></thead>`;
+}
+function toggleFileColumnsMenu(event) {
+  event?.stopPropagation();
+  const menu = document.getElementById('file-cols-menu');
+  if (!menu) return;
+  if (!menu.classList.contains('open')) {
+    menu.innerHTML = '<div class="file-cols-title">Columns</div>' + FILE_COLUMN_DEFS.map(c =>
+      `<label class="file-cols-item${c.always ? ' disabled' : ''}"><input type="checkbox" ${c.always || fileVisibleCols.has(c.id) ? 'checked' : ''} ${c.always ? 'disabled' : ''} onchange="toggleFileColumn('${c.id}')"> ${esc(c.label)}</label>`
+    ).join('');
+  }
+  menu.classList.toggle('open');
+}
+document.addEventListener('click', e => { const m = document.getElementById('file-cols-menu'); if (m && m.classList.contains('open') && !e.target.closest('#file-cols-menu') && !e.target.closest('.file-col-chooser')) m.classList.remove('open'); });
 let securityStatus = null;
 let fileLibraryNavCollapsed = localStorage.getItem('memex_library_nav_collapsed') === 'true';
 let railWidth = parseInt(localStorage.getItem('memex_rail_w') || '', 10) || 0; // resizable rail width (px)
@@ -4503,15 +4586,21 @@ function ownerCellHtml(owner) {
   const initials = (owner || '').split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
   return `<span class="file-owner"><span class="file-owner-avatar">${esc(initials)}</span><span class="file-owner-name">${esc(owner)}</span></span>`;
 }
-function fileLibraryRow(f) {
+function fileNameCellHtml(f) {
   const ext = fileExt(f.name);
-  const owner = fileOwner(f);
-  const selected = selectedFileIds.has(String(f.id));
   const folder = fileFolderPath(f);
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div></div></div></td><td>${fileDate(f.created_at)}</td><td>${ownerCellHtml(owner)}</td><td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div></div></div></td>`;
+}
+function fileLibraryRow(f) {
+  const selected = selectedFileIds.has(String(f.id));
+  const cols = visibleFileColumns().map(c =>
+    c.id === 'name' ? fileNameCellHtml(f) : `<td${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
+  ).join('');
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
-  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td><td></td><td><span class="file-owner-name file-owner-muted">—</span></td><td><div class="file-library-actions"><button class="file-library-icon-btn" title="Open folder" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolder(this.dataset.folder)">${ICON_OPEN}</button></div></td></tr>`;
+  const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
+  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Open folder" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolder(this.dataset.folder)">${ICON_OPEN}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-library-head"><div><div class="file-library-title"><span>${esc(title)}</span></div><div id="file-library-breadcrumb">${fileBreadcrumbHtml()}</div></div></div><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -4725,7 +4814,7 @@ function renderContentSearchResults(rows, q) {
   if (!rows.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents.`); return; }
   lastRenderedFileIds = rows.map(f => String(f.id));
   const body = rows.map(fileLibraryRow).join('');
-  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"></th><th>Name · matched on content + name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"></th>${visibleFileColumns().map(c => `<th${c.align === 'right' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
   updateFileLibraryChrome();
 }
 
@@ -5161,7 +5250,7 @@ function renderDocumentLibraryList() {
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   const rows = q ? searched : searched.filter(fileMatchesCurrentFolder);
   const folders = q ? [] : childFoldersForPath(source);
-  const tableRows = [...folders.map(folderLibraryRow), ...rows.map(fileLibraryRow)].join('');
+  const tableRows = [...folders.map(folderLibraryRow), ...sortFiles(rows).map(fileLibraryRow)].join('');
   lastRenderedFileIds = rows.map(f => String(f.id));
   const allSelected = lastRenderedFileIds.length > 0 && lastRenderedFileIds.every(id => selectedFileIds.has(id));
   const someSelected = !allSelected && lastRenderedFileIds.some(id => selectedFileIds.has(id));
@@ -5175,7 +5264,7 @@ function renderDocumentLibraryList() {
     updateFileLibraryChrome();
     return;
   }
-  const table = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
+  const table = `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
   el.innerHTML = fileLayoutMode === 'commander'
     ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${table}</div></div>`
     : table;
