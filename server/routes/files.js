@@ -1351,6 +1351,48 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
   }
 });
 
+// Per-user "recently opened" tracking, powering the Recent rail.
+let _recentEnsured = false;
+async function ensureRecentOpens() {
+  if (_recentEnsured) return;
+  await db.query(`CREATE TABLE IF NOT EXISTS recent_opens (
+    user_id UUID NOT NULL, document_id UUID NOT NULL,
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, document_id))`);
+  await db.query('CREATE INDEX IF NOT EXISTS recent_opens_user_idx ON recent_opens(user_id, opened_at DESC)');
+  _recentEnsured = true;
+}
+
+// GET /api/files/recent — documents the caller has opened, most recent first
+router.get('/recent', auth, async (req, res) => {
+  try {
+    await ensureRecentOpens();
+    const rows = await db.query(
+      `SELECT d.id, d.name, d.size, d.mime_type, d.created_at, d.uploaded_by, d.uploaded_by_email, d.library_id, r.opened_at
+       FROM recent_opens r JOIN documents d ON d.id = r.document_id
+       WHERE r.user_id = $1 AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 2)}
+       ORDER BY r.opened_at DESC LIMIT 8`,
+      [req.user.id, ...documentAccess.userParams(req.user, 'read')]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/:id/open — record that the caller opened this document
+router.post('/:id/open', auth, async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'read', columns: 'id', deleted: 'active' });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    await ensureRecentOpens();
+    await db.query(
+      `INSERT INTO recent_opens (user_id, document_id, opened_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id, document_id) DO UPDATE SET opened_at = NOW()`,
+      [req.user.id, doc.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
 router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {

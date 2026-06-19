@@ -1494,6 +1494,18 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-text { margin: 0; padding: 18px; width: 100%; white-space: pre-wrap; word-break: break-word; font: 12.5px var(--mono); color: var(--ink); }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
+.file-type-tabs { display: flex; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
+.file-type-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.file-type-tab:hover { background: var(--surface-2); color: var(--ink); }
+.file-type-tab.active { background: var(--accent-wash); color: var(--accent); }
+.file-recent-rail { margin-bottom: 18px; }
+.file-recent-title { font: 700 11px var(--ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); margin: 2px 0 9px; }
+.file-recent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.file-recent-card { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 10px 12px; cursor: pointer; min-width: 0; }
+.file-recent-card:hover { border-color: var(--accent); background: var(--accent-wash); }
+.file-recent-meta { min-width: 0; }
+.file-recent-name { font: 600 13px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-recent-sub { font-size: 11.5px; color: var(--ink-faint); }
 .file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
 .file-library-table tbody tr:last-child td { border-bottom: 0; }
 .file-library-table tbody tr { cursor: pointer; }
@@ -4656,8 +4668,8 @@ function fileLibraryCommandBarHtml() {
     const many = selected.length > 1;
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button><button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
-  const sel = filter => fileFilter === filter ? ' selected' : '';
-  return `<div class="file-library-commandbar"><div class="file-library-command-left"><select class="file-library-filter" aria-label="Filter by type" onchange="setFileFilter(this.value)"><option value="all"${sel('all')}>All types</option><option value="word"${sel('word')}>Word</option><option value="excel"${sel('excel')}>Excel</option><option value="powerpoint"${sel('powerpoint')}>PowerPoint</option><option value="pdf"${sel('pdf')}>PDF</option></select><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
+  return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 function quickAccessHtml(files) {
   const items = files.slice(0, 6);
@@ -4668,14 +4680,25 @@ function quickAccessHtml(files) {
     return `<div class="file-quick-pill"><span class="file-quick-badge" style="background:${colors[i % colors.length]}">${esc(fileKind(ext).slice(0,2).toUpperCase())}</span><span class="file-quick-name">${esc(fileDisplayName(f))}</span></div>`;
   }).join('');
 }
+const FILE_TYPE_TABS = [
+  { id: 'all', label: 'All', exts: null },
+  { id: 'docs', label: 'Docs', exts: ['docx', 'doc', 'odt', 'rtf'] },
+  { id: 'sheets', label: 'Sheets', exts: ['xlsx', 'xls', 'csv', 'ods'] },
+  { id: 'slides', label: 'Slides', exts: ['pptx', 'ppt', 'odp'] },
+  { id: 'pdf', label: 'PDF', exts: ['pdf'] },
+  { id: 'images', label: 'Images', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'heic'] },
+  { id: 'text', label: 'Text', exts: ['txt', 'md', 'log', 'json'] },
+];
+function fileMatchesType(f, id) {
+  if (id === 'all') return true;
+  const t = FILE_TYPE_TABS.find(x => x.id === id);
+  return t && t.exts ? t.exts.includes(fileExt(f.name)) : true;
+}
 function filterFilesForHome(filter, list = filesList, applyTextQuery = true) {
   const q = (document.getElementById('file-home-search')?.value || '').trim().toLowerCase();
   return list.filter(f => {
-    const ext = fileExt(f.name);
-    const kind = fileKind(ext).toLowerCase();
-    const matchesKind = filter === 'all' || kind === filter || (filter === 'pdf' && ext === 'pdf');
     const matchesQuery = !applyTextQuery || !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q);
-    return matchesKind && matchesQuery;
+    return fileMatchesType(f, filter) && matchesQuery;
   });
 }
 function openRecommendedFile(fileId) {
@@ -5247,8 +5270,21 @@ async function purgeFile(fileId, name) {
 }
 
 async function loadFiles() {
-  try { filesList = await apiGet(filesEndpoint()); document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList(); }
-  catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
+  try {
+    const [files] = await Promise.all([apiGet(filesEndpoint()), loadRecentOpens()]);
+    filesList = files;
+    document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
+  } catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
+}
+// Recent rail (you-opened), shown at the library root when not filtering/searching.
+function recentRailHtml() {
+  const q = (document.getElementById('file-home-search')?.value || '').trim();
+  if (!recentOpensList.length || currentFolderPath || q || fileFilter !== 'all' || fileView !== 'active') return '';
+  const cards = recentOpensList.slice(0, 6).map(f => {
+    const ext = fileExt(f.name);
+    return `<button class="file-recent-card" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">${fileIconHtml(ext)}<div class="file-recent-meta"><div class="file-recent-name" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-recent-sub">${esc(fileKind(ext))} · ${fileDate(f.opened_at || f.created_at)}</div></div></button>`;
+  }).join('');
+  return `<div class="file-recent-rail"><div class="file-recent-title">Recent</div><div class="file-recent-cards">${cards}</div></div>`;
 }
 
 function renderDocumentLibraryList() {
@@ -5277,9 +5313,9 @@ function renderDocumentLibraryList() {
     return;
   }
   const table = `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
-  el.innerHTML = fileLayoutMode === 'commander'
+  el.innerHTML = recentRailHtml() + (fileLayoutMode === 'commander'
     ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${table}</div></div>`
-    : table;
+    : table);
   updateFileLibraryChrome();
 }
 
@@ -5902,6 +5938,7 @@ async function restoreFileVersion(fileId, versionId) {
 }
 
 async function openInOffice(fileId) {
+  recordOpen(fileId);
   try {
     const data = await apiGet('/files/' + fileId + '/office');
     // Prefer edit URL (WOPI), fall back to view URL
@@ -5913,6 +5950,7 @@ async function openInOffice(fileId) {
 }
 
 async function openInGoogle(fileId) {
+  recordOpen(fileId);
   toast('Uploading to Google Drive…');
   try {
     const token = await getToken();
@@ -5983,6 +6021,7 @@ async function ingestFile(fileId, name) {
 }
 
 async function downloadFile(fileId) {
+  recordOpen(fileId);
   try {
     const data = await apiGet('/files/' + fileId + '/url');
     const a = document.createElement('a');
@@ -6006,6 +6045,9 @@ async function deleteFile(fileId, name) {
 /* ---------- row context menu + open-with + preview + rename ---------- */
 const OFFICE_EXTS = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'];
 const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'txt', 'md', 'csv', 'log', 'json'];
+let recentOpensList = [];
+function recordOpen(fileId) { apiPost('/files/' + fileId + '/open', {}).catch(() => {}); }
+async function loadRecentOpens() { try { recentOpensList = await apiGet('/files/recent'); } catch { recentOpensList = []; } }
 function openFileDefault(fileId) {
   const f = filesList.find(x => String(x.id) === String(fileId));
   const ext = f ? fileExt(f.name) : '';
@@ -6062,6 +6104,7 @@ document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu'
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeFileMenu(); closeFilePreview(); } });
 
 async function openInDesktopOffice(fileId) {
+  recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
   const scheme = { doc: 'ms-word', docx: 'ms-word', xls: 'ms-excel', xlsx: 'ms-excel', ppt: 'ms-powerpoint', pptx: 'ms-powerpoint' }[f ? fileExt(f.name) : ''];
   if (!scheme) { toast('No desktop app for this file type'); return; }
@@ -6094,6 +6137,7 @@ function moveFileToLibrary(fileId) {
 }
 function closeFilePreview() { document.getElementById('file-preview-scrim')?.remove(); }
 async function previewFile(fileId) {
+  recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
   const ext = f ? fileExt(f.name) : '';
   let data;
