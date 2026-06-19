@@ -1478,6 +1478,22 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-cols-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font: 500 13px var(--ui); color: var(--ink); cursor: pointer; text-transform: none; letter-spacing: normal; }
 .file-cols-item:hover { background: var(--surface-2); }
 .file-cols-item.disabled { color: var(--ink-faint); cursor: default; }
+.file-row-menu { position: fixed; z-index: 60; min-width: 204px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow), 0 12px 32px rgba(0,0,0,0.16); }
+.file-menu-item { display: block; width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 6px; font: 500 13.5px var(--ui); cursor: pointer; }
+.file-menu-item:hover { background: var(--accent-wash); color: var(--accent); }
+.file-menu-item.danger { color: #C0392B; }
+.file-menu-item.danger:hover { background: rgba(192,57,43,0.08); color: #C0392B; }
+.file-menu-label { font: 700 10px var(--ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 10px 3px; }
+.file-menu-rule { height: 1px; background: var(--rule-soft); margin: 5px 6px; }
+.file-preview-modal { width: min(940px, 95vw); height: min(86vh, 900px); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.file-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+.file-preview-head strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-preview-head-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.file-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--surface-2); }
+.file-preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+.file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.file-preview-text { margin: 0; padding: 18px; width: 100%; white-space: pre-wrap; word-break: break-word; font: 12.5px var(--mono); color: var(--ink); }
+.file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
 .file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
 .file-library-table tbody tr:last-child td { border-bottom: 0; }
 .file-library-table tbody tr { cursor: pointer; }
@@ -4576,11 +4592,7 @@ const ICON_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" s
 const ICON_SHARE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5"/></svg>';
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 function fileLibraryActions(f) {
-  const ext = fileExt(f.name);
-  const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
-  return `<button class="file-library-icon-btn" title="Open" data-fid="${f.id}" onclick="${isOffice ? 'openInOffice' : 'downloadFile'}(this.dataset.fid)">${ICON_OPEN}</button>
-    <button class="file-library-icon-btn" title="Share" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">${ICON_SHARE}</button>
-    <button class="file-library-icon-btn" title="Details" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">${ICON_MORE}</button>`;
+  return `<button class="file-library-icon-btn" title="Actions" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
 }
 function ownerCellHtml(owner) {
   const initials = (owner || '').split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -4596,7 +4608,7 @@ function fileLibraryRow(f) {
   const cols = visibleFileColumns().map(c =>
     c.id === 'name' ? fileNameCellHtml(f) : `<td${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
   ).join('');
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
@@ -5980,13 +5992,125 @@ async function downloadFile(fileId) {
 }
 
 async function deleteFile(fileId, name) {
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  name = name || (f ? fileDisplayName(f) : 'this file');
   if (!confirm(`Move "${name}" to Trash? You can restore it later.`)) return;
   try {
     await apiDelete('/files/' + fileId);
-    filesList = filesList.filter(f => f.id !== fileId);
+    filesList = filesList.filter(f => String(f.id) !== String(fileId));
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
     toast(`${name} moved to Trash`);
   } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+/* ---------- row context menu + open-with + preview + rename ---------- */
+const OFFICE_EXTS = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'];
+const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'txt', 'md', 'csv', 'log', 'json'];
+function openFileDefault(fileId) {
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  const ext = f ? fileExt(f.name) : '';
+  if (OFFICE_EXTS.includes(ext)) return openInOffice(fileId);
+  if (PREVIEW_EXTS.includes(ext)) return previewFile(fileId);
+  return downloadFile(fileId);
+}
+function closeFileMenu() { document.getElementById('file-row-menu')?.remove(); }
+function openFileMenu(fileId, event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  if (!f) return false;
+  const ext = fileExt(f.name);
+  const isOffice = OFFICE_EXTS.includes(ext);
+  const canPreview = PREVIEW_EXTS.includes(ext);
+  closeFileMenu();
+  const items = [
+    `<button class="file-menu-item" onclick="closeFileMenu();openFileDefault('${fileId}')">Open</button>`,
+    `<div class="file-menu-label">Open with</div>`,
+    canPreview ? `<button class="file-menu-item" onclick="closeFileMenu();previewFile('${fileId}')">In-app preview</button>` : '',
+    isOffice ? `<button class="file-menu-item" onclick="closeFileMenu();openInOffice('${fileId}')">Office Online</button>` : '',
+    isOffice ? `<button class="file-menu-item" onclick="closeFileMenu();openInDesktopOffice('${fileId}')">Desktop app</button>` : '',
+    `<button class="file-menu-item" onclick="closeFileMenu();openInGoogle('${fileId}')">Google Drive</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();downloadFile('${fileId}')">Download</button>`,
+    `<div class="file-menu-rule"></div>`,
+    aiOff() ? '' : `<button class="file-menu-item" onclick="closeFileMenu();openAskFile('${fileId}')">Ask AI about this</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();openShareFile('${fileId}')">Share…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();renameFile('${fileId}')">Rename…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();openFileDetails('${fileId}')">Details</button>`,
+    `<div class="file-menu-rule"></div>`,
+    `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFile('${fileId}')">Delete</button>`,
+  ].filter(Boolean).join('');
+  const menu = document.createElement('div');
+  menu.className = 'file-row-menu';
+  menu.id = 'file-row-menu';
+  menu.innerHTML = items;
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  let left, top;
+  if (event && event.type === 'click' && event.currentTarget?.getBoundingClientRect) {
+    const b = event.currentTarget.getBoundingClientRect();
+    left = b.right - rect.width; top = b.bottom + 4;
+  } else {
+    left = event?.clientX ?? 80; top = event?.clientY ?? 80;
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - rect.height - 8));
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  return false;
+}
+document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu')) closeFileMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeFileMenu(); closeFilePreview(); } });
+
+async function openInDesktopOffice(fileId) {
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  const scheme = { doc: 'ms-word', docx: 'ms-word', xls: 'ms-excel', xlsx: 'ms-excel', ppt: 'ms-powerpoint', pptx: 'ms-powerpoint' }[f ? fileExt(f.name) : ''];
+  if (!scheme) { toast('No desktop app for this file type'); return; }
+  try {
+    const data = await apiGet('/files/' + fileId + '/url');
+    let url = data.url || '';
+    if (url.startsWith('/')) url = window.location.origin + url;
+    window.location.href = `${scheme}:ofe|u|${url}`;
+    toast('Opening in the desktop app (requires Office installed)…');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+async function renameFile(fileId) {
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  if (!f) return;
+  const folder = fileFolderPath(f);
+  const current = fileDisplayName(f);
+  const next = (prompt('Rename file:', current) || '').trim();
+  if (!next || next === current) return;
+  const full = folder ? folder + '/' + next : next;
+  try {
+    const r = await apiPut('/files/' + fileId + '/rename', { name: full });
+    f.name = r.name;
+    document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
+    toast('Renamed');
+  } catch (e) { toast('Rename failed: ' + e.message); }
+}
+function moveFileToLibrary(fileId) {
+  selectedFileIds = new Set([String(fileId)]);
+  openLibraryTransfer('move');
+}
+function closeFilePreview() { document.getElementById('file-preview-scrim')?.remove(); }
+async function previewFile(fileId) {
+  const f = filesList.find(x => String(x.id) === String(fileId));
+  const ext = f ? fileExt(f.name) : '';
+  let data;
+  try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
+  const url = data.url;
+  const name = data.name || (f ? fileDisplayName(f) : 'File');
+  let body;
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) body = `<img src="${esc(url)}" alt="" class="file-preview-img">`;
+  else if (ext === 'pdf') body = `<iframe src="${esc(url)}" class="file-preview-frame" title="${esc(name)}"></iframe>`;
+  else if (['txt', 'md', 'csv', 'log', 'json'].includes(ext)) body = `<pre class="file-preview-text" id="file-preview-text">Loading…</pre>`;
+  else body = `<div class="file-preview-fallback"><p class="settings-notice">No inline preview for this file type.</p><div style="display:flex;gap:8px;justify-content:center">${OFFICE_EXTS.includes(ext) ? `<button class="run-btn" onclick="closeFilePreview();openInOffice('${fileId}')">Open in Office Online</button>` : ''}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button></div></div>`;
+  closeFilePreview();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions"><button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  if (['txt', 'md', 'csv', 'log', 'json'].includes(ext)) {
+    try { const r = await fetch(url); const t = await r.text(); const el = document.getElementById('file-preview-text'); if (el) el.textContent = t.slice(0, 200000); }
+    catch { const el = document.getElementById('file-preview-text'); if (el) el.textContent = '(could not load text)'; }
+  }
 }
 
 /* ---------- boot ---------- */

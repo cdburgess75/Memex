@@ -1332,6 +1332,25 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
   }
 });
 
+// PUT /api/files/:id/rename — change a document's display name (preserves its folder path)
+router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active',
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    let name = String(req.body?.name || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (name.split('/').some(seg => seg === '..' || seg === '.')) return res.status(400).json({ error: 'invalid name' });
+    name = name.slice(0, 400);
+    const updated = await db.queryOne('UPDATE documents SET name = $2 WHERE id = $1 RETURNING *', [req.params.id, name]);
+    await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
+    res.json({ success: true, name: updated.name });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
 router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
