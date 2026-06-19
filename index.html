@@ -1277,13 +1277,13 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-create-btn .plus { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; font-weight: 500; color: #0F6CBD; background: transparent; flex: 0 0 auto; }
 .file-create-btn .chev { margin-left: auto; font-size: 12px; line-height: 1; color: #707070; }
 .file-create-btn span:not(.plus):not(.chev) { white-space: nowrap; }
-.file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 152px; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
+.file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 152px; padding: 6px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow), 0 8px 22px rgba(0,0,0,0.10); }
 .file-search-menu { min-width: 174px; }
 .file-upload-menu.open, .file-search-menu.open { display: grid; gap: 4px; }
 .file-create-menu { min-width: 198px; }
-.file-upload-menu .menu-rule { height: 1px; background: #E6E6E6; margin: 5px 6px; }
-.file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
-.file-upload-menu button:hover, .file-search-menu button:hover { background: #EAF3FF; }
+.file-upload-menu .menu-rule { height: 1px; background: var(--rule-soft); margin: 5px 6px; }
+.file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: var(--ink); padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
+.file-upload-menu button:hover, .file-search-menu button:hover { background: var(--accent-wash); color: var(--accent); }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
 .file-nav-link:hover, .file-nav-label:hover { background: #F8FBFF; color: #242424; }
@@ -4613,7 +4613,13 @@ function ownerCellHtml(owner) {
 function fileNameCellHtml(f) {
   const ext = fileExt(f.name);
   const folder = fileFolderPath(f);
-  return `<td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div></div></div></td>`;
+  // Don't repeat Size/Type in the subtitle when those columns are visible.
+  const bits = [];
+  if (!fileVisibleCols.has('size')) bits.push(fileSizeLabel(f.size || 0));
+  if (!fileVisibleCols.has('type')) bits.push(esc(fileKind(ext)));
+  if (folder) bits.push(esc(folder));
+  const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
+  return `<td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
 }
 function fileLibraryRow(f) {
   const selected = selectedFileIds.has(String(f.id));
