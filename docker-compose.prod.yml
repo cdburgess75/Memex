@@ -1,17 +1,18 @@
-# Production overlay: adds a Caddy reverse proxy that terminates TLS for
-# files.ptechllc.com and proxies to the app + Keycloak.
+# Production overlay: adds a Caddy reverse proxy that terminates TLS and proxies
+# to the app + Keycloak. Domain-agnostic: Caddy uses On-Demand TLS and asks the
+# app (/api/tls/check) which hostname to issue a cert for — so the public domain
+# is set per customer in Settings → System → App URL, not in this file.
 #
 # Bring up with:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# Prerequisites before this can obtain a certificate:
-#   1. DNS A record: files.ptechllc.com -> <your public IP>
+# Prerequisites before a certificate can issue (per deployment):
+#   1. DNS A record: <your-domain> -> <public IP>
 #   2. Router port-forward: TCP 80 and 443 -> 192.168.1.32
-#
-# After the cert is live, flip the app to the HTTPS origin (see RECOMMENDATIONS.md
-# step 1): set APP_URL and KEYCLOAK_URL to https://files.ptechllc.com,
-# TRUST_PROXY=true, CORS_ORIGINS=https://files.ptechllc.com, and update the
-# Keycloak client redirect URIs.
+#   3. Settings → System → App URL = https://<your-domain>, and TRUST_PROXY=1
+#      (Caddy is one hop). KEYCLOAK_URL=auto derives the rest.
+#   4. Add https://<your-domain>/* to the Keycloak memex-app client's valid
+#      redirect URIs and web origins.
 
 services:
   caddy:

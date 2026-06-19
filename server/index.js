@@ -58,6 +58,9 @@ function browserUrlFromRequest(req, fallbackPort) {
     ? host.slice(0, host.indexOf(']') + 1)
     : host.split(':')[0];
 
+  // Behind a TLS-terminating proxy (Caddy), Keycloak is served on the same https
+  // origin on 443 — don't append the internal Keycloak port.
+  if (proto === 'https') return `https://${hostname}`;
   return `${proto}://${hostname}:${fallbackPort}`;
 }
 
@@ -75,6 +78,20 @@ app.get('/api/config', (req, res) => {
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
     version: VERSION,
   });
+});
+
+// Caddy On-Demand TLS gate: only let Caddy obtain a certificate for the hostname
+// configured as this deployment's app_url (so the domain is settings-driven, and
+// arbitrary hosts can't trigger cert issuance). TLS_DOMAINS env adds extras.
+app.get('/api/tls/check', async (req, res) => {
+  try {
+    const domain = String(req.query.domain || '').toLowerCase().trim();
+    if (!domain) return res.sendStatus(400);
+    let allowed = '';
+    try { allowed = new URL(await settings.getOrEnv('app_url') || '').hostname.toLowerCase(); } catch { /* not set yet */ }
+    const extras = String(process.env.TLS_DOMAINS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    return (domain === allowed || extras.includes(domain)) ? res.sendStatus(200) : res.sendStatus(403);
+  } catch { return res.sendStatus(403); }
 });
 
 app.use('/api/auth', require('./routes/auth'));

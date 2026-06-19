@@ -1,9 +1,26 @@
-# Memex production reverse proxy — terminates TLS for files.ptechllc.com
-# Caddy auto-provisions a Let's Encrypt cert via the HTTP-01 challenge once
-# the A record (files.ptechllc.com -> public IP) and port-forwarding (80/443
-# -> this box) are in place.
+# Memex production reverse proxy — domain-agnostic, settings-driven HTTPS.
+#
+# Caddy serves ANY hostname and, on first request, asks the app whether to
+# obtain a Let's Encrypt certificate for it (GET /api/tls/check?domain=<host>).
+# The app approves only the host matching its configured app_url, so the public
+# domain is set in Settings → System (per customer) — no Caddyfile edits.
+#
+# Prerequisites for a cert to issue (per deployment):
+#   1. DNS A record: <your-domain> -> public IP
+#   2. Router port-forward: TCP 80 and 443 -> this host (192.168.1.32)
+#   3. Settings → System → App URL = https://<your-domain>
 
-files.ptechllc.com {
+{
+	on_demand_tls {
+		ask http://app:3000/api/tls/check
+	}
+}
+
+# Any approved https hostname.
+https:// {
+	tls {
+		on_demand
+	}
 	encode zstd gzip
 
 	# Keycloak browser-facing endpoints (login pages, JWKS, token, static assets).
@@ -18,11 +35,15 @@ files.ptechllc.com {
 		reverse_proxy app:3000
 	}
 
-	# Security headers
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+}
+
+# Redirect plain HTTP to HTTPS (ACME challenges are handled internally by Caddy).
+http:// {
+	redir https://{host}{uri}
 }
