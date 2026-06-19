@@ -90,20 +90,25 @@ body {
 .masthead-search {
   position: relative;
   flex: 1 1 auto;
-  max-width: 560px;
+  max-width: 640px;
   margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 36px;
-  padding: 0 12px;
+  gap: 8px;
+  height: 42px;
+  padding: 0 6px 0 14px;
   background: var(--surface-2);
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 21px;
   color: var(--ink-faint);
+  transition: background .15s, border-color .15s, box-shadow .15s;
 }
-.masthead-search:focus-within { border-color: var(--rule); background: var(--surface); }
-.masthead-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 14px var(--ui); color: var(--ink); }
+.masthead-search:focus-within { border-color: var(--rule); background: var(--surface); box-shadow: 0 1px 8px rgba(0,0,0,0.07); }
+.masthead-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 14.5px var(--ui); color: var(--ink); }
+.search-spark { display: inline-flex; align-items: center; color: var(--accent); flex: 0 0 auto; }
+.search-go { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-faint); cursor: pointer; flex: 0 0 auto; }
+.search-go:hover { background: var(--surface-2); color: var(--accent); }
+.masthead-search:focus-within .search-go:hover { background: var(--surface-2); }
 .masthead-upload-wrap { position: relative; }
 .masthead-upload {
   display: inline-flex;
@@ -1275,6 +1280,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 152px; padding: 6px; border: 1px solid #DADADA; border-radius: 8px; background: #FFFFFF; box-shadow: 0 8px 22px rgba(0,0,0,0.14); }
 .file-search-menu { min-width: 174px; }
 .file-upload-menu.open, .file-search-menu.open { display: grid; gap: 4px; }
+.file-create-menu { min-width: 198px; }
+.file-upload-menu .menu-rule { height: 1px; background: #E6E6E6; margin: 5px 6px; }
 .file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: #242424; padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
 .file-upload-menu button:hover, .file-search-menu button:hover { background: #EAF3FF; }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
@@ -2198,15 +2205,23 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <h1>Memex</h1>
   </div>
   <div class="masthead-search">
-    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Contents</span><span class="chev">⌄</span></button>
+    <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
+    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Auto</span><span class="chev">⌄</span></button>
     <div class="search-scope-menu" id="search-scope-menu"></div>
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    <input id="global-search" type="search" placeholder="Search files…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search files">
+    <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
+    <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
     <div class="file-upload-actions masthead-upload-wrap">
-      <button class="masthead-upload" type="button" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Upload</span><span class="chev">⌄</span></button>
-      <div class="file-upload-menu" id="file-upload-menu"><button onclick="chooseUpload('files')">Files</button><button onclick="chooseUpload('folder')">Folder</button></div>
+      <button class="masthead-upload" type="button" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
+      <div class="file-upload-menu file-create-menu" id="file-upload-menu">
+        <button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button>
+        <button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button>
+        <div class="menu-rule"></div>
+        <button onclick="closeUploadMenu();openNewLibraryModal()">New library</button>
+        <button onclick="closeUploadMenu();newKnowledgePage()">New knowledge page</button>
+        <button onclick="closeUploadMenu();setTab('ingest')">New from AI / URL</button>
+      </div>
     </div>
     <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
     <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="openComplianceStatus()" title="Compliance readiness">Compliance</button>
@@ -4947,6 +4962,22 @@ function openLibraryTransfer(mode) {
   });
 }
 
+
+async function newKnowledgePage() {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot create pages'); return; }
+  const title = (prompt('New page title:', 'Untitled page') || '').trim();
+  if (!title) return;
+  const slug = (title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'page') + '-' + Date.now().toString(36);
+  try {
+    const page = await apiPut('/pages/' + slug, { title, category: 'concept', content: `# ${title}\n\n`, sources: 0 });
+    state.pages.push({ ...page, fresh: true });
+    renderIndex();
+    await setTab('read');
+    openPage(slug);
+    editPage(slug);
+    toast('Page created — start writing');
+  } catch (e) { toast('Could not create page: ' + e.message); }
+}
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
