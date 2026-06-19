@@ -12,6 +12,7 @@ const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
 const { extractText } = require('../lib/textExtraction');
+const blankDocs = require('../lib/blankDocs');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -1390,6 +1391,75 @@ router.post('/:id/open', auth, async (req, res) => {
       [req.user.id, doc.id]
     );
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Build a safe, optionally-foldered document name (no traversal, single basename per segment).
+function safeDocName(folder, base) {
+  const clean = s => String(s || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
+  const f = clean(folder), b = clean(base);
+  const segs = [...f.split('/'), b].map(s => s.trim()).filter(Boolean);
+  if (segs.some(s => s === '..' || s === '.')) return null;
+  return segs.join('/').slice(0, 400) || null;
+}
+
+// POST /api/files/create — create a blank document of a supported type
+router.post('/create', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const ext = String(req.body?.type || '').toLowerCase();
+    if (!blankDocs.SUPPORTED.includes(ext)) return res.status(400).json({ error: 'Unsupported file type' });
+    const rawName = String(req.body?.name || '').trim().replace(new RegExp('\\.' + ext + '$', 'i'), '');
+    if (!rawName) return res.status(400).json({ error: 'name required' });
+    const fullName = safeDocName(req.body?.folder, `${rawName}.${ext}`);
+    if (!fullName) return res.status(400).json({ error: 'invalid name' });
+    const blank = blankDocs.blankFile(ext, rawName);
+
+    const path = require('path');
+    const sanitized = path.basename(fullName).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `documents/${Date.now()}-${sanitized}`;
+    await storage.upload(storagePath, blank.buffer, blank.mime);
+    const { doc } = await createDocumentRecord({
+      displayName: fullName, storagePath, mimetype: blank.mime, storedSize: blank.buffer.length,
+      user: req.user, sourceDetail: 'created', libraryId: req.body?.library_id || null,
+    });
+    res.json(doc);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder — create an (empty) folder via a hidden .keep marker
+router.post('/folder', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const markerName = `${folderPath}/.keep`;
+    const path = require('path');
+    const storagePath = `documents/${Date.now()}-keep`;
+    await storage.upload(storagePath, Buffer.alloc(0), 'application/octet-stream');
+    const doc = await db.queryOne(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id)
+       VALUES ($1, 0, $2, $3, $4, $5, $6) RETURNING ${DOCUMENT_COLUMNS}`,
+      [markerName, 'application/octet-stream', storagePath, req.user.id, req.user.email, req.body?.library_id || (await libraries.defaultLibraryId())]
+    );
+    await documentAccess.grantOwnerAdmin(doc.id, req.user);
+    res.json({ ok: true, path: folderPath });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/files/:id/content — overwrite a text file's content (md/txt/csv) and re-index
+router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const ext = (doc.name.split('.').pop() || '').toLowerCase();
+    if (!['md', 'txt', 'csv', 'log', 'json'].includes(ext)) return res.status(400).json({ error: 'Only text files are editable in-app' });
+    const content = typeof req.body?.content === 'string' ? req.body.content : '';
+    const buffer = Buffer.from(content, 'utf8');
+    await storage.upload(doc.storage_path, buffer, doc.mime_type || 'text/plain');
+    let documentText = null;
+    try { documentText = await extractText(buffer, doc.name); } catch { /* non-fatal */ }
+    await db.query('UPDATE documents SET size = $2, document_text = $3 WHERE id = $1', [doc.id, buffer.length, documentText]);
+    await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
+    res.json({ ok: true, size: buffer.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

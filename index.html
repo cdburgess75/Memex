@@ -1493,6 +1493,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-text { margin: 0; padding: 18px; width: 100%; white-space: pre-wrap; word-break: break-word; font: 12.5px var(--mono); color: var(--ink); }
+.file-preview-edit { margin: 0; padding: 18px; width: 100%; height: 100%; border: 0; outline: 0; resize: none; box-sizing: border-box; font: 13px var(--mono); line-height: 1.5; color: var(--ink); background: var(--surface); }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
 .file-type-tabs { display: flex; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
 .file-type-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
@@ -2256,6 +2257,12 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <div class="file-upload-menu file-create-menu" id="file-upload-menu">
         <button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button>
         <button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button>
+        <div class="menu-rule"></div>
+        <button onclick="closeUploadMenu();createFolder()">New folder</button>
+        <button onclick="closeUploadMenu();createFile('docx')">New Word document</button>
+        <button onclick="closeUploadMenu();createFile('xlsx')">New Excel spreadsheet</button>
+        <button onclick="closeUploadMenu();createFile('md')">New Markdown file</button>
+        <button onclick="closeUploadMenu();createFile('txt')">New Text file</button>
         <div class="menu-rule"></div>
         <button onclick="closeUploadMenu();openNewLibraryModal()">New library</button>
         <button onclick="closeUploadMenu();newKnowledgePage()">New knowledge page</button>
@@ -4512,6 +4519,8 @@ function fileDisplayName(f) {
   const full = fileFullPath(f);
   return full.split('/').filter(Boolean).pop() || f.name || 'Untitled';
 }
+// Hidden ".keep" marker that makes an otherwise-empty folder exist.
+function isFolderMarker(f) { return fileDisplayName(f) === '.keep'; }
 function fileFolderPath(f) {
   const parts = fileFullPath(f).split('/').filter(Boolean);
   parts.pop();
@@ -4537,7 +4546,7 @@ function childFoldersForPath(files, parentPath = currentFolderPath) {
     if (!child) return;
     const childPath = parent ? `${parent}/${child}` : child;
     const entry = folders.get(childPath) || { path: childPath, name: child, count: 0 };
-    entry.count += 1;
+    entry.count += isFolderMarker(f) ? 0 : 1; // markers make the folder exist but aren't items
     folders.set(childPath, entry);
   });
   return Array.from(folders.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -4550,7 +4559,7 @@ function allFoldersForFiles(files) {
     parts.forEach(part => {
       path = path ? `${path}/${part}` : part;
       const entry = folders.get(path) || { path, name: part, count: 0 };
-      entry.count += 1;
+      entry.count += isFolderMarker(f) ? 0 : 1;
       folders.set(path, entry);
     });
   });
@@ -5109,6 +5118,47 @@ async function newKnowledgePage() {
   } catch (e) { toast('Could not create page: ' + e.message); }
 }
 
+async function ensureFilesView() {
+  if (!document.getElementById('file-library-view')) { await setTab('files'); await new Promise(r => setTimeout(r, 30)); }
+}
+async function createFolder() {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot create folders'); return; }
+  const name = (prompt('New folder name:') || '').trim();
+  if (!name) return;
+  const path = currentFolderPath ? `${currentFolderPath}/${name}` : name;
+  try {
+    await ensureFilesView();
+    await apiPost('/files/folder', { path, library_id: currentLibraryId || undefined });
+    await loadFiles();
+    toast('Folder created');
+  } catch (e) { toast('Could not create folder: ' + e.message); }
+}
+const NEW_FILE_LABELS = { docx: 'Word document', xlsx: 'Excel spreadsheet', md: 'Markdown file', txt: 'Text file' };
+async function createFile(ext) {
+  if (currentUser?.role === 'viewer') { toast('Viewers cannot create files'); return; }
+  const name = (prompt(`Name for the new ${NEW_FILE_LABELS[ext] || ext}:`, 'Untitled') || '').trim();
+  if (!name) return;
+  try {
+    await ensureFilesView();
+    const doc = await apiPost('/files/create', { name, type: ext, folder: currentFolderPath || '', library_id: currentLibraryId || undefined });
+    await loadFiles();
+    toast('Created — opening…');
+    if (ext === 'docx' || ext === 'xlsx') openInOffice(doc.id);
+    else previewFile(doc.id, { edit: true });
+  } catch (e) { toast('Could not create file: ' + e.message); }
+}
+async function saveFileText(fileId) {
+  const ta = document.getElementById('file-edit-text');
+  if (!ta) return;
+  try {
+    await apiPut('/files/' + fileId + '/content', { content: ta.value });
+    const f = filesList.find(x => String(x.id) === String(fileId));
+    if (f) f.size = new Blob([ta.value]).size;
+    toast('Saved');
+    document.getElementById('file-library-view') ? renderDocumentLibraryList() : null;
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
 function toggleUploadMenu(event) {
   event?.stopPropagation();
   closeSearchMenu();
@@ -5302,7 +5352,7 @@ function renderDocumentLibraryList() {
   const q = (document.getElementById('file-home-search')?.value || '').trim().toLowerCase();
   const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.slice(0, 12) : filesList;
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
-  const rows = q ? searched : searched.filter(fileMatchesCurrentFolder);
+  const rows = (q ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
   const folders = q ? [] : childFoldersForPath(source);
   const tableRows = [...folders.map(folderLibraryRow), ...sortFiles(rows).map(fileLibraryRow)].join('');
   lastRenderedFileIds = rows.map(f => String(f.id));
@@ -6142,10 +6192,12 @@ function moveFileToLibrary(fileId) {
   openLibraryTransfer('move');
 }
 function closeFilePreview() { document.getElementById('file-preview-scrim')?.remove(); }
-async function previewFile(fileId) {
+async function previewFile(fileId, opts = {}) {
   recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
   const ext = f ? fileExt(f.name) : '';
+  const isText = ['txt', 'md', 'csv', 'log', 'json'].includes(ext);
+  const canEdit = isText && currentUser?.role !== 'viewer';
   let data;
   try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
   const url = data.url;
@@ -6153,13 +6205,16 @@ async function previewFile(fileId) {
   let body;
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) body = `<img src="${esc(url)}" alt="" class="file-preview-img">`;
   else if (ext === 'pdf') body = `<iframe src="${esc(url)}" class="file-preview-frame" title="${esc(name)}"></iframe>`;
-  else if (['txt', 'md', 'csv', 'log', 'json'].includes(ext)) body = `<pre class="file-preview-text" id="file-preview-text">Loading…</pre>`;
+  else if (isText) body = `<textarea class="file-preview-edit" id="file-edit-text" spellcheck="false" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea>`;
   else body = `<div class="file-preview-fallback"><p class="settings-notice">No inline preview for this file type.</p><div style="display:flex;gap:8px;justify-content:center">${OFFICE_EXTS.includes(ext) ? `<button class="run-btn" onclick="closeFilePreview();openInOffice('${fileId}')">Open in Office Online</button>` : ''}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button></div></div>`;
+  const saveBtn = canEdit ? `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>` : '';
   closeFilePreview();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions"><button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
-  if (['txt', 'md', 'csv', 'log', 'json'].includes(ext)) {
-    try { const r = await fetch(url); const t = await r.text(); const el = document.getElementById('file-preview-text'); if (el) el.textContent = t.slice(0, 200000); }
-    catch { const el = document.getElementById('file-preview-text'); if (el) el.textContent = '(could not load text)'; }
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  if (isText) {
+    const el = document.getElementById('file-edit-text');
+    try { const r = await fetch(url); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
+    catch { if (el) el.value = ''; }
+    if (el && canEdit && opts.edit) el.focus();
   }
 }
 
