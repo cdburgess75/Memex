@@ -1529,6 +1529,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .call-ctrl { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #2a2d33; color: #fff; font-size: 16px; cursor: pointer; }
 .call-ctrl:hover { background: #353941; }
 .call-ctrl.off { background: #5a3a3a; }
+.call-ctrl.on { background: #2E7D32; }
 .call-ctrl.hang { background: #C0392B; }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
 .file-type-tabs { display: flex; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
@@ -6262,8 +6263,8 @@ async function previewFile(fileId, opts = {}) {
 /* ========== member video/audio calls (native WebRTC mesh) ========== */
 let callWs = null, callSelf = null, callOnline = [];
 let callRoom = null, pendingCallRoom = null, incomingCall = null;
-let localStream = null, callMuted = false, callCamOff = false;
-const callPeers = new Map(); // userId -> { pc, name, el }
+let localStream = null, callMuted = false, callCamOff = false, screenStream = null;
+const callPeers = new Map(); // userId -> { pc, name, dc, incoming }
 let callIce = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 function wsUrl(token) { return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${encodeURIComponent(token)}`; }
@@ -6307,20 +6308,77 @@ async function ensureMedia() {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   return localStream;
 }
-function newPc(peer) {
+function newPc(peer, initiator) {
   const pc = new RTCPeerConnection({ iceServers: callIce });
+  const entry = { pc, name: peer.name, userId: peer.userId };
+  callPeers.set(peer.userId, entry);
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  if (initiator) setupDataChannel(entry, pc.createDataChannel('file'));
+  else pc.ondatachannel = ev => setupDataChannel(entry, ev.channel);
   pc.onicecandidate = e => { if (e.candidate) wsSend({ type: 'signal', to: peer.userId, room: callRoom, data: { candidate: e.candidate } }); };
   pc.ontrack = e => attachRemote(peer, e.streams[0]);
   pc.onconnectionstatechange = () => { if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) removePeer(peer.userId); };
-  callPeers.set(peer.userId, { pc, name: peer.name });
   return pc;
+}
+// ---- file transfer over the peer data channel ----
+function setupDataChannel(entry, ch) {
+  ch.binaryType = 'arraybuffer';
+  entry.dc = ch;
+  ch.onmessage = ev => {
+    if (typeof ev.data === 'string') {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.t === 'meta') entry.incoming = { meta: m, chunks: [] };
+      else if (m.t === 'done' && entry.incoming) finishIncoming(entry);
+    } else if (entry.incoming) {
+      entry.incoming.chunks.push(ev.data);
+    }
+  };
+}
+function finishIncoming(entry) {
+  const { meta, chunks } = entry.incoming; entry.incoming = null;
+  const blob = new Blob(chunks, { type: meta.mime || 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = meta.name || 'file';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  toast(`Received "${meta.name}" from ${esc(entry.name)}`);
+}
+async function sendFileToCall(file) {
+  const open = [...callPeers.values()].filter(e => e.dc && e.dc.readyState === 'open');
+  if (!open.length) { toast('No connected members yet'); return; }
+  const CHUNK = 16 * 1024;
+  const buf = await file.arrayBuffer();
+  for (const e of open) {
+    e.dc.send(JSON.stringify({ t: 'meta', name: file.name, size: file.size, mime: file.type }));
+    for (let o = 0; o < buf.byteLength; o += CHUNK) {
+      while (e.dc.bufferedAmount > 8 * 1024 * 1024) await new Promise(r => setTimeout(r, 20)); // backpressure
+      e.dc.send(buf.slice(o, o + CHUNK));
+    }
+    e.dc.send(JSON.stringify({ t: 'done' }));
+  }
+  toast(`Sent "${file.name}" to ${open.length} member${open.length > 1 ? 's' : ''}`);
+}
+function pickCallFile() { const inp = document.getElementById('call-file-input'); if (inp) { inp.value = ''; inp.click(); } }
+// ---- screen share (one-way, view-only) ----
+async function shareScreen() {
+  if (screenStream) return stopScreen();
+  if (!navigator.mediaDevices?.getDisplayMedia) { toast('Screen share needs HTTPS'); return; }
+  try { screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true }); } catch { return; }
+  const track = screenStream.getVideoTracks()[0];
+  for (const [, e] of callPeers) { const s = e.pc.getSenders().find(x => x.track && x.track.kind === 'video'); if (s) s.replaceTrack(track); }
+  track.onended = stopScreen;
+  renderCallDock();
+}
+function stopScreen() {
+  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+  const cam = localStream?.getVideoTracks()[0];
+  for (const [, e] of callPeers) { const s = e.pc.getSenders().find(x => x.track && x.track.kind === 'video'); if (s && cam) s.replaceTrack(cam); }
+  renderCallDock();
 }
 async function connectToPeer(peer, initiator) {
   try {
     await ensureMedia();
     if (callPeers.has(peer.userId)) return;
-    const pc = newPc(peer);
+    const pc = newPc(peer, initiator);
     if (initiator) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -6333,7 +6391,7 @@ async function handleSignal(from, data) {
   try {
     await ensureMedia();
     let entry = callPeers.get(from.userId);
-    if (!entry) { newPc(from); entry = callPeers.get(from.userId); renderCallGrid(); }
+    if (!entry) { newPc(from, false); entry = callPeers.get(from.userId); renderCallGrid(); }
     const pc = entry.pc;
     if (data.sdp) {
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
@@ -6390,6 +6448,7 @@ function endCall() {
   if (callRoom) wsSend({ type: 'leave', room: callRoom });
   for (const [id] of callPeers) removePeer(id);
   callPeers.clear();
+  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   callRoom = null; pendingCallRoom = null; callMuted = false; callCamOff = false;
   renderCallDock();
@@ -6430,8 +6489,11 @@ function renderCallDock() {
     <div class="call-controls">
       <button class="call-ctrl${callMuted ? ' off' : ''}" onclick="toggleMute()" title="${callMuted ? 'Unmute' : 'Mute'}">${callMuted ? '🔇' : '🎙'}</button>
       <button class="call-ctrl${callCamOff ? ' off' : ''}" onclick="toggleCam()" title="${callCamOff ? 'Camera on' : 'Camera off'}">${callCamOff ? '📷̶' : '📹'}</button>
+      <button class="call-ctrl${screenStream ? ' on' : ''}" onclick="shareScreen()" title="${screenStream ? 'Stop sharing' : 'Share screen'}">🖥</button>
+      <button class="call-ctrl" onclick="pickCallFile()" title="Send file">📎</button>
       <button class="call-ctrl hang" onclick="endCall()" title="Leave">✕</button>
-    </div>`;
+    </div>
+    <input type="file" id="call-file-input" style="display:none" onchange="if(this.files[0])sendFileToCall(this.files[0])">`;
   renderCallGrid();
 }
 function renderCallGrid() {
