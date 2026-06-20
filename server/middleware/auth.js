@@ -63,3 +63,6 @@ module.exports = async function auth(req, res, next) {
 
   next();
 };
+
+// Reused by the WebSocket signaling server (which can't run Express middleware).
+module.exports.verifyToken = verifyToken;
