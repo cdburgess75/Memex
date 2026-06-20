@@ -1494,6 +1494,42 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-text { margin: 0; padding: 18px; width: 100%; white-space: pre-wrap; word-break: break-word; font: 12.5px var(--mono); color: var(--ink); }
 .file-preview-edit { margin: 0; padding: 18px; width: 100%; height: 100%; border: 0; outline: 0; resize: none; box-sizing: border-box; font: 13px var(--mono); line-height: 1.5; color: var(--ink); background: var(--surface); }
+/* member calls */
+.meet-wrap { position: relative; }
+.meet-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.meet-btn:hover { color: var(--accent); border-color: var(--accent); }
+.meet-presence-dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #2E7D32; box-shadow: 0 0 0 2px var(--surface); }
+.meet-panel { display: none; position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: 260px; padding: 10px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.meet-panel.open { display: block; }
+.meet-title { font: 700 10.5px var(--ui); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 6px 6px; }
+.meet-people { display: grid; gap: 2px; max-height: 200px; overflow: auto; }
+.meet-person { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; padding: 8px 8px; border-radius: 7px; cursor: pointer; color: var(--ink); }
+.meet-person:hover { background: var(--accent-wash); }
+.meet-person-dot { width: 8px; height: 8px; border-radius: 50%; background: #2E7D32; flex: 0 0 auto; }
+.meet-person-name { flex: 1; text-align: left; font: 500 13.5px var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meet-call-ico { opacity: .6; }
+.meet-empty { padding: 8px; font-size: 13px; color: var(--ink-faint); }
+.meet-rule { height: 1px; background: var(--rule-soft); margin: 8px 4px; }
+.meet-room { display: flex; gap: 6px; padding: 2px; }
+.meet-room input { flex: 1; min-width: 0; height: 32px; border: 1px solid var(--rule); border-radius: 7px; padding: 0 10px; background: var(--surface-2); color: var(--ink); }
+.meet-incall { margin-top: 8px; font-size: 12px; color: var(--accent); padding: 0 6px; }
+.call-incoming { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 80; min-width: 260px; padding: 14px 18px; border-radius: 12px; background: var(--surface); border: 1px solid var(--rule); box-shadow: var(--shadow), 0 16px 40px rgba(0,0,0,0.2); text-align: center; }
+.call-incoming-name { font: 700 16px var(--ui); color: var(--ink); }
+.call-incoming-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 12px; }
+.call-incoming-actions { display: flex; gap: 8px; justify-content: center; }
+.call-accept { border: 0; border-radius: 8px; padding: 8px 18px; background: #2E7D32; color: #fff; font: 600 13px var(--ui); cursor: pointer; }
+.call-decline { border: 0; border-radius: 8px; padding: 8px 18px; background: #C0392B; color: #fff; font: 600 13px var(--ui); cursor: pointer; }
+.call-dock { position: fixed; right: 18px; bottom: 18px; z-index: 70; width: min(420px, 92vw); background: #15171b; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,0.35); }
+.call-grid { display: grid; gap: 4px; padding: 4px; background: #0d0f12; }
+.call-tile { position: relative; aspect-ratio: 4/3; background: #1d2024; border-radius: 8px; overflow: hidden; }
+.call-tile video { width: 100%; height: 100%; object-fit: cover; background: #1d2024; }
+.call-tile-name { position: absolute; left: 8px; bottom: 6px; font: 600 11px var(--ui); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.call-tile-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa0a6; font-size: 12px; }
+.call-controls { display: flex; gap: 10px; justify-content: center; padding: 10px; background: #15171b; }
+.call-ctrl { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #2a2d33; color: #fff; font-size: 16px; cursor: pointer; }
+.call-ctrl:hover { background: #353941; }
+.call-ctrl.off { background: #5a3a3a; }
+.call-ctrl.hang { background: #C0392B; }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
 .file-type-tabs { display: flex; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
 .file-type-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
@@ -2275,6 +2311,10 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
       <div class="ai-model-menu" id="ai-model-menu"></div>
     </div>
+    <div class="meet-wrap">
+      <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
+      <div class="meet-panel" id="meet-panel"></div>
+    </div>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -2583,6 +2623,7 @@ async function _afterLogin() {
   applyRoleUI();
   loadSecurityStatus();
   loadComplianceSummary();
+  connectSignaling();
 }
 
 async function loadFromServer() {
@@ -6216,6 +6257,191 @@ async function previewFile(fileId, opts = {}) {
     catch { if (el) el.value = ''; }
     if (el && canEdit && opts.edit) el.focus();
   }
+}
+
+/* ========== member video/audio calls (native WebRTC mesh) ========== */
+let callWs = null, callSelf = null, callOnline = [];
+let callRoom = null, pendingCallRoom = null, incomingCall = null;
+let localStream = null, callMuted = false, callCamOff = false;
+const callPeers = new Map(); // userId -> { pc, name, el }
+let callIce = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+function wsUrl(token) { return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${encodeURIComponent(token)}`; }
+function wsSend(o) { if (callWs && callWs.readyState === WebSocket.OPEN) callWs.send(JSON.stringify(o)); }
+async function connectSignaling() {
+  try {
+    const token = await getToken();
+    if (!token) return;
+    callWs = new WebSocket(wsUrl(token));
+    callWs.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onSignal(m); };
+    callWs.onclose = () => { callWs = null; if (currentUser) setTimeout(connectSignaling, 5000); };
+    callWs.onerror = () => {};
+  } catch { /* ignore */ }
+  try { const d = await apiGet('/webrtc/ice'); if (d.iceServers?.length) callIce = d.iceServers; } catch { /* default STUN */ }
+}
+function updatePresenceDot() {
+  const dot = document.getElementById('meet-presence-dot');
+  if (dot) dot.style.display = callOnline.length ? '' : 'none';
+}
+function onSignal(m) {
+  switch (m.type) {
+    case 'welcome': callSelf = m.self; break;
+    case 'presence':
+      callOnline = (m.users || []).filter(u => u.userId !== callSelf?.userId);
+      updatePresenceDot(); if (meetPanelOpen()) renderMeetPanel(); break;
+    case 'call':
+      if (callRoom) { wsSend({ type: 'call-reject', to: m.from.userId, room: m.room }); break; }
+      incomingCall = { from: m.from, room: m.room }; renderIncomingCall(); break;
+    case 'call-reject': toast(`${esc(m.from.name)} declined`); if (callRoom && !callPeers.size) endCall(); break;
+    case 'call-cancel':
+      if (incomingCall && incomingCall.from.userId === m.from.userId) { incomingCall = null; renderIncomingCall(); } break;
+    case 'room-peers': (m.peers || []).forEach(p => connectToPeer(p, true)); break; // I offer to existing peers
+    case 'peer-joined': break; // they will offer to me
+    case 'peer-left': removePeer(m.peer.userId); break;
+    case 'signal': handleSignal(m.from, m.data); break;
+  }
+}
+async function ensureMedia() {
+  if (localStream) return localStream;
+  if (!navigator.mediaDevices?.getUserMedia) { toast('Camera/mic need HTTPS — not available on this origin'); throw new Error('insecure context'); }
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  return localStream;
+}
+function newPc(peer) {
+  const pc = new RTCPeerConnection({ iceServers: callIce });
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  pc.onicecandidate = e => { if (e.candidate) wsSend({ type: 'signal', to: peer.userId, room: callRoom, data: { candidate: e.candidate } }); };
+  pc.ontrack = e => attachRemote(peer, e.streams[0]);
+  pc.onconnectionstatechange = () => { if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) removePeer(peer.userId); };
+  callPeers.set(peer.userId, { pc, name: peer.name });
+  return pc;
+}
+async function connectToPeer(peer, initiator) {
+  try {
+    await ensureMedia();
+    if (callPeers.has(peer.userId)) return;
+    const pc = newPc(peer);
+    if (initiator) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      wsSend({ type: 'signal', to: peer.userId, room: callRoom, data: { sdp: pc.localDescription } });
+    }
+    renderCallGrid();
+  } catch { /* media error already toasted */ }
+}
+async function handleSignal(from, data) {
+  try {
+    await ensureMedia();
+    let entry = callPeers.get(from.userId);
+    if (!entry) { newPc(from); entry = callPeers.get(from.userId); renderCallGrid(); }
+    const pc = entry.pc;
+    if (data.sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      if (data.sdp.type === 'offer') {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        wsSend({ type: 'signal', to: from.userId, room: callRoom, data: { sdp: pc.localDescription } });
+      }
+    } else if (data.candidate) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch { /* race */ }
+    }
+  } catch { /* ignore */ }
+}
+function attachRemote(peer, stream) {
+  const entry = callPeers.get(peer.userId); if (!entry) return;
+  entry.stream = stream; renderCallGrid();
+}
+function removePeer(userId) {
+  const e = callPeers.get(userId);
+  if (e) { try { e.pc.close(); } catch {} callPeers.delete(userId); }
+  if (callRoom) renderCallGrid();
+}
+// ---- start / join / end ----
+async function startRoom(roomId) {
+  try { await ensureMedia(); } catch { return; }
+  callRoom = roomId;
+  wsSend({ type: 'join', room: roomId });
+  closeMeetPanel();
+  renderCallDock();
+}
+async function callMember(userId, name) {
+  const room = 'dm-' + Math.random().toString(36).slice(2, 10);
+  pendingCallRoom = room;
+  try { await ensureMedia(); } catch { return; }
+  callRoom = room;
+  wsSend({ type: 'join', room });
+  wsSend({ type: 'call', to: userId, room });
+  closeMeetPanel();
+  renderCallDock();
+  toast('Calling ' + name + '…');
+}
+function acceptIncoming() {
+  if (!incomingCall) return;
+  const c = incomingCall; incomingCall = null; renderIncomingCall();
+  wsSend({ type: 'call-accept', to: c.from.userId, room: c.room });
+  startRoom(c.room);
+}
+function declineIncoming() {
+  if (!incomingCall) return;
+  wsSend({ type: 'call-reject', to: incomingCall.from.userId, room: incomingCall.room });
+  incomingCall = null; renderIncomingCall();
+}
+function endCall() {
+  if (callRoom) wsSend({ type: 'leave', room: callRoom });
+  for (const [id] of callPeers) removePeer(id);
+  callPeers.clear();
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  callRoom = null; pendingCallRoom = null; callMuted = false; callCamOff = false;
+  renderCallDock();
+}
+function toggleMute() { callMuted = !callMuted; if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !callMuted); renderCallDock(); }
+function toggleCam() { callCamOff = !callCamOff; if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = !callCamOff); renderCallDock(); }
+// ---- UI ----
+function meetPanelOpen() { return document.getElementById('meet-panel')?.classList.contains('open'); }
+function toggleMeetPanel(e) { e?.stopPropagation(); const p = document.getElementById('meet-panel'); if (!p) return; if (!p.classList.contains('open')) renderMeetPanel(); p.classList.toggle('open'); }
+function closeMeetPanel() { document.getElementById('meet-panel')?.classList.remove('open'); }
+function renderMeetPanel() {
+  const p = document.getElementById('meet-panel'); if (!p) return;
+  const people = callOnline.length
+    ? callOnline.map(u => `<button class="meet-person" onclick="callMember('${esc(u.userId)}', '${esc(u.name)}')"><span class="meet-person-dot"></span><span class="meet-person-name">${esc(u.name)}</span><span class="meet-call-ico">📞</span></button>`).join('')
+    : '<div class="meet-empty">No one else is online right now.</div>';
+  p.innerHTML = `<div class="meet-title">People online</div><div class="meet-people">${people}</div>
+    <div class="meet-rule"></div>
+    <div class="meet-title">Start a meeting</div>
+    <div class="meet-room"><input id="meet-room-input" type="text" placeholder="Room name (e.g. standup)" onkeydown="if(event.key==='Enter')joinRoomFromInput()"><button class="run-btn" onclick="joinRoomFromInput()">Join</button></div>
+    ${callRoom ? '<div class="meet-incall">You\'re in a call.</div>' : ''}`;
+}
+function joinRoomFromInput() {
+  const v = (document.getElementById('meet-room-input')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  if (!v) return; startRoom('room-' + v);
+}
+document.addEventListener('click', e => { const p = document.getElementById('meet-panel'); if (p?.classList.contains('open') && !e.target.closest('#meet-panel') && !e.target.closest('#meet-btn')) p.classList.remove('open'); });
+function renderIncomingCall() {
+  let el = document.getElementById('call-incoming');
+  if (!incomingCall) { el?.remove(); return; }
+  if (!el) { document.body.insertAdjacentHTML('beforeend', '<div class="call-incoming" id="call-incoming"></div>'); el = document.getElementById('call-incoming'); }
+  el.innerHTML = `<div class="call-incoming-name">${esc(incomingCall.from.name)}</div><div class="call-incoming-sub">is calling…</div><div class="call-incoming-actions"><button class="call-accept" onclick="acceptIncoming()">Accept</button><button class="call-decline" onclick="declineIncoming()">Decline</button></div>`;
+}
+function renderCallDock() {
+  let dock = document.getElementById('call-dock');
+  if (!callRoom) { dock?.remove(); return; }
+  if (!dock) { document.body.insertAdjacentHTML('beforeend', '<div class="call-dock" id="call-dock"></div>'); dock = document.getElementById('call-dock'); }
+  dock.innerHTML = `<div class="call-grid" id="call-grid"></div>
+    <div class="call-controls">
+      <button class="call-ctrl${callMuted ? ' off' : ''}" onclick="toggleMute()" title="${callMuted ? 'Unmute' : 'Mute'}">${callMuted ? '🔇' : '🎙'}</button>
+      <button class="call-ctrl${callCamOff ? ' off' : ''}" onclick="toggleCam()" title="${callCamOff ? 'Camera on' : 'Camera off'}">${callCamOff ? '📷̶' : '📹'}</button>
+      <button class="call-ctrl hang" onclick="endCall()" title="Leave">✕</button>
+    </div>`;
+  renderCallGrid();
+}
+function renderCallGrid() {
+  const grid = document.getElementById('call-grid'); if (!grid) return;
+  const tiles = [];
+  if (localStream) tiles.push({ id: 'self', name: 'You', stream: localStream, muted: true });
+  for (const [id, e] of callPeers) tiles.push({ id, name: e.name, stream: e.stream, muted: false });
+  grid.style.gridTemplateColumns = `repeat(${Math.min(tiles.length, 2) || 1}, 1fr)`;
+  grid.innerHTML = tiles.map(t => `<div class="call-tile"><video id="vid-${esc(t.id)}" autoplay playsinline ${t.muted ? 'muted' : ''}></video><span class="call-tile-name">${esc(t.name)}</span>${t.stream ? '' : '<span class="call-tile-wait">connecting…</span>'}</div>`).join('');
+  for (const t of tiles) { const v = document.getElementById('vid-' + t.id); if (v && t.stream && v.srcObject !== t.stream) v.srcObject = t.stream; }
 }
 
 /* ---------- boot ---------- */
