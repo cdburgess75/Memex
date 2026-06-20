@@ -94,6 +94,18 @@ app.get('/api/tls/check', async (req, res) => {
   } catch { return res.sendStatus(403); }
 });
 
+// ICE servers for WebRTC calls (STUN + optional TURN), auth-gated so TURN creds aren't public.
+app.get('/api/webrtc/ice', require('./middleware/auth'), async (_req, res) => {
+  try {
+    const list = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+    const stun = list(await settings.getOrEnv('stun_url'));
+    const iceServers = [{ urls: stun.length ? stun : ['stun:stun.l.google.com:19302'] }];
+    const turn = list(await settings.getOrEnv('turn_url'));
+    if (turn.length) iceServers.push({ urls: turn, username: (await settings.getOrEnv('turn_username')) || '', credential: (await settings.getOrEnv('turn_credential')) || '' });
+    res.json({ iceServers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pages', require('./routes/pages'));
 app.use('/api/ai', require('./routes/ai'));
@@ -111,7 +123,7 @@ app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html'
 
 const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
-app.listen(PORT, BIND, async () => {
+const server = app.listen(PORT, BIND, async () => {
   console.log(`Memex running on http://${BIND}:${PORT}`);
   // One-time, idempotent: ensure every existing document has an owner/admin ACL row
   // (the historical grantOwnerAdmin bug left pre-existing docs without one).
@@ -124,3 +136,7 @@ app.listen(PORT, BIND, async () => {
   // Arm the scheduled-backup timer (no-op unless backups are enabled).
   try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
 });
+
+// WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
+try { require('./lib/signaling').init(server); console.log('[startup] WebRTC signaling on /ws'); }
+catch (e) { console.error('[startup] signaling init failed:', e.message); }

@@ -16,6 +16,7 @@ const SENSITIVE = new Set([
   'google_service_account_key',
   'storage_encryption_key',
   'backup_download_secret',
+  'turn_credential',
 ]);
 
 const MASKED = '●●●●●●●●';

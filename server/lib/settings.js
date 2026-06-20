@@ -42,6 +42,10 @@ const ENV_MAP = {
   backup_retention:               'BACKUP_RETENTION',
   backup_destinations:            'BACKUP_DESTINATIONS',
   backup_download_secret:         'BACKUP_DOWNLOAD_SECRET',
+  stun_url:                       'STUN_URL',
+  turn_url:                       'TURN_URL',
+  turn_username:                  'TURN_USERNAME',
+  turn_credential:                'TURN_CREDENTIAL',
 };
 
 const cache = new Map();
