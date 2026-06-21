@@ -6364,7 +6364,8 @@ function pickCallFile() { const inp = document.getElementById('call-file-input')
 // Remote control is out of the browser's reach — hand off to ScreenConnect.
 function launchRemote() {
   if (!screenconnectUrl) { toast('Set a ScreenConnect URL in Settings → System → Integrations'); return; }
-  window.open(screenconnectUrl, '_blank', 'noopener');
+  const url = /^https?:\/\//i.test(screenconnectUrl) ? screenconnectUrl : 'https://' + screenconnectUrl;
+  window.open(url, '_blank', 'noopener');
   toast('Opening ScreenConnect for remote control…');
 }
 // ---- screen share (one-way, view-only) ----
