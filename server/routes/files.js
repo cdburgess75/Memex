@@ -13,6 +13,7 @@ const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
+const { zipFiles } = require('../lib/zip');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -1442,6 +1443,85 @@ router.post('/folder', auth, requireRole('admin', 'contributor'), async (req, re
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     res.json({ ok: true, path: folderPath });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/rename — rename a folder (re-prefix every file under it)
+router.post('/folder/rename', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const oldPath = safeDocName(req.body?.path, '');
+    const newName = String(req.body?.name || '').trim();
+    if (!oldPath || !newName) return res.status(400).json({ error: 'path and name required' });
+    if (/[\/\\]/.test(newName) || newName === '..' || newName === '.') return res.status(400).json({ error: 'invalid name' });
+    const parent = oldPath.split('/').slice(0, -1).join('/');
+    const newPath = parent ? `${parent}/${newName}` : newName;
+    const rows = await db.query(
+      `UPDATE documents d SET name = $2 || substring(d.name from $3)
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       RETURNING d.id`,
+      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
+    );
+    await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
+    res.json({ ok: true, path: newPath, count: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/delete — move a whole folder's contents to Trash
+router.post('/folder/delete', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const rows = await db.query(
+      `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       RETURNING d.id`,
+      [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write')]
+    );
+    await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
+    res.json({ ok: true, count: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/move — move a folder's contents to another library
+router.post('/folder/move', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const rows = await db.query(
+      `UPDATE documents d SET library_id = $2
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 3)}
+       RETURNING d.id`,
+      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write')]
+    );
+    res.json({ ok: true, count: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/files/folder/zip?path=... — download a folder's files as a compressed zip
+router.get('/folder/zip', auth, async (req, res) => {
+  try {
+    const folderPath = safeDocName(req.query.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const docs = await db.query(
+      `SELECT d.id, d.name, d.storage_path, d.size FROM documents d
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}
+       ORDER BY d.name`,
+      [folderPath, ...documentAccess.userParams(req.user, 'read')]
+    );
+    if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
+    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
+    if (total > 500 * 1024 * 1024) return res.status(413).json({ error: 'Folder is too large to zip (over 500 MB)' });
+    const parent = folderPath.split('/').slice(0, -1).join('/');
+    const entries = [];
+    for (const d of docs) {
+      const buf = await storage.download(d.storage_path);
+      entries.push({ name: parent ? d.name.slice(parent.length + 1) : d.name, data: buf });
+    }
+    const base = folderPath.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
+    res.send(zipFiles(entries));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

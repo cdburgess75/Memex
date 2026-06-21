@@ -4683,7 +4683,7 @@ function fileLibraryRow(f) {
 }
 function folderLibraryRow(folder) {
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
-  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Open folder" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolder(this.dataset.folder)">${ICON_OPEN}</button></div></td></tr>`;
+  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -6202,6 +6202,83 @@ function openFileMenu(fileId, event) {
 }
 document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu')) closeFileMenu(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeFileMenu(); closeFilePreview(); } });
+
+// ---- folder actions ----
+let folderMenuPath = '';
+function openFolderMenu(path, event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  if (!path) return false;
+  folderMenuPath = path;
+  closeFileMenu();
+  const items = [
+    `<button class="file-menu-item" onclick="closeFileMenu();openFolder(folderMenuPath)">Open</button>`,
+    `<div class="file-menu-rule"></div>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>`,
+    `<div class="file-menu-rule"></div>`,
+    `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>`,
+  ].join('');
+  const menu = document.createElement('div');
+  menu.className = 'file-row-menu'; menu.id = 'file-row-menu'; menu.innerHTML = items;
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  let left, top;
+  if (event && event.type === 'click' && event.currentTarget?.getBoundingClientRect) {
+    const b = event.currentTarget.getBoundingClientRect(); left = b.right - rect.width; top = b.bottom + 4;
+  } else { left = event?.clientX ?? 80; top = event?.clientY ?? 80; }
+  left = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - rect.height - 8));
+  menu.style.left = left + 'px'; menu.style.top = top + 'px';
+  return false;
+}
+async function downloadFolderZip(path) {
+  toast('Zipping folder…');
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/files/folder/zip?path=' + encodeURIComponent(path), { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.error || 'Zip failed'); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = (path.split('/').pop() || 'folder') + '.zip';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  } catch (e) { toast('Zip failed: ' + e.message); }
+}
+async function renameFolder(path) {
+  const cur = path.split('/').pop();
+  const next = (prompt('Rename folder:', cur) || '').trim();
+  if (!next || next === cur) return;
+  try {
+    const r = await apiPost('/files/folder/rename', { path, name: next });
+    if (currentFolderPath === path) currentFolderPath = r.path;
+    else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
+    await loadFiles();
+    toast(`Renamed (${r.count} item${r.count === 1 ? '' : 's'})`);
+  } catch (e) { toast('Rename failed: ' + e.message); }
+}
+async function deleteFolder(path) {
+  const name = path.split('/').pop();
+  if (!confirm(`Move folder "${name}" and everything inside it to Trash?`)) return;
+  try {
+    const r = await apiPost('/files/folder/delete', { path });
+    if (currentFolderPath === path || currentFolderPath.startsWith(path + '/')) currentFolderPath = path.split('/').slice(0, -1).join('/');
+    await loadFiles();
+    toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`);
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+function moveFolderToLibrary(path) {
+  if (!Array.isArray(librariesList) || librariesList.length < 2) { toast('No other library to move to'); return; }
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open'; scrim.id = 'folder-move-scrim';
+  scrim.onclick = e => { if (e.target.id === 'folder-move-scrim') scrim.remove(); };
+  scrim.innerHTML = `<div class="modal"><h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="document.getElementById('folder-move-scrim').remove()">Cancel</button></div></div>`;
+  document.body.appendChild(scrim);
+  scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
+    scrim.remove();
+    try { const r = await apiPost('/files/folder/move', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
+    catch (e) { toast('Move failed: ' + e.message); }
+  });
+}
 
 async function openInDesktopOffice(fileId) {
   recordOpen(fileId);
