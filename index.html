@@ -3981,7 +3981,7 @@ async function saveIntegrationSettings() {
   const appUrl = document.getElementById('cfg-app-url').value;
   const folder = document.getElementById('cfg-google-folder').value;
   const gKey = document.getElementById('cfg-google-key').value;
-  const body = { app_url: appUrl, google_drive_folder_id: folder };
+  const body = { app_url: appUrl, google_drive_folder_id: folder, screenconnect_url: document.getElementById('cfg-screenconnect-url').value };
   if (gKey.trim()) body.google_service_account_key = gKey;
   try {
     await apiPut('/admin/settings', body);
@@ -4328,6 +4328,8 @@ function systemSettingsHtml() {
         <input type="text" id="cfg-google-folder" value="${esc(s.google_drive_folder_id||'')}" placeholder="optional — default Drive root">
         <label>Google Service Account Key</label>
         <textarea id="cfg-google-key" placeholder='{"type":"service_account",…} — leave blank to keep current'>${esc(s.google_service_account_key||'')}</textarea>
+        <label>ScreenConnect URL</label>
+        <input type="url" id="cfg-screenconnect-url" value="${esc(s.screenconnect_url||'')}" placeholder="https://yourco.screenconnect.com — Remote button in calls">
       </div>
       <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
 
@@ -6266,6 +6268,7 @@ let callRoom = null, pendingCallRoom = null, incomingCall = null;
 let localStream = null, callMuted = false, callCamOff = false, screenStream = null;
 const callPeers = new Map(); // userId -> { pc, name, dc, incoming }
 let callIce = [{ urls: 'stun:stun.l.google.com:19302' }];
+let screenconnectUrl = '';
 
 function wsUrl(token) { return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?token=${encodeURIComponent(token)}`; }
 function wsSend(o) { if (callWs && callWs.readyState === WebSocket.OPEN) callWs.send(JSON.stringify(o)); }
@@ -6278,7 +6281,7 @@ async function connectSignaling() {
     callWs.onclose = () => { callWs = null; if (currentUser) setTimeout(connectSignaling, 5000); };
     callWs.onerror = () => {};
   } catch { /* ignore */ }
-  try { const d = await apiGet('/webrtc/ice'); if (d.iceServers?.length) callIce = d.iceServers; } catch { /* default STUN */ }
+  try { const d = await apiGet('/webrtc/ice'); if (d.iceServers?.length) callIce = d.iceServers; screenconnectUrl = d.screenconnectUrl || ''; } catch { /* default STUN */ }
 }
 function updatePresenceDot() {
   const dot = document.getElementById('meet-presence-dot');
@@ -6358,6 +6361,12 @@ async function sendFileToCall(file) {
   toast(`Sent "${file.name}" to ${open.length} member${open.length > 1 ? 's' : ''}`);
 }
 function pickCallFile() { const inp = document.getElementById('call-file-input'); if (inp) { inp.value = ''; inp.click(); } }
+// Remote control is out of the browser's reach — hand off to ScreenConnect.
+function launchRemote() {
+  if (!screenconnectUrl) { toast('Set a ScreenConnect URL in Settings → System → Integrations'); return; }
+  window.open(screenconnectUrl, '_blank', 'noopener');
+  toast('Opening ScreenConnect for remote control…');
+}
 // ---- screen share (one-way, view-only) ----
 async function shareScreen() {
   if (screenStream) return stopScreen();
@@ -6491,6 +6500,7 @@ function renderCallDock() {
       <button class="call-ctrl${callCamOff ? ' off' : ''}" onclick="toggleCam()" title="${callCamOff ? 'Camera on' : 'Camera off'}">${callCamOff ? '📷̶' : '📹'}</button>
       <button class="call-ctrl${screenStream ? ' on' : ''}" onclick="shareScreen()" title="${screenStream ? 'Stop sharing' : 'Share screen'}">🖥</button>
       <button class="call-ctrl" onclick="pickCallFile()" title="Send file">📎</button>
+      ${screenconnectUrl ? `<button class="call-ctrl" onclick="launchRemote()" title="Remote control (ScreenConnect)">🖱</button>` : ''}
       <button class="call-ctrl hang" onclick="endCall()" title="Leave">✕</button>
     </div>
     <input type="file" id="call-file-input" style="display:none" onchange="if(this.files[0])sendFileToCall(this.files[0])">`;

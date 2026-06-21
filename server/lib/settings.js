@@ -46,6 +46,7 @@ const ENV_MAP = {
   turn_url:                       'TURN_URL',
   turn_username:                  'TURN_USERNAME',
   turn_credential:                'TURN_CREDENTIAL',
+  screenconnect_url:              'SCREENCONNECT_URL',
 };
 
 const cache = new Map();

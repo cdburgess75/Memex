@@ -102,7 +102,7 @@ app.get('/api/webrtc/ice', require('./middleware/auth'), async (_req, res) => {
     const iceServers = [{ urls: stun.length ? stun : ['stun:stun.l.google.com:19302'] }];
     const turn = list(await settings.getOrEnv('turn_url'));
     if (turn.length) iceServers.push({ urls: turn, username: (await settings.getOrEnv('turn_username')) || '', credential: (await settings.getOrEnv('turn_credential')) || '' });
-    res.json({ iceServers });
+    res.json({ iceServers, screenconnectUrl: (await settings.getOrEnv('screenconnect_url')) || '' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
