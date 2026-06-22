@@ -1544,6 +1544,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-recent-meta { min-width: 0; }
 .file-recent-name { font: 600 13px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-recent-sub { font-size: 11.5px; color: var(--ink-faint); }
+.file-folder-row.drop-target td { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); }
+.file-commander-folder.drop-target { background: var(--accent-wash); box-shadow: inset 0 0 0 2px var(--accent); border-radius: 6px; }
 .file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
 .file-library-table tbody tr:last-child td { border-bottom: 0; }
 .file-library-table tbody tr { cursor: pointer; }
@@ -2427,7 +2429,7 @@ let selectedFolderPaths = new Set();
 let lastRenderedFileIds = []; // file ids currently shown in the library table (for select-all)
 let lastRenderedFolderPaths = []; // folder paths currently shown (for select-all)
 let detailsPaneOpen = false;
-let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
+let fileLayoutMode = localStorage.getItem('memex_file_layout_v2') || 'commander';
 let currentFolderPath = '';
 
 // ---- file table columns (sortable + show/hide, persisted) ----
@@ -4694,12 +4696,12 @@ function fileLibraryRow(f) {
   const cols = visibleFileColumns().map(c =>
     c.id === 'name' ? fileNameCellHtml(f) : `<td${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
   ).join('');
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" draggable="true" ondragstart="onItemDragStart(event,'file',this.dataset.fid)" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
   const sel = selectedFolderPaths.has(folder.path);
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" draggable="true" ondragstart="onItemDragStart(event,'folder',this.dataset.folder)" ondragover="onFolderDragOver(event)" ondragleave="onFolderDragLeave(event)" ondrop="onFolderDrop(event, this.dataset.folder)" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -4719,7 +4721,7 @@ function fileLayoutToggleHtml() {
 }
 function setFileLayoutMode(mode) {
   fileLayoutMode = mode === 'commander' ? 'commander' : 'list';
-  localStorage.setItem('memex_file_layout', fileLayoutMode);
+  localStorage.setItem('memex_file_layout_v2', fileLayoutMode);
   renderDocumentLibraryList();
 }
 function openFolder(path = '') {
@@ -4731,10 +4733,11 @@ function openFolder(path = '') {
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
+  const dnd = `ondragover="onFolderDragOver(event)" ondragleave="onFolderDragLeave(event)" ondrop="onFolderDrop(event, this.dataset.folder)"`;
   const rows = folders.length
-    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)"><span>▸</span><span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
+    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" ${dnd}><span>▸</span><span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
-  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="openFolder('')"><span>⌂</span><span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
+  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="openFolder('')" ${dnd}><span>⌂</span><span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
@@ -5517,6 +5520,55 @@ function clearFileSelection(render = true) {
   if (render && document.getElementById('file-library-view')) renderDocumentLibraryList();
 }
 function selectedFolders() { return [...selectedFolderPaths]; }
+
+// ---- drag & drop into folders ----
+function dragPayloadFor(kind, key) {
+  const inSel = kind === 'file' ? selectedFileIds.has(key) : selectedFolderPaths.has(key);
+  if (inSel && (selectedFileIds.size + selectedFolderPaths.size) > 1) {
+    return { files: [...selectedFileIds], folders: [...selectedFolderPaths] };
+  }
+  return kind === 'file' ? { files: [key], folders: [] } : { files: [], folders: [key] };
+}
+function onItemDragStart(event, kind, key) {
+  event.dataTransfer.setData('application/x-memex', JSON.stringify(dragPayloadFor(kind, key)));
+  event.dataTransfer.effectAllowed = 'move';
+}
+function onFolderDragOver(event) {
+  if (!event.dataTransfer.types.includes('application/x-memex')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  event.currentTarget.classList.add('drop-target');
+}
+function onFolderDragLeave(event) { event.currentTarget.classList.remove('drop-target'); }
+async function onFolderDrop(event, targetPath) {
+  event.preventDefault(); event.stopPropagation();
+  event.currentTarget.classList.remove('drop-target');
+  let payload; try { payload = JSON.parse(event.dataTransfer.getData('application/x-memex')); } catch { return; }
+  await moveItemsIntoFolder(payload, targetPath || '');
+}
+async function moveItemsIntoFolder(payload, targetPath) {
+  const { files = [], folders = [] } = payload || {};
+  if (!files.length && !folders.length) return;
+  let moved = 0;
+  try {
+    for (const id of files) {
+      const f = filesList.find(x => String(x.id) === String(id));
+      if (!f) continue;
+      const newName = targetPath ? `${targetPath}/${fileDisplayName(f)}` : fileDisplayName(f);
+      if (newName === f.name) continue;
+      await apiPut('/files/' + id + '/rename', { name: newName });
+      moved++;
+    }
+    for (const p of folders) {
+      if (p === targetPath || targetPath === p.split('/').slice(0, -1).join('/') || targetPath.startsWith(p + '/')) continue;
+      await apiPost('/files/folder/reparent', { path: p, target: targetPath });
+      moved++;
+    }
+    clearFileSelection(false);
+    await loadFiles();
+    if (moved) toast(`Moved ${moved} item${moved === 1 ? '' : 's'} into ${targetPath.split('/').pop() || 'All files'}`);
+  } catch (e) { toast('Move failed: ' + e.message); }
+}
 
 function firstSelectedFile() {
   return selectedFiles()[0] || null;
