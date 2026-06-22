@@ -2423,7 +2423,9 @@ let fileView = 'active'; // 'active' | 'shared' | 'favorites' | 'trash' | 'links
 const RESUMABLE_UPLOAD_THRESHOLD = 16 * 1024 * 1024;
 const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 let selectedFileIds = new Set();
+let selectedFolderPaths = new Set();
 let lastRenderedFileIds = []; // file ids currently shown in the library table (for select-all)
+let lastRenderedFolderPaths = []; // folder paths currently shown (for select-all)
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout') || 'list';
 let currentFolderPath = '';
@@ -4695,8 +4697,9 @@ function fileLibraryRow(f) {
   return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
+  const sel = selectedFolderPaths.has(folder.path);
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
-  return `<tr class="file-folder-row" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -4735,10 +4738,14 @@ function commanderFolderPane(files) {
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
-  if (selected.length) {
+  const folderCount = selectedFolderPaths.size;
+  const total = selected.length + folderCount;
+  if (total) {
     const first = selected[0];
-    const many = selected.length > 1;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${selected.length} selected</span><span class="file-library-sep"></span><button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>${!many ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button><button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>${!many && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedFiles()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    const singleFile = selected.length === 1 && folderCount === 0;
+    const label = `${total} selected`;
+    const fileOnly = folderCount === 0;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
@@ -5135,13 +5142,15 @@ async function openLibraryMembers() {
 function openLibraryTransfer(mode) {
   closeLibraryMenu();
   const selected = selectedFiles();
-  if (!selected.length) return;
+  const folders = mode === 'move' ? selectedFolders() : []; // copy is files-only
+  const total = selected.length + folders.length;
+  if (!total) return;
   const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId));
   if (!targets.length) { toast('No other library yet — create one first.'); return; }
   const verb = mode === 'copy' ? 'Copy' : 'Move';
   const scrim = document.createElement('div');
   scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal"><h2>${verb} ${selected.length} file${selected.length > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
+  scrim.innerHTML = `<div class="modal"><h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
   document.body.appendChild(scrim);
   const close = () => scrim.remove();
   scrim.querySelector('#lib-transfer-cancel').onclick = close;
@@ -5149,11 +5158,12 @@ function openLibraryTransfer(mode) {
   scrim.querySelectorAll('button[data-lib]').forEach(b => b.onclick = async () => {
     close();
     try {
-      const res = await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
+      if (selected.length) await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
+      for (const p of folders) await apiPost('/files/folder/move', { path: p, library_id: b.dataset.lib });
       clearFileSelection(false);
       await loadFiles();
       const target = librariesList.find(l => String(l.id) === b.dataset.lib);
-      toast(`${mode === 'copy' ? 'Copied' : 'Moved'} ${res.count} file${res.count === 1 ? '' : 's'} to ${target?.name || 'library'}`);
+      toast(`${mode === 'copy' ? 'Copied' : 'Moved'} ${total} item${total === 1 ? '' : 's'} to ${target?.name || 'library'}`);
     } catch (e) { toast(`${verb} failed: ` + e.message); }
   });
 }
@@ -5411,10 +5421,14 @@ function renderDocumentLibraryList() {
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   const rows = (q ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
   const folders = q ? [] : childFoldersForPath(source);
+  lastRenderedFolderPaths = folders.map(f => f.path);
+  selectedFolderPaths = new Set([...selectedFolderPaths].filter(p => lastRenderedFolderPaths.includes(p)));
   const tableRows = [...folders.map(folderLibraryRow), ...sortFiles(rows).map(fileLibraryRow)].join('');
   lastRenderedFileIds = rows.map(f => String(f.id));
-  const allSelected = lastRenderedFileIds.length > 0 && lastRenderedFileIds.every(id => selectedFileIds.has(id));
-  const someSelected = !allSelected && lastRenderedFileIds.some(id => selectedFileIds.has(id));
+  const selectables = [...lastRenderedFileIds, ...lastRenderedFolderPaths.map(p => 'f:' + p)];
+  const isSel = key => key.startsWith('f:') ? selectedFolderPaths.has(key.slice(2)) : selectedFileIds.has(key);
+  const allSelected = selectables.length > 0 && selectables.every(isSel);
+  const someSelected = !allSelected && selectables.some(isSel);
   const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
   const breadcrumb = document.getElementById('file-library-breadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = fileBreadcrumbHtml();
@@ -5476,10 +5490,19 @@ function toggleFileSelection(fileId, event) {
   renderDocumentLibraryList();
 }
 
+function toggleFolderSelection(path, event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  if (selectedFolderPaths.has(path)) selectedFolderPaths.delete(path);
+  else selectedFolderPaths.add(path);
+  renderDocumentLibraryList();
+}
 function toggleSelectAllFiles() {
-  const allSelected = lastRenderedFileIds.length > 0 && lastRenderedFileIds.every(id => selectedFileIds.has(id));
-  if (allSelected) lastRenderedFileIds.forEach(id => selectedFileIds.delete(id));
-  else lastRenderedFileIds.forEach(id => selectedFileIds.add(id));
+  const all = lastRenderedFileIds.every(id => selectedFileIds.has(id)) && lastRenderedFolderPaths.every(p => selectedFolderPaths.has(p));
+  if (all) { selectedFileIds = new Set(); selectedFolderPaths = new Set(); }
+  else {
+    lastRenderedFileIds.forEach(id => selectedFileIds.add(id));
+    lastRenderedFolderPaths.forEach(p => selectedFolderPaths.add(p));
+  }
   renderDocumentLibraryList();
 }
 
@@ -5490,8 +5513,10 @@ function handleLibraryRowClick(event, fileId) {
 
 function clearFileSelection(render = true) {
   selectedFileIds = new Set();
+  selectedFolderPaths = new Set();
   if (render && document.getElementById('file-library-view')) renderDocumentLibraryList();
 }
+function selectedFolders() { return [...selectedFolderPaths]; }
 
 function firstSelectedFile() {
   return selectedFiles()[0] || null;
@@ -5503,23 +5528,30 @@ function openSelectedFile() {
   openRecommendedFile(f.id);
 }
 
-async function downloadSelectedFiles() {
-  const selected = selectedFiles();
-  if (!selected.length) return;
-  for (const f of selected) await downloadFile(f.id);
+async function downloadSelectedItems() {
+  const files = selectedFiles();
+  const folders = selectedFolders();
+  if (!files.length && !folders.length) return;
+  for (const f of files) await downloadFile(f.id);
+  for (const p of folders) await downloadFolderZip(p);
 }
 
-async function deleteSelectedFiles() {
-  const selected = selectedFiles();
-  if (!selected.length) return;
-  const label = selected.length === 1 ? `"${selected[0].name}"` : `${selected.length} documents`;
-  if (!confirm(`Move ${label} to Trash? You can restore ${selected.length === 1 ? 'it' : 'them'} later.`)) return;
-  for (const f of selected) {
+async function deleteSelectedItems() {
+  const files = selectedFiles();
+  const folders = selectedFolders();
+  const total = files.length + folders.length;
+  if (!total) return;
+  const label = total === 1 ? `"${(files[0]?.name) || folders[0].split('/').pop()}"` : `${total} items`;
+  if (!confirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`)) return;
+  for (const f of files) {
     await apiDelete('/files/' + f.id);
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
   }
+  for (const p of folders) {
+    try { await apiPost('/files/folder/delete', { path: p }); } catch (e) { toast('Folder delete failed: ' + e.message); }
+  }
   clearFileSelection(false);
-  renderDocumentLibraryList();
+  await loadFiles();
   toast(`${label} moved to Trash`);
 }
 
@@ -5545,7 +5577,7 @@ function renderFileDetailsPane() {
   const dName = f.name.replace(/"/g, '&quot;');
   pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(fileDisplayName(f))}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
     <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || (isSharedFile(f) ? 'Shared with me' : 'My files'))}</span></div></div></section>
-    <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedFiles()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
     <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button>${canIngest && canEdit ? `<button class="file-library-tool" data-fid="${f.id}" data-name="${dName}" onclick="ingestFile(this.dataset.fid, this.dataset.name)">Index with AI</button>` : ''}</div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable document text.</div></section>
     ${isOffice || f.google_drive_id || isAdmin ? `<section class="file-details-section"><div class="file-details-section-title">Editing & history</div><div class="file-details-actions">${isOffice ? `<button class="file-library-tool" data-fid="${f.id}" onclick="openInGoogle(this.dataset.fid)">Open in Google Docs</button>` : ''}${f.google_drive_id && canEdit ? `<button class="file-library-tool" data-fid="${f.id}" onclick="exportFromGoogle(this.dataset.fid)">Export Google edits</button>` : ''}${isAdmin ? `<button class="file-library-tool" onclick="openFileHistory('${f.id}')">Version history</button>` : ''}</div></section>` : ''}
     ${canEdit ? `<section class="file-details-section"><div class="file-details-section-title">Danger zone</div><div class="file-details-actions"><button class="file-library-tool danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Move to Trash</button></div></section>` : ''}`;
