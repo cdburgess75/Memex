@@ -3990,6 +3990,20 @@ async function saveIntegrationSettings() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+async function saveCallSettings() {
+  const body = {
+    stun_url: document.getElementById('cfg-stun-url').value.trim(),
+    turn_url: document.getElementById('cfg-turn-url').value.trim(),
+    turn_username: document.getElementById('cfg-turn-username').value.trim(),
+  };
+  const cred = document.getElementById('cfg-turn-credential').value;
+  if (cred.trim()) body.turn_credential = cred; // masked value is skipped server-side; only a new one is stored
+  try {
+    await apiPut('/admin/settings', body);
+    toast('Call settings saved');
+    document.getElementById('cfg-turn-credential').value = '';
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
 async function saveNetworkSettings() {
   const body = {
     bind_address:  document.getElementById('cfg-bind-addr').value.trim(),
@@ -4333,6 +4347,20 @@ function systemSettingsHtml() {
       </div>
       <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
 
+      <div class="settings-sub" style="margin-top:20px">Calls (video / audio)</div>
+      <p class="settings-notice">STUN is free and covers most networks; add a TURN relay for members behind strict/corporate NATs. Leave STUN blank to use a public default. Comma-separate multiple URLs.</p>
+      <div class="settings-grid">
+        <label>STUN URL(s)</label>
+        <input type="text" id="cfg-stun-url" value="${esc(s.stun_url||'')}" placeholder="stun:stun.l.google.com:19302 (default if blank)">
+        <label>TURN URL(s)</label>
+        <input type="text" id="cfg-turn-url" value="${esc(s.turn_url||'')}" placeholder="turn:turn.yourco.com:3478">
+        <label>TURN username</label>
+        <input type="text" id="cfg-turn-username" value="${esc(s.turn_username||'')}" autocomplete="off">
+        <label>TURN credential</label>
+        <input type="password" id="cfg-turn-credential" value="${esc(s.turn_credential||'')}" autocomplete="new-password" placeholder="blank = keep current">
+      </div>
+      <button class="ghost-btn" onclick="saveCallSettings()">Save call settings</button>
+
       <div class="settings-sub" style="margin-top:20px">Network &amp; Security</div>
       <p class="settings-notice">Bind address and outbound proxy require a server restart to take effect. All other settings below apply within 30 seconds.</p>
       <div class="settings-grid">
@@ -4622,12 +4650,6 @@ function fileActionButtons(f) {
     <button class="file-action-btn" data-fid="${f.id}" onclick="openShareFile(this.dataset.fid)">Share</button>
     <button class="file-action-btn" data-fid="${f.id}" onclick="openFileDetails(this.dataset.fid)">More</button>`;
 }
-function fileRecommendationCard(f, idx) {
-  const ext = fileExt(f.name);
-  const owner = fileOwner(f);
-  const activity = isSharedFile(f) ? `<strong>${esc(owner)}</strong> shared this with you` : idx === 0 ? `<strong>${esc(owner)}</strong> edited this recently` : 'This file was edited recently';
-  return `<article class="file-rec-card"><div class="file-rec-head">${fileIconHtml(ext)}<div class="file-rec-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div></div><div class="file-rec-body"><div class="file-rec-activity">${activity}<span class="file-rec-date">${fileDate(f.created_at)}</span></div><div class="file-preview ${ext}" aria-hidden="true"></div></div><button class="file-rec-open" data-fid="${f.id}" onclick="openRecommendedFile(this.dataset.fid)">Open</button></article>`;
-}
 function renderHomeInsights(list = filesList) {
   const el = document.getElementById('file-home-insights');
   if (!el) return;
@@ -4639,13 +4661,6 @@ function renderHomeInsights(list = filesList) {
     <div class="file-home-card"><div class="file-home-card-label">Office files</div><div class="file-home-card-value">${office.length}</div><div class="file-home-card-note">Openable in Office tools</div></div>
     <div class="file-home-card"><div class="file-home-card-label">Latest</div><div class="file-home-card-value">${latest ? esc(fileDate(latest.created_at)) : 'None'}</div><div class="file-home-card-note">${latest ? esc(fileDisplayName(latest)) : 'Upload files to get started'}</div></div>`;
 }
-function fileRecentRow(f) {
-  const ext = fileExt(f.name);
-  const owner = fileOwner(f);
-  const activity = isSharedFile(f) ? `${owner} shared this` : `${owner} edited this`;
-  const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
-  return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${esc(fileFolderPath(f) || (isSharedFile(f) ? `${owner}'s files` : 'My files'))}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td>${esc(owner)}</td><td><div class="file-row-activity"><span>${esc(activity)} · ${fileDate(f.created_at)}</span></div></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
-}
 function fileHomeRow(f) {
   const ext = fileExt(f.name);
   const owner = fileOwner(f);
@@ -4653,8 +4668,6 @@ function fileHomeRow(f) {
   const folder = fileFolderPath(f);
   return `<tr><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
-const ICON_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>';
-const ICON_SHARE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5"/></svg>';
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 function fileLibraryActions(f) {
   return `<button class="file-library-icon-btn" title="Actions" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
