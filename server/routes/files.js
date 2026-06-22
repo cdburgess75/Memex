@@ -1482,6 +1482,27 @@ router.post('/folder/delete', auth, requireRole('admin', 'contributor'), async (
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
+router.post('/folder/reparent', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const oldPath = safeDocName(req.body?.path, '');
+    const target = safeDocName(req.body?.target, '') || ''; // '' = move to root
+    if (!oldPath) return res.status(400).json({ error: 'path required' });
+    const base = oldPath.split('/').pop();
+    const newPath = target ? `${target}/${base}` : base;
+    if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
+    if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
+    const rows = await db.query(
+      `UPDATE documents d SET name = $2 || substring(d.name from $3)
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       RETURNING d.id`,
+      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
+    );
+    await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
+    res.json({ ok: true, path: newPath, count: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/files/folder/move — move a folder's contents to another library
 router.post('/folder/move', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
