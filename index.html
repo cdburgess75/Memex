@@ -4756,7 +4756,7 @@ function fileLibraryCommandBarHtml() {
     const singleFile = selected.length === 1 && folderCount === 0;
     const label = `${total} selected`;
     const fileOnly = folderCount === 0;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
@@ -5537,12 +5537,13 @@ function dragPayloadFor(kind, key) {
   }
   return kind === 'file' ? { files: [key], folders: [] } : { files: [], folders: [key] };
 }
+let dragPayload = null; // held in JS so drag-drop doesn't depend on custom dataTransfer MIME (Safari strips those)
 function onItemDragStart(event, kind, key) {
-  event.dataTransfer.setData('application/x-memex', JSON.stringify(dragPayloadFor(kind, key)));
-  event.dataTransfer.effectAllowed = 'move';
+  dragPayload = dragPayloadFor(kind, key);
+  try { event.dataTransfer.setData('text/plain', 'memex-item'); event.dataTransfer.effectAllowed = 'move'; } catch { /* ignore */ }
 }
 function onFolderDragOver(event) {
-  if (!event.dataTransfer.types.includes('application/x-memex')) return;
+  if (!dragPayload) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = 'move';
   event.currentTarget.classList.add('drop-target');
@@ -5551,9 +5552,11 @@ function onFolderDragLeave(event) { event.currentTarget.classList.remove('drop-t
 async function onFolderDrop(event, targetPath) {
   event.preventDefault(); event.stopPropagation();
   event.currentTarget.classList.remove('drop-target');
-  let payload; try { payload = JSON.parse(event.dataTransfer.getData('application/x-memex')); } catch { return; }
-  await moveItemsIntoFolder(payload, targetPath || '');
+  const payload = dragPayload;
+  dragPayload = null;
+  if (payload) await moveItemsIntoFolder(payload, targetPath || '');
 }
+document.addEventListener('dragend', () => { dragPayload = null; document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target')); });
 async function moveItemsIntoFolder(payload, targetPath) {
   const { files = [], folders = [] } = payload || {};
   if (!files.length && !folders.length) return;
@@ -5576,6 +5579,29 @@ async function moveItemsIntoFolder(payload, targetPath) {
     await loadFiles();
     if (moved) toast(`Moved ${moved} item${moved === 1 ? '' : 's'} into ${targetPath.split('/').pop() || 'All files'}`);
   } catch (e) { toast('Move failed: ' + e.message); }
+}
+// Folder picker — the reliable, click-based way to move items into a folder.
+function openFolderPicker(title, excludePaths, onPick) {
+  const exclude = new Set(excludePaths || []);
+  const folders = allFoldersForFiles(filesList).filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')));
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open'; scrim.id = 'folder-picker-scrim';
+  scrim.onclick = e => { if (e.target.id === 'folder-picker-scrim') scrim.remove(); };
+  const items = [`<button class="library-menu-item" data-path="">⌂ All files (root)</button>`,
+    ...folders.map(f => `<button class="library-menu-item" data-path="${esc(f.path)}">${esc(f.path)}</button>`)].join('');
+  scrim.innerHTML = `<div class="modal"><h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px"><button class="ghost-btn" id="fp-new">+ New folder…</button><button class="ghost-btn" id="fp-cancel">Cancel</button></div></div>`;
+  document.body.appendChild(scrim);
+  scrim.querySelector('#fp-cancel').onclick = () => scrim.remove();
+  scrim.querySelector('#fp-new').onclick = () => { const n = (prompt('New folder name:') || '').trim(); if (n) { scrim.remove(); onPick(n); } };
+  scrim.querySelectorAll('button[data-path]').forEach(b => b.onclick = () => { scrim.remove(); onPick(b.dataset.path); });
+}
+function moveSelectedToFolder() {
+  const payload = { files: [...selectedFileIds], folders: [...selectedFolderPaths] };
+  if (!payload.files.length && !payload.folders.length) return;
+  openFolderPicker('Move to folder', payload.folders, dest => moveItemsIntoFolder(payload, dest));
+}
+function moveFileToFolder(fileId) {
+  openFolderPicker('Move to folder', [], dest => moveItemsIntoFolder({ files: [String(fileId)], folders: [] }, dest));
 }
 
 function firstSelectedFile() {
@@ -6281,6 +6307,7 @@ function openFileMenu(fileId, event) {
     aiOff() ? '' : `<button class="file-menu-item" onclick="closeFileMenu();openAskFile('${fileId}')">Ask AI about this</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();openShareFile('${fileId}')">Share…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();renameFile('${fileId}')">Rename…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDetails('${fileId}')">Details</button>`,
     `<div class="file-menu-rule"></div>`,
