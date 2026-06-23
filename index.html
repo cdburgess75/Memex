@@ -133,6 +133,8 @@ body {
   border-top: 1px solid var(--rule-soft);
   margin-top: 4px;
 }
+.brand-version { align-self: center; font: 600 10.5px var(--mono); color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 7px; }
+.login-version { margin-top: 16px; font: 500 11px var(--mono); color: var(--ink-faint); text-align: center; }
 .auth-locked .masthead,
 .auth-locked .shell {
   display: none;
@@ -2275,6 +2277,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </form>
       <div class="login-note">Theme choices are saved on this device. Your files stay permission-scoped after sign-in.</div>
     </div>
+    <div class="login-version" id="login-version"></div>
   </div>
 </div>
 
@@ -2282,6 +2285,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
   <div class="brand">
     <span class="brand-logo" aria-hidden="true">M</span>
     <h1>Memex</h1>
+    <span class="brand-version" id="brand-version" title="App version"></span>
   </div>
   <div class="masthead-search">
     <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
@@ -2595,8 +2599,12 @@ async function initApp() {
   _kc = { url: config.keycloakUrl, realm: config.keycloakRealm, clientId: config.keycloakClientId };
 
   if (config.version) {
-    const versionEl = document.getElementById('app-menu-version');
-    if (versionEl) versionEl.textContent = `Memex · ${config.version}`;
+    const menuEl = document.getElementById('app-menu-version');
+    if (menuEl) menuEl.textContent = `Memex · ${config.version}`;
+    const loginEl = document.getElementById('login-version');
+    if (loginEl) loginEl.textContent = `Memex · ${config.version}`;
+    const brandEl = document.getElementById('brand-version');
+    if (brandEl) brandEl.textContent = config.version;
   }
 
   const urlParams = new URLSearchParams(window.location.search);
