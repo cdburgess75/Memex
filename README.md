@@ -125,16 +125,24 @@ This starts:
 - **keycloak** — auth at `:8080`.
 - **app** — Memex at `:3000`.
 
-Open `http://localhost:3000`. The first time, create the Keycloak realm/client (below), then sign in. Users listed in `ADMIN_EMAILS` get the **admin** role on first login.
+Open `http://localhost:3000` and sign in.
 
-### Configure Keycloak (one time)
+### Sign in (zero manual Keycloak setup)
 
-1. Open the Keycloak admin console at `http://localhost:8080/admin/` and sign in with `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD`.
-2. Create a realm named **`memex`** (or match `KEYCLOAK_REALM`).
-3. Create a public client **`memex-app`** (or match `KEYCLOAK_CLIENT_ID`) with:
-   - **Standard flow** enabled, **PKCE** (S256).
-   - **Valid redirect URIs** and **Web origins** set to your app origin (e.g. `http://localhost:3000`, `http://<lan-ip>:3000`, and your HTTPS domain).
-4. *(Optional)* Add **Google** and/or **Microsoft** as identity providers under **Identity providers** to enable SSO. To carry their profile picture into Memex, add an attribute-importer mapper for the `picture` claim plus a client mapper that adds `picture` to the access token.
+Keycloak auto-imports the **`memex`** realm and public **`memex-app`** client (PKCE,
+redirect URIs, email/name mappers) from `keycloak/memex-realm.json` on first boot —
+no admin-console steps required. The realm also seeds a **bootstrap admin**:
+
+- **Email:** `admin@memex.local` **Password:** `memex-admin` (you're forced to change it on first login)
+- It's listed in `ADMIN_EMAILS`, so it gets the **admin** role immediately.
+
+For a real deployment: log in as the bootstrap admin, then add your team and/or
+connect SSO, and set `ADMIN_EMAILS` to your own admin address(es).
+
+*(Optional SSO)* In the Keycloak admin console (`/admin/`, `KEYCLOAK_ADMIN_USER` /
+`KEYCLOAK_ADMIN_PASSWORD`) add **Google** / **Microsoft** identity providers. To carry
+their profile picture into Memex, add an attribute-importer mapper for the `picture`
+claim plus a client mapper that adds `picture` to the access token.
 
 ### Environment variables
 

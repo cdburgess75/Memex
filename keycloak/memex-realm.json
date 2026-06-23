@@ -45,5 +45,18 @@
         }
       ]
     }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@memex.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Memex",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "memex-admin", "temporary": true }
+      ]
+    }
   ]
 }
