@@ -4736,12 +4736,20 @@ function setFileLayoutMode(mode) {
   localStorage.setItem('memex_file_layout_v2', fileLayoutMode);
   renderDocumentLibraryList();
 }
-function openFolder(path = '') {
+function openFolder(path = '', push = true) {
   currentFolderPath = normalizeFilePath(path);
   clearFileSelection(false);
   detailsPaneOpen = false;
+  if (push) {
+    try { history.pushState({ memexFolder: currentFolderPath }, '', location.pathname + location.search); } catch (e) {}
+  }
   renderDocumentLibraryList();
 }
+window.addEventListener('popstate', (event) => {
+  const path = (event.state && typeof event.state.memexFolder === 'string') ? event.state.memexFolder : '';
+  if (normalizeFilePath(path) === currentFolderPath) return;
+  openFolder(path, false);
+});
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
