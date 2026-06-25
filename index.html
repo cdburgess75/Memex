@@ -1288,10 +1288,16 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-menu button:hover, .file-search-menu button:hover { background: var(--accent-wash); color: var(--accent); }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: #424242; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
-.file-nav-link:hover, .file-nav-label:hover { background: #F8FBFF; color: #242424; }
-.file-nav-link.active { color: #242424; background: #EAF3FF; font-weight: 700; box-shadow: inset 3px 0 0 #0F6CBD; }
+.file-nav-link:hover, .file-nav-label:hover { background: var(--accent-wash); color: var(--ink); }
+.file-nav-link.active { color: var(--accent); background: var(--accent-wash); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
+.accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.accent-swatch { width: 26px; height: 26px; border-radius: 50%; background: var(--sw); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--rule); cursor: pointer; padding: 0; transition: transform 0.1s; }
+.accent-swatch:hover { transform: scale(1.1); }
+.accent-swatch.active { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--sw); }
+.accent-custom { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: 500 13px var(--ui); color: var(--ink-soft); }
+.accent-custom input[type=color] { width: 26px; height: 26px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: none; cursor: pointer; }
 .file-library-nav { display: grid; gap: 8px; }
 .file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 10px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
@@ -1678,7 +1684,7 @@ html.dark .file-library-close:hover,
 html.dark .file-library-icon-btn:hover { background: var(--surface-2); color: var(--ink); }
 html.dark .file-nav-link.active,
 html.dark .file-filter-chip.active,
-html.dark .file-library-pill.active { background: #172638; border-color: #6AA9E9; color: #D9ECFF; box-shadow: inset 3px 0 0 #6AA9E9; }
+html.dark .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 html.dark .file-quick-pill,
 html.dark .file-home-card-label,
 html.dark .file-home-card-note,
@@ -2830,6 +2836,38 @@ async function streamFromApi(path, body, el) {
 }
 
 /* ---------- theme ---------- */
+const ACCENT_PRESETS = [
+  { name: 'Terracotta', hex: '#C2603D' },
+  { name: 'Clay',       hex: '#B6532E' },
+  { name: 'Amber',      hex: '#C2902B' },
+  { name: 'Forest',     hex: '#3E7C5A' },
+  { name: 'Teal',       hex: '#2F8C8C' },
+  { name: 'Ocean',      hex: '#2F6FB0' },
+  { name: 'Indigo',     hex: '#5A5BC4' },
+  { name: 'Plum',       hex: '#8A4E9E' },
+  { name: 'Rose',       hex: '#C2548A' },
+  { name: 'Slate',      hex: '#5B6470' },
+];
+function _hexToRgb(h) { h = String(h).replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function _rgbToHex(r, g, b) { return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join(''); }
+function _mix(a, b, t) { return a.map((v, i) => v + (b[i] - v) * t); }
+function applyAccent(hex) {
+  const root = document.documentElement.style;
+  if (!hex) {
+    root.removeProperty('--accent'); root.removeProperty('--accent-soft'); root.removeProperty('--accent-wash');
+    localStorage.removeItem('memex_accent');
+    return;
+  }
+  const base = _hexToRgb(hex);
+  const dark = document.documentElement.classList.contains('dark');
+  const accent = dark ? _mix(base, [255, 255, 255], 0.2) : base;
+  const soft = dark ? base : _mix(base, [0, 0, 0], 0.18);
+  const wash = dark ? _mix([22, 21, 26], base, 0.16) : _mix([255, 255, 255], base, 0.1);
+  root.setProperty('--accent', _rgbToHex(...accent));
+  root.setProperty('--accent-soft', _rgbToHex(...soft));
+  root.setProperty('--accent-wash', _rgbToHex(...wash));
+  localStorage.setItem('memex_accent', hex);
+}
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
   // Memex has one signature look + dark mode; migrate any legacy theme name to light.
@@ -2839,6 +2877,7 @@ function setTheme(theme) {
   const toggleItem = document.getElementById('theme-toggle-item');
   if (toggleItem) toggleItem.textContent = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   localStorage.setItem('memex_theme', theme);
+  applyAccent(localStorage.getItem('memex_accent'));
 }
 function toggleTheme() {
   setTheme(localStorage.getItem('memex_theme') === 'dark' ? 'light' : 'dark');
@@ -4280,12 +4319,20 @@ async function saveProfile() {
 }
 function appearanceSettingsHtml() {
   const dark = document.documentElement.classList.contains('dark');
+  const current = (localStorage.getItem('memex_accent') || '').toLowerCase();
+  const swatches = ACCENT_PRESETS.map(p => `<button class="accent-swatch${current === p.hex.toLowerCase() ? ' active' : ''}" title="${p.name}" style="--sw:${p.hex}" onclick="applyAccent('${p.hex}');switchSettingsTab('appearance')"></button>`).join('');
   return `<div class="settings-sub">Theme</div>
     <div style="display:flex;gap:8px;margin-top:6px">
       <button class="${dark ? 'ghost-btn' : 'run-btn'}" onclick="setTheme('light');switchSettingsTab('appearance')">Light</button>
       <button class="${dark ? 'run-btn' : 'ghost-btn'}" onclick="setTheme('dark');switchSettingsTab('appearance')">Dark</button>
     </div>
-    <p class="settings-notice" style="margin-top:10px">Theme is saved on this device.</p>`;
+    <div class="settings-sub" style="margin-top:16px">Accent color</div>
+    <div class="accent-swatches">${swatches}</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+      <label class="accent-custom"><input type="color" value="${current || '#C2603D'}" onchange="applyAccent(this.value);switchSettingsTab('appearance')"><span>Custom…</span></label>
+      <button class="ghost-btn" onclick="applyAccent('');switchSettingsTab('appearance')">Reset to default</button>
+    </div>
+    <p class="settings-notice" style="margin-top:10px">Theme and accent are saved on this device.</p>`;
 }
 function systemSettingsHtml() {
   const s = settingsSys || {};
