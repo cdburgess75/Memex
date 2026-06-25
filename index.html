@@ -5446,17 +5446,14 @@ function renderDocumentLibraryList() {
   const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
   const breadcrumb = document.getElementById('file-library-breadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = fileBreadcrumbHtml();
-  if (!folders.length && !rows.length) {
-    el.innerHTML = q
-      ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
-      : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.');
-    updateFileLibraryChrome();
-    return;
-  }
-  const table = `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
+  const inner = (!folders.length && !rows.length)
+    ? (q
+        ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
+        : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.'))
+    : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
   el.innerHTML = recentRailHtml() + (fileLayoutMode === 'commander'
-    ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${table}</div></div>`
-    : table);
+    ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${inner}</div></div>`
+    : inner);
   updateFileLibraryChrome();
 }
 
