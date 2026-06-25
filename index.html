@@ -1551,10 +1551,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-table td { padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 13.5px; }
 .file-library-table tbody tr:last-child td { border-bottom: 0; }
 .file-library-table tbody tr { cursor: pointer; }
-.file-library-table tbody tr[draggable="true"] { -webkit-user-select: none; user-select: none; -webkit-user-drag: element; }
-.file-library-table tbody tr[draggable="true"]:active { cursor: grabbing; }
-.file-commander-folder { -webkit-user-select: none; user-select: none; }
-.file-library-table tbody tr.drop-target, .file-library-name.drop-target { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-wash); }
+.file-library-table tbody tr, .file-commander-folder { -webkit-user-select: none; user-select: none; }
+.file-library-table tbody tr.drop-target, .file-commander-folder.drop-target { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-wash); border-radius: 6px; }
+.drag-ghost { position: fixed; z-index: 90; pointer-events: none; background: var(--accent); color: #fff; font: 600 12px var(--ui); padding: 5px 10px; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
+body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-library-table tbody tr:hover { background: var(--surface-2); }
 .file-library-table tbody tr.selected { background: var(--accent-wash); }
 .file-library-select { width: 18px; height: 18px; border: 1.5px solid var(--ink-faint); border-radius: 5px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; line-height: 1; opacity: 0; transition: opacity 0.12s; }
@@ -4708,12 +4708,12 @@ function fileLibraryRow(f) {
   const cols = visibleFileColumns().map(c =>
     c.id === 'name' ? fileNameCellHtml(f) : `<td${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
   ).join('');
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" draggable="true" ondragstart="onItemDragStart(event,'file',this.dataset.fid)" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onmousedown="pointerDragStart(event,'file',this.dataset.fid)" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
   const sel = selectedFolderPaths.has(folder.path);
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" draggable="true" ondragstart="onItemDragStart(event,'folder',this.dataset.folder)" ondragover="onFolderDragOver(event)" ondragleave="onFolderDragLeave(event)" ondrop="onFolderDrop(event, this.dataset.folder)" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -4745,11 +4745,10 @@ function openFolder(path = '') {
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
-  const dnd = `ondragover="onFolderDragOver(event)" ondragleave="onFolderDragLeave(event)" ondrop="onFolderDrop(event, this.dataset.folder)"`;
   const rows = folders.length
-    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="openFolder(this.dataset.folder)" ${dnd}><span>▸</span><span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
+    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)"><span>▸</span><span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
-  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="openFolder('')" ${dnd}><span>⌂</span><span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
+  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')"><span>⌂</span><span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
@@ -5522,7 +5521,7 @@ function toggleSelectAllFiles() {
 }
 
 function handleLibraryRowClick(event, fileId) {
-  if (event.target.closest('button')) return;
+  if (suppressRowClick || event.target.closest('button')) return;
   toggleFileSelection(fileId, event);
 }
 
@@ -5541,26 +5540,49 @@ function dragPayloadFor(kind, key) {
   }
   return kind === 'file' ? { files: [key], folders: [] } : { files: [], folders: [key] };
 }
-let dragPayload = null; // held in JS so drag-drop doesn't depend on custom dataTransfer MIME (Safari strips those)
-function onItemDragStart(event, kind, key) {
-  dragPayload = dragPayloadFor(kind, key);
-  try { event.dataTransfer.setData('text/plain', 'memex-item'); event.dataTransfer.effectAllowed = 'move'; } catch { /* ignore */ }
+// Pointer-based drag — native HTML5 <tr> dragging is unreliable across browsers,
+// so we track the gesture ourselves (works everywhere, no dataTransfer needed).
+let pdrag = null;
+let suppressRowClick = false;
+const FOLDER_TARGET_SEL = '.file-commander-folder[data-folder], .file-folder-row[data-folder]';
+function pointerDragStart(event, kind, key) {
+  if (event.button !== 0 || event.target.closest('button')) return; // let checkbox / ⋮ buttons work
+  pdrag = { kind, key, x: event.clientX, y: event.clientY, moved: false, ghost: null, target: null };
+  document.addEventListener('mousemove', pointerDragMove);
+  document.addEventListener('mouseup', pointerDragEnd);
 }
-function onFolderDragOver(event) {
-  if (!dragPayload) return;
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'move';
-  event.currentTarget.classList.add('drop-target');
+function pointerDragMove(event) {
+  if (!pdrag) return;
+  if (!pdrag.moved) {
+    if (Math.hypot(event.clientX - pdrag.x, event.clientY - pdrag.y) < 6) return;
+    pdrag.moved = true;
+    pdrag.payload = dragPayloadFor(pdrag.kind, pdrag.key);
+    const n = pdrag.payload.files.length + pdrag.payload.folders.length;
+    const g = document.createElement('div'); g.className = 'drag-ghost'; g.textContent = `Move ${n} item${n > 1 ? 's' : ''}`;
+    document.body.appendChild(g); pdrag.ghost = g;
+    document.body.classList.add('dragging-items');
+  }
+  pdrag.ghost.style.left = (event.clientX + 14) + 'px';
+  pdrag.ghost.style.top = (event.clientY + 14) + 'px';
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  const tgt = el && el.closest(FOLDER_TARGET_SEL);
+  if (pdrag.target && pdrag.target !== tgt) pdrag.target.classList.remove('drop-target');
+  pdrag.target = tgt || null;
+  if (tgt) tgt.classList.add('drop-target');
 }
-function onFolderDragLeave(event) { event.currentTarget.classList.remove('drop-target'); }
-async function onFolderDrop(event, targetPath) {
-  event.preventDefault(); event.stopPropagation();
-  event.currentTarget.classList.remove('drop-target');
-  const payload = dragPayload;
-  dragPayload = null;
-  if (payload) await moveItemsIntoFolder(payload, targetPath || '');
+async function pointerDragEnd() {
+  document.removeEventListener('mousemove', pointerDragMove);
+  document.removeEventListener('mouseup', pointerDragEnd);
+  const d = pdrag; pdrag = null;
+  document.body.classList.remove('dragging-items');
+  d?.ghost?.remove();
+  d?.target?.classList.remove('drop-target');
+  if (d?.moved) {
+    suppressRowClick = true; setTimeout(() => { suppressRowClick = false; }, 0);
+    if (d.target) await moveItemsIntoFolder(d.payload, d.target.dataset.folder || '');
+  }
 }
-document.addEventListener('dragend', () => { dragPayload = null; document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target')); });
+function maybeOpenFolder(path) { if (!suppressRowClick) openFolder(path); }
 async function moveItemsIntoFolder(payload, targetPath) {
   const { files = [], folders = [] } = payload || {};
   if (!files.length && !folders.length) return;
