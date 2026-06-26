@@ -3285,11 +3285,12 @@ async function setTab(tab) {
   state.tab = tab;
   document.documentElement.classList.add('file-home-mode');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  if (tab === 'files') { await renderFiles(); return; }
-  if (tab === 'ingest') { renderIngest(); return; }
-  if (tab === 'query') { renderQuery(); return; }
-  if (tab === 'lint') { renderLint(); return; }
-  if (tab === 'admin') { await renderAdmin(); return; }
+  if (tab === 'files') await renderFiles();
+  else if (tab === 'ingest') renderIngest();
+  else if (tab === 'query') renderQuery();
+  else if (tab === 'lint') renderLint();
+  else if (tab === 'admin') await renderAdmin();
+  navPush();
 }
 
 function openPage(id) {
@@ -3309,6 +3310,7 @@ function openPage(id) {
   state.tab = 'read';
   page.fresh = false;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'read'));
+  navPush();
   const updated = page.updated_at
     ? (page.updated_at === 'start here' ? 'start here' : new Date(page.updated_at).toLocaleDateString([], { month: 'short', day: 'numeric' }))
     : '';
@@ -4787,16 +4789,55 @@ function openFolder(path = '', push = true) {
   currentFolderPath = normalizeFilePath(path);
   clearFileSelection(false);
   detailsPaneOpen = false;
-  if (push) {
-    try { history.pushState({ memexFolder: currentFolderPath }, '', location.pathname + location.search); } catch (e) {}
-  }
   renderDocumentLibraryList();
+  if (push) navPush();
 }
-window.addEventListener('popstate', (event) => {
-  const path = (event.state && typeof event.state.memexFolder === 'string') ? event.state.memexFolder : '';
-  if (normalizeFilePath(path) === currentFolderPath) return;
-  openFolder(path, false);
-});
+
+// ---- Unified browser history for in-app navigation ----
+// Every major navigation (workspace tab, page, file view, filter pill, folder)
+// records a snapshot so the browser Back/Forward buttons walk through them.
+let _navApplying = false;
+let _lastNavKey = null;
+function navSnapshot() {
+  return { tab: (state && state.tab) || 'files', page: (state && state.activePage) || null, view: fileView, filter: fileFilter, folder: currentFolderPath };
+}
+function navPush() {
+  if (_navApplying) return;
+  const snap = navSnapshot();
+  const key = JSON.stringify(snap);
+  if (key === _lastNavKey) return; // no real change — don't add a duplicate entry
+  _lastNavKey = key;
+  try { history.pushState({ mx: snap }, '', location.pathname + location.search); } catch (e) {}
+}
+async function navApply(s) {
+  if (!s) s = { tab: 'files', view: 'active', filter: 'all', folder: '' };
+  _navApplying = true;
+  try {
+    const tab = s.tab || 'files';
+    if (tab === 'read') {
+      if (s.page) openPage(s.page); else await setTab('files');
+    } else if (tab !== 'files') {
+      await setTab(tab);
+    } else {
+      if (state) { state.tab = 'files'; state.activePage = null; }
+      document.documentElement.classList.add('file-home-mode');
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'files'));
+      const view = s.view || 'active';
+      if (view === 'trash' || view === 'links') {
+        setFileView(view);
+      } else {
+        await renderDocumentLibrary(view); // builds shell + loads (resets filter to 'all')
+        fileFilter = s.filter || 'all';
+        document.querySelectorAll('.file-filter-chip, .file-library-pill[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === fileFilter));
+        openFolder(s.folder || '', false);
+      }
+    }
+  } finally {
+    _navApplying = false;
+    _lastNavKey = JSON.stringify(navSnapshot());
+  }
+}
+window.addEventListener('popstate', (event) => { navApply(event.state && event.state.mx); });
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
@@ -5393,9 +5434,11 @@ function setFileFilter(filter) {
   document.querySelectorAll('.file-filter-chip, .file-library-pill[data-filter]').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === filter));
   if (document.getElementById('file-library-view')) renderDocumentLibraryList();
   else renderFileList();
+  navPush();
 }
 
 function setFileView(view) {
+  if (state) state.tab = 'files';
   fileView = view;
   currentFolderPath = '';
   clearFileSelection(false);
@@ -5413,6 +5456,7 @@ function setFileView(view) {
   } else {
     renderDocumentLibrary(view);
   }
+  navPush();
 }
 
 async function renderDocumentLibrary(view = 'active') {
