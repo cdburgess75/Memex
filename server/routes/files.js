@@ -1381,7 +1381,7 @@ router.get('/recent', auth, async (req, res) => {
       `SELECT d.id, d.name, d.size, d.mime_type, d.created_at, d.uploaded_by, d.uploaded_by_email, d.library_id, r.opened_at
        FROM recent_opens r JOIN documents d ON d.id = r.document_id
        WHERE r.user_id = $1 AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 2)}
-       ORDER BY r.opened_at DESC LIMIT 8`,
+       ORDER BY r.opened_at DESC LIMIT 40`,
       [req.user.id, ...documentAccess.userParams(req.user, 'read')]
     );
     res.json(rows);
