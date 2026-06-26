@@ -110,9 +110,26 @@ API keys and secrets live only on the server (or in the DB settings, masked in t
 
 ---
 
-## Quick start (Docker Compose)
+## One-command install (recommended)
 
-The repo ships a `docker-compose.yml` that brings up **Postgres**, **Keycloak**, and the **app** together. This is the recommended way to run Memex.
+On a fresh Linux box with Docker installed, this clones the repo, generates
+strong secrets, asks a few questions (mode, admin email, Anthropic key), writes
+`.env`, and brings the whole stack up:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/install.sh | bash
+```
+
+Or, from a clone, just run `./install.sh`. Pick **local** mode for a LAN/dev box
+(`http://localhost:3000`) or **public** mode to serve an HTTPS domain via the
+built-in Caddy reverse proxy. The installer never reuses the placeholder
+`changeme` secrets — each deployment gets its own randomly generated Postgres /
+Keycloak / encryption credentials. Re-running it detects an existing `.env` and
+offers to keep your current secrets.
+
+## Quick start (manual Docker Compose)
+
+Prefer to wire it up by hand? The repo ships a `docker-compose.yml` that brings up **Postgres**, **Keycloak**, and the **app** together.
 
 ```bash
 cp .env.example .env        # then edit the values (see below)
