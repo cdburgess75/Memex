@@ -235,6 +235,11 @@ build), and you can upgrade in place without source:
 `upgrade.sh` records the chosen tag as `MEMEX_TAG` in `.env`, pulls just the app
 image, recreates the container, and health-checks `:3000`.
 
+**Cutting a release** (maintainers): `./release.sh` bumps `VERSION` to the next
+`vYYYY.MM.DD.NNN`, commits, tags, and pushes — which triggers the multi-arch
+build. Use `./release.sh -n` to preview or `./release.sh vX.Y.Z` to set an
+explicit version.
+
 > The GHCR package must be **public** for unauthenticated customer pulls. If it
 > isn't, `install.sh` automatically falls back to building from source.
 
