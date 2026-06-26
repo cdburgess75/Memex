@@ -1400,6 +1400,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-quick-pill.file-quick-empty:hover { background: transparent; color: var(--ink-soft); }
 .file-quick-pill .file-icon { width: 26px; height: 26px; border-radius: 6px; font-size: 8px; flex: 0 0 auto; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-quick-group { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 11px 8px 3px; }
+.file-quick-group:first-child { padding-top: 2px; }
 .file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .file-home-title { flex: 0 0 auto; font: 700 22px var(--body); color: #616161; white-space: nowrap; }
@@ -2314,6 +2316,10 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Auto</span><span class="chev">⌄</span></button>
     <div class="search-scope-menu" id="search-scope-menu"></div>
     <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
+    <div class="ai-model-wrap">
+      <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
+      <div class="ai-model-menu" id="ai-model-menu"></div>
+    </div>
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
@@ -2342,10 +2348,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
       <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="openComplianceStatus()" title="Compliance readiness">Compliance</button>
       <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
-    </div>
-    <div class="ai-model-wrap">
-      <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
-      <div class="ai-model-menu" id="ai-model-menu"></div>
     </div>
     <div class="meet-wrap">
       <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
@@ -4976,14 +4978,40 @@ function fileLibraryCommandBarHtml() {
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
-function quickAccessHtml(files) {
-  const items = files.filter(f => !isFolderMarker(f)).slice(0, 6);
-  if (!items.length) return '<div class="file-quick-pill file-quick-empty"><span class="file-quick-name">No files yet</span></div>';
-  return items.map(f => {
-    const ext = fileExt(f.name);
-    const name = fileDisplayName(f);
-    return `<button type="button" class="file-quick-pill" data-fid="${f.id}" onclick="openFileDefault(this.dataset.fid)" title="Open ${esc(name)}">${fileIconHtml(ext)}<span class="file-quick-name">${esc(name)}</span></button>`;
-  }).join('');
+// Bucket a timestamp into a human "recency" group.
+function timeBucket(ts) {
+  if (!ts) return 'Older';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return 'Older';
+  const startOfDay = x => { const y = new Date(x); y.setHours(0, 0, 0, 0); return y.getTime(); };
+  const now = new Date();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return 'Earlier this week';
+  if (days < 30) return 'This month';
+  if (d.getFullYear() === now.getFullYear()) return 'This year';
+  return 'Older';
+}
+// Quick Access = recently-opened files, threaded by time (Today / Yesterday / …).
+function quickAccessHtml() {
+  const items = (recentOpensList || []).filter(f => !isFolderMarker(f));
+  if (!items.length) return '<div class="file-quick-pill file-quick-empty"><span class="file-quick-name">No recent files</span></div>';
+  const order = ['Today', 'Yesterday', 'Earlier this week', 'This month', 'This year', 'Older'];
+  const groups = {};
+  for (const f of items) { const b = timeBucket(f.opened_at || f.created_at); (groups[b] = groups[b] || []).push(f); }
+  let html = '';
+  for (const label of order) {
+    const g = groups[label];
+    if (!g || !g.length) continue;
+    html += `<div class="file-quick-group">${label}</div>`;
+    html += g.map(f => {
+      const ext = fileExt(f.name);
+      const name = fileDisplayName(f);
+      return `<button type="button" class="file-quick-pill" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" title="Open ${esc(name)}">${fileIconHtml(ext)}<span class="file-quick-name">${esc(name)}</span></button>`;
+    }).join('');
+  }
+  return html;
 }
 const FILE_TYPE_TABS = [
   { id: 'all', label: 'All', exts: null },
@@ -5550,7 +5578,7 @@ function wrapPanelInFileHome(activeWorkspace) {
   const content = panel.innerHTML;
   panel.innerHTML = fileHomeShell(`<div class="file-workspace-content">${content}</div>`, activeWorkspace, '');
   const quick = document.getElementById('file-quick-list');
-  if (quick) quick.innerHTML = quickAccessHtml(filesList);
+  if (quick) quick.innerHTML = quickAccessHtml();
 }
 
 async function renderFiles() {
@@ -5596,7 +5624,7 @@ async function renderDocumentLibrary(view = 'active') {
   const title = view === 'shared' ? 'Shared' : view === 'favorites' ? 'Favorites' : 'Files';
   document.getElementById('panel').innerHTML = fileHomeShell(fileLibraryCommandBar(title), 'files', view === 'shared' ? 'shared' : view === 'favorites' ? 'favorites' : 'files');
   const quick = document.getElementById('file-quick-list');
-  if (quick) quick.innerHTML = quickAccessHtml(filesList);
+  if (quick) quick.innerHTML = quickAccessHtml();
   try {
     filesList = await apiGet(filesEndpoint());
     renderDocumentLibraryList();
@@ -5656,7 +5684,7 @@ function renderDocumentLibraryList() {
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
   selectedFileIds = new Set([...selectedFileIds].filter(id => filesList.some(f => String(f.id) === id)));
-  if (quick) quick.innerHTML = quickAccessHtml(filesList);
+  if (quick) quick.innerHTML = quickAccessHtml();
   if (!el) return;
   const q = (document.getElementById('file-home-search')?.value || '').trim().toLowerCase();
   const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.slice(0, 12) : filesList;
@@ -6174,7 +6202,7 @@ async function renderFileList() {
   const el = document.getElementById('file-list');
   const rec = document.getElementById('file-recommendations');
   const quick = document.getElementById('file-quick-list');
-  if (quick) quick.innerHTML = quickAccessHtml(filesList);
+  if (quick) quick.innerHTML = quickAccessHtml();
   renderHomeInsights(filesList);
   if (!el) return;
   const q = (document.getElementById('file-home-search')?.value || '').trim();
