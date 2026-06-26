@@ -2,7 +2,6 @@
 *.log
 node_modules/
 memex-backup.json
-memex-wiki.md
 
 # Local environment
 .env
