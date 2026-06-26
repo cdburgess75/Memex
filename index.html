@@ -126,6 +126,10 @@ body {
 .masthead-upload:hover { filter: brightness(1.06); }
 .masthead-upload .plus { font-size: 16px; line-height: 1; }
 .masthead-upload .chev { font-size: 11px; opacity: 0.85; }
+/* Upload is the secondary action next to the primary Create button. */
+.masthead-upload.masthead-upload-secondary { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
+.masthead-upload.masthead-upload-secondary:hover { background: var(--accent-wash); filter: none; }
+html.dark .masthead-upload.masthead-upload-secondary { background: transparent; }
 .app-menu-version {
   font-size: 11.5px;
   color: var(--ink-faint);
@@ -2306,20 +2310,24 @@ html.dark .file-action-btn.danger { color: #E57373; }
   </div>
   <div class="masthead-actions">
     <div class="file-upload-actions masthead-upload-wrap">
-      <button class="masthead-upload" type="button" onclick="toggleUploadMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
-      <div class="file-upload-menu file-create-menu" id="file-upload-menu">
+      <button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
+      <div class="file-upload-menu file-create-menu" id="file-create-menu">
+        <button onclick="closeCreateMenu();createFolder()">New folder</button>
+        <button onclick="closeCreateMenu();createFile('docx')">New Word document</button>
+        <button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button>
+        <button onclick="closeCreateMenu();createFile('md')">New Markdown file</button>
+        <button onclick="closeCreateMenu();createFile('txt')">New Text file</button>
+        <div class="menu-rule"></div>
+        <button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>
+        <button onclick="closeCreateMenu();newKnowledgePage()">New knowledge page</button>
+        <button onclick="closeCreateMenu();setTab('ingest')">New from AI / URL</button>
+      </div>
+    </div>
+    <div class="file-upload-actions masthead-upload-wrap">
+      <button class="masthead-upload masthead-upload-secondary" type="button" onclick="toggleUploadMenu(event)"><span class="plus">↑</span><span>Upload</span><span class="chev">⌄</span></button>
+      <div class="file-upload-menu" id="file-upload-menu">
         <button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button>
         <button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button>
-        <div class="menu-rule"></div>
-        <button onclick="closeUploadMenu();createFolder()">New folder</button>
-        <button onclick="closeUploadMenu();createFile('docx')">New Word document</button>
-        <button onclick="closeUploadMenu();createFile('xlsx')">New Excel spreadsheet</button>
-        <button onclick="closeUploadMenu();createFile('md')">New Markdown file</button>
-        <button onclick="closeUploadMenu();createFile('txt')">New Text file</button>
-        <div class="menu-rule"></div>
-        <button onclick="closeUploadMenu();openNewLibraryModal()">New library</button>
-        <button onclick="closeUploadMenu();newKnowledgePage()">New knowledge page</button>
-        <button onclick="closeUploadMenu();setTab('ingest')">New from AI / URL</button>
       </div>
     </div>
     <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
@@ -3511,7 +3519,7 @@ function renderIngest() {
            ondrop="handleFileDrop(event)">
         Drop a .txt, .md, or .pdf file here, or click to browse
       </div>
-      <input type="file" id="file-input" accept=".txt,.md,.pdf" style="display:none" onchange="handleFileInputChange(event)">
+      <input type="file" id="file-input" style="display:none" onchange="handleFileInputChange(event)">
       <div class="file-status" id="file-status"></div>
     </div>
 
@@ -5397,9 +5405,21 @@ async function saveFileText(fileId) {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+function toggleCreateMenu(event) {
+  event?.stopPropagation();
+  closeSearchMenu();
+  closeUploadMenu();
+  document.getElementById('file-create-menu')?.classList.toggle('open');
+}
+
+function closeCreateMenu() {
+  document.getElementById('file-create-menu')?.classList.remove('open');
+}
+
 function toggleUploadMenu(event) {
   event?.stopPropagation();
   closeSearchMenu();
+  closeCreateMenu();
   document.getElementById('file-upload-menu')?.classList.toggle('open');
 }
 
@@ -5415,6 +5435,7 @@ function chooseUpload(kind) {
 function toggleSearchMenu(event) {
   event?.stopPropagation();
   closeUploadMenu();
+  closeCreateMenu();
   document.getElementById('file-search-menu')?.classList.toggle('open');
 }
 
@@ -5474,7 +5495,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt,.pdf,.txt,.md,.csv" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
