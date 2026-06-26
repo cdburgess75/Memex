@@ -26,7 +26,12 @@ const DOCUMENT_COLUMNS = `
   restored_at, restored_by, restored_by_email
 `;
 
-const ALLOWED_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.pdf', '.txt', '.md', '.csv'];
+// Uploads accept any file type. Downloads are always served as attachments
+// (Content-Disposition: attachment), so arbitrary content can't execute in our
+// origin. Add extensions here to block specific types if a deployment needs to.
+// Text extraction (for AI indexing) runs best-effort on known formats and is a
+// no-op for others — binary/unknown types are simply stored without indexing.
+const BLOCKED_FILE_EXTS = [];
 const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
 let uploadSessionsEnsured = false;
@@ -46,7 +51,7 @@ function fileExt(name) {
 }
 
 function isAllowedFile(name) {
-  return ALLOWED_FILE_EXTS.includes(fileExt(name));
+  return !BLOCKED_FILE_EXTS.includes(fileExt(name));
 }
 
 function fileSizeLabelForEvent(size) {
