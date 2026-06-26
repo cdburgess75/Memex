@@ -2655,7 +2655,8 @@ async function loadFromServer() {
     state.pages = [WELCOME, ...pages];
     if (!state.activePage) state.activePage = 'overview';
     renderIndex();
-    await setTab('files');
+    const deep = hashToNav(location.hash); // honor a bookmarked/shared #/… deep link on load
+    if (deep) await navApply(deep); else await setTab('files');
   } catch (e) {
     toast('Could not load pages: ' + e.message);
   }
@@ -4797,17 +4798,58 @@ function openFolder(path = '', push = true) {
 // Every major navigation (workspace tab, page, file view, filter pill, folder)
 // records a snapshot so the browser Back/Forward buttons walk through them.
 let _navApplying = false;
-let _lastNavKey = null;
+let _lastHash = null; // the URL hash for the currently-shown state (dedup identity)
 function navSnapshot() {
   return { tab: (state && state.tab) || 'files', page: (state && state.activePage) || null, view: fileView, filter: fileFilter, folder: currentFolderPath };
+}
+// Encode a snapshot to a shareable hash, e.g. #/files/foo/bar?type=pdf, #/shared, #/doc/<id>, #/admin.
+function navToHash(s) {
+  const tab = s.tab || 'files';
+  if (tab === 'read') return s.page ? '#/doc/' + encodeURIComponent(s.page) : '#/files';
+  if (tab !== 'files') return '#/' + tab;
+  const view = s.view || 'active';
+  const section = view === 'active' ? 'files' : view;
+  let h = '#/' + section;
+  if (s.folder && (view === 'active' || view === 'shared' || view === 'favorites')) {
+    h += '/' + s.folder.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  }
+  if (s.filter && s.filter !== 'all' && view !== 'trash' && view !== 'links') h += '?type=' + encodeURIComponent(s.filter);
+  return h;
+}
+// Parse a hash back into a snapshot. Returns null for an empty/unknown hash (caller uses the default).
+function hashToNav(hash) {
+  let h = String(hash || '').replace(/^#\/?/, '');
+  if (!h) return null;
+  let filter = 'all';
+  const q = h.indexOf('?');
+  if (q !== -1) {
+    const m = h.slice(q + 1).match(/(?:^|&)type=([^&]*)/);
+    if (m) filter = decodeURIComponent(m[1]);
+    h = h.slice(0, q);
+  }
+  const seg = h.split('/').filter(Boolean).map(decodeURIComponent);
+  const first = seg[0];
+  if (first === 'doc') return { tab: 'read', page: seg[1] || null, view: 'active', filter: 'all', folder: '' };
+  if (['ingest', 'query', 'lint', 'admin'].includes(first)) return { tab: first, page: null, view: 'active', filter: 'all', folder: '' };
+  if (['files', 'shared', 'favorites', 'links', 'trash'].includes(first)) {
+    const view = first === 'files' ? 'active' : first;
+    const folder = (view === 'trash' || view === 'links') ? '' : seg.slice(1).join('/');
+    return { tab: 'files', page: null, view, filter, folder };
+  }
+  return null;
 }
 function navPush() {
   if (_navApplying) return;
   const snap = navSnapshot();
-  const key = JSON.stringify(snap);
-  if (key === _lastNavKey) return; // no real change — don't add a duplicate entry
-  _lastNavKey = key;
-  try { history.pushState({ mx: snap }, '', location.pathname + location.search); } catch (e) {}
+  const hash = navToHash(snap);
+  if (hash === _lastHash) return; // same URL — don't add a duplicate entry
+  _lastHash = hash;
+  try { history.pushState({ mx: snap }, '', location.pathname + location.search + hash); } catch (e) {}
+}
+// Apply whatever the current URL hash encodes (used on first load / bookmarked links).
+function navApplyFromUrl() {
+  const s = hashToNav(location.hash);
+  if (s) navApply(s);
 }
 async function navApply(s) {
   if (!s) s = { tab: 'files', view: 'active', filter: 'all', folder: '' };
@@ -4834,10 +4876,17 @@ async function navApply(s) {
     }
   } finally {
     _navApplying = false;
-    _lastNavKey = JSON.stringify(navSnapshot());
+    _lastHash = navToHash(navSnapshot());
   }
 }
-window.addEventListener('popstate', (event) => { navApply(event.state && event.state.mx); });
+window.addEventListener('popstate', (event) => { navApply((event.state && event.state.mx) || hashToNav(location.hash)); });
+// Honor manual hash edits / external links to a #/… deep link.
+window.addEventListener('hashchange', () => {
+  if (_navApplying) return;
+  if ((location.hash || '') === (_lastHash || '')) return;
+  const s = hashToNav(location.hash);
+  if (s) navApply(s);
+});
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
