@@ -217,6 +217,10 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .security-indicator.warning::before { background: #B7791F; }
 .security-indicator.critical::before { background: #C0392B; box-shadow: 0 0 0 4px rgba(192,57,43,0.12); }
 .security-indicator:hover { border-color: var(--accent); color: var(--ink); }
+.masthead-left { display: flex; align-items: center; gap: 12px; }
+.brand-block { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.brand-block .security-indicator { padding: 2px 9px 2px 21px; font-size: 10.5px; box-shadow: none; }
+.brand-block .security-indicator::before { width: 7px; height: 7px; left: 8px; }
 .masthead-indicator-stack { display: flex; flex-direction: column; gap: 4px; }
 .masthead-indicator-stack .security-indicator { padding: 4px 11px 4px 25px; font-size: 11.5px; box-shadow: none; }
 .masthead-indicator-stack .security-indicator::before { width: 8px; height: 8px; left: 10px; }
@@ -2306,23 +2310,14 @@ html.dark .file-action-btn.danger { color: #E57373; }
 </div>
 
 <header class="masthead">
-  <div class="brand">
-    <span class="brand-logo" aria-hidden="true">M</span>
-    <h1>Memex</h1>
-    <span class="brand-version" id="brand-version" title="App version"></span>
-  </div>
-  <div class="masthead-search">
-    <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
-    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Auto</span><span class="chev">⌄</span></button>
-    <div class="search-scope-menu" id="search-scope-menu"></div>
-    <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
-    <div class="ai-model-wrap">
-      <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
-      <div class="ai-model-menu" id="ai-model-menu"></div>
+  <div class="masthead-left">
+    <div class="brand-block">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true">M</span>
+        <h1>Memex</h1>
+      </div>
+      <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
     </div>
-    <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
-  </div>
-  <div class="masthead-actions">
     <div class="file-upload-actions masthead-upload-wrap">
       <button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
       <div class="file-upload-menu file-create-menu" id="file-create-menu">
@@ -2344,10 +2339,22 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button>
       </div>
     </div>
+  </div>
+  <div class="masthead-search">
+    <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
+    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Auto</span><span class="chev">⌄</span></button>
+    <div class="search-scope-menu" id="search-scope-menu"></div>
+    <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
+    <div class="ai-model-wrap">
+      <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
+      <div class="ai-model-menu" id="ai-model-menu"></div>
+    </div>
+    <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
+  </div>
+  <div class="masthead-actions">
     <div class="masthead-indicator-stack">
       <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
       <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="openComplianceStatus()" title="Compliance readiness">Compliance</button>
-      <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
     </div>
     <div class="meet-wrap">
       <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
@@ -2634,8 +2641,8 @@ async function initApp() {
     if (menuEl) menuEl.textContent = `Memex · ${config.version}`;
     const loginEl = document.getElementById('login-version');
     if (loginEl) loginEl.textContent = `Memex · ${config.version}`;
-    const brandEl = document.getElementById('brand-version');
-    if (brandEl) brandEl.textContent = config.version;
+    const upEl = document.getElementById('update-indicator');
+    if (upEl && upEl.textContent === 'Version') upEl.textContent = config.version;
   }
 
   const urlParams = new URLSearchParams(window.location.search);
