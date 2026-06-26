@@ -1390,8 +1390,11 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
 .file-nav-section { margin: 8px 8px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #707070; }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
-.file-quick-pill { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; color: #5F5F61; font-size: 14px; }
-.file-quick-badge { width: 22px; height: 22px; border-radius: 5px; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font: 700 9px var(--mono); }
+.file-quick-pill { width: 100%; min-width: 0; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--ink-soft); font: 500 14px var(--ui); cursor: pointer; }
+.file-quick-pill:hover { background: var(--surface-2); color: var(--ink); }
+.file-quick-pill.file-quick-empty { cursor: default; }
+.file-quick-pill.file-quick-empty:hover { background: transparent; color: var(--ink-soft); }
+.file-quick-pill .file-icon { width: 26px; height: 26px; border-radius: 6px; font-size: 8px; flex: 0 0 auto; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -1587,6 +1590,7 @@ body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-commander-folder:hover { background: var(--surface-2); color: var(--ink); }
 .file-commander-folder.active { background: var(--accent-wash); color: var(--accent); }
 .file-commander-folder span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-commander-folder .fc-ico { display: inline-flex; align-items: center; justify-content: center; opacity: 0.85; }
 .file-commander-count { color: var(--ink-faint); font-size: 12px; }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 .file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
@@ -4907,13 +4911,15 @@ window.addEventListener('hashchange', () => {
   const s = hashToNav(location.hash);
   if (s) navApply(s);
 });
+const FOLDER_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></span>';
+const ALL_FILES_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 3l9 8h-2.5v8.5H14V14h-4v5.5H5.5V11H3z"/></svg></span>';
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
   const rows = folders.length
-    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)"><span>▸</span><span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
+    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)">${FOLDER_SVG}<span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
-  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')"><span>⌂</span><span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
+  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')">${ALL_FILES_SVG}<span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
@@ -4930,12 +4936,12 @@ function fileLibraryCommandBarHtml() {
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div><input class="file-library-search" id="file-home-search" type="search" placeholder="Filter in Files" oninput="scheduleFileSearch()"></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 function quickAccessHtml(files) {
-  const items = files.slice(0, 6);
-  if (!items.length) return '<div class="file-quick-pill"><span class="file-quick-name">No files yet</span></div>';
-  return items.map((f, i) => {
+  const items = files.filter(f => !isFolderMarker(f)).slice(0, 6);
+  if (!items.length) return '<div class="file-quick-pill file-quick-empty"><span class="file-quick-name">No files yet</span></div>';
+  return items.map(f => {
     const ext = fileExt(f.name);
-    const colors = ['#5B5FC7','#6B6B6B','#3B8C8C','#777777','#D83B01','#107C41'];
-    return `<div class="file-quick-pill"><span class="file-quick-badge" style="background:${colors[i % colors.length]}">${esc(fileKind(ext).slice(0,2).toUpperCase())}</span><span class="file-quick-name">${esc(fileDisplayName(f))}</span></div>`;
+    const name = fileDisplayName(f);
+    return `<button type="button" class="file-quick-pill" data-fid="${f.id}" onclick="openFileDefault(this.dataset.fid)" title="Open ${esc(name)}">${fileIconHtml(ext)}<span class="file-quick-name">${esc(name)}</span></button>`;
   }).join('');
 }
 const FILE_TYPE_TABS = [
