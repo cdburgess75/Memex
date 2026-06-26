@@ -11,6 +11,7 @@ const db = require('../lib/db');
 const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
+const profiles = require('../lib/profiles');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const { zipFiles } = require('../lib/zip');
@@ -388,10 +389,12 @@ router.get('/', auth, async (req, res) => {
   try {
     await documentAccess.ensureDocumentAclTable();
     await libraries.ensureLibraries();
+    await profiles.ensureProfiles();
     const libParam = req.query.library || null;
     const rows = await db.query(
-      `SELECT ${DOCUMENT_COLUMNS}
+      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
        FROM documents d
+       LEFT JOIN user_profiles up ON up.user_id = d.uploaded_by
        WHERE d.deleted_at IS NULL
          AND ${documentAccess.condition('d', 1)}
          AND ($6::uuid IS NULL OR d.library_id = $6)
