@@ -1,8 +1,12 @@
-name: Build and publish Docker image
+name: Publish image
 
+# Publishes the app image to GHCR:
+#   - push to main           -> :latest  (+ :sha-<short>)
+#   - push a tag like v1.2.3 -> :v1.2.3   (pinned release for customers)
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
@@ -33,6 +37,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/memex
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
       - name: Build and push

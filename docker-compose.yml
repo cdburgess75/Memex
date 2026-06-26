@@ -38,6 +38,9 @@ services:
         condition: service_healthy
 
   app:
+    # Prebuilt image from GHCR (install.sh / upgrade.sh `docker compose pull` it).
+    # `build: .` stays so source builds (`up -d --build`) still work for dev.
+    image: ghcr.io/cdburgess75/memex:${MEMEX_TAG:-latest}
     build: .
     restart: unless-stopped
     environment:

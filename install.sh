@@ -85,8 +85,10 @@ fi
 if [ "$KEEP_ENV" = "0" ]; then
   info "Let's configure this deployment."
   ask MODE "Mode — 'local' (http on this box) or 'public' (HTTPS via your domain)" "local"
+  ask METHOD "App image — 'prebuilt' (pull from GHCR, fast) or 'source' (build here)" "prebuilt"
   ask ADMIN_EMAIL "Your admin email (gets the admin role on first login; blank = skip)" ""
   ask_secret ANTHROPIC_API_KEY "Anthropic API key for AI features (sk-ant-…)"
+  MEMEX_TAG="${MEMEX_TAG:-latest}"
 
   if [ "$MODE" = "public" ]; then
     ask APP_DOMAIN "Public domain (e.g. memex.acme.com)" ""
@@ -122,10 +124,12 @@ APP_URL=$APP_URL
 TRUST_PROXY=$TRUST_PROXY
 STORAGE_PROVIDER=local
 STORAGE_ENCRYPTION_KEY=$STORAGE_ENCRYPTION_KEY
+MEMEX_TAG=$MEMEX_TAG
 PORT=3000
 EOF
 else
   MODE="$(grep -q '^TRUST_PROXY=1' .env && echo public || echo local)"
+  METHOD="${METHOD:-prebuilt}"
 fi
 
 # ── Launch ───────────────────────────────────────────────────────────────────
@@ -133,12 +137,22 @@ COMPOSE="-f docker-compose.yml"
 [ "$MODE" = "public" ] && COMPOSE="$COMPOSE -f docker-compose.prod.yml"
 
 if [ "$DRY_RUN" = "1" ]; then
-  info "[dry-run] .env written. Would run: $DC $COMPOSE up -d --build"; exit 0
+  info "[dry-run] .env written. Method=$METHOD. Stopping before Docker."; exit 0
 fi
 
-info "Building and starting the stack — first run pulls images and builds the app (a few minutes)…"
 # shellcheck disable=SC2086
-$DC $COMPOSE up -d --build
+if [ "$METHOD" = "source" ]; then
+  info "Building and starting the stack from source — first run takes a few minutes…"
+  $DC $COMPOSE up -d --build
+else
+  info "Pulling images (prebuilt app from GHCR) and starting…"
+  if $DC $COMPOSE pull; then
+    $DC $COMPOSE up -d
+  else
+    warn "Couldn't pull the prebuilt app image (is the GHCR package public?). Falling back to building from source…"
+    $DC $COMPOSE up -d --build
+  fi
+fi
 
 info "Waiting for the app to become healthy…"
 ok=0
