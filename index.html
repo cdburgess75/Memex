@@ -2655,7 +2655,16 @@ async function loadFromServer() {
     state.pages = [WELCOME, ...pages];
     if (!state.activePage) state.activePage = 'overview';
     renderIndex();
-    const deep = hashToNav(location.hash); // honor a bookmarked/shared #/… deep link on load
+    // Honor a bookmarked/shared #/… deep link on load. The OAuth callback strips
+    // the hash, so fall back to the one stashed before the Keycloak redirect.
+    let deepHash = location.hash;
+    const ret = sessionStorage.getItem('memex_return_hash');
+    sessionStorage.removeItem('memex_return_hash');
+    if (!hashToNav(deepHash) && ret) {
+      deepHash = ret;
+      try { history.replaceState(null, '', location.pathname + location.search + deepHash); } catch (e) {}
+    }
+    const deep = hashToNav(deepHash);
     if (deep) await navApply(deep); else await setTab('files');
   } catch (e) {
     toast('Could not load pages: ' + e.message);
@@ -2682,6 +2691,9 @@ async function signIn(provider) {
   const state = _generateVerifier();
   sessionStorage.setItem('pkce_verifier', verifier);
   sessionStorage.setItem('oauth_state', state);
+  // Preserve the deep link across the Keycloak round-trip (the OAuth callback
+  // strips the hash), so a shared #/… link lands where it points after login.
+  try { if (hashToNav(location.hash)) sessionStorage.setItem('memex_return_hash', location.hash); } catch (e) {}
   const idpHint = { google: 'google', microsoft: 'microsoft' }[provider];
   const params = new URLSearchParams({
     client_id: _kc.clientId, redirect_uri: window.location.origin,
