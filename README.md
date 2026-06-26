@@ -220,13 +220,31 @@ cd server && npm test      # jest
 
 ---
 
+## Prebuilt images & updating
+
+Every push to `main` publishes the app image to GHCR as
+`ghcr.io/cdburgess75/memex:latest`, and each pushed `vX.Y.Z` git tag publishes a
+pinned `:vX.Y.Z` release. `install.sh` pulls `:latest` by default (no local
+build), and you can upgrade in place without source:
+
+```bash
+./upgrade.sh                  # pull and deploy :latest
+./upgrade.sh v2026.06.22.001  # pin to a specific release
+```
+
+`upgrade.sh` records the chosen tag as `MEMEX_TAG` in `.env`, pulls just the app
+image, recreates the container, and health-checks `:3000`.
+
+> The GHCR package must be **public** for unauthenticated customer pulls. If it
+> isn't, `install.sh` automatically falls back to building from source.
+
 ## Deployment
 
 Memex is a small stack (Postgres + Keycloak + a stateless Node container). The reference deployment is **Docker Compose on a single host**:
 
 ```bash
 git pull
-docker compose up -d --build app      # rebuild just the app after a code change
+docker compose up -d --build app      # rebuild just the app after a code change (source)
 ```
 
 Put a TLS-terminating reverse proxy (Caddy, nginx, Traefik) in front, set `APP_URL` to the HTTPS URL, and set `TRUST_PROXY` appropriately. The same compose stack runs on any Docker host — a VPS, a home server, Portainer, Unraid, or TrueNAS SCALE.
