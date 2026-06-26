@@ -4669,7 +4669,14 @@ function fileKind(ext) {
   if (ext === 'pdf') return 'PDF';
   return ext ? ext.toUpperCase() : 'File';
 }
-function fileOwner(f) { return f.uploaded_by_email || currentUser?.email || 'Unknown'; }
+function fileOwner(f) {
+  const email = f.uploaded_by_email || currentUser?.email || 'Unknown';
+  // Show your own files under your current display name (not the email), so the
+  // owner label + avatar initials reflect a profile rename. uploaded_by_name is
+  // used for other people's files if the backend supplies it; else the email.
+  if (currentUser && email.toLowerCase() === String(currentUser.email || '').toLowerCase()) return currentUser.name || email;
+  return f.uploaded_by_name || email;
+}
 function fileDate(value) { return value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : ''; }
 function fileSizeLabel(size) { return size > 1024*1024 ? (size/1024/1024).toFixed(1)+' MB' : Math.max(1, Math.round((size || 0)/1024))+' KB'; }
 function fileIconHtml(ext) { return `<div class="file-icon ${ext}">${esc(fileKind(ext).slice(0,3))}</div>`; }
