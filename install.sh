@@ -89,13 +89,15 @@ if [ "$KEEP_ENV" = "0" ]; then
   ask ADMIN_EMAIL "Your admin email (gets the admin role on first login; blank = skip)" ""
   ask_secret ANTHROPIC_API_KEY "Anthropic API key for AI features (sk-ant-…)"
   MEMEX_TAG="${MEMEX_TAG:-latest}"
+  PORT="${PORT:-3000}"           # app host port
+  KC_PORT="${KC_PORT:-8080}"     # keycloak host port
 
   if [ "$MODE" = "public" ]; then
     ask APP_DOMAIN "Public domain (e.g. memex.acme.com)" ""
     [ -n "${APP_DOMAIN:-}" ] || die "Public mode needs a domain."
     APP_URL="https://$APP_DOMAIN"; KEYCLOAK_URL="auto"; TRUST_PROXY="1"
   else
-    APP_URL="http://localhost:3000"; KEYCLOAK_URL="http://localhost:8080"; TRUST_PROXY=""
+    APP_URL="http://localhost:$PORT"; KEYCLOAK_URL="http://localhost:$KC_PORT"; TRUST_PROXY=""
   fi
 
   # The seeded Keycloak user admin@memex.local is the only account that exists on
@@ -115,6 +117,7 @@ POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 KEYCLOAK_ADMIN_USER=admin
 KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_ADMIN_PASSWORD
 KEYCLOAK_URL=$KEYCLOAK_URL
+KEYCLOAK_PUBLIC_PORT=$KC_PORT
 KEYCLOAK_REALM=memex
 KEYCLOAK_CLIENT_ID=memex-app
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -125,12 +128,14 @@ TRUST_PROXY=$TRUST_PROXY
 STORAGE_PROVIDER=local
 STORAGE_ENCRYPTION_KEY=$STORAGE_ENCRYPTION_KEY
 MEMEX_TAG=$MEMEX_TAG
-PORT=3000
+PORT=$PORT
 EOF
 else
   MODE="$(grep -q '^TRUST_PROXY=1' .env && echo public || echo local)"
   METHOD="${METHOD:-prebuilt}"
 fi
+# App host port (source of truth: .env) — used by the health check and summary.
+PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2)"; PORT="${PORT:-3000}"
 
 # ── Launch ───────────────────────────────────────────────────────────────────
 COMPOSE="-f docker-compose.yml"
@@ -157,12 +162,12 @@ fi
 info "Waiting for the app to become healthy…"
 ok=0
 for _ in $(seq 1 60); do
-  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://localhost:3000/ 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
+  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "http://localhost:$PORT/" 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
   sleep 3
 done
 
 echo
-if [ "$ok" = "1" ]; then info "Memex is up. 🎉"; else warn "Stack started but the app didn't answer on :3000 yet — check '$DC $COMPOSE logs -f app'."; fi
+if [ "$ok" = "1" ]; then info "Memex is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
 echo
 echo "  ${B}First login${N}"
 echo "    Email:    admin@memex.local"
@@ -175,7 +180,7 @@ if [ "$MODE" = "public" ]; then
   echo "    3. In Memex: Settings → System → App URL = ${APP_URL:-https://your-domain}"
   echo "    Caddy then auto-issues a Let's Encrypt cert on first visit."
 else
-  echo "  ${B}Open${N}  http://localhost:3000   (or http://<this-host-ip>:3000 on your LAN)"
+  echo "  ${B}Open${N}  http://localhost:$PORT   (or http://<this-host-ip>:$PORT on your LAN)"
 fi
 echo
 echo "  ${B}Manage${N}"
