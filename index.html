@@ -6577,8 +6577,10 @@ async function loadRecentOpens() { try { recentOpensList = await apiGet('/files/
 function openFileDefault(fileId) {
   const f = filesList.find(x => String(x.id) === String(fileId));
   const ext = f ? fileExt(f.name) : '';
-  if (OFFICE_EXTS.includes(ext)) return openInOffice(fileId);
-  if (PREVIEW_EXTS.includes(ext)) return previewFile(fileId);
+  // Office files have no in-browser preview unless a public Office-Online URL is
+  // reachable, so open the preview modal (Download + optional Office Online)
+  // rather than a blank viewer tab.
+  if (PREVIEW_EXTS.includes(ext) || OFFICE_EXTS.includes(ext)) return previewFile(fileId);
   return downloadFile(fileId);
 }
 function closeFileMenu() { document.getElementById('file-row-menu')?.remove(); }
@@ -6749,10 +6751,11 @@ async function previewFile(fileId, opts = {}) {
   let data;
   try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
   const url = data.url;
+  const inlineUrl = url + (url.includes('?') ? '&' : '?') + 'inline=1'; // render in-browser, not download
   const name = data.name || (f ? fileDisplayName(f) : 'File');
   let body;
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) body = `<img src="${esc(url)}" alt="" class="file-preview-img">`;
-  else if (ext === 'pdf') body = `<iframe src="${esc(url)}" class="file-preview-frame" title="${esc(name)}"></iframe>`;
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) body = `<img src="${esc(inlineUrl)}" alt="" class="file-preview-img">`;
+  else if (ext === 'pdf') body = `<iframe src="${esc(inlineUrl)}" class="file-preview-frame" title="${esc(name)}"></iframe>`;
   else if (isText) body = `<textarea class="file-preview-edit" id="file-edit-text" spellcheck="false" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea>`;
   else body = `<div class="file-preview-fallback"><p class="settings-notice">No inline preview for this file type.</p><div style="display:flex;gap:8px;justify-content:center">${OFFICE_EXTS.includes(ext) ? `<button class="run-btn" onclick="closeFilePreview();openInOffice('${fileId}')">Open in Office Online</button>` : ''}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button></div></div>`;
   const saveBtn = canEdit ? `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>` : '';
@@ -6760,7 +6763,7 @@ async function previewFile(fileId, opts = {}) {
   document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
   if (isText) {
     const el = document.getElementById('file-edit-text');
-    try { const r = await fetch(url); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
+    try { const r = await fetch(inlineUrl); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
     catch { if (el) el.value = ''; }
     if (el && canEdit && opts.edit) el.focus();
   }
