@@ -344,7 +344,26 @@ router.get('/local-download', async (req, res) => {
   }
 
   const path = require('path');
-  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(entry.storagePath)}"`);
+  const base = path.basename(entry.storagePath);
+  const ext = path.extname(base).toLowerCase().replace('.', '');
+  // Types we can safely render inline (for in-app preview). Anything not listed
+  // downloads as an attachment, so unknown/executable content can't run in-origin.
+  const INLINE_TYPES = {
+    pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+    txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8',
+    csv: 'text/plain; charset=utf-8', log: 'text/plain; charset=utf-8', json: 'application/json',
+  };
+  const inlineType = req.query.inline === '1' ? INLINE_TYPES[ext] : null;
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (inlineType) {
+    res.setHeader('Content-Type', inlineType);
+    res.setHeader('Content-Disposition', `inline; filename="${base}"`);
+    // SVG can carry script — sandbox it so it can't execute if opened directly.
+    if (ext === 'svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  } else {
+    res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
+  }
   res.send(buffer);
 });
 

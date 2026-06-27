@@ -161,8 +161,9 @@ async function localDownload(storagePath) {
 async function localGetUrl(storagePath, ttl) {
   const token = crypto.randomBytes(32).toString('hex');
   localTokens.set(token, { storagePath, expires: Date.now() + ttl * 1000 });
-  const base = ((await settings.getOrEnv('app_url')) || '').replace(/\/$/, '');
-  return `${base}/api/files/local-download?token=${token}`;
+  // Relative URL so it resolves against whatever host the browser is on
+  // (localhost, LAN IP, domain) instead of a hardcoded app_url that may be stale.
+  return `/api/files/local-download?token=${token}`;
 }
 
 async function localDel(storagePath) {
