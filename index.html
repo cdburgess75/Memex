@@ -4988,7 +4988,10 @@ function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
   const rows = folders.length
-    ? folders.map(folder => `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)">${FOLDER_SVG}<span>${esc(folder.path)}</span><span class="file-commander-count">${folder.count}</span></button>`).join('')
+    ? folders.map(folder => {
+        const depth = folder.path.split('/').filter(Boolean).length - 1;
+        return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${FOLDER_SVG}<span>${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
+      }).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
   return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')">${ALL_FILES_SVG}<span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
 }
@@ -5699,8 +5702,10 @@ async function loadFiles() {
 // Recent rail (you-opened), shown at the library root when not filtering/searching.
 function recentRailHtml() {
   const q = (document.getElementById('global-search')?.value || '').trim();
-  if (!recentOpensList.length || currentFolderPath || q || fileFilter !== 'all' || fileView !== 'active') return '';
-  const cards = recentOpensList.slice(0, 6).map(f => {
+  if (!recentOpensList.length || currentFolderPath || q || fileView !== 'active') return '';
+  const recents = filterFilesForHome(fileFilter, recentOpensList, false); // match the active type tab
+  if (!recents.length) return '';
+  const cards = recents.slice(0, 6).map(f => {
     const ext = fileExt(f.name);
     return `<button class="file-recent-card" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">${fileIconHtml(ext)}<div class="file-recent-meta"><div class="file-recent-name" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-recent-sub">${esc(fileKind(ext))} · ${fileDate(f.opened_at || f.created_at)}</div></div></button>`;
   }).join('');
