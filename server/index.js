@@ -119,7 +119,10 @@ app.use('/api/version', require('./routes/version'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));
 
-app.use(express.static(path.join(__dirname, '..')));
+// Serve only the vendored client libraries statically — NOT the repo root, which
+// would expose server source, compose, and config files. The SPA itself is
+// returned by the catch-all below.
+app.use('/vendor', express.static(path.join(__dirname, '..', 'vendor'), { maxAge: '7d', immutable: true }));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
 
 const PORT = process.env.PORT || 3000;
