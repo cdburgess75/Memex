@@ -4264,10 +4264,14 @@ function aiProvidersSettingsHtml(s) {
     <div class="settings-sub" style="margin-top:20px">OpenAI-compatible endpoints</div>
     <p class="settings-notice">Add one or more endpoints — OpenAI, Groq, Together, OpenRouter, or self-hosted (Ollama / vLLM / LM Studio at e.g. <code>http://host:11434/v1</code>). Each has its own base URL, key, and models. Pick the active model from the ✦ selector in the top bar.</p>
     <div id="ai-endpoints">${cards}</div>
-    <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="ghost-btn" onclick="addAiEndpoint()">+ Add endpoint</button>
-      <button class="ghost-btn" onclick="addLocalOllama()" title="Pre-fill a self-hosted Ollama endpoint">+ Add local Ollama</button>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+      <select class="ai-preset-select" onchange="if(this.value!==''){addProviderPreset(+this.value);this.value='';}">
+        <option value="">+ Add a popular provider…</option>
+        ${aiPresetOptionsHtml()}
+      </select>
+      <button class="ghost-btn" onclick="addAiEndpoint()">+ Custom endpoint</button>
     </div>
+    <p class="settings-notice">Presets fill the base URL + a starter model list. Add your API key (cloud) or set the host (local), then click <strong>Detect</strong> to pull the exact models.</p>
 
     <div style="margin-top:16px"><button class="run-btn" onclick="saveAISettings()">Save AI providers</button></div>`;
 }
@@ -4334,12 +4338,33 @@ function addAiEndpoint() {
   aiEndpointsDraft.push({ id: '', label: '', base_url: '', api_key: '', models: '' });
   switchSettingsTab('ai');
 }
-function addLocalOllama() {
+// Popular OpenAI-compatible providers. Model lists are starter suggestions —
+// click Detect on the endpoint to pull the exact current models.
+const AI_PROVIDER_PRESETS = [
+  { group: 'Cloud', label: 'OpenAI', base_url: 'https://api.openai.com/v1', models: 'gpt-4o, gpt-4o-mini, o3-mini' },
+  { group: 'Cloud', label: 'Google Gemini', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/', models: 'gemini-2.0-flash, gemini-1.5-pro' },
+  { group: 'Cloud', label: 'Groq', base_url: 'https://api.groq.com/openai/v1', models: 'llama-3.3-70b-versatile, llama-3.1-8b-instant' },
+  { group: 'Cloud', label: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', models: 'deepseek-chat, deepseek-reasoner' },
+  { group: 'Cloud', label: 'xAI (Grok)', base_url: 'https://api.x.ai/v1', models: 'grok-2-latest' },
+  { group: 'Cloud', label: 'Mistral', base_url: 'https://api.mistral.ai/v1', models: 'mistral-large-latest, mistral-small-latest' },
+  { group: 'Cloud', label: 'Together', base_url: 'https://api.together.xyz/v1', models: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
+  { group: 'Cloud', label: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1', models: 'openai/gpt-4o, anthropic/claude-3.5-sonnet' },
+  { group: 'Local', label: 'Ollama', base_url: 'http://localhost:11434/v1', models: 'llama3.1, qwen2.5, mistral' },
+  { group: 'Local', label: 'LM Studio', base_url: 'http://localhost:1234/v1', models: '' },
+  { group: 'Local', label: 'vLLM', base_url: 'http://localhost:8000/v1', models: '' },
+];
+function aiPresetOptionsHtml() {
+  const groups = {};
+  AI_PROVIDER_PRESETS.forEach((p, i) => { (groups[p.group] = groups[p.group] || []).push(`<option value="${i}">${esc(p.label)}</option>`); });
+  return Object.keys(groups).map(g => `<optgroup label="${esc(g)}">${groups[g].join('')}</optgroup>`).join('');
+}
+function addProviderPreset(i) {
+  const p = AI_PROVIDER_PRESETS[i];
+  if (!p) return;
   syncAiEndpointsFromDom();
-  // Ollama's OpenAI-compatible API. Change host if Ollama isn't on the app server.
-  aiEndpointsDraft.push({ id: '', label: 'Local Ollama', base_url: 'http://localhost:11434/v1', api_key: '', models: '' });
+  aiEndpointsDraft.push({ id: '', label: p.label, base_url: p.base_url, api_key: '', models: p.models });
   switchSettingsTab('ai');
-  toast('Set the host if Ollama is on another machine, then click Detect');
+  toast(p.group === 'Local' ? 'Set the host if it isn’t on the app server, then Detect' : 'Add your API key, then Detect the models');
 }
 function removeAiEndpoint(i) {
   syncAiEndpointsFromDom();
