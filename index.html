@@ -4264,7 +4264,10 @@ function aiProvidersSettingsHtml(s) {
     <div class="settings-sub" style="margin-top:20px">OpenAI-compatible endpoints</div>
     <p class="settings-notice">Add one or more endpoints — OpenAI, Groq, Together, OpenRouter, or self-hosted (Ollama / vLLM / LM Studio at e.g. <code>http://host:11434/v1</code>). Each has its own base URL, key, and models. Pick the active model from the ✦ selector in the top bar.</p>
     <div id="ai-endpoints">${cards}</div>
-    <button class="ghost-btn" style="margin-top:4px" onclick="addAiEndpoint()">+ Add endpoint</button>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="ghost-btn" onclick="addAiEndpoint()">+ Add endpoint</button>
+      <button class="ghost-btn" onclick="addLocalOllama()" title="Pre-fill a self-hosted Ollama endpoint">+ Add local Ollama</button>
+    </div>
 
     <div style="margin-top:16px"><button class="run-btn" onclick="saveAISettings()">Save AI providers</button></div>`;
 }
@@ -4280,9 +4283,28 @@ function aiEndpointCardHtml(ep, i) {
       <label>API key</label>
       <input class="ep-key" type="password" value="${esc(ep.api_key||'')}" autocomplete="new-password" placeholder="blank = none (self-hosted) or keep current">
       <label>Models</label>
-      <input class="ep-models" type="text" value="${esc(ep.models||'')}" placeholder="gpt-4o-mini, llama3.1:8b …">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input class="ep-models" type="text" value="${esc(ep.models||'')}" placeholder="gpt-4o-mini, llama3.1:8b …" style="flex:1">
+        <button type="button" class="ghost-btn" onclick="detectAiModels(${i})" title="Query this endpoint for its installed models">Detect</button>
+      </div>
     </div>
   </div>`;
+}
+// Ask the server to probe an endpoint (e.g. local Ollama) for its models and fill the field.
+async function detectAiModels(i) {
+  const card = document.querySelector(`.ai-endpoint-card[data-idx="${i}"]`);
+  if (!card) return;
+  const base = card.querySelector('.ep-base').value.trim();
+  const key = card.querySelector('.ep-key').value.trim();
+  if (!base) { toast('Enter the Base URL first'); return; }
+  toast('Detecting models…');
+  try {
+    const r = await apiPost('/ai/detect-models', { base_url: base, api_key: key });
+    const models = Array.isArray(r.models) ? r.models : [];
+    if (!models.length) { toast('No models found at that endpoint'); return; }
+    card.querySelector('.ep-models').value = models.join(', ');
+    toast(`Found ${models.length} model${models.length === 1 ? '' : 's'} — review, then Save`);
+  } catch (e) { toast('Detect failed: ' + (e.message || 'endpoint unreachable')); }
 }
 // Read the endpoint cards back into the draft (preserving each row's id) before any re-render.
 function syncAiEndpointsFromDom() {
@@ -4311,6 +4333,13 @@ function addAiEndpoint() {
   syncAiEndpointsFromDom();
   aiEndpointsDraft.push({ id: '', label: '', base_url: '', api_key: '', models: '' });
   switchSettingsTab('ai');
+}
+function addLocalOllama() {
+  syncAiEndpointsFromDom();
+  // Ollama's OpenAI-compatible API. Change host if Ollama isn't on the app server.
+  aiEndpointsDraft.push({ id: '', label: 'Local Ollama', base_url: 'http://localhost:11434/v1', api_key: '', models: '' });
+  switchSettingsTab('ai');
+  toast('Set the host if Ollama is on another machine, then click Detect');
 }
 function removeAiEndpoint(i) {
   syncAiEndpointsFromDom();

@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const aiProviders = require('../lib/aiProviders');
@@ -264,6 +265,35 @@ router.get('/models', auth, async (req, res) => {
     res.json({ active: `${active.provider}:${active.model}`, models });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ai/detect-models — probe an OpenAI-compatible endpoint (e.g. Ollama)
+// for its installed models so admins don't have to type them by hand. Admin-only;
+// the server fetches the same base URL the AI calls would use.
+router.post('/detect-models', auth, requireRole('admin'), async (req, res) => {
+  const base = String(req.body?.base_url || '').trim().replace(/\/+$/, '');
+  const key = String(req.body?.api_key || '').trim();
+  if (!base) return res.status(400).json({ error: 'base_url required' });
+  const headers = { Accept: 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
+  try {
+    // OpenAI-compatible endpoints (incl. Ollama's /v1) expose GET /models.
+    let r = await fetch(`${base}/models`, { headers, signal: AbortSignal.timeout(6000) });
+    let models = [];
+    if (r.ok) {
+      const j = await r.json();
+      models = Array.isArray(j?.data) ? j.data.map(m => m && m.id).filter(Boolean) : [];
+    }
+    // Fall back to Ollama's native /api/tags (strip a trailing /v1).
+    if (!models.length) {
+      const root = base.replace(/\/v1$/, '');
+      const t = await fetch(`${root}/api/tags`, { headers, signal: AbortSignal.timeout(6000) });
+      if (t.ok) { const j = await t.json(); models = Array.isArray(j?.models) ? j.models.map(m => m && m.name).filter(Boolean) : []; }
+    }
+    res.json({ models });
+  } catch (e) {
+    res.status(502).json({ error: e.message || 'Could not reach endpoint' });
   }
 });
 
