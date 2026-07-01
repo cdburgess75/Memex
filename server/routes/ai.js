@@ -151,14 +151,15 @@ Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id
 
 // POST /api/ai/query  (SSE streaming)
 router.post('/query', auth, async (req, res) => {
-  const { question, fileIt } = req.body;
+  const { question, fileIt, libraryIds } = req.body;
   if (!question?.trim()) return res.status(400).json({ error: 'question required' });
 
   sseHeaders(res);
 
   try {
     const pages = await db.query('SELECT * FROM pages');
-    const docs = await documentAccess.searchAccessibleDocuments(req.user, question, 6);
+    const libs = Array.isArray(libraryIds) && libraryIds.length ? libraryIds : null;
+    const docs = await documentAccess.searchAccessibleDocuments(req.user, question, 6, libs);
     const ctx = [buildContext(pages), buildDocContext(docs)].filter(Boolean).join('\n\n---\n\n');
 
     const system = `You answer questions from a team knowledge base made up of pages and uploaded files. Ground every claim in the material below and name the page or file you drew it from. If the material lacks the answer, say so plainly.${fileIt ? '\n\nAfter the answer, on its own final line output exactly:\nSAVE_AS: Short Page Title | analysis' : ''}\n\nKnowledge base:\n${ctx || '(empty — tell the user to add knowledge or upload files first)'}`;

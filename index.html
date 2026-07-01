@@ -1439,6 +1439,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-section-title { font-size: 19px; font-weight: 700; color: #616161; margin-right: 4px; }
 .file-filter-chip { border: 1px solid #D8D8D8; border-radius: 999px; background: #FFFFFF; color: #323130; padding: 8px 16px; font: 700 15px var(--body); cursor: pointer; }
 .file-filter-chip.active { border-color: #0F6CBD; box-shadow: 0 0 0 2px rgba(15,108,189,0.16); color: #0F5FB5; }
+.ai-lib-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-lib-chip { border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--ink-soft); padding: 6px 14px; font: 600 13px var(--ui); cursor: pointer; }
+.ai-lib-chip:hover { border-color: var(--accent); color: var(--ink); }
+.ai-lib-chip.active { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
 .file-table-wrap { background: #FFFFFF; border: 1px solid #E7E7E7; border-radius: 12px; overflow: hidden; }
 .file-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .file-table th { text-align: left; color: #696969; font: 700 15px var(--body); padding: 13px 18px; border-bottom: 1px solid #ECECEC; }
@@ -3733,6 +3737,30 @@ async function doIngest() {
   }
 }
 
+// AI research scope: which libraries the AI draws from. null = all libraries.
+let aiResearchLibs = null;
+function aiLibraryScopeHtml() {
+  if (!librariesList || librariesList.length <= 1) return ''; // only meaningful with multiple libraries
+  return `<div class="field"><label class="field-label">Research in</label><div class="ai-lib-chips" id="ai-lib-chips">${aiLibraryChipsInner()}</div></div>`;
+}
+function aiLibraryChipsInner() {
+  const all = `<button type="button" class="ai-lib-chip${!aiResearchLibs ? ' active' : ''}" onclick="toggleAiLib(null)">All libraries</button>`;
+  const perLib = (librariesList || []).map(l => {
+    const on = aiResearchLibs && aiResearchLibs.includes(String(l.id));
+    return `<button type="button" class="ai-lib-chip${on ? ' active' : ''}" data-lib="${esc(String(l.id))}" onclick="toggleAiLib(this.dataset.lib)">${esc(l.name)}</button>`;
+  }).join('');
+  return all + perLib;
+}
+function toggleAiLib(id) {
+  if (id === null || id === 'null') { aiResearchLibs = null; }
+  else {
+    const s = new Set(aiResearchLibs || []);
+    s.has(id) ? s.delete(id) : s.add(id);
+    aiResearchLibs = s.size ? [...s] : null;
+  }
+  const el = document.getElementById('ai-lib-chips');
+  if (el) el.innerHTML = aiLibraryChipsInner();
+}
 function renderQuery() {
   setWorkspacePanel(`<div class="panel">
     <div class="field">
@@ -3740,6 +3768,7 @@ function renderQuery() {
       <textarea id="q" placeholder="Ask anything grounded in what you've gathered…" style="min-height:100px"
         onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();doQuery(false);}"></textarea>
     </div>
+    ${aiLibraryScopeHtml()}
     <div class="btn-row">
       <button class="run-btn" id="query-go" onclick="doQuery(false)">Ask</button>
       <button class="ghost-btn" id="query-save" onclick="doQuery(true)">Ask & file answer</button>
@@ -4189,7 +4218,7 @@ async function doQuery(fileIt) {
   goBtn.disabled = saveBtn.disabled = true;
   if (stopBtn) stopBtn.style.display = '';
 
-  const result = await streamFromApi('/ai/query', { question: q, fileIt }, ans);
+  const result = await streamFromApi('/ai/query', { question: q, fileIt, libraryIds: aiResearchLibs }, ans);
 
   goBtn.disabled = saveBtn.disabled = false;
   if (stopBtn) stopBtn.style.display = 'none';
@@ -6009,7 +6038,7 @@ async function submitCollectionAsk(fileIt) {
   if (goBtn) goBtn.disabled = true;
   if (saveBtn) saveBtn.disabled = true;
   if (stopBtn) stopBtn.style.display = '';
-  const result = await streamFromApi('/ai/query', { question, fileIt }, answer);
+  const result = await streamFromApi('/ai/query', { question, fileIt, libraryIds: aiResearchLibs }, answer);
   if (goBtn) goBtn.disabled = false;
   if (saveBtn) saveBtn.disabled = false;
   if (stopBtn) stopBtn.style.display = 'none';

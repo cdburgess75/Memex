@@ -167,11 +167,14 @@ async function backfillOwnerGrants() {
 
 // Documents the user may read whose text is relevant to `query`, ranked by full-text
 // relevance (with a name match fallback). Used to ground AI answers in uploaded files.
-async function searchAccessibleDocuments(user, query, limit = 6) {
+async function searchAccessibleDocuments(user, query, limit = 6, libraryIds = null) {
   await ensureDocumentAclTable();
   const q = String(query || '').trim();
   if (!q) return [];
   const cap = Math.max(1, Math.min(20, limit));
+  const userP = userParams(user, 'read');
+  const libIdx = 2 + userP.length; // param slot after $1 (query) and the ACL params
+  const libs = Array.isArray(libraryIds) && libraryIds.length ? libraryIds.map(String) : null;
   return db.query(
     `SELECT d.id, d.name, d.document_text
      FROM documents d
@@ -183,9 +186,10 @@ async function searchAccessibleDocuments(user, query, limit = 6) {
          OR d.name ILIKE '%' || $1 || '%'
        )
        AND ${condition('d', 2)}
+       AND ($${libIdx}::uuid[] IS NULL OR d.library_id = ANY($${libIdx}::uuid[]))
      ORDER BY ts_rank(d.document_fts, websearch_to_tsquery('english', $1)) DESC NULLS LAST, d.created_at DESC
      LIMIT ${cap}`,
-    [q, ...userParams(user, 'read')]
+    [q, ...userP, libs]
   );
 }
 
