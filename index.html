@@ -1623,11 +1623,14 @@ body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); gap: 14px; }
 .file-commander-folders { border: 1px solid var(--rule); border-radius: 10px; padding: 10px; overflow: auto; background: var(--surface); }
 .file-commander-title { color: var(--ink-faint); font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 6px 8px; }
-.file-commander-folder { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; text-align: left; font: 500 13px var(--ui); cursor: pointer; }
+.file-commander-folder { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); display: grid; grid-template-columns: 14px 22px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 8px 9px; text-align: left; font: 500 13px var(--ui); cursor: pointer; }
 .file-commander-folder:hover { background: var(--surface-2); color: var(--ink); }
 .file-commander-folder.active { background: var(--accent-wash); color: var(--accent); }
-.file-commander-folder span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-commander-folder .fc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-commander-folder .fc-ico { display: inline-flex; align-items: center; justify-content: center; opacity: 0.85; }
+.fc-caret { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 18px; font-size: 9px; color: var(--ink-faint); border-radius: 4px; }
+.fc-caret:not(.fc-caret-empty):hover { background: var(--surface-2); color: var(--accent); }
+.fc-caret-empty { visibility: hidden; }
 .file-commander-count { color: var(--ink-faint); font-size: 12px; }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 .file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
@@ -5109,16 +5112,44 @@ window.addEventListener('hashchange', () => {
 });
 const FOLDER_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></span>';
 const ALL_FILES_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 3l9 8h-2.5v8.5H14V14h-4v5.5H5.5V11H3z"/></svg></span>';
+// Persisted set of collapsed folder paths in the Commander tree.
+function commanderCollapsed() {
+  try { return new Set(JSON.parse(localStorage.getItem('memex_commander_collapsed') || '[]')); }
+  catch { return new Set(); }
+}
+function toggleCommanderFolder(event, path) {
+  event.stopPropagation(); // don't also open the folder
+  const set = commanderCollapsed();
+  set.has(path) ? set.delete(path) : set.add(path);
+  localStorage.setItem('memex_commander_collapsed', JSON.stringify([...set]));
+  renderDocumentLibraryList();
+}
 function commanderFolderPane(files) {
   const folders = allFoldersForFiles(files);
   const rootActive = currentFolderPath ? '' : ' active';
+  const collapsed = commanderCollapsed();
+  const hasChildren = p => folders.some(f => f.path.startsWith(p + '/'));
+  // Hidden when any ancestor is collapsed.
+  const hiddenByAncestor = p => {
+    const parts = p.split('/').filter(Boolean);
+    let anc = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      anc = anc ? `${anc}/${parts[i]}` : parts[i];
+      if (collapsed.has(anc)) return true;
+    }
+    return false;
+  };
+  const rootCaret = '<span class="fc-caret fc-caret-empty"></span>';
   const rows = folders.length
-    ? folders.map(folder => {
+    ? folders.filter(folder => !hiddenByAncestor(folder.path)).map(folder => {
         const depth = folder.path.split('/').filter(Boolean).length - 1;
-        return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${FOLDER_SVG}<span>${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
+        const caret = hasChildren(folder.path)
+          ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${collapsed.has(folder.path) ? 'Expand' : 'Collapse'}">${collapsed.has(folder.path) ? '▶' : '▼'}</span>`
+          : rootCaret;
+        return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
       }).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
-  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')">${ALL_FILES_SVG}<span>All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
+  return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')">${rootCaret}${ALL_FILES_SVG}<span class="fc-name">All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
