@@ -221,9 +221,11 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .brand-block { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .brand-block .security-indicator { padding: 2px 9px 2px 21px; font-size: 10.5px; box-shadow: none; }
 .brand-block .security-indicator::before { width: 7px; height: 7px; left: 8px; }
-.masthead-indicator-stack { display: flex; flex-direction: column; gap: 4px; }
-.masthead-indicator-stack .security-indicator { padding: 4px 11px 4px 25px; font-size: 11.5px; box-shadow: none; }
-.masthead-indicator-stack .security-indicator::before { width: 8px; height: 8px; left: 10px; }
+.status-wrap { position: relative; display: inline-flex; }
+.status-popover { position: absolute; top: calc(100% + 8px); right: 0; min-width: 214px; background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 8px; box-shadow: var(--shadow); display: none; flex-direction: column; gap: 4px; z-index: 60; }
+.status-popover.open { display: flex; }
+.status-popover-title { font: 700 11px var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 8px 6px; }
+.status-popover .security-indicator { display: flex; width: 100%; align-items: center; justify-content: flex-start; padding: 7px 12px 7px 28px; font-size: 12px; box-shadow: none; }
 #update-indicator { font-family: var(--mono); letter-spacing: -0.02em; }
 .security-modal-grid { display: grid; gap: 12px; margin-top: 16px; }
 .security-status-card { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
@@ -1283,7 +1285,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
 .rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
 .rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
-.file-home-shell.dragging { outline: 2px dashed #0F6CBD; outline-offset: -12px; background: #EFF7FF; }
+.file-home-shell.dragging { outline: 2px dashed var(--accent); outline-offset: -12px; background: var(--accent-wash); }
 .file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
 .file-create-btn { width: 100%; min-height: 36px; border: 1px solid #DADADA; border-radius: 6px; padding: 7px 10px; color: #323130; background: #FFFFFF; font: 700 14px var(--body); display: flex; align-items: center; gap: 9px; justify-content: flex-start; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
@@ -1491,6 +1493,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-create { border: 0; border-radius: 9px; background: var(--accent); color: #fff; padding: 9px 15px; font: 600 13.5px var(--ui); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: var(--shadow); }
 .file-library-create:hover { filter: brightness(1.06); }
 .file-library-commandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.file-library-commandbar:not(.has-selection) { flex-wrap: nowrap; }
+.file-library-commandbar:not(.has-selection) .file-library-command-left { min-width: 0; flex: 1 1 auto; }
+.file-library-commandbar:not(.has-selection) .file-library-command-right { flex: 0 0 auto; }
 .file-library-commandbar.has-selection { background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 10px 12px; box-shadow: var(--shadow-sm, var(--shadow)); }
 .file-library-command-left, .file-library-command-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .file-library-command-left { flex: 1; flex-wrap: nowrap; }
@@ -1577,7 +1582,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .call-ctrl.on { background: #2E7D32; }
 .call-ctrl.hang { background: #C0392B; }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
-.file-type-tabs { display: flex; gap: 4px; flex: 0 0 auto; flex-wrap: wrap; }
+.file-type-tabs { display: flex; gap: 4px; min-width: 0; flex: 1 1 auto; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.file-type-tabs::-webkit-scrollbar { display: none; }
+.file-type-tab { flex: 0 0 auto; }
 .file-type-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
 .file-type-tab:hover { background: var(--surface-2); color: var(--ink); }
 .file-type-tab.active { background: var(--accent-wash); color: var(--accent); }
@@ -2336,7 +2343,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <span class="brand-logo" aria-hidden="true">M</span>
         <h1>Memex</h1>
       </div>
-      <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
     </div>
     <div class="file-upload-actions masthead-upload-wrap">
       <button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
@@ -2372,9 +2378,14 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
-    <div class="masthead-indicator-stack">
-      <button class="security-indicator info" id="security-indicator" type="button" onclick="openSecurityStatus()" title="Host firewall monitoring">Security</button>
-      <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="openComplianceStatus()" title="Compliance readiness">Compliance</button>
+    <div class="status-wrap">
+      <button class="security-indicator info" id="status-pill" type="button" onclick="toggleStatusMenu(event)" aria-haspopup="true" title="System status">Status</button>
+      <div class="status-popover" id="status-popover">
+        <div class="status-popover-title">System status</div>
+        <button class="security-indicator info" id="security-indicator" type="button" onclick="closeStatusMenu();openSecurityStatus()" title="Host firewall monitoring">Security</button>
+        <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="closeStatusMenu();openComplianceStatus()" title="Compliance readiness">Compliance</button>
+        <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
+      </div>
     </div>
     <div class="meet-wrap">
       <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
@@ -2977,6 +2988,39 @@ function updateSecurityIndicator(status = securityStatus) {
   btn.className = `security-indicator ${level}`;
   btn.textContent = level === 'critical' ? 'Security alert' : 'Security';
   btn.title = status?.message || 'Host firewall monitoring';
+  refreshStatusPill();
+}
+
+// Collapse the three status signals (update / security / compliance) into one
+// masthead pill that shows the worst-of severity. The individual rows keep their
+// own ids so their existing updaters continue to work inside the popover.
+function statusSeverity(el) {
+  if (!el) return 0;
+  const c = el.className || '';
+  if (c.includes('critical')) return 3;
+  if (c.includes('warning')) return 2;
+  if (c.includes('ok')) return 1;
+  return 0;
+}
+function refreshStatusPill() {
+  const pill = document.getElementById('status-pill');
+  if (!pill) return;
+  const sev = Math.max(
+    statusSeverity(document.getElementById('update-indicator')),
+    statusSeverity(document.getElementById('security-indicator')),
+    statusSeverity(document.getElementById('compliance-indicator')),
+    0
+  );
+  const level = sev === 3 ? 'critical' : sev === 2 ? 'warning' : sev === 1 ? 'ok' : 'info';
+  pill.className = `security-indicator ${level}`;
+  pill.textContent = sev >= 2 ? 'Attention' : 'Status';
+}
+function toggleStatusMenu(event) {
+  event?.stopPropagation();
+  document.getElementById('status-popover')?.classList.toggle('open');
+}
+function closeStatusMenu() {
+  document.getElementById('status-popover')?.classList.remove('open');
 }
 
 let complianceData = null;
@@ -2990,6 +3034,7 @@ function updateComplianceIndicator(summary) {
   btn.title = (summary && summary.enabledFrameworks)
     ? `${summary.ready} of ${summary.total} controls ready · ${summary.enabledFrameworks} framework(s) enabled`
     : 'Compliance readiness';
+  refreshStatusPill();
 }
 async function loadComplianceSummary() {
   if (currentUser?.role !== 'admin') return;
@@ -3026,7 +3071,7 @@ async function checkForUpdate(manual) {
   if (manual) { el.className = 'security-indicator'; el.textContent = 'Checking…'; el.title = 'Checking for updates…'; }
   let r;
   try { r = await apiGet('/version/check'); }
-  catch (e) { el.className = 'security-indicator'; el.textContent = config?.version || 'version'; el.title = 'Update check failed'; if (manual) toast('Update check failed'); return; }
+  catch (e) { el.className = 'security-indicator'; el.textContent = config?.version || 'version'; el.title = 'Update check failed'; refreshStatusPill(); if (manual) toast('Update check failed'); return; }
   const v = r.current || config?.version || 'version';
   el.textContent = v;
   if (r.behind === 0) {
@@ -3042,6 +3087,7 @@ async function checkForUpdate(manual) {
     el.className = 'security-indicator'; el.title = 'Update check unavailable';
     if (manual) toast('Update check unavailable');
   }
+  refreshStatusPill();
 }
 
 function openSecurityStatus() {
@@ -5658,6 +5704,7 @@ document.addEventListener('click', () => {
   closeLibraryMenu();
   closeAiModelMenu();
   closeSearchScopeMenu();
+  closeStatusMenu();
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
@@ -5782,19 +5829,6 @@ async function loadFiles() {
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
   } catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
 }
-// Recent rail (you-opened), shown at the library root when not filtering/searching.
-function recentRailHtml() {
-  const q = (document.getElementById('global-search')?.value || '').trim();
-  if (!recentOpensList.length || currentFolderPath || q || fileView !== 'active') return '';
-  const recents = filterFilesForHome(fileFilter, recentOpensList, false); // match the active type tab
-  if (!recents.length) return '';
-  const cards = recents.slice(0, 6).map(f => {
-    const ext = fileExt(f.name);
-    return `<button class="file-recent-card" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">${fileIconHtml(ext)}<div class="file-recent-meta"><div class="file-recent-name" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-recent-sub">${esc(fileKind(ext))} · ${fileDate(f.opened_at || f.created_at)}</div></div></button>`;
-  }).join('');
-  return `<div class="file-recent-rail"><div class="file-recent-title">Recent</div><div class="file-recent-cards">${cards}</div></div>`;
-}
-
 function renderDocumentLibraryList() {
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
@@ -5822,7 +5856,7 @@ function renderDocumentLibraryList() {
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
         : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.'))
     : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
-  el.innerHTML = recentRailHtml() + (fileLayoutMode === 'commander'
+  el.innerHTML = (fileLayoutMode === 'commander'
     ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${inner}</div></div>`
     : inner);
   updateFileLibraryChrome();
