@@ -235,8 +235,16 @@ function shareLinkClientShape(row, url = null) {
 
 async function publicAppBase(req) {
   const configured = (await settings.getOrEnv('app_url') || '').replace(/\/$/, '');
-  if (configured) return configured;
-  return `${req.protocol}://${req.get('host')}`;
+  const host = req.get('host') || '';
+  // Prefer the host the user actually reached Memex on, so the share link is
+  // reachable from their vantage point. The configured app_url can be stale (a
+  // dead dev/LAN host) and would otherwise poison every share link. Fall back to
+  // app_url only when the request host is internal — e.g. a reverse proxy that
+  // didn't forward the original Host header (localhost/loopback/0.0.0.0).
+  const hostname = (host.startsWith('[') ? host.slice(1, host.indexOf(']')) : host.split(':')[0]).toLowerCase();
+  const internal = !host || hostname === 'localhost' || hostname === '::1' || hostname === '0.0.0.0' || /^127\./.test(hostname);
+  if (!internal) return `${req.protocol}://${host}`;
+  return configured || `${req.protocol}://${host}`;
 }
 
 function clampChunkSize(value) {
