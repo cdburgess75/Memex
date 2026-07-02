@@ -1724,3 +1724,5 @@ router.post('/ask', auth, async (req, res) => {
 });
 
 module.exports = router;
+// Exposed for unit testing.
+module.exports.publicAppBase = publicAppBase;
