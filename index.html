@@ -2368,13 +2368,9 @@ html.dark .file-action-btn.danger { color: #E57373; }
   </div>
   <div class="masthead-search">
     <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
-    <button class="search-scope-btn" id="search-scope-btn" type="button" onclick="toggleSearchScopeMenu(event)" title="Search scope"><span id="search-scope-label">Auto</span><span class="chev">⌄</span></button>
-    <div class="search-scope-menu" id="search-scope-menu"></div>
+    <button class="search-scope-btn" id="search-control-btn" type="button" onclick="toggleSearchControlMenu(event)" title="Search scope & AI model" aria-haspopup="true"><span id="search-control-label">Auto</span><span class="chev">⌄</span></button>
+    <div class="search-scope-menu" id="search-control-menu"></div>
     <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
-    <div class="ai-model-wrap">
-      <button class="ai-model-btn" id="ai-model-btn" type="button" onclick="toggleAiModelMenu(event)" title="Active AI model" aria-haspopup="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg><span id="ai-model-label">AI</span><span class="chev">⌄</span></button>
-      <div class="ai-model-menu" id="ai-model-menu"></div>
-    </div>
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
@@ -5277,8 +5273,15 @@ function currentScope() {
 function renderSearchScope() {
   const scopes = searchScopes();
   if (!scopes.some(s => s.id === searchScope)) searchScope = 'contents'; // e.g. AI turned off while on "ask"
-  const lbl = document.getElementById('search-scope-label');
-  if (lbl) lbl.textContent = currentScope().label;
+  const lbl = document.getElementById('search-control-label');
+  if (lbl) {
+    const scopeLabel = currentScope().label;
+    // Show the active model alongside the scope (e.g. "Auto · sonnet 5"); collapse
+    // to just the scope when no model is configured, but keep "· AI off" visible
+    // when the user has explicitly turned AI off.
+    const showModel = aiActive === 'off' || (aiActive && aiModels.length);
+    lbl.textContent = showModel ? `${scopeLabel} · ${aiModelShortLabel(aiActive)}` : scopeLabel;
+  }
   const input = document.getElementById('global-search');
   if (input) input.placeholder = searchScope === 'ask' ? 'Ask AI about your files…'
     : searchScope === 'auto' ? (aiOff() ? 'Search files…' : 'Search or ask anything…')
@@ -5296,10 +5299,25 @@ function toggleSearchScopeMenu(event) {
   menu.classList.toggle('open');
 }
 function closeSearchScopeMenu() { document.getElementById('search-scope-menu')?.classList.remove('open'); }
+// Combined control: one popover with a Search (scope) section and an AI model section.
+function searchControlMenuInnerHtml() {
+  const scopeItems = searchScopes().map(s =>
+    `<button class="search-scope-item${s.id === searchScope ? ' active' : ''}" onclick="pickSearchScope('${s.id}')"><span>${esc(s.label)}</span><span class="search-scope-hint">${esc(s.hint)}</span></button>`
+  ).join('');
+  return `<div class="ai-model-group">Search</div>${scopeItems}<div class="library-menu-sep"></div><div class="ai-model-group">AI model</div>${aiModelMenuInnerHtml()}`;
+}
+function toggleSearchControlMenu(event) {
+  event?.stopPropagation();
+  const menu = document.getElementById('search-control-menu');
+  if (!menu) return;
+  if (!menu.classList.contains('open')) menu.innerHTML = searchControlMenuInnerHtml();
+  menu.classList.toggle('open');
+}
+function closeSearchControlMenu() { document.getElementById('search-control-menu')?.classList.remove('open'); }
 function pickSearchScope(id) {
   searchScope = id;
   localStorage.setItem('memex_search_scope_v2', id);
-  closeSearchScopeMenu();
+  closeSearchControlMenu();
   renderSearchScope();
   const input = document.getElementById('global-search');
   if (input && input.value.trim()) runSearch();
@@ -5375,9 +5393,8 @@ function aiModelShortLabel(value) {
   return id.replace(/^claude-/, '').replace(/-/g, ' ');
 }
 function renderAiModelLabel() {
-  const el = document.getElementById('ai-model-label');
-  if (el) el.textContent = aiModelShortLabel(aiActive);
-  // AI on/off changes the available search scopes (Ask AI, and Auto's routing).
+  // The active model now renders inside the combined search control. AI on/off
+  // also changes the available search scopes (Ask AI, and Auto's routing).
   renderSearchScope();
 }
 function aiModelMenuInnerHtml() {
@@ -5415,7 +5432,7 @@ function toggleAiModelMenu(event) {
 }
 function closeAiModelMenu() { document.getElementById('ai-model-menu')?.classList.remove('open'); }
 async function switchAiModel(value) {
-  closeAiModelMenu();
+  closeSearchControlMenu();
   try {
     await apiPut('/ai/active', { model: value });
     aiActive = value;
@@ -5704,6 +5721,7 @@ document.addEventListener('click', () => {
   closeLibraryMenu();
   closeAiModelMenu();
   closeSearchScopeMenu();
+  closeSearchControlMenu();
   closeStatusMenu();
 });
 
