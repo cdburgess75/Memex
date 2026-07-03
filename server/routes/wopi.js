@@ -5,6 +5,7 @@ const db = require('../lib/db');
 const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
+const notifications = require('../lib/notifications');
 
 function validateFileToken(req, res) {
   const entry = validateToken(req.query.access_token);
@@ -117,6 +118,22 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
       'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
       [doc.id, 'updated', entry.userId, entry.userEmail, `Office save · ${buffer.length} bytes`]
     );
+    // Notify the owner that a collaborator edited their file. Office editors
+    // autosave often, so dedupe to at most one ping per 30 min per document.
+    if (doc.uploaded_by_email && doc.uploaded_by_email.toLowerCase() !== String(entry.userEmail || '').toLowerCase()) {
+      try {
+        await notifications.create({
+          userId: doc.uploaded_by || null,
+          userEmail: doc.uploaded_by_email,
+          type: 'document_edited',
+          title: `${entry.userEmail} edited your file`,
+          body: `"${doc.name}"`,
+          refType: 'document',
+          refId: doc.id,
+          dedupeMinutes: 30,
+        });
+      } catch (e) { console.error('notification (document_edited) failed:', e.message); }
+    }
     res.status(200).end();
   } catch (e) {
     res.status(500).json({ error: e.message });
