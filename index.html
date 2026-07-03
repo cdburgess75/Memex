@@ -1470,6 +1470,11 @@ html.file-home-mode .masthead-actions { display: flex; }
 .docx-preview td, .docx-preview th { border: 1px solid var(--rule); padding: 4px 8px; }
 .preview-openwith { position: relative; display: inline-block; }
 .preview-openwith-menu { right: 0; left: auto; top: calc(100% + 6px); min-width: 200px; }
+.editor-scrim { padding: 0; align-items: stretch; justify-content: stretch; }
+.editor-shell { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--paper, #fff); }
+.editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 16px; border-bottom: 1px solid var(--rule); background: var(--surface); flex: 0 0 auto; }
+.editor-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.editor-frame { flex: 1 1 auto; width: 100%; border: 0; }
 .file-row-sub { color: #707070; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row-hit { color: #616161; font-size: 13px; line-height: 1.35; margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .file-row-hit mark { background: #FFF4CE; color: #242424; border-radius: 2px; padding: 0 2px; }
@@ -6657,6 +6662,31 @@ async function openInOffice(fileId) {
   } catch (e) { toast('Error: ' + e.message); }
 }
 
+// In-app Office editing: open the self-hosted Collabora editor in a full-screen
+// iframe. editUrl comes from the server (null when Collabora isn't configured).
+async function editInBrowser(fileId) {
+  recordOpen(fileId);
+  try {
+    const data = await apiGet('/files/' + fileId + '/office');
+    if (data.editUrl) { openEditorModal(data.editUrl, data.name || 'Document'); return; }
+    toast('In-browser editing is not set up on this server. An admin can enable it by configuring the Collabora editor URL.');
+  } catch (e) { toast('Error: ' + e.message); }
+}
+function openEditorModal(url, name) {
+  closeEditorModal();
+  closeFilePreview();
+  document.body.insertAdjacentHTML('beforeend',
+    `<div class="scrim open editor-scrim" id="editor-scrim"><div class="editor-shell"><div class="editor-head"><strong title="${esc(name)}">${esc(name)}</strong><button class="ghost-btn" onclick="closeEditorModal()">Close editor</button></div><iframe class="editor-frame" src="${esc(url)}" title="${esc(name)}" allow="clipboard-read; clipboard-write; fullscreen"></iframe></div></div>`);
+}
+function closeEditorModal() {
+  const s = document.getElementById('editor-scrim');
+  if (!s) return;
+  s.remove();
+  // The document may have been saved via WOPI; refresh the library view so
+  // size/updated metadata reflects the edit.
+  if (document.getElementById('file-library-view')) loadFiles();
+}
+
 async function openInGoogle(fileId) {
   recordOpen(fileId);
   toast('Uploading to Google Drive…');
@@ -6778,6 +6808,7 @@ function openFileMenu(fileId, event) {
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDefault('${fileId}')">Open</button>`,
     `<div class="file-menu-label">Open with</div>`,
     (canPreview || isOffice) ? `<button class="file-menu-item" onclick="closeFileMenu();previewFile('${fileId}')">In-app preview</button>` : '',
+    (isOffice && config?.editingEnabled) ? `<button class="file-menu-item" onclick="closeFileMenu();editInBrowser('${fileId}')">Edit in browser</button>` : '',
     isOffice ? `<button class="file-menu-item" onclick="closeFileMenu();openInDesktopOffice('${fileId}')">Open in desktop app</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFile('${fileId}')">Download</button>`,
     `<div class="file-menu-rule"></div>`,
@@ -6947,9 +6978,10 @@ async function previewFile(fileId, opts = {}) {
   const saveBtn = canEdit ? `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>` : '';
   const isOfficeFile = OFFICE_EXTS.includes(ext);
   const appName = { xlsx: 'Excel', xls: 'Excel', docx: 'Word', doc: 'Word', pptx: 'PowerPoint', ppt: 'PowerPoint' }[ext] || 'app';
-  const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button><button onclick="closePreviewOpenMenu();openInOffice('${fileId}')">Microsoft 365 (web)</button><button onclick="closePreviewOpenMenu();openInGoogle('${fileId}')">Google Drive</button></div></div>` : '';
+  const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button><button onclick="closePreviewOpenMenu();openInGoogle('${fileId}')">Google Drive</button></div></div>` : '';
+  const editBtn = (isOfficeFile && config?.editingEnabled) ? `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>` : '';
   closeFilePreview();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}${openWith}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}${editBtn}${openWith}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
   if (isText) {
     const el = document.getElementById('file-edit-text');
     try { const r = await fetch(inlineUrl); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
