@@ -47,11 +47,25 @@ async function enabledForEmail(email) {
 }
 
 // Create a notification for a recipient identified by email (and/or user_id).
-// No-op (returns null) when the recipient has opted out.
-async function create({ userId = null, userEmail = null, type, title, body = null, refType = null, refId = null }) {
+// No-op (returns null) when the recipient has opted out, or — when
+// `dedupeMinutes` is set — when a matching (type + ref_id + recipient)
+// notification already exists inside that window (tames autosave/repeat spam).
+async function create({ userId = null, userEmail = null, type, title, body = null, refType = null, refId = null, dedupeMinutes = 0 }) {
   await ensureTable();
   const email = userEmail ? String(userEmail).toLowerCase() : null;
   if (!(await enabledForEmail(email))) return null;
+  if (dedupeMinutes > 0) {
+    const recent = await db.queryOne(
+      `SELECT id FROM notifications
+       WHERE type = $1
+         AND ref_id IS NOT DISTINCT FROM $2
+         AND ${recipientClause(3)}
+         AND created_at > NOW() - ($5 || ' minutes')::interval
+       LIMIT 1`,
+      [type, refId, userId, email, String(dedupeMinutes)]
+    );
+    if (recent) return null;
+  }
   return db.queryOne(
     `INSERT INTO notifications (user_id, user_email, type, title, body, ref_type, ref_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)

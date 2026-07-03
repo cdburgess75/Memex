@@ -458,6 +458,22 @@ router.get('/share/:token', async (req, res) => {
     );
     await logDocumentEvent(share.document_id, 'share_downloaded', null, null, `public share link · ${requestAuditDetail(req)}`);
     await logEvent(`share download · ${share.name}`, null, null);
+    // Notify whoever created the share link that their file was downloaded
+    // (2-min dedupe so a browser's double-fetch doesn't double-notify).
+    if (share.created_by_email) {
+      try {
+        await notifications.create({
+          userId: share.created_by || null,
+          userEmail: share.created_by_email,
+          type: 'share_downloaded',
+          title: 'Your shared file was downloaded',
+          body: `"${share.name}" · via share link`,
+          refType: 'document',
+          refId: share.document_id,
+          dedupeMinutes: 2,
+        });
+      } catch (e) { console.error('notification (share_downloaded) failed:', e.message); }
+    }
     res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name)}"`);
     res.send(buffer);

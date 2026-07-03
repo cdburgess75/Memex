@@ -47,6 +47,25 @@ describe('create', () => {
     expect(r).toBeNull();
     expect(db.queryOne.mock.calls.some(c => /INSERT INTO notifications/.test(c[0]))).toBe(false);
   });
+
+  test('dedupeMinutes skips creation when a matching recent notification exists', async () => {
+    db.queryOne.mockResolvedValueOnce(null);                 // enabledForEmail → enabled
+    db.queryOne.mockResolvedValueOnce({ id: 'existing' });   // dedupe lookup finds a recent one
+    const r = await notif.create({ userEmail: 'owner@test.com', type: 'document_edited', title: 'x', refId: 'doc1', dedupeMinutes: 30 });
+    expect(r).toBeNull();
+    expect(db.queryOne.mock.calls.some(c => /INSERT INTO notifications/.test(c[0]))).toBe(false);
+    const dedupe = db.queryOne.mock.calls.find(c => /created_at > NOW\(\) - /.test(c[0]));
+    expect(dedupe[1]).toEqual(['document_edited', 'doc1', null, 'owner@test.com', '30']);
+  });
+
+  test('dedupeMinutes still creates when no recent match exists', async () => {
+    db.queryOne.mockResolvedValueOnce(null);               // enabledForEmail
+    db.queryOne.mockResolvedValueOnce(null);               // dedupe lookup: none found
+    db.queryOne.mockResolvedValueOnce({ id: 'new' });      // INSERT
+    const r = await notif.create({ userEmail: 'owner@test.com', type: 'document_edited', title: 'x', refId: 'doc1', dedupeMinutes: 30 });
+    expect(r).toEqual({ id: 'new' });
+    expect(db.queryOne.mock.calls.some(c => /INSERT INTO notifications/.test(c[0]))).toBe(true);
+  });
 });
 
 describe('listing / counts / marking', () => {
