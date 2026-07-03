@@ -247,6 +247,60 @@ async function publicAppBase(req) {
   return configured || `${req.protocol}://${host}`;
 }
 
+// Office file types Collabora can edit.
+const COLLABORA_EDIT_EXTS = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
+
+// Pull the WOPI `urlsrc` for a given extension out of Collabora's discovery XML.
+// Collabora emits <app name="<mime>"><action name="edit|view" ext="docx" urlsrc="…"/></app>.
+function discoveryUrlSrc(xml, ext) {
+  const actions = String(xml || '').match(/<action\b[^>]*>/g) || [];
+  let fallback = null;
+  for (const tag of actions) {
+    if ((/\bext="([^"]*)"/.exec(tag)?.[1] || '').toLowerCase() !== ext) continue;
+    const urlsrc = /\burlsrc="([^"]*)"/.exec(tag)?.[1];
+    if (!urlsrc) continue;
+    const name = /\bname="([^"]*)"/.exec(tag)?.[1] || '';
+    if (/edit/i.test(name)) return urlsrc; // prefer the edit action
+    fallback = fallback || urlsrc;
+  }
+  return fallback;
+}
+
+// Build an in-browser Collabora editor URL for a document, or null when editing
+// isn't configured (COLLABORA_URL unset), the type isn't editable, or discovery
+// is unreachable. Rebases the discovery urlsrc onto the browser-facing origin and
+// appends the WOPI callback (to the internal host Collabora can reach) + a token.
+async function collaboraEditUrl(doc, ext, req) {
+  if (!COLLABORA_EDIT_EXTS.has(ext)) return null;
+  const browserBase = (await settings.getOrEnv('collabora_url') || '').replace(/\/$/, '');
+  if (!browserBase) return null; // editing not configured — read-only preview
+  const discoveryBase = (await settings.getOrEnv('collabora_internal_url') || browserBase).replace(/\/$/, '');
+  const wopiHost = ((await settings.getOrEnv('wopi_internal_url')) || (await publicAppBase(req))).replace(/\/$/, '');
+
+  let discovery;
+  try {
+    const r = await fetch(`${discoveryBase}/hosting/discovery`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error('discovery HTTP ' + r.status);
+    discovery = await r.text();
+  } catch (e) {
+    console.error('Collabora discovery fetch failed:', e.message);
+    return null;
+  }
+
+  const urlsrc = discoveryUrlSrc(discovery, ext);
+  if (!urlsrc) return null;
+  // Rebase the discovery urlsrc path onto the browser-facing origin so the client
+  // loads the editor from a host it can actually reach (discovery may report an
+  // internal host).
+  let pathAndQuery;
+  try { const u = new URL(urlsrc); pathAndQuery = u.pathname + u.search; }
+  catch { pathAndQuery = urlsrc.startsWith('/') ? urlsrc : `/${urlsrc}`; }
+  const sep = pathAndQuery.includes('?') ? (/[?&]$/.test(pathAndQuery) ? '' : '&') : '?';
+  const token = generateToken(doc.id, req.user.id, req.user.email);
+  const wopiSrc = encodeURIComponent(`${wopiHost}/wopi/files/${doc.id}`);
+  return `${browserBase}${pathAndQuery}${sep}WOPISrc=${wopiSrc}&access_token=${token}`;
+}
+
 function clampChunkSize(value) {
   const n = Number.parseInt(value || DEFAULT_CHUNK_SIZE, 10);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_CHUNK_SIZE;
@@ -1084,24 +1138,12 @@ router.get('/:id/office', auth, async (req, res) => {
 
     const viewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(signedUrl)}`;
 
+    // Self-hosted in-browser editing via Collabora/WOPI (no Microsoft/personal
+    // accounts). Null when editing isn't configured (COLLABORA_URL unset) or the
+    // type isn't editable — the client then offers read-only preview only.
     let editUrl = null;
-    const appUrl = process.env.APP_URL;
-    if (appUrl) {
-      const wopiApps = {
-        docx: 'https://word-edit.officeapps.live.com/op/edit.aspx',
-        doc:  'https://word-edit.officeapps.live.com/op/edit.aspx',
-        xlsx: 'https://excel.officeapps.live.com/op/edit.aspx',
-        xls:  'https://excel.officeapps.live.com/op/edit.aspx',
-        pptx: 'https://powerpoint.officeapps.live.com/op/edit.aspx',
-        ppt:  'https://powerpoint.officeapps.live.com/op/edit.aspx',
-      };
-      const wopiApp = wopiApps[ext];
-      if (wopiApp) {
-        const token = generateToken(doc.id, req.user.id, req.user.email);
-        const wopiSrc = encodeURIComponent(`${appUrl}/wopi/files/${doc.id}`);
-        editUrl = `${wopiApp}?WOPISrc=${wopiSrc}&access_token=${token}`;
-      }
-    }
+    try { editUrl = await collaboraEditUrl(doc, ext, req); }
+    catch (e) { console.error('Collabora edit URL failed:', e.message); }
 
     await logEvent(`view · ${doc.name}`, req.user.id, req.user.email);
     res.json({ viewUrl, editUrl, ext });
@@ -1726,3 +1768,5 @@ router.post('/ask', auth, async (req, res) => {
 module.exports = router;
 // Exposed for unit testing.
 module.exports.publicAppBase = publicAppBase;
+module.exports.discoveryUrlSrc = discoveryUrlSrc;
+module.exports.collaboraEditUrl = collaboraEditUrl;

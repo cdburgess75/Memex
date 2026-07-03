@@ -69,6 +69,12 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_API_MAX: ${RATE_LIMIT_API_MAX:-300}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
+      # In-browser Office editing (Collabora/WOPI). Leave COLLABORA_URL empty to
+      # keep files read-only-preview. COLLABORA_URL is the browser-facing editor
+      # origin; the internal URLs are how Collabora and the app reach each other.
+      COLLABORA_URL: ${COLLABORA_URL:-}
+      COLLABORA_INTERNAL_URL: ${COLLABORA_INTERNAL_URL:-http://collabora:9980}
+      WOPI_INTERNAL_URL: ${WOPI_INTERNAL_URL:-http://app:3000}
     volumes:
       - /srv/memex-documents:/data/documents
       - backups_data:/data/backups
@@ -77,6 +83,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # In-browser Office editor (WOPI-native, self-hosted — no Microsoft/personal
+  # accounts). Optional: the app falls back to read-only preview when COLLABORA_URL
+  # is unset, so this service can be omitted on deployments that don't need editing.
+  collabora:
+    image: collabora/code:latest
+    restart: unless-stopped
+    environment:
+      # WOPI host Collabora accepts callbacks from — the Memex app container.
+      # Must match WOPI_INTERNAL_URL's host (dots are regex-escaped by Collabora).
+      aliasgroup1: "http://app:3000"
+      # Dev: no TLS on the editor itself (put it behind Caddy for prod).
+      extra_params: "--o:ssl.enable=false --o:ssl.termination=true"
+      username: ${COLLABORA_ADMIN_USER:-admin}
+      password: ${COLLABORA_ADMIN_PASSWORD:-changeme}
+    ports:
+      - "${COLLABORA_PORT:-9980}:9980"
+    cap_add:
+      - MKNOD
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

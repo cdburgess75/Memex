@@ -71,12 +71,16 @@ function browserKeycloakUrl(req) {
 }
 
 // Public config — lets the frontend bootstrap auth without a build step
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
+  // In-browser Office editing is available only when a Collabora URL is set.
+  let editingEnabled = false;
+  try { editingEnabled = !!(await settings.getOrEnv('collabora_url')); } catch { /* default off */ }
   res.json({
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
     version: VERSION,
+    editingEnabled,
   });
 });
 
