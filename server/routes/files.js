@@ -12,6 +12,7 @@ const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
+const notifications = require('../lib/notifications');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const { zipFiles } = require('../lib/zip');
@@ -893,6 +894,19 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
     });
     await logDocumentEvent(doc.id, 'access_granted', req.user.id, req.user.email, `${grant.subject_email} · ${grant.permission}`);
     await logEvent(`access grant · ${doc.name} · ${grant.subject_email}`, req.user.id, req.user.email);
+    // Notify the grantee (skip self-grants).
+    if (grant.subject_email && grant.subject_email.toLowerCase() !== String(req.user.email || '').toLowerCase()) {
+      try {
+        await notifications.create({
+          userEmail: grant.subject_email,
+          type: 'share_granted',
+          title: `${req.user.email} shared a file with you`,
+          body: `"${doc.name}" · ${grant.permission} access`,
+          refType: 'document',
+          refId: doc.id,
+        });
+      } catch (e) { console.error('notification (share_granted) failed:', e.message); }
+    }
     res.json({ grant });
   } catch (e) {
     const status = /required|Permission/.test(e.message) ? 400 : 500;

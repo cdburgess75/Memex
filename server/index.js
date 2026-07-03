@@ -118,6 +118,7 @@ app.use('/api/security', require('./routes/security'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/libraries', require('./routes/libraries'));
 app.use('/api/version', require('./routes/version'));
 app.use('/api/backup', require('./routes/backup'));
