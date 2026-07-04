@@ -2512,6 +2512,7 @@ const CAT_ORDER = ['meta', 'concept', 'entity', 'source', 'analysis'];
 let state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
 let _kc = null; // Keycloak config { url, realm, clientId }
 let currentUser = null; // { id, email, role, name }
+let appConfig = null;   // /api/config response (version, editingEnabled, …) — set in initApp
 
 // ingest mode state
 let ingestMode = 'paste';
@@ -2689,6 +2690,7 @@ async function initApp() {
   let config;
   try {
     config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+    appConfig = config; // expose globally for functions outside initApp (previewFile, checkForUpdate)
   } catch (e) {
     document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
     setTheme(localStorage.getItem('memex_theme') || 'light');
@@ -3168,8 +3170,8 @@ async function checkForUpdate(manual) {
   if (manual) { el.className = 'security-indicator'; el.textContent = 'Checking…'; el.title = 'Checking for updates…'; }
   let r;
   try { r = await apiGet('/version/check'); }
-  catch (e) { el.className = 'security-indicator'; el.textContent = config?.version || 'version'; el.title = 'Update check failed'; refreshStatusPill(); if (manual) toast('Update check failed'); return; }
-  const v = r.current || config?.version || 'version';
+  catch (e) { el.className = 'security-indicator'; el.textContent = appConfig?.version || 'version'; el.title = 'Update check failed'; refreshStatusPill(); if (manual) toast('Update check failed'); return; }
+  const v = r.current || appConfig?.version || 'version';
   el.textContent = v;
   if (r.behind === 0) {
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
@@ -7036,7 +7038,7 @@ function openFileMenu(fileId, event) {
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDefault('${fileId}')">Open</button>`,
     `<div class="file-menu-label">Open with</div>`,
     (canPreview || isOffice) ? `<button class="file-menu-item" onclick="closeFileMenu();previewFile('${fileId}')">In-app preview</button>` : '',
-    (isOffice && config?.editingEnabled) ? `<button class="file-menu-item" onclick="closeFileMenu();editInBrowser('${fileId}')">Edit in browser</button>` : '',
+    (isOffice && appConfig?.editingEnabled) ? `<button class="file-menu-item" onclick="closeFileMenu();editInBrowser('${fileId}')">Edit in browser</button>` : '',
     isOffice ? `<button class="file-menu-item" onclick="closeFileMenu();openInDesktopOffice('${fileId}')">Open in desktop app</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFile('${fileId}')">Download</button>`,
     `<div class="file-menu-rule"></div>`,
@@ -7207,7 +7209,7 @@ async function previewFile(fileId, opts = {}) {
   const isOfficeFile = OFFICE_EXTS.includes(ext);
   const appName = { xlsx: 'Excel', xls: 'Excel', docx: 'Word', doc: 'Word', pptx: 'PowerPoint', ppt: 'PowerPoint' }[ext] || 'app';
   const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button><button onclick="closePreviewOpenMenu();openInGoogle('${fileId}')">Google Drive</button></div></div>` : '';
-  const editBtn = (isOfficeFile && config?.editingEnabled) ? `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>` : '';
+  const editBtn = (isOfficeFile && appConfig?.editingEnabled) ? `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>` : '';
   closeFilePreview();
   document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}${editBtn}${openWith}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
   if (isText) {
