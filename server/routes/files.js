@@ -13,6 +13,7 @@ const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
+const email = require('../lib/email');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const { zipFiles } = require('../lib/zip');
@@ -1815,6 +1816,8 @@ async function ensureUploadLinksTable() {
       revoked_at        TIMESTAMPTZ,
       created_by        UUID,
       created_by_email  TEXT,
+      notify_email      BOOLEAN     NOT NULL DEFAULT TRUE,
+      notify_alert      BOOLEAN     NOT NULL DEFAULT TRUE,
       upload_count      INTEGER     NOT NULL DEFAULT 0,
       last_used_at      TIMESTAMPTZ,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1822,6 +1825,8 @@ async function ensureUploadLinksTable() {
   `);
   await db.query('CREATE INDEX IF NOT EXISTS upload_links_active_idx ON upload_links(token_hash) WHERE revoked_at IS NULL');
   await db.query('CREATE INDEX IF NOT EXISTS upload_links_owner_idx ON upload_links(created_by, created_at DESC)');
+  await db.query('ALTER TABLE upload_links ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE');
+  await db.query('ALTER TABLE upload_links ADD COLUMN IF NOT EXISTS notify_alert BOOLEAN NOT NULL DEFAULT TRUE');
   uploadLinksEnsured = true;
 }
 
@@ -1842,6 +1847,8 @@ function uploadLinkClientShape(row, url = null) {
     upload_count: Number(row.upload_count || 0),
     last_used_at: row.last_used_at,
     has_password: !!row.password_hash,
+    notify_email: row.notify_email !== false,
+    notify_alert: row.notify_alert !== false,
     url,
   };
 }
@@ -1865,10 +1872,12 @@ router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (r
     const libraryId = req.body?.libraryId || (await libraries.defaultLibraryId());
     const folderPath = normalizeFolderPath(req.body?.folderPath) || null;
     const label = (req.body?.label || '').toString().slice(0, 200) || null;
+    const notifyEmail = req.body?.notifyEmail !== false; // default on
+    const notifyAlert = req.body?.notifyAlert !== false; // default on
     const row = await db.queryOne(
-      `INSERT INTO upload_links (token_hash, label, library_id, folder_path, password_salt, password_hash, expires_at, created_by, created_by_email)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [tokenHash(token), label, libraryId, folderPath, salt, hash, expiresAt, req.user.id, String(req.user.email || '').toLowerCase()]
+      `INSERT INTO upload_links (token_hash, label, library_id, folder_path, password_salt, password_hash, expires_at, created_by, created_by_email, notify_email, notify_alert)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [tokenHash(token), label, libraryId, folderPath, salt, hash, expiresAt, req.user.id, String(req.user.email || '').toLowerCase(), notifyEmail, notifyAlert]
     );
     const url = `${await publicAppBase(req)}/u/${token}`;
     await logEvent(`upload link create · ${label || 'file request'}`, req.user.id, req.user.email);
@@ -1925,9 +1934,14 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
     const path = require('path');
     const { buffer, originalname, mimetype, size } = req.file;
     const base = cleanDisplayName(originalname) || 'upload';
-    const displayName = row.folder_path ? `${row.folder_path}/${base}` : base;
+    // Folder uploads send each file's webkitRelativePath so the tree is preserved
+    // under the destination folder. Drop traversal segments; keep the structure.
+    const rel = String(req.body?.relativePath || '').split('/').map(s => s.trim())
+      .filter(s => s && s !== '.' && s !== '..').join('/');
+    const nested = rel || base;
+    const displayName = row.folder_path ? `${row.folder_path}/${nested}` : nested;
     const sanitizedName = path.basename(base).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+    const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${sanitizedName}`;
     await storage.upload(storagePath, buffer, mimetype);
     const owner = { id: row.created_by, email: row.created_by_email };
     const uploaderName = (req.body?.uploaderName || '').toString().slice(0, 120).trim();
@@ -1937,7 +1951,8 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
       libraryId: row.library_id,
     });
     await db.query('UPDATE upload_links SET upload_count = upload_count + 1, last_used_at = NOW() WHERE id = $1', [row.id]);
-    if (row.created_by_email) {
+    // In-app alert (per-link opt-out).
+    if (row.notify_alert !== false && row.created_by_email) {
       try {
         await notifications.create({
           userId: row.created_by,
@@ -1949,6 +1964,15 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
           refId: doc.id,
         });
       } catch (e) { console.error('notification (upload_received) failed:', e.message); }
+    }
+    // Email alert (per-link opt-out; best-effort, no-op when email isn't configured).
+    if (row.notify_email !== false && row.created_by_email) {
+      const who = uploaderName || 'Someone';
+      email.sendMail({
+        to: row.created_by_email,
+        subject: `New upload${row.label ? ` · ${row.label}` : ''}: ${base}`,
+        text: `${who} uploaded "${base}" via your Memex upload link${row.label ? ` (${row.label})` : ''}.\n\nSign in to Memex to view it.`,
+      }).catch(() => {});
     }
     res.json({ ok: true, name: base });
   } catch (e) { res.status(500).json({ error: e.message }); }
