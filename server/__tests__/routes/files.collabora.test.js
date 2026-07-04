@@ -57,9 +57,18 @@ describe('collaboraEditUrl', () => {
     settings.getOrEnv.mockImplementation(async (k) => (k in map ? map[k] : null));
   }
 
-  test('returns null when COLLABORA_URL is unset (editing not configured)', async () => {
+  test('returns null when neither collabora_enabled nor collabora_url is set', async () => {
     settingsMap({});
     expect(await collaboraEditUrl(doc, 'docx', req)).toBeNull();
+  });
+
+  test('same-origin: collabora_enabled builds the editor URL on the request origin', async () => {
+    settingsMap({ collabora_enabled: 'true', collabora_internal_url: 'http://collabora:9980', wopi_internal_url: 'http://app:3000' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
+    const url = await collaboraEditUrl(doc, 'docx', req);
+    expect(url.startsWith('https://memex.acme.com/browser/abc123/cool.html?')).toBe(true); // request origin, not collabora:9980
+    expect(url).toContain('WOPISrc=' + encodeURIComponent('http://app:3000/wopi/files/doc-42'));
+    expect(url).toMatch(/access_token=[a-f0-9]{64}/);
   });
 
   test('returns null for a non-editable extension even when configured', async () => {

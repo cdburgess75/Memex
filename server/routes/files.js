@@ -274,8 +274,12 @@ function discoveryUrlSrc(xml, ext) {
 // appends the WOPI callback (to the internal host Collabora can reach) + a token.
 async function collaboraEditUrl(doc, ext, req) {
   if (!COLLABORA_EDIT_EXTS.has(ext)) return null;
-  const browserBase = (await settings.getOrEnv('collabora_url') || '').replace(/\/$/, '');
-  if (!browserBase) return null; // editing not configured — read-only preview
+  const enabled = String((await settings.getOrEnv('collabora_enabled')) || '').toLowerCase() === 'true';
+  const configuredBase = (await settings.getOrEnv('collabora_url') || '').replace(/\/$/, '');
+  if (!enabled && !configuredBase) return null; // editing not configured — read-only preview
+  // Same-origin by default (editor proxied through this app); a configured
+  // collabora_url overrides for setups that expose Collabora directly.
+  const browserBase = configuredBase || (await publicAppBase(req)).replace(/\/$/, '');
   const discoveryBase = (await settings.getOrEnv('collabora_internal_url') || browserBase).replace(/\/$/, '');
   const wopiHost = ((await settings.getOrEnv('wopi_internal_url')) || (await publicAppBase(req))).replace(/\/$/, '');
 

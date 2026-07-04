@@ -6,7 +6,16 @@ const { WebSocketServer } = require('ws');
 const { verifyToken } = require('../middleware/auth');
 
 function init(server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  // noServer + explicit path routing so we only claim '/ws' upgrades and leave
+  // others (e.g. the Collabora editor WebSocket on /cool) for their own handler.
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    let pathname;
+    try { pathname = new URL(req.url, 'http://x').pathname; } catch { pathname = req.url; }
+    if (pathname === '/ws') {
+      wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+    }
+  });
   const clients = new Map();      // ws -> { userId, email, name, rooms:Set }
   const userSockets = new Map();  // userId -> Set<ws>
   const rooms = new Map();        // room -> Set<ws>

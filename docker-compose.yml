@@ -72,6 +72,10 @@ services:
       # In-browser Office editing (Collabora/WOPI). Leave COLLABORA_URL empty to
       # keep files read-only-preview. COLLABORA_URL is the browser-facing editor
       # origin; the internal URLs are how Collabora and the app reach each other.
+      # COLLABORA_ENABLED=true turns on in-browser editing via the same-origin
+      # proxy (no COLLABORA_URL / port-forward needed). Set COLLABORA_URL instead
+      # only to point the browser at a directly-exposed Collabora origin.
+      COLLABORA_ENABLED: ${COLLABORA_ENABLED:-}
       COLLABORA_URL: ${COLLABORA_URL:-}
       COLLABORA_INTERNAL_URL: ${COLLABORA_INTERNAL_URL:-http://collabora:9980}
       WOPI_INTERNAL_URL: ${WOPI_INTERNAL_URL:-http://app:3000}
