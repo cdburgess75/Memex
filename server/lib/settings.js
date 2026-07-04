@@ -50,6 +50,13 @@ const ENV_MAP = {
   turn_username:                  'TURN_USERNAME',
   turn_credential:                'TURN_CREDENTIAL',
   screenconnect_url:              'SCREENCONNECT_URL',
+  email_provider:                 'EMAIL_PROVIDER',
+  email_from:                     'EMAIL_FROM',
+  smtp_host:                      'SMTP_HOST',
+  smtp_port:                      'SMTP_PORT',
+  smtp_secure:                    'SMTP_SECURE',
+  smtp_user:                      'SMTP_USER',
+  smtp_pass:                      'SMTP_PASS',
 };
 
 const cache = new Map();

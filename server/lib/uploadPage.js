@@ -65,7 +65,9 @@ module.exports = function uploadPage(token) {
 
     <label>Files</label>
     <div class="drop" id="drop" onclick="picker.click()">Click to choose files, or drag &amp; drop</div>
+    <div style="text-align:center;margin-top:8px"><button type="button" id="folderbtn" style="background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:4px;width:auto;margin:0">or upload a whole folder</button></div>
     <input type="file" id="picker" multiple class="hidden">
+    <input type="file" id="folderpicker" webkitdirectory multiple class="hidden">
     <div class="files" id="files"></div>
 
     <button id="send" disabled>Upload</button>
@@ -93,7 +95,9 @@ async function init() {
 }
 function showGone(msg) { el('loading').classList.add('hidden'); el('gone').classList.remove('hidden'); el('gone-msg').textContent = msg; }
 
-const drop = el('drop'), picker = el('picker');
+const drop = el('drop'), picker = el('picker'), folderpicker = el('folderpicker');
+el('folderbtn').addEventListener('click', () => folderpicker.click());
+folderpicker.addEventListener('change', () => addFiles(folderpicker.files));
 ['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
 ['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', ev => addFiles(ev.dataTransfer.files));
@@ -103,7 +107,7 @@ function addFiles(list) {
   renderFiles();
 }
 function renderFiles() {
-  el('files').innerHTML = chosen.map((f, i) => '<div class="file"><span>' + escapeHtml(f.name) + '</span><span class="st" id="st' + i + '">' + fmt(f.size) + '</span></div>').join('');
+  el('files').innerHTML = chosen.map((f, i) => '<div class="file"><span>' + escapeHtml(f.webkitRelativePath || f.name) + '</span><span class="st" id="st' + i + '">' + fmt(f.size) + '</span></div>').join('');
   el('send').disabled = chosen.length === 0;
 }
 function fmt(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB' : (n/1048576).toFixed(1) + ' MB'; }
@@ -119,6 +123,7 @@ el('send').addEventListener('click', async () => {
     const st = el('st' + i); st.textContent = 'Uploading…'; st.className = 'st';
     const fd = new FormData();
     fd.append('file', chosen[i]);
+    if (chosen[i].webkitRelativePath) fd.append('relativePath', chosen[i].webkitRelativePath);
     if (name) fd.append('uploaderName', name);
     if (pw) fd.append('password', pw);
     try {

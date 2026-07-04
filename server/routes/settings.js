@@ -17,6 +17,7 @@ const SENSITIVE = new Set([
   'storage_encryption_key',
   'backup_download_secret',
   'turn_credential',
+  'smtp_pass',
 ]);
 
 const MASKED = '●●●●●●●●';
