@@ -124,6 +124,15 @@ app.use('/api/version', require('./routes/version'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));
 
+// Public inbound-upload page (file requests) — a self-contained page that lets a
+// non-member upload without an account. Served here (before the SPA catch-all)
+// so it doesn't require auth. The token is only used client-side to hit the
+// public /api/files/upload-link/:token endpoints.
+app.get('/u/:token', (req, res) => {
+  const token = String(req.params.token || '').replace(/[^a-zA-Z0-9]/g, '');
+  res.type('html').send(require('./lib/uploadPage')(token));
+});
+
 // Serve only the vendored client libraries statically — NOT the repo root, which
 // would expose server source, compose, and config files. The SPA itself is
 // returned by the catch-all below.

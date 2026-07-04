@@ -1795,8 +1795,169 @@ router.post('/ask', auth, async (req, res) => {
   }
 });
 
+// ─── Inbound upload links (file requests) ────────────────────────────────────
+// A public link that lets a non-member upload files WITHOUT an account. Uploads
+// are attributed to the member who created the link and land in the link's
+// destination library/folder; the creator gets an in-app notification.
+let uploadLinksEnsured = false;
+async function ensureUploadLinksTable() {
+  if (uploadLinksEnsured) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS upload_links (
+      id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      token_hash        TEXT        NOT NULL UNIQUE,
+      label             TEXT,
+      library_id        UUID,
+      folder_path       TEXT,
+      password_salt     TEXT,
+      password_hash     TEXT,
+      expires_at        TIMESTAMPTZ,
+      revoked_at        TIMESTAMPTZ,
+      created_by        UUID,
+      created_by_email  TEXT,
+      upload_count      INTEGER     NOT NULL DEFAULT 0,
+      last_used_at      TIMESTAMPTZ,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.query('CREATE INDEX IF NOT EXISTS upload_links_active_idx ON upload_links(token_hash) WHERE revoked_at IS NULL');
+  await db.query('CREATE INDEX IF NOT EXISTS upload_links_owner_idx ON upload_links(created_by, created_at DESC)');
+  uploadLinksEnsured = true;
+}
+
+function normalizeFolderPath(p) {
+  return String(p || '').split('/').map(s => s.trim()).filter(Boolean).join('/');
+}
+
+function uploadLinkClientShape(row, url = null) {
+  return {
+    id: row.id,
+    label: row.label,
+    library_id: row.library_id,
+    folder_path: row.folder_path,
+    expires_at: row.expires_at,
+    revoked_at: row.revoked_at,
+    created_at: row.created_at,
+    created_by_email: row.created_by_email,
+    upload_count: Number(row.upload_count || 0),
+    last_used_at: row.last_used_at,
+    has_password: !!row.password_hash,
+    url,
+  };
+}
+
+async function loadActiveUploadLink(token) {
+  await ensureUploadLinksTable();
+  const row = await db.queryOne('SELECT * FROM upload_links WHERE token_hash = $1', [tokenHash(token)]);
+  if (!row || row.revoked_at) return { error: 'notfound' };
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return { error: 'expired' };
+  return { row };
+}
+
+// POST /api/files/upload-links — create a file-request link (member-facing).
+router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadLinksTable();
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    const { salt, hash } = passwordParts(req.body?.password);
+    const expiresAt = req.body?.expiresAt ? new Date(req.body.expiresAt) : null;
+    if (expiresAt && isNaN(expiresAt.getTime())) return res.status(400).json({ error: 'Invalid expiry date' });
+    const libraryId = req.body?.libraryId || (await libraries.defaultLibraryId());
+    const folderPath = normalizeFolderPath(req.body?.folderPath) || null;
+    const label = (req.body?.label || '').toString().slice(0, 200) || null;
+    const row = await db.queryOne(
+      `INSERT INTO upload_links (token_hash, label, library_id, folder_path, password_salt, password_hash, expires_at, created_by, created_by_email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [tokenHash(token), label, libraryId, folderPath, salt, hash, expiresAt, req.user.id, String(req.user.email || '').toLowerCase()]
+    );
+    const url = `${await publicAppBase(req)}/u/${token}`;
+    await logEvent(`upload link create · ${label || 'file request'}`, req.user.id, req.user.email);
+    res.json({ link: uploadLinkClientShape(row, url) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/files/upload-links — list my active links (admins see all).
+router.get('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadLinksTable();
+  try {
+    const rows = await db.query(
+      `SELECT * FROM upload_links
+       WHERE revoked_at IS NULL AND (created_by = $1 OR $2 = 'admin')
+       ORDER BY created_at DESC`,
+      [req.user.id, req.user.role || '']
+    );
+    res.json({ links: rows.map(r => uploadLinkClientShape(r)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/files/upload-links/:id — revoke.
+router.delete('/upload-links/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureUploadLinksTable();
+  try {
+    const row = await db.queryOne(
+      `UPDATE upload_links SET revoked_at = NOW()
+       WHERE id = $1 AND revoked_at IS NULL AND (created_by = $2 OR $3 = 'admin') RETURNING id`,
+      [req.params.id, req.user.id, req.user.role || '']
+    );
+    if (!row) return res.status(404).json({ error: 'Upload link not found' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/files/upload-link/:token/info — public: describe the link for the page.
+router.get('/upload-link/:token/info', async (req, res) => {
+  try {
+    const { row, error } = await loadActiveUploadLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    res.json({ label: row.label || null, needsPassword: !!row.password_hash });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/upload-link/:token — public: accept an upload (no account).
+router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw(req, res, next)).catch(next), async (req, res) => {
+  try {
+    const { row, error } = await loadActiveUploadLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    if (!verifySharePassword(req.body?.password || req.headers['x-upload-password'], row.password_salt, row.password_hash)) {
+      return res.status(401).json({ error: 'Upload password required' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+    const path = require('path');
+    const { buffer, originalname, mimetype, size } = req.file;
+    const base = cleanDisplayName(originalname) || 'upload';
+    const displayName = row.folder_path ? `${row.folder_path}/${base}` : base;
+    const sanitizedName = path.basename(base).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+    await storage.upload(storagePath, buffer, mimetype);
+    const owner = { id: row.created_by, email: row.created_by_email };
+    const uploaderName = (req.body?.uploaderName || '').toString().slice(0, 120).trim();
+    const { doc } = await createDocumentRecord({
+      displayName, storagePath, mimetype, storedSize: size, user: owner,
+      sourceDetail: `via upload link${uploaderName ? ` · from ${uploaderName}` : ''}`,
+      libraryId: row.library_id,
+    });
+    await db.query('UPDATE upload_links SET upload_count = upload_count + 1, last_used_at = NOW() WHERE id = $1', [row.id]);
+    if (row.created_by_email) {
+      try {
+        await notifications.create({
+          userId: row.created_by,
+          userEmail: row.created_by_email,
+          type: 'upload_received',
+          title: uploaderName ? `${uploaderName} uploaded a file` : 'New file uploaded',
+          body: `"${base}"${row.label ? ` · ${row.label}` : ''}`,
+          refType: 'document',
+          refId: doc.id,
+        });
+      } catch (e) { console.error('notification (upload_received) failed:', e.message); }
+    }
+    res.json({ ok: true, name: base });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
 // Exposed for unit testing.
 module.exports.publicAppBase = publicAppBase;
+module.exports.uploadLinkClientShape = uploadLinkClientShape;
+module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
