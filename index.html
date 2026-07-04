@@ -2382,6 +2382,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button onclick="closeCreateMenu();createFile('md')">New Markdown file</button>
         <button onclick="closeCreateMenu();createFile('txt')">New Text file</button>
         <div class="menu-rule"></div>
+        <button onclick="closeCreateMenu();openUploadLinksModal()">Request files (upload link)</button>
         <button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>
         <button onclick="closeCreateMenu();newKnowledgePage()">New knowledge page</button>
         <button onclick="closeCreateMenu();setTab('ingest')">New from AI / URL</button>
@@ -6339,6 +6340,68 @@ async function openShareSelected() {
 
 function shareDate(value) {
   return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+}
+
+// ---- Inbound upload links (file requests) ----
+async function openUploadLinksModal() {
+  closeUploadLinksModal();
+  const libs = librariesList || [];
+  const libOptions = libs.length
+    ? libs.map(l => `<option value="${esc(String(l.id))}" ${String(l.id) === String(currentLibraryId) ? 'selected' : ''}>${esc(l.name)}</option>`).join('')
+    : `<option value="">Default library</option>`;
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="uplink-scrim" onclick="if(event.target.id==='uplink-scrim')closeUploadLinksModal()"><div class="modal file-share-modal"><h2>Request files</h2><p class="sub">Create a link that lets anyone upload files to you — no account needed.</p>
+    <section class="file-share-section">
+      <div class="file-share-grid">
+        <label for="uplink-label">Label</label><input id="uplink-label" type="text" placeholder="e.g. Onboarding documents">
+        <label for="uplink-lib">Library</label><select id="uplink-lib">${libOptions}</select>
+        <label for="uplink-folder">Folder</label><input id="uplink-folder" type="text" placeholder="Optional, e.g. Clients/Acme">
+        <label for="uplink-expiry">Expires</label><select id="uplink-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select>
+        <label for="uplink-password">Password</label><input id="uplink-password" type="password" placeholder="Optional">
+      </div>
+      <div class="btn-row"><button class="run-btn" onclick="createUploadLink()">Create upload link</button></div>
+      <div class="file-share-result" id="uplink-result"><input class="file-share-url" id="uplink-url" readonly><button class="file-library-tool" onclick="copyUploadUrl()">Copy link</button></div>
+      <p class="file-share-hint" id="uplink-hint" style="display:none">Copy this link now — for security it won't be shown again.</p>
+      <div class="file-share-list" id="uplink-list">${emptyState('Loading links', 'Checking your upload links.')}</div>
+    </section>
+    <div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeUploadLinksModal()">Close</button></div>
+  </div></div>`);
+  await loadUploadLinksList();
+}
+function closeUploadLinksModal() { document.getElementById('uplink-scrim')?.remove(); }
+async function createUploadLink() {
+  const label = document.getElementById('uplink-label')?.value.trim() || '';
+  const libraryId = document.getElementById('uplink-lib')?.value || null;
+  const folderPath = document.getElementById('uplink-folder')?.value.trim() || '';
+  const days = Number(document.getElementById('uplink-expiry')?.value || 0);
+  const password = document.getElementById('uplink-password')?.value || '';
+  const expiresAt = days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null;
+  try {
+    const data = await apiPost('/files/upload-links', { label, libraryId, folderPath, expiresAt, password });
+    const url = data.link?.url || '';
+    const urlEl = document.getElementById('uplink-url');
+    if (urlEl) urlEl.value = url;
+    document.getElementById('uplink-result')?.classList.add('show');
+    const hint = document.getElementById('uplink-hint'); if (hint) hint.style.display = 'block';
+    ['uplink-label', 'uplink-folder', 'uplink-password'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+    toast('Upload link created');
+    await loadUploadLinksList();
+  } catch (e) { toast('Error: ' + e.message); }
+}
+function copyUploadUrl() { const el = document.getElementById('uplink-url'); if (el && el.value) { navigator.clipboard?.writeText(el.value); toast('Link copied'); } }
+async function loadUploadLinksList() {
+  const list = document.getElementById('uplink-list');
+  if (!list) return;
+  try {
+    const data = await apiGet('/files/upload-links');
+    const links = data.links || [];
+    if (!links.length) { list.innerHTML = emptyState('No upload links yet', 'Create one above to start collecting files.'); return; }
+    list.innerHTML = links.map(l => `<div class="file-share-item"><div><strong>${esc(l.label || 'Upload link')}</strong><div class="file-share-meta">${l.upload_count || 0} upload${l.upload_count === 1 ? '' : 's'} · Expires: ${shareDate(l.expires_at)}${l.has_password ? ' · Password' : ''}${l.folder_path ? ` · ${esc(l.folder_path)}` : ''}</div></div><button class="file-library-tool" data-id="${esc(String(l.id))}" onclick="revokeUploadLink(this.dataset.id)">Revoke</button></div>`).join('');
+  } catch (e) { list.innerHTML = emptyState('Could not load links', e.message); }
+}
+async function revokeUploadLink(id) {
+  if (!confirm('Revoke this upload link? People with the link will no longer be able to upload.')) return;
+  try { await apiDelete('/files/upload-links/' + id); toast('Link revoked'); await loadUploadLinksList(); }
+  catch (e) { toast('Error: ' + e.message); }
 }
 
 async function loadShareLinks(fileId = firstSelectedFile()?.id) {
