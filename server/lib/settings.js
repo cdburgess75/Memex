@@ -23,6 +23,7 @@ const ENV_MAP = {
   supabase_service_role_key:      'SUPABASE_SERVICE_ROLE_KEY',
   storage_encryption_key:         'STORAGE_ENCRYPTION_KEY',
   app_url:                        'APP_URL',
+  collabora_enabled:              'COLLABORA_ENABLED',
   collabora_url:                  'COLLABORA_URL',
   collabora_internal_url:         'COLLABORA_INTERNAL_URL',
   wopi_internal_url:              'WOPI_INTERNAL_URL',

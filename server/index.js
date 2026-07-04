@@ -41,6 +41,12 @@ app.use((_req, _res, next) => {
   }).catch(() => next());
 });
 
+// Same-origin reverse proxy for the Collabora editor — registered before
+// express.json() so the editor's binary asset/endpoint streams pass through
+// untouched. The editing WebSocket is handled in the server 'upgrade' listener.
+const collaboraProxy = require('./lib/collaboraProxy');
+app.use((req, res, next) => (collaboraProxy.isCollaboraPath(req.path) ? collaboraProxy.httpMiddleware(req, res) : next()));
+
 app.use(express.json());
 
 const { apiLimiter, authLimiter, shareLimiter } = makeRateLimiters();
@@ -72,9 +78,13 @@ function browserKeycloakUrl(req) {
 
 // Public config — lets the frontend bootstrap auth without a build step
 app.get('/api/config', async (req, res) => {
-  // In-browser Office editing is available only when a Collabora URL is set.
+  // In-browser Office editing is on when Collabora is proxied same-origin
+  // (collabora_enabled) or a direct browser URL is configured (collabora_url).
   let editingEnabled = false;
-  try { editingEnabled = !!(await settings.getOrEnv('collabora_url')); } catch { /* default off */ }
+  try {
+    editingEnabled = String((await settings.getOrEnv('collabora_enabled')) || '').toLowerCase() === 'true'
+      || !!(await settings.getOrEnv('collabora_url'));
+  } catch { /* default off */ }
   res.json({
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
@@ -158,3 +168,10 @@ const server = app.listen(PORT, BIND, async () => {
 // WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
 try { require('./lib/signaling').init(server); console.log('[startup] WebRTC signaling on /ws'); }
 catch (e) { console.error('[startup] signaling init failed:', e.message); }
+
+// Route the Collabora editor WebSocket (/cool/.../ws) through the same-origin proxy.
+server.on('upgrade', (req, socket, head) => {
+  let pathname;
+  try { pathname = new URL(req.url, 'http://x').pathname; } catch { pathname = req.url; }
+  if (collaboraProxy.isCollaboraPath(pathname)) collaboraProxy.handleUpgrade(req, socket, head);
+});
