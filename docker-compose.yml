@@ -98,8 +98,11 @@ services:
       # WOPI host Collabora accepts callbacks from — the Memex app container.
       # Must match WOPI_INTERNAL_URL's host (dots are regex-escaped by Collabora).
       aliasgroup1: "http://app:3000"
-      # Dev: no TLS on the editor itself (put it behind Caddy for prod).
-      extra_params: "--o:ssl.enable=false --o:ssl.termination=true"
+      # The editor speaks plain HTTP; a reverse proxy (Memex same-origin, or Caddy
+      # at go-live) fronts it. ssl.termination controls whether Collabora tells the
+      # browser to use ws/wss: keep it false when Memex is served over http (dev),
+      # set COLLABORA_SSL_TERMINATION=true when Memex is behind HTTPS (go-live).
+      extra_params: "--o:ssl.enable=false --o:ssl.termination=${COLLABORA_SSL_TERMINATION:-false}"
       username: ${COLLABORA_ADMIN_USER:-admin}
       password: ${COLLABORA_ADMIN_PASSWORD:-changeme}
     ports:
