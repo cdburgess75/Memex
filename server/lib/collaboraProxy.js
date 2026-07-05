@@ -30,7 +30,10 @@ function httpMiddleware(req, res) {
         port: Number(t.port) || 9980,
         method: req.method,
         path: req.originalUrl || req.url,
-        headers: { ...req.headers, host: t.host },
+        // Keep the ORIGINAL Host — Collabora derives its CSP frame-ancestors and
+        // WS/connect URLs from it. Overriding to collabora:9980 makes it emit a
+        // CSP that blocks the same-origin iframe (blank editor).
+        headers: { ...req.headers },
       },
       (pres) => { res.writeHead(pres.statusCode || 502, pres.headers); pres.pipe(res); }
     );
