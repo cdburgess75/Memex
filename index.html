@@ -1213,6 +1213,21 @@ html.office .provider-btn:hover {
   box-sizing: border-box;
 }
 .settings-grid textarea { resize: vertical; min-height: 60px; }
+/* Human-readable identity fields (names, workspace title) read as plain text —
+   mono is reserved for paths, keys, URLs, and other machine values. */
+.settings-grid input.sans { font-family: var(--ui); font-size: 13.5px; }
+.danger-zone { margin-top: 24px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--rule)); border-radius: 10px; overflow: hidden; }
+.danger-zone-head { padding: 8px 14px; background: color-mix(in srgb, #c0392b 10%, transparent); color: #c0392b; font: 700 11px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.danger-zone-row { display: flex; align-items: center; gap: 16px; padding: 14px; flex-wrap: wrap; }
+.danger-zone-row > div:first-child { flex: 1 1 240px; }
+.danger-zone-row strong { font-size: 13.5px; }
+.danger-zone-row p { margin: 3px 0 0; font-size: 12px; color: var(--ink-soft); }
+.danger-zone-action { display: flex; gap: 8px; align-items: center; }
+.danger-zone-action input { padding: 6px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12.5px; }
+.danger-btn { padding: 7px 14px; border: 1px solid #c0392b; border-radius: 8px; background: #c0392b; color: #fff; font: 600 12.5px var(--ui); cursor: pointer; white-space: nowrap; }
+.danger-btn:hover { background: #a93226; }
+.danger-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.danger-btn:focus-visible { outline: 2px solid #c0392b; outline-offset: 2px; }
 .settings-notice {
   font-size: 12px;
   color: var(--ink-soft);
@@ -1677,6 +1692,15 @@ html.file-home-mode .masthead-actions { display: flex; }
 body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-library-table tbody tr:hover { background: var(--surface-2); }
 .file-library-table tbody tr.selected { background: var(--accent-wash); }
+/* Compact density: single-line rows (hide the secondary size/type line) with
+   tighter padding and a smaller file icon — more rows per screen, file-manager
+   feel. The Size column can be enabled from the column chooser to keep that info. */
+.file-density-btn svg { flex: 0 0 auto; opacity: 0.85; }
+html[data-density="compact"] .file-library-table td { padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+html[data-density="compact"] .file-library-table .file-row-sub { display: none; }
+html[data-density="compact"] .file-library-table .file-library-name { grid-template-columns: 24px minmax(0, 1fr); gap: 9px; }
+html[data-density="compact"] .file-library-table .file-icon { width: 24px; height: 24px; font-size: 8px; }
+html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px; height: 24px; }
 .file-library-select { width: 18px; height: 18px; border: 1.5px solid var(--ink-faint); border-radius: 5px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; line-height: 1; opacity: 0; transition: opacity 0.12s; }
 .file-library-table tbody tr:hover .file-library-select, .file-library-select.selected { opacity: 1; }
 .file-library-select.selected { background: var(--accent); border-color: var(--accent); }
@@ -1688,6 +1712,7 @@ body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-library-name .file-row-title { font-weight: 500; color: var(--ink); }
 .file-folder-row { cursor: pointer; }
 .file-folder-row .file-row-title { font-weight: 600; }
+.cell-empty { color: var(--ink-faint); }
 .file-folder-icon { position: relative; width: 34px; height: 34px; border-radius: 8px; background: var(--accent-wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
 .file-folder-icon::after { content: ''; width: 16px; height: 13px; border-radius: 0 2px 2px 2px; border: 2px solid currentColor; border-top-width: 5px; }
 .file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); gap: 14px; }
@@ -2511,7 +2536,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <div class="btn-row" style="margin-top:22px">
       <button class="ghost-btn" onclick="closeSettings()">Close</button>
       <button class="ghost-btn" onclick="signOut()">Sign out</button>
-      <button id="erase-kb-btn" class="ghost-btn" style="margin-left:auto;border-color:transparent;color:var(--accent)" onclick="wipeAll()">Erase all</button>
     </div>
   </div>
 </div>
@@ -2575,6 +2599,10 @@ let lastRenderedFileIds = []; // file ids currently shown in the library table (
 let lastRenderedFolderPaths = []; // folder paths currently shown (for select-all)
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout_v2') || 'commander';
+let fileDensity = localStorage.getItem('memex_file_density') === 'compact' ? 'compact' : 'comfortable';
+// Reflect density on <html> so the CSS applies immediately, even before the
+// first file list renders.
+document.documentElement.setAttribute('data-density', fileDensity);
 let currentFolderPath = '';
 
 // ---- file table columns (sortable + show/hide, persisted) ----
@@ -4846,9 +4874,9 @@ function profileSettingsHtml() {
     </div>
     <div class="settings-grid" style="margin-top:14px">
       <label>Full name</label>
-      <input type="text" id="profile-name" value="${esc(settingsProfile.display_name || '')}" placeholder="${esc(currentUser?.name || 'Your name')}">
+      <input type="text" class="sans" id="profile-name" value="${esc(settingsProfile.display_name || '')}" placeholder="${esc(currentUser?.name || 'Your name')}">
       <label>Email</label>
-      <input type="text" value="${esc(currentUser?.email || '')}" disabled>
+      <input type="text" class="sans" value="${esc(currentUser?.email || '')}" disabled>
     </div>
     <button class="run-btn" style="margin-top:6px" onclick="saveProfile()">Save profile</button>`;
 }
@@ -4918,7 +4946,7 @@ function systemSettingsHtml() {
       <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
       <div class="settings-grid">
         <label>Workspace name</label>
-        <input type="text" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Memex">
+        <input type="text" class="sans" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Memex">
         <label>Default accent</label>
         <label class="accent-custom" style="justify-self:start"><input type="color" id="cfg-brand-accent" value="${esc(s.brand_accent||'#C2603D')}"><span>Pick a color</span></label>
         <label>Logo</label>
@@ -5082,7 +5110,22 @@ function systemSettingsHtml() {
 
       <div class="settings-sub" style="margin-top:20px">Settings export</div>
       <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
-      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>`;
+      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
+
+      <div class="danger-zone">
+        <div class="danger-zone-head">Danger zone</div>
+        <div class="danger-zone-row">
+          <div>
+            <strong>Erase the knowledge base</strong>
+            <p>Permanently deletes every knowledge page for all team members. Uploaded files are not affected. This cannot be undone.</p>
+          </div>
+          <div class="danger-zone-action">
+            <input type="text" id="erase-confirm" class="sans" autocomplete="off" placeholder="Type ERASE to confirm"
+                   oninput="const b=document.getElementById('erase-btn');if(b)b.disabled=this.value.trim()!=='ERASE'">
+            <button id="erase-btn" class="danger-btn" type="button" disabled onclick="wipeAll()">Erase knowledge base</button>
+          </div>
+        </div>
+      </div>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};
@@ -5209,7 +5252,8 @@ async function runBackupNow(btn) {
 
 async function wipeAll() {
   if (currentUser?.role !== 'admin') { toast('Only admins can erase the knowledge base'); return; }
-  if (!confirm('Erase the entire shared knowledge base? This affects all team members. Export a backup first.')) return;
+  // Gated by the Danger-zone type-to-confirm field rather than a stray button.
+  if ((document.getElementById('erase-confirm')?.value || '').trim() !== 'ERASE') { toast('Type ERASE to confirm'); return; }
   try {
     await apiDelete('/pages');
     state.pages = [WELCOME];
@@ -5374,7 +5418,11 @@ function fileLibraryRow(f) {
 }
 function folderLibraryRow(folder) {
   const sel = selectedFolderPaths.has(folder.path);
-  const extra = visibleFileColumns().filter(c => c.id !== 'name').map(() => '<td></td>').join('');
+  // Folders have no modified/owner/size of their own — show a muted em-dash
+  // (respecting each column's alignment) rather than an empty cell that reads
+  // as a rendering gap.
+  const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
+    `<td${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
   return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
@@ -5392,6 +5440,20 @@ function fileBreadcrumbHtml() {
 }
 function fileLayoutToggleHtml() {
   return `<span class="file-layout-toggle" role="group" aria-label="File layout"><button class="${fileLayoutMode === 'list' ? 'active' : ''}" onclick="setFileLayoutMode('list')">List</button><button class="${fileLayoutMode === 'commander' ? 'active' : ''}" onclick="setFileLayoutMode('commander')">Commander</button></span>`;
+}
+function fileDensityToggleHtml() {
+  const compact = fileDensity === 'compact';
+  const next = compact ? 'comfortable' : 'compact';
+  const rows = compact
+    ? '<path d="M3 5h18M3 12h18M3 19h18"/>'          // three lines → comfortable target
+    : '<path d="M3 5h18M3 9h18M3 15h18M3 19h18"/>';  // four lines → compact target
+  return `<button class="file-library-tool file-density-btn" type="button" onclick="setFileDensity('${next}')" title="${compact ? 'Comfortable rows' : 'Compact rows'}" aria-label="${compact ? 'Switch to comfortable rows' : 'Switch to compact rows'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${rows}</svg><span>${compact ? 'Comfortable' : 'Compact'}</span></button>`;
+}
+function setFileDensity(mode) {
+  fileDensity = mode === 'compact' ? 'compact' : 'comfortable';
+  localStorage.setItem('memex_file_density', fileDensity);
+  document.documentElement.setAttribute('data-density', fileDensity);
+  renderDocumentLibraryList(); // refresh the toggle's own label/state
 }
 function setFileLayoutMode(mode) {
   fileLayoutMode = mode === 'commander' ? 'commander' : 'list';
@@ -5552,7 +5614,7 @@ function fileLibraryCommandBarHtml() {
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
-  return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
