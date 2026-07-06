@@ -170,8 +170,11 @@ try { require('./lib/signaling').init(server); console.log('[startup] WebRTC sig
 catch (e) { console.error('[startup] signaling init failed:', e.message); }
 
 // Route the Collabora editor WebSocket (/cool/.../ws) through the same-origin proxy.
+// Anything that is neither the signaling socket (/ws) nor a Collabora path —
+// including the blocked Collabora admin websocket — is closed instead of hanging.
 server.on('upgrade', (req, socket, head) => {
   let pathname;
   try { pathname = new URL(req.url, 'http://x').pathname; } catch { pathname = req.url; }
   if (collaboraProxy.isCollaboraPath(pathname)) collaboraProxy.handleUpgrade(req, socket, head);
+  else if (pathname !== '/ws') socket.destroy();
 });

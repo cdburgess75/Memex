@@ -1,6 +1,6 @@
 # Memex
 
-A self-hosted, Microsoft 365–style file and knowledge hub with single sign-on, multi-provider AI, document libraries, audit history, and a live compliance dashboard. Your data, your server, your choice of AI.
+A self-hosted team file and knowledge hub with single sign-on, in-browser Office editing, multi-provider AI, document libraries, notifications, audit history, and a live compliance dashboard. Your data, your server, your choice of AI.
 
 Most knowledge tools are retrieval-only — you put documents in and search them back out, and nothing accumulates. Memex is different: it **builds and maintains a persistent, interlinked knowledge base** while doubling as a real document library. Upload a Word doc, drop a PDF, paste an article, or point it at a URL — files are stored, indexed, and made answerable; sources are summarized into cross-linked pages. Ask a question in plain English and get an answer grounded in the files and pages your team actually owns.
 
@@ -10,14 +10,19 @@ Everything runs on infrastructure you control: a self-hosted **Postgres** databa
 
 ## Highlights
 
-- **Self-hosted stack** — Postgres + Keycloak + a Node/Express app, all via one `docker compose up`.
+- **Self-hosted stack** — Postgres + Keycloak + a Node/Express app (+ optional Collabora editor), all via one `docker compose up`.
 - **Single sign-on** — Keycloak OIDC with optional Google / Microsoft 365 identity brokering.
-- **Multi-provider AI** — Claude *and* any number of OpenAI-compatible endpoints (OpenAI, Groq, Together, OpenRouter, or self-hosted Ollama / vLLM / LM Studio). Pick the active model from the top bar, or turn AI off entirely.
-- **Answers grounded in your files** — ask a question and Claude (or your chosen model) answers from the text of your uploaded documents *and* ingested pages, citing what it used.
+- **Edit Word & Excel in the browser** — self-hosted **Collabora** (WOPI) served same-origin through the app: no Microsoft account, no extra ports, edits saved back with version history.
+- **Multi-provider AI** — Claude *and* any number of OpenAI-compatible endpoints (OpenAI, Groq, Together, OpenRouter, or self-hosted Ollama / vLLM / LM Studio). Pick the active model from the search-bar control, or turn AI off entirely.
+- **Answers grounded in your files** — ask a question and Claude (or your chosen model) answers from the text of your uploaded documents *and* ingested pages, citing what it used — scoped to the libraries you choose.
 - **Unified search** — one box with an **Auto** mode that routes a natural-language question to the AI and keyword/filename queries to full-text search.
-- **Document libraries** — organize files into separate libraries with per-library membership.
+- **Document libraries** — organize files into separate libraries with per-library membership; browse as a flat list or a folder-tree **Commander** view.
+- **Share links & file requests** — send expiring / password-protected download links, or a public **upload link** so a non-member can send files *to* you without an account.
+- **In-app notifications** — a header bell with unread badge: file shared with you, your share link downloaded, your document edited, upload received. Optional email (SMTP) per upload link.
+- **Team calls** — built-in WebRTC video/audio calls with presence (STUN/TURN configurable).
 - **Live compliance dashboard** — readiness profiles for SOC 2, HIPAA, GDPR, PCI-DSS, ISO 27001, and CMMC, scored from *real* signals, with manual attestation and a printable evidence export.
-- **Everything configurable in-app** — storage, encryption, integrations, AI providers, and compliance are managed from an admin Settings panel; environment variables are just the initial defaults.
+- **Update awareness** — a status pill in the header rolls up security, compliance, and whether you're behind the latest published release.
+- **Everything configurable in-app** — storage, encryption, email, integrations, AI providers, and compliance are managed from an admin Settings panel; environment variables are just the initial defaults.
 
 ---
 
@@ -37,19 +42,24 @@ Everything runs on infrastructure you control: a self-hosted **Postgres** databa
 
 ### Document library
 
-- **Upload** — Word, Excel, PowerPoint, PDF, CSV, and text files (size limit configurable; resumable chunked uploads for large files).
+- **Upload anything** — any file type, folder uploads with structure preserved, resumable chunked uploads for large files (size limit configurable).
 - **Multiple libraries** — group files into libraries; restrict a library to specific members, or leave it open to the team.
-- **Office Online** — view any supported file in the browser; full WOPI editing when `app_url` is an HTTPS URL.
-- **Google Drive editing** — open in Docs/Sheets/Slides and export edits back to storage.
-- **Versioning, trash & sharing** — every save snapshots a version; deleted files sit in trash with a configurable retention window before purge; generate share links.
+- **In-browser preview** — PDF, images, and text render inline; Excel and Word are rendered client-side (SheetJS / mammoth) with no external service.
+- **In-browser editing (Collabora/WOPI)** — an optional `collabora/code` container gives full Word/Excel/PowerPoint editing, reverse-proxied through the app's own origin (works on plain-HTTP dev boxes and behind HTTPS in production). Every save snapshots a version and re-indexes the text for search.
+- **Open in desktop app / Google Drive** — hand a file to local Office or to Docs/Sheets/Slides and export edits back to storage.
+- **Share links** — expiring, optionally password-protected public download links; owners are notified when a link is used.
+- **File requests (upload links)** — generate a public `/u/…` page where a non-member can drop files or whole folders into a library/folder you choose; per-link in-app and email notification toggles.
+- **Versioning & trash** — every save snapshots a version; deleted files sit in trash with a configurable retention window before purge.
 - **Per-file access control** — owner/admin grants via a document ACL; admins see everything, owners see their own, others see what's shared with them.
 - **Full-text search** — Postgres `tsvector` over document text and names, with highlighted excerpts.
+- **List & Commander views** — flat table or two-pane folder tree with collapsible branches (remembered per device).
 
-### Search & profiles
+### Search, notifications & profiles
 
-- **Unified search box** — `Auto` (default) detects whether you're searching or asking; explicit **Contents**, **File names**, and **Ask AI** scopes are one click away.
+- **Unified search box** — `Auto` (default) detects whether you're searching or asking; explicit **Contents**, **File names**, and **Ask AI** scopes plus the active AI model live in one combined control.
+- **Notifications** — header bell + dropdown (mark-read, click-through to the file) with a per-user opt-out in **Settings → Notifications**; events cover shares, share-link downloads, document edits, and inbound uploads. Email delivery is available via SMTP (Settings → System → Email).
 - **User profiles** — display name and avatar; any photo is auto-resized client-side, and the identity provider's picture (Google/365) is used as a default until you set your own.
-- **Appearance** — light/dark theme, saved per device.
+- **Appearance** — light/dark and themed variants, plus a pickable accent color, saved per device.
 
 ### Compliance & security
 
@@ -63,10 +73,12 @@ Everything runs on infrastructure you control: a self-hosted **Postgres** databa
 
 ### Admin
 
-- **Settings hub** — Profile · Appearance · AI providers · System (storage, at-rest encryption, integrations, network) — all backed by a DB-stored settings table; secrets are masked.
+- **Settings hub** — Profile · Appearance · Notifications · AI providers · System (storage, at-rest encryption, email/SMTP, integrations, network, scheduled backups) — all backed by a DB-stored settings table; secrets are masked.
 - **Usage & cost** — token consumption and estimated spend per user, per operation.
 - **Team management** — list users, assign Admin / Contributor / Viewer roles.
-- **Activity log** — every ingest, query, audit, upload, and share is attributed.
+- **Activity log** — every ingest, query, audit, upload, edit, and share is attributed.
+- **Scheduled backups** — database + documents to one or more destinations on a schedule, with retention pruning; compliance probes check freshness.
+- **Update check** — the header status pill compares the running `VERSION` against published GitHub releases (green / behind / unavailable) and links to `upgrade.sh`.
 - **Settings backup** — export system settings to XML (secrets masked).
 
 ---
@@ -74,34 +86,46 @@ Everything runs on infrastructure you control: a self-hosted **Postgres** databa
 ## Architecture
 
 ```
-Browser (index.html — single-file SPA)
-    │  Keycloak OIDC (PKCE) for login
-    │  Fetch API — all data, AI, and file calls go through the server
-    ▼
+Browser (index.html — single-file SPA)          Non-members (no account)
+    │  Keycloak OIDC (PKCE) for login               │  /u/<token> upload page
+    │  Fetch API + WebSocket (/ws calls,            │  /api/files/share/<token>
+    │  /cool editor socket)                         │  downloads
+    ▼                                               ▼
 Node.js / Express  (server/)
-    ├─ auth middleware   — verifies the Keycloak JWT (JWKS) on every request
-    ├─ /api/config       — public Keycloak settings for the browser PKCE flow
-    ├─ /api/auth         — identity (/me) + editable profile (name, avatar)
-    ├─ /api/pages        — CRUD, full-text search, version history
-    ├─ /api/ai           — provider abstraction (ingest · query · lint · extract)
-    ├─ /api/files        — upload, search, Office Online, Google Drive, ACL, trash
-    ├─ /api/libraries    — libraries + membership
-    ├─ /api/admin        — stats, users, usage, compliance (+ runtime probes)
-    ├─ /api/admin/settings — DB-backed system settings (storage, AI, network…)
-    ├─ /api/security     — host firewall status
-    └─ /wopi             — WOPI server for Office Online editing
+    ├─ auth middleware     — verifies the Keycloak JWT (JWKS) on every request
+    ├─ /api/config         — public Keycloak settings for the browser PKCE flow
+    ├─ /api/auth           — identity (/me) + editable profile (name, avatar)
+    ├─ /api/pages          — CRUD, full-text search, version history
+    ├─ /api/ai             — provider abstraction (ingest · query · lint · extract)
+    ├─ /api/files          — upload, search, share links, upload links, ACL, trash
+    ├─ /api/notifications  — in-app notification feed + prefs (+ SMTP test)
+    ├─ /api/libraries      — libraries + membership
+    ├─ /api/admin          — stats, users, usage, compliance (+ runtime probes)
+    ├─ /api/admin/settings — DB-backed system settings (storage, AI, email…)
+    ├─ /api/security       — host firewall status
+    ├─ /api/version        — update check against GitHub release tags
+    ├─ /api/backup         — scheduled backup config + download
+    ├─ /wopi               — WOPI host (CheckFileInfo / GetFile / PutFile / locks)
+    ├─ /browser /cool /hosting — same-origin reverse proxy → Collabora editor
+    └─ /ws                 — WebRTC signaling (presence + call brokering)
     │
-    ├─ Postgres 16        pages, documents, document_acl, libraries,
-    │                     library_members, user_roles, user_profiles,
-    │                     page_versions, api_usage, activity_log,
-    │                     system_settings, compliance_attestations
+    ├─ Postgres 16        pages, documents, document_acl, document_share_links,
+    │                     upload_links, notifications, libraries, library_members,
+    │                     user_roles, user_profiles, page_versions, api_usage,
+    │                     activity_log, system_settings, compliance_attestations
     │
     ├─ Keycloak           realm "memex", client "memex-app" (+ optional
     │                     Google / Microsoft identity brokering)
     │
+    ├─ Collabora CODE     optional in-browser Office editing (WOPI), reached
+    │                     only through the app's same-origin proxy
+    │
     ├─ File storage       local filesystem (default, optional AES-256-GCM)
     │                     · S3-compatible (AWS / R2 / B2 / MinIO / Spaces)
     │                     · Supabase Storage (legacy)
+    │
+    ├─ Email              SMTP (nodemailer) for notification mail — optional;
+    │                     in-app notifications work without it
     │
     └─ AI providers       Anthropic (Claude) + any OpenAI-compatible endpoints
 ```
@@ -187,7 +211,11 @@ ADMIN_EMAILS=you@yourcompany.com
 
 # Server / app
 PORT=3000
-APP_URL=https://your-app-url.com        # enables Office Online (WOPI) editing
+APP_URL=https://your-app-url.com        # public URL (share links fall back to the request host)
+
+# In-browser Office editing (optional — see "In-browser Office editing" below)
+COLLABORA_ENABLED=true
+# COLLABORA_SSL_TERMINATION=true        # set true when Memex is served over HTTPS
 
 # File storage — local (default), s3, or supabase
 STORAGE_PROVIDER=local
@@ -197,6 +225,35 @@ STORAGE_LOCAL_PATH=/data/memex/documents
 ```
 
 See [.env.example](.env.example) for the full list, including S3 storage, Google Drive, network/proxy, and rate-limiting options. **Most of these are also editable at runtime** in **Settings → System** (stored in the DB; env vars are the fallback/initial defaults).
+
+---
+
+## In-browser Office editing (Collabora)
+
+Editing is optional and off by default — without it, Office files still preview
+read-only in the browser. To turn it on:
+
+```bash
+docker compose up -d collabora        # pulls collabora/code (~1 GB) and starts it
+echo "COLLABORA_ENABLED=true" >> .env
+docker compose up -d app              # restart the app to pick it up
+```
+
+The **Edit** button then appears on Word/Excel/PowerPoint files (and in the
+preview and right-click menus). The editor is **reverse-proxied through the
+app's own origin** — the browser never talks to Collabora's port directly, so
+there's nothing extra to expose, forward, or put behind TLS. Saves flow back via
+WOPI with a version snapshot and text re-index on every save.
+
+Deployment notes:
+
+- **HTTPS deployments:** set `COLLABORA_SSL_TERMINATION=true` so the editor uses
+  `wss://`; leave it unset/false for plain-HTTP dev boxes.
+- **Collabora's admin console is never proxied** — the app blocks `/browser/…/admin`
+  and `/cool/adminws` from the public origin. Still, set
+  `COLLABORA_ADMIN_PASSWORD` in `.env` (defaults are guessable).
+- Editing degrades gracefully: if the Collabora container is stopped or
+  unreachable, files fall back to read-only preview.
 
 ---
 

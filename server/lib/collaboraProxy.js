@@ -11,8 +11,18 @@ const settings = require('./settings');
 
 const PREFIXES = ['/browser', '/hosting', '/cool', '/lool'];
 
+// Collabora's admin console / admin websocket must never be reachable through
+// the public app origin (it authenticates with the container's static
+// username/password, which defaults to a guessable value).
+const ADMIN_RE = /\/(admin|adminws|admin-bundle\.js|admin[a-z]*\.html)(\/|$|\?)/i;
+
+function isAdminPath(p) {
+  return ADMIN_RE.test(String(p || ''));
+}
+
 function isCollaboraPath(p) {
   const path = String(p || '');
+  if (isAdminPath(path)) return false; // fall through to the SPA 404, never proxied
   return PREFIXES.some(pre => path === pre || path.startsWith(pre + '/') || path.startsWith(pre + '?'));
 }
 
@@ -62,4 +72,4 @@ function handleUpgrade(req, socket, head) {
   }).catch(() => socket.destroy());
 }
 
-module.exports = { isCollaboraPath, httpMiddleware, handleUpgrade, PREFIXES };
+module.exports = { isCollaboraPath, isAdminPath, httpMiddleware, handleUpgrade, PREFIXES };

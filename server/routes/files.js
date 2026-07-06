@@ -249,6 +249,17 @@ async function publicAppBase(req) {
   return configured || `${req.protocol}://${host}`;
 }
 
+// The exact origin the browser reached this request on. Unlike publicAppBase(),
+// this NEVER substitutes the configured app_url — used for the same-origin
+// Collabora editor iframe, which is loaded by the very browser already on this
+// origin, so a stale/dead app_url must not override it (that yields a blank
+// editor). Only falls back to app_url when there is genuinely no Host header.
+async function requestOrigin(req) {
+  const host = req.get('host') || '';
+  if (host) return `${req.protocol}://${host}`;
+  return (await settings.getOrEnv('app_url') || '').replace(/\/$/, '');
+}
+
 // Office file types Collabora can edit.
 const COLLABORA_EDIT_EXTS = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
 
@@ -278,8 +289,10 @@ async function collaboraEditUrl(doc, ext, req) {
   const configuredBase = (await settings.getOrEnv('collabora_url') || '').replace(/\/$/, '');
   if (!enabled && !configuredBase) return null; // editing not configured — read-only preview
   // Same-origin by default (editor proxied through this app); a configured
-  // collabora_url overrides for setups that expose Collabora directly.
-  const browserBase = configuredBase || (await publicAppBase(req)).replace(/\/$/, '');
+  // collabora_url overrides for setups that expose Collabora directly. Use the
+  // real request origin (not publicAppBase, which can swap in a stale app_url) —
+  // the editor iframe loads from the same origin the browser is already on.
+  const browserBase = configuredBase || (await requestOrigin(req)).replace(/\/$/, '');
   const discoveryBase = (await settings.getOrEnv('collabora_internal_url') || browserBase).replace(/\/$/, '');
   const wopiHost = ((await settings.getOrEnv('wopi_internal_url')) || (await publicAppBase(req))).replace(/\/$/, '');
 
