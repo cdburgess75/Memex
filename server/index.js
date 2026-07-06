@@ -85,12 +85,23 @@ app.get('/api/config', async (req, res) => {
     editingEnabled = String((await settings.getOrEnv('collabora_enabled')) || '').toLowerCase() === 'true'
       || !!(await settings.getOrEnv('collabora_url'));
   } catch { /* default off */ }
+  // Workspace branding (admin-set). Public so the login card — shown before
+  // auth — can render the org's name/logo/accent.
+  let brand = { name: '', logo: '', accent: '' };
+  try {
+    brand = {
+      name: (await settings.getOrEnv('brand_name')) || '',
+      logo: (await settings.getOrEnv('brand_logo')) || '',
+      accent: (await settings.getOrEnv('brand_accent')) || '',
+    };
+  } catch { /* defaults */ }
   res.json({
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
     version: VERSION,
     editingEnabled,
+    brand,
   });
 });
 

@@ -58,6 +58,9 @@ const ENV_MAP = {
   smtp_secure:                    'SMTP_SECURE',
   smtp_user:                      'SMTP_USER',
   smtp_pass:                      'SMTP_PASS',
+  brand_name:                     'BRAND_NAME',
+  brand_logo:                     'BRAND_LOGO',
+  brand_accent:                   'BRAND_ACCENT',
 };
 
 const cache = new Map();

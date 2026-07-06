@@ -200,4 +200,91 @@ router.post('/backfill-owner-acl', auth, requireRole('admin'), async (req, res) 
   }
 });
 
+// Build the WHERE clause + params for the activity feed from query filters.
+// Shared by the JSON list and the CSV export so both honour the same filters.
+function activityFilters(q) {
+  const where = [];
+  const params = [];
+  const add = (clause, value) => { params.push(value); where.push(clause.replace('$?', '$' + params.length)); };
+  const actor = String(q.actor || '').trim();
+  if (actor) add('de.actor_email ILIKE $?', `%${actor}%`);
+  const event = String(q.event || '').trim();
+  if (event) add('de.event_type = $?', event);
+  const name = String(q.q || '').trim();
+  if (name) add('d.name ILIKE $?', `%${name}%`);
+  const from = String(q.from || '').trim();
+  if (from) add('de.created_at >= $?', from);
+  const to = String(q.to || '').trim();
+  if (to) add('de.created_at < ($?::date + INTERVAL \'1 day\')', to);
+  return { clause: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
+}
+
+// GET /api/admin/activity — audit feed of document events (who did what to which
+// file), filterable by actor, event type, document name, and date range.
+router.get('/activity', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { clause, params } = activityFilters(req.query);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const rows = await db.query(
+      `SELECT de.id, de.event_type, de.actor_email, de.detail, de.created_at,
+              de.document_id, d.name AS document_name
+         FROM document_events de
+         LEFT JOIN documents d ON d.id = de.document_id
+         ${clause}
+         ORDER BY de.created_at DESC
+         LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+    const totalRow = await db.queryOne(
+      `SELECT COUNT(*)::int AS n FROM document_events de LEFT JOIN documents d ON d.id = de.document_id ${clause}`,
+      params
+    );
+    const types = await db.query('SELECT DISTINCT event_type FROM document_events ORDER BY event_type');
+    res.json({
+      events: rows,
+      total: totalRow?.n || 0,
+      limit,
+      offset,
+      eventTypes: types.map(t => t.event_type),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/activity.csv — same feed as a CSV download (no pagination).
+router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { clause, params } = activityFilters(req.query);
+    const rows = await db.query(
+      `SELECT de.created_at, de.event_type, de.actor_email, d.name AS document_name, de.detail
+         FROM document_events de
+         LEFT JOIN documents d ON d.id = de.document_id
+         ${clause}
+         ORDER BY de.created_at DESC
+         LIMIT 10000`,
+      params
+    );
+    const csvCell = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const header = ['timestamp', 'event', 'actor', 'document', 'detail'];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+        r.event_type, r.actor_email, r.document_name, r.detail,
+      ].map(csvCell).join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="memex-activity-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
+module.exports.activityFilters = activityFilters; // exported for unit tests

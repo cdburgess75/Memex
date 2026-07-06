@@ -900,6 +900,21 @@ html.dark .chip { color: var(--accent-soft); }
 .reload-banner .run-btn { padding: 6px 14px; font-size: 12.5px; }
 .reload-x { border: 0; background: transparent; color: var(--ink-soft); font-size: 15px; cursor: pointer; padding: 4px; border-radius: 6px; }
 .reload-x:hover { background: var(--accent-wash); color: var(--ink); }
+.activity-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.activity-filters input, .activity-filters select { padding: 6px 9px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 500 12.5px var(--ui); }
+.activity-filters input[type=text] { flex: 1 1 180px; min-width: 140px; }
+.activity-filters .ghost-btn { margin-left: auto; }
+.activity-list { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.activity-row { display: grid; grid-template-columns: 150px 1fr 1fr auto; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--rule-soft); font-size: 12.5px; }
+.activity-row:last-child { border-bottom: 0; }
+.activity-ev { justify-self: start; padding: 2px 8px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-soft); font-weight: 600; font-size: 11px; white-space: nowrap; }
+.activity-ev-purged, .activity-ev-trashed, .activity-ev-share_revoked, .activity-ev-access_revoked { background: color-mix(in srgb, #c0392b 14%, transparent); color: #c0392b; }
+.activity-ev-share_downloaded, .activity-ev-share_created { background: color-mix(in srgb, #2d7d46 16%, transparent); color: #2d7d46; }
+.activity-doc { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-actor { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-when { color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.activity-more { display: block; width: 100%; border-radius: 0; border: 0; border-top: 1px solid var(--rule-soft); }
+.activity-count { margin: 0; padding: 9px; }
 .modal h2 {
   font-family: var(--display);
   font-weight: 600;
@@ -930,6 +945,10 @@ html.dark .chip { color: var(--accent-soft); }
   font: 700 22px var(--ui);
   box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 24%, transparent);
 }
+/* When an admin uploads a workspace logo, drop the letter tile's fill/gradient
+   so the image (often a transparent PNG) shows on its own. */
+.brand-logo.has-logo, .login-mark.has-logo { background: none; box-shadow: none; }
+.brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
@@ -2534,6 +2553,7 @@ let state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
 let _kc = null; // Keycloak config { url, realm, clientId }
 let currentUser = null; // { id, email, role, name }
 let appConfig = null;   // /api/config response (version, editingEnabled, …) — set in initApp
+let brandDefaults = { name: '', logo: '', accent: '' }; // admin-set workspace branding from /api/config
 
 // ingest mode state
 let ingestMode = 'paste';
@@ -2712,6 +2732,7 @@ async function initApp() {
   try {
     config = await fetch('/api/config', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
     appConfig = config; // expose globally for functions outside initApp (previewFile, checkForUpdate)
+    applyBranding(config.brand); // brand the login card + header before anything renders
   } catch (e) {
     document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
     setTheme(localStorage.getItem('memex_theme') || 'light');
@@ -2981,11 +3002,16 @@ const ACCENT_PRESETS = [
 function _hexToRgb(h) { h = String(h).replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 function _rgbToHex(r, g, b) { return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join(''); }
 function _mix(a, b, t) { return a.map((v, i) => v + (b[i] - v) * t); }
-function applyAccent(hex) {
+// persist=true records the choice as this device's override. The admin-set
+// brand accent is applied with persist=false so it acts as a default the user
+// can still override locally without being written as their own choice.
+function applyAccent(hex, persist = true) {
   const root = document.documentElement.style;
   if (!hex) {
     root.removeProperty('--accent'); root.removeProperty('--accent-soft'); root.removeProperty('--accent-wash');
-    localStorage.removeItem('memex_accent');
+    if (persist) localStorage.removeItem('memex_accent');
+    // Fall back to the workspace brand accent when the device override is cleared.
+    if (brandDefaults.accent) applyAccent(brandDefaults.accent, false);
     return;
   }
   const base = _hexToRgb(hex);
@@ -2996,7 +3022,7 @@ function applyAccent(hex) {
   root.setProperty('--accent', _rgbToHex(...accent));
   root.setProperty('--accent-soft', _rgbToHex(...soft));
   root.setProperty('--accent-wash', _rgbToHex(...wash));
-  localStorage.setItem('memex_accent', hex);
+  if (persist) localStorage.setItem('memex_accent', hex);
 }
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
@@ -3007,7 +3033,29 @@ function setTheme(theme) {
   const toggleItem = document.getElementById('theme-toggle-item');
   if (toggleItem) toggleItem.textContent = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   localStorage.setItem('memex_theme', theme);
-  applyAccent(localStorage.getItem('memex_accent'));
+  // Re-apply accent for the new theme: the device override if set, else the
+  // workspace brand accent (never re-persist on a theme switch).
+  applyAccent(localStorage.getItem('memex_accent') || brandDefaults.accent || '', false);
+}
+
+// Apply admin-set workspace branding (name, logo, accent) from /api/config.
+// Runs before the login card is shown so the org's identity is visible pre-auth.
+function applyBranding(brand) {
+  brandDefaults = {
+    name: (brand && brand.name || '').trim(),
+    logo: (brand && brand.logo || '').trim(),
+    accent: (brand && brand.accent || '').trim(),
+  };
+  const name = brandDefaults.name || 'Memex';
+  document.title = name;
+  document.querySelectorAll('.brand h1, .login-modal h2').forEach(el => { el.textContent = name; });
+  const letter = (name.trim()[0] || 'M').toUpperCase();
+  document.querySelectorAll('.brand-logo, .login-mark').forEach(el => {
+    if (brandDefaults.logo) { el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="">`; el.classList.add('has-logo'); }
+    else { el.textContent = letter; el.classList.remove('has-logo'); }
+  });
+  // Brand accent is the default only when the user has no device override.
+  if (brandDefaults.accent && !localStorage.getItem('memex_accent')) applyAccent(brandDefaults.accent, false);
 }
 function toggleTheme() {
   setTheme(localStorage.getItem('memex_theme') === 'dark' ? 'light' : 'dark');
@@ -4382,6 +4430,39 @@ async function saveNetworkSettings() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+// null = unchanged (fall back to the saved brand_logo); '' = explicitly removed;
+// a data: URL = a newly-picked logo not yet saved.
+let brandLogoDraft = null;
+function onBrandLogoPick(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (file.size > 256 * 1024) { toast('Logo too large — keep it under 256 KB'); ev.target.value = ''; return; }
+  const r = new FileReader();
+  r.onload = () => { brandLogoDraft = String(r.result || ''); switchSettingsTab('system'); };
+  r.onerror = () => toast('Could not read that image');
+  r.readAsDataURL(file);
+  ev.target.value = '';
+}
+function clearBrandLogo() { brandLogoDraft = ''; switchSettingsTab('system'); }
+async function saveBrandingSettings() {
+  const body = {
+    brand_name:   document.getElementById('cfg-brand-name')?.value.trim() || '',
+    brand_accent: document.getElementById('cfg-brand-accent')?.value || '',
+  };
+  // Only send the logo when it changed this session (avoid re-uploading the
+  // whole data URL on every save, and preserve the stored one otherwise).
+  if (brandLogoDraft !== null) body.brand_logo = brandLogoDraft;
+  try {
+    await apiPut('/admin/settings', body);
+    settingsSys = await apiGet('/admin/settings');
+    brandLogoDraft = null;
+    // Apply immediately so the header/login reflect the change without a reload.
+    applyBranding({ name: settingsSys.brand_name, logo: settingsSys.brand_logo, accent: settingsSys.brand_accent });
+    if (appConfig) appConfig.brand = { name: settingsSys.brand_name, logo: settingsSys.brand_logo, accent: settingsSys.brand_accent };
+    switchSettingsTab('system');
+    toast('Branding saved');
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
 async function saveEmailSettings() {
   const body = {
     email_from:  document.getElementById('cfg-email-from')?.value.trim() || '',
@@ -4642,7 +4723,94 @@ function switchSettingsTab(tab) {
   else if (tab === 'appearance') body.innerHTML = appearanceSettingsHtml();
   else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml(); loadNotifications(); }
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
-  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); }
+  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); loadActivity(true); }
+}
+
+// ---- Admin activity / audit feed ----
+let activityOffset = 0;
+let activityFilterTimer = null;
+function activityFilterChanged() {
+  clearTimeout(activityFilterTimer);
+  activityFilterTimer = setTimeout(() => loadActivity(true), 300);
+}
+function activityQuery(extra = {}) {
+  const p = new URLSearchParams();
+  const actor = document.getElementById('act-actor')?.value.trim();
+  const event = document.getElementById('act-event')?.value;
+  const from = document.getElementById('act-from')?.value;
+  const to = document.getElementById('act-to')?.value;
+  if (actor) p.set('actor', actor);
+  if (event) p.set('event', event);
+  if (from) p.set('from', from);
+  if (to) p.set('to', to);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  return p.toString();
+}
+const ACTIVITY_LABELS = {
+  uploaded: 'Uploaded', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
+  restored: 'Restored', purged: 'Deleted permanently', updated: 'Updated',
+  share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
+  access_granted: 'Granted access', access_revoked: 'Revoked access',
+  version_saved: 'Saved version', version_restored: 'Restored version',
+};
+function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
+function activityWhen(ts) {
+  const d = new Date(ts);
+  return isNaN(d) ? '' : d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+async function loadActivity(reset) {
+  const list = document.getElementById('activity-list');
+  if (!list) return;
+  if (reset) activityOffset = 0;
+  try {
+    const r = await apiGet('/admin/activity?' + activityQuery({ limit: 50, offset: activityOffset }));
+    // Populate the event-type dropdown once (preserving the current selection).
+    const sel = document.getElementById('act-event');
+    if (sel && sel.options.length <= 1 && Array.isArray(r.eventTypes)) {
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">All events</option>' +
+        r.eventTypes.map(t => `<option value="${esc(t)}">${esc(activityLabel(t))}</option>`).join('');
+      sel.value = cur;
+    }
+    if (!r.events.length && activityOffset === 0) {
+      list.innerHTML = emptyState('No activity', 'No events match these filters yet.');
+      return;
+    }
+    const rows = r.events.map(e => `<div class="activity-row">
+        <span class="activity-ev activity-ev-${esc(e.event_type)}">${esc(activityLabel(e.event_type))}</span>
+        <span class="activity-doc">${e.document_name ? esc(e.document_name) : '<em>(deleted file)</em>'}</span>
+        <span class="activity-actor">${esc(e.actor_email || 'unknown')}</span>
+        <span class="activity-when" title="${esc(e.detail || '')}">${esc(activityWhen(e.created_at))}</span>
+      </div>`).join('');
+    const shown = activityOffset + r.events.length;
+    const more = shown < r.total
+      ? `<button class="ghost-btn activity-more" type="button" onclick="loadMoreActivity()">Load more (${shown} of ${r.total})</button>`
+      : `<p class="settings-notice activity-count" style="text-align:center">${r.total} event${r.total === 1 ? '' : 's'}</p>`;
+    // First page replaces; subsequent pages append after the prior rows (the old
+    // "Load more" button was already removed by loadMoreActivity).
+    if (activityOffset === 0) list.innerHTML = rows + more;
+    else list.insertAdjacentHTML('beforeend', rows + more);
+  } catch (e) {
+    list.innerHTML = emptyState('Could not load activity', esc(e.message));
+  }
+}
+function loadMoreActivity() {
+  document.querySelector('.activity-more')?.remove();
+  activityOffset += 50;
+  loadActivity(false);
+}
+async function exportActivityCsv() {
+  try {
+    toast('Preparing CSV…');
+    const res = await fetch('/api/admin/activity.csv?' + activityQuery(), { headers: { Authorization: `Bearer ${await getToken()}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `memex-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { toast('Export failed: ' + e.message); }
 }
 function notificationsSettingsHtml() {
   return `<div class="usage-section">
@@ -4743,7 +4911,28 @@ function appearanceSettingsHtml() {
 function systemSettingsHtml() {
   const s = settingsSys || {};
   const provider = s.storage_provider || 'local';
-  return `<div class="settings-sub">File Storage</div>
+  const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
+  const brandName = s.brand_name || '';
+  const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'M').toUpperCase());
+  return `<div class="settings-sub">Workspace branding</div>
+      <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
+      <div class="settings-grid">
+        <label>Workspace name</label>
+        <input type="text" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Memex">
+        <label>Default accent</label>
+        <label class="accent-custom" style="justify-self:start"><input type="color" id="cfg-brand-accent" value="${esc(s.brand_accent||'#C2603D')}"><span>Pick a color</span></label>
+        <label>Logo</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="brand-logo${logo ? ' has-logo' : ''}" id="brand-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px">${logoInner}</span>
+          <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none" onchange="onBrandLogoPick(event)">
+          <button class="ghost-btn" type="button" onclick="document.getElementById('brand-logo-file').click()">Upload logo</button>
+          ${logo ? `<button class="ghost-btn" type="button" onclick="clearBrandLogo()">Remove</button>` : ''}
+        </div>
+      </div>
+      <p class="settings-notice">PNG, JPG, SVG or WebP, up to 256&nbsp;KB. A transparent PNG or SVG looks best.</p>
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveBrandingSettings()">Save branding</button>
+
+      <div class="settings-sub" style="margin-top:20px">File Storage</div>
       <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
       <div class="settings-grid">
         <label>Provider</label>
@@ -4879,6 +5068,17 @@ function systemSettingsHtml() {
       <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
       <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
       <div id="backup-config">Loading…</div>
+
+      <div class="settings-sub" style="margin-top:20px">Activity log</div>
+      <p class="settings-notice">Audit trail of file events — uploads, edits, shares, downloads, and access changes — for compliance evidence and investigations.</p>
+      <div class="activity-filters">
+        <input type="text" id="act-actor" placeholder="Filter by person (email)" autocomplete="off" oninput="activityFilterChanged()">
+        <select id="act-event" onchange="loadActivity(true)"><option value="">All events</option></select>
+        <input type="date" id="act-from" onchange="loadActivity(true)" title="From date" aria-label="From date">
+        <input type="date" id="act-to" onchange="loadActivity(true)" title="To date" aria-label="To date">
+        <button class="ghost-btn" type="button" onclick="exportActivityCsv()">Export CSV</button>
+      </div>
+      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>
 
       <div class="settings-sub" style="margin-top:20px">Settings export</div>
       <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
