@@ -13,4 +13,19 @@ describe('isCollaboraPath', () => {
       expect(isCollaboraPath(p)).toBe(false);
     }
   });
+
+  test('never proxies the Collabora admin console / admin websocket', () => {
+    for (const p of [
+      '/browser/dist/admin/admin.html',
+      '/browser/dist/admin/adminSettings.html',
+      '/browser/dist/admin-bundle.js',
+      '/cool/adminws',
+      '/cool/adminws/',
+    ]) {
+      expect(isCollaboraPath(p)).toBe(false);
+    }
+    // …while normal editor paths still proxy
+    expect(isCollaboraPath('/browser/de013a57f9/cool.html')).toBe(true);
+    expect(isCollaboraPath('/cool/abc123/ws')).toBe(true);
+  });
 });

@@ -71,6 +71,18 @@ describe('collaboraEditUrl', () => {
     expect(url).toMatch(/access_token=[a-f0-9]{64}/);
   });
 
+  test('same-origin: uses the request host even when a stale app_url is set (blank-editor regression)', async () => {
+    // app_url is a dead LAN IP; the browser reached Memex via localhost. The
+    // editor iframe must load from the request origin, never the stale app_url,
+    // or it points at an unreachable host and renders blank.
+    settingsMap({ collabora_enabled: 'true', app_url: 'http://10.5.91.18:3000', collabora_internal_url: 'http://collabora:9980', wopi_internal_url: 'http://app:3000' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
+    const localReq = { user: { id: 'u1', email: 'u@test.com' }, protocol: 'http', get: () => 'localhost:3000' };
+    const url = await collaboraEditUrl(doc, 'docx', localReq);
+    expect(url.startsWith('http://localhost:3000/browser/abc123/cool.html?')).toBe(true);
+    expect(url).not.toContain('10.5.91.18');
+  });
+
   test('returns null for a non-editable extension even when configured', async () => {
     settingsMap({ collabora_url: 'https://edit.acme.com' });
     expect(await collaboraEditUrl(doc, 'png', req)).toBeNull();
