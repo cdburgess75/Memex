@@ -872,6 +872,7 @@ html.dark .chip { color: var(--accent-soft); }
 }
 .scrim.open { display: flex; }
 .modal {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 6px;
@@ -881,6 +882,24 @@ html.dark .chip { color: var(--accent-soft); }
   padding: 30px 32px;
   box-shadow: var(--shadow), 0 16px 48px rgba(0,0,0,0.18);
 }
+.modal-x {
+  position: absolute; top: 14px; right: 14px;
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 7px; background: transparent; color: var(--ink-soft);
+  font-size: 20px; line-height: 1; cursor: pointer;
+}
+.modal-x:hover { background: var(--accent-wash); color: var(--ink); }
+.modal-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.reload-banner {
+  position: fixed; z-index: 200; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 18px; border: 1px solid var(--rule); border-radius: 12px;
+  background: var(--surface); color: var(--ink); font: 500 13.5px var(--ui);
+  box-shadow: var(--shadow), 0 12px 32px rgba(0,0,0,0.18);
+}
+.reload-banner .run-btn { padding: 6px 14px; font-size: 12.5px; }
+.reload-x { border: 0; background: transparent; color: var(--ink-soft); font-size: 15px; cursor: pointer; padding: 4px; border-radius: 6px; }
+.reload-x:hover { background: var(--accent-wash); color: var(--ink); }
 .modal h2 {
   font-family: var(--display);
   font-weight: 600;
@@ -1553,6 +1572,12 @@ html.file-home-mode .masthead-actions { display: flex; }
 .notif-wrap { position: relative; }
 .notif-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
 .notif-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* Keyboard focus rings for the header controls (WCAG 2.4.7). Mouse clicks don't
+   trigger :focus-visible, so this only shows for keyboard/AT users. */
+.notif-btn:focus-visible, .meet-btn:focus-visible, .user-chip:focus-visible,
+#status-pill:focus-visible, #search-control-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 .notif-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #fff; font: 700 10.5px var(--ui); display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--surface); }
 .notif-badge.show { display: inline-flex; }
 .notif-panel { display: none; position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: 340px; max-width: 86vw; padding: 8px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
@@ -2414,11 +2439,11 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </div>
     </div>
     <div class="notif-wrap">
-      <button class="notif-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-haspopup="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
+      <button class="notif-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications" aria-haspopup="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
       <div class="notif-panel" id="notif-panel"></div>
     </div>
     <div class="meet-wrap">
-      <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
+      <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-label="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
       <div class="meet-panel" id="meet-panel"></div>
     </div>
     <div class="app-menu-wrap">
@@ -2427,15 +2452,11 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <div class="app-menu-section">Account</div>
         <button class="app-menu-item" onclick="closeAppMenu();openSettings()">Settings</button>
         <button class="app-menu-item" id="theme-toggle-item" onclick="toggleTheme()">Switch to dark mode</button>
-        <div class="app-menu-section">Knowledge base</div>
-        <button class="app-menu-item" onclick="closeAppMenu();exportJSON()">Back up to file</button>
-        <button class="app-menu-item" onclick="closeAppMenu();document.getElementById('import-file').click()">Restore from file</button>
         <div class="app-menu-divider"></div>
         <button class="app-menu-item" onclick="closeAppMenu();signOut()">Sign out</button>
         <div class="app-menu-version" id="app-menu-version"></div>
       </div>
     </div>
-    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(event)">
   </div>
 </header>
 
@@ -2994,7 +3015,10 @@ function toggleTheme() {
 
 function toggleAppMenu(event) {
   event?.stopPropagation();
-  document.getElementById('app-menu')?.classList.toggle('open');
+  const el = document.getElementById('app-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
 }
 
 function closeAppMenu() {
@@ -3053,7 +3077,10 @@ function refreshStatusPill() {
 }
 function toggleStatusMenu(event) {
   event?.stopPropagation();
-  document.getElementById('status-popover')?.classList.toggle('open');
+  const el = document.getElementById('status-popover');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
 }
 function closeStatusMenu() {
   document.getElementById('status-popover')?.classList.remove('open');
@@ -3110,8 +3137,9 @@ function toggleNotifMenu(event) {
   event?.stopPropagation();
   const panel = document.getElementById('notif-panel');
   if (!panel) return;
-  if (!panel.classList.contains('open')) { panel.innerHTML = notifPanelHtml(); loadNotifications(); }
-  panel.classList.toggle('open');
+  const willOpen = !panel.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) { panel.innerHTML = notifPanelHtml(); loadNotifications(); panel.classList.add('open'); }
 }
 function closeNotifMenu() { document.getElementById('notif-panel')?.classList.remove('open'); }
 async function markAllNotifsRead() {
@@ -3176,6 +3204,10 @@ async function checkForUpdate(manual) {
   catch (e) { el.className = 'security-indicator'; el.textContent = appConfig?.version || 'version'; el.title = 'Update check failed'; refreshStatusPill(); if (manual) toast('Update check failed'); return; }
   const v = r.current || appConfig?.version || 'version';
   el.textContent = v;
+  // If the server is now running a different version than the one this page
+  // booted with, the app was upgraded underneath us — offer a one-click reload
+  // so the user isn't left on stale client code.
+  maybePromptReload(r.current);
   if (r.behind === 0) {
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
     if (manual) toast(`Up to date (${v})`);
@@ -3190,6 +3222,19 @@ async function checkForUpdate(manual) {
     if (manual) toast('Update check unavailable');
   }
   refreshStatusPill();
+}
+
+// One-time banner prompting a reload when the running server version no longer
+// matches the version this page booted with (i.e. an upgrade happened while the
+// tab was open). Shown once per page life.
+function maybePromptReload(serverVersion) {
+  if (!serverVersion || !appConfig?.version) return;
+  if (serverVersion === appConfig.version) return;
+  if (document.getElementById('reload-banner')) return;
+  document.body.insertAdjacentHTML('beforeend',
+    `<div id="reload-banner" class="reload-banner" role="status">Memex was updated to ${esc(serverVersion)}.` +
+    `<button class="run-btn" onclick="location.reload()">Refresh</button>` +
+    `<button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('reload-banner').remove()">✕</button></div>`);
 }
 
 function openSecurityStatus() {
@@ -4813,11 +4858,11 @@ function systemSettingsHtml() {
       <p class="settings-notice">Backup path for notification emails (uploads, share downloads). Microsoft 365 / Graph is the planned primary; this SMTP option works on any deployment. Leave the host blank to keep email off — in-app notifications still work.</p>
       <div class="settings-grid">
         <label>From address</label>
-        <input type="text" id="cfg-email-from" value="${esc(s.email_from||'')}" placeholder="memex@yourdomain.com">
+        <input type="text" id="cfg-email-from" value="${esc(s.email_from||'')}" autocomplete="off" placeholder="memex@yourdomain.com">
         <label>SMTP host</label>
-        <input type="text" id="cfg-smtp-host" value="${esc(s.smtp_host||'')}" placeholder="smtp.provider.com — blank turns email off">
+        <input type="text" id="cfg-smtp-host" value="${esc(s.smtp_host||'')}" autocomplete="off" placeholder="smtp.provider.com — blank turns email off">
         <label>Port</label>
-        <input type="text" id="cfg-smtp-port" value="${esc(s.smtp_port||'')}" placeholder="587">
+        <input type="text" id="cfg-smtp-port" value="${esc(s.smtp_port||'')}" autocomplete="off" placeholder="587">
         <label>Encryption</label>
         <select id="cfg-smtp-secure">
           <option value="" ${!s.smtp_secure?'selected':''}>Auto (STARTTLS, or SSL on 465)</option>
@@ -4825,7 +4870,7 @@ function systemSettingsHtml() {
           <option value="false" ${s.smtp_secure==='false'?'selected':''}>STARTTLS / none</option>
         </select>
         <label>Username</label>
-        <input type="text" id="cfg-smtp-user" value="${esc(s.smtp_user||'')}" placeholder="Optional (often the from address)">
+        <input type="text" id="cfg-smtp-user" value="${esc(s.smtp_user||'')}" autocomplete="off" placeholder="Optional (often the from address)">
         <label>Password</label>
         <input type="password" id="cfg-smtp-pass" value="${esc(s.smtp_pass||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
       </div>
@@ -4991,31 +5036,6 @@ function exportMarkdown() {
   download('memex-export.md', md, 'text/markdown');
   toast('Markdown exported');
 }
-function exportJSON() {
-  const exportable = state.pages.filter(p => p.id !== 'overview');
-  download('memex-backup.json', JSON.stringify({ pages: exportable }, null, 2), 'application/json');
-  toast('Backup saved');
-}
-function importJSON(ev) {
-  const file = ev.target.files[0]; if (!file) return;
-  const r = new FileReader();
-  r.onload = async () => {
-    try {
-      const data = JSON.parse(r.result);
-      if (!data.pages) throw new Error('not a backup');
-      for (const p of data.pages) {
-        await apiPut('/pages/' + p.id, p);
-        const idx = state.pages.findIndex(e => e.id === p.id);
-        if (idx >= 0) state.pages[idx] = p; else state.pages.push(p);
-      }
-      renderIndex();
-      toast(`Restored ${data.pages.length} pages`);
-    } catch (e) { toast('Import failed: ' + e.message); }
-  };
-  r.readAsText(file);
-  ev.target.value = '';
-}
-
 /* ---------- files ---------- */
 function fileExt(name) { return (name.split('.').pop() || '').toLowerCase(); }
 function fileKind(ext) {
@@ -5510,8 +5530,9 @@ function toggleSearchControlMenu(event) {
   event?.stopPropagation();
   const menu = document.getElementById('search-control-menu');
   if (!menu) return;
-  if (!menu.classList.contains('open')) menu.innerHTML = searchControlMenuInnerHtml();
-  menu.classList.toggle('open');
+  const willOpen = !menu.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) { menu.innerHTML = searchControlMenuInnerHtml(); menu.classList.add('open'); }
 }
 function closeSearchControlMenu() { document.getElementById('search-control-menu')?.classList.remove('open'); }
 function pickSearchScope(id) {
@@ -5858,9 +5879,10 @@ async function saveFileText(fileId) {
 
 function toggleCreateMenu(event) {
   event?.stopPropagation();
-  closeSearchMenu();
-  closeUploadMenu();
-  document.getElementById('file-create-menu')?.classList.toggle('open');
+  const el = document.getElementById('file-create-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
 }
 
 function closeCreateMenu() {
@@ -5869,9 +5891,10 @@ function closeCreateMenu() {
 
 function toggleUploadMenu(event) {
   event?.stopPropagation();
-  closeSearchMenu();
-  closeCreateMenu();
-  document.getElementById('file-upload-menu')?.classList.toggle('open');
+  const el = document.getElementById('file-upload-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
 }
 
 function closeUploadMenu() {
@@ -5885,9 +5908,10 @@ function chooseUpload(kind) {
 
 function toggleSearchMenu(event) {
   event?.stopPropagation();
-  closeUploadMenu();
-  closeCreateMenu();
-  document.getElementById('file-search-menu')?.classList.toggle('open');
+  const el = document.getElementById('file-search-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
 }
 
 function closeSearchMenu() {
@@ -5914,7 +5938,10 @@ async function focusFileSearch() {
   }, 0);
 }
 
-document.addEventListener('click', () => {
+// Close every popover/dropdown menu at once. Used by the outside-click handler,
+// the Escape key, and each toggle (so opening one menu closes any other — menus
+// are mutually exclusive rather than stacking).
+function closeAllMenus() {
   closeUploadMenu();
   closeSearchMenu();
   closeAppMenu();
@@ -5924,6 +5951,38 @@ document.addEventListener('click', () => {
   closeSearchControlMenu();
   closeStatusMenu();
   closeNotifMenu();
+  closeCreateMenu();
+  if (typeof closeMeetPanel === 'function') closeMeetPanel();
+  if (typeof closeFileMenu === 'function') closeFileMenu();
+  document.getElementById('file-cols-menu')?.classList.remove('open');
+  document.getElementById('preview-open-menu')?.classList.remove('open');
+}
+function anyMenuOpen() {
+  return !!document.querySelector(
+    '.app-menu-popover.open, #status-popover.open, #notif-panel.open, #meet-panel.open,' +
+    '#search-control-menu.open, #file-create-menu.open, #file-upload-menu.open,' +
+    '#file-search-menu.open, #file-cols-menu.open, #preview-open-menu.open, #file-row-menu'
+  );
+}
+// Static scrims declared in the page markup toggle their `.open` class; dynamic
+// scrims are inserted on demand and should be removed outright. login-scrim is
+// the auth gate (never Escape-dismissable); the editor owns its own keys.
+const STATIC_SCRIMS = new Set(['settings-scrim', 'version-preview-scrim']);
+function closeTopModal() {
+  const scrims = [...document.querySelectorAll('.scrim.open')]
+    .filter(s => s.id !== 'login-scrim' && s.id !== 'editor-scrim');
+  if (!scrims.length) return false;
+  const top = scrims[scrims.length - 1];
+  if (STATIC_SCRIMS.has(top.id)) top.classList.remove('open');
+  else top.remove();
+  return true;
+}
+document.addEventListener('click', closeAllMenus);
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  // Close the shallowest layer first: open menus, then the topmost modal.
+  if (anyMenuOpen()) { closeAllMenus(); return; }
+  closeTopModal();
 });
 
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
@@ -6399,14 +6458,14 @@ async function openUploadLinksModal() {
   const libOptions = libs.length
     ? libs.map(l => `<option value="${esc(String(l.id))}" ${String(l.id) === String(currentLibraryId) ? 'selected' : ''}>${esc(l.name)}</option>`).join('')
     : `<option value="">Default library</option>`;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="uplink-scrim" onclick="if(event.target.id==='uplink-scrim')closeUploadLinksModal()"><div class="modal file-share-modal"><h2>Request files</h2><p class="sub">Create a link that lets anyone upload files to you — no account needed.</p>
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="uplink-scrim" onclick="if(event.target.id==='uplink-scrim')closeUploadLinksModal()"><div class="modal file-share-modal"><button class="modal-x" type="button" aria-label="Close" onclick="closeUploadLinksModal()">✕</button><h2>Request files</h2><p class="sub">Create a link that lets anyone upload files to you — no account needed.</p>
     <section class="file-share-section">
       <div class="file-share-grid">
-        <label for="uplink-label">Label</label><input id="uplink-label" type="text" placeholder="e.g. Onboarding documents">
+        <label for="uplink-label">Label</label><input id="uplink-label" name="memex-uplink-label" type="text" autocomplete="off" placeholder="e.g. Onboarding documents">
         <label for="uplink-lib">Library</label><select id="uplink-lib">${libOptions}</select>
-        <label for="uplink-folder">Folder</label><input id="uplink-folder" type="text" placeholder="Optional, e.g. Clients/Acme">
+        <label for="uplink-folder">Folder</label><input id="uplink-folder" name="memex-uplink-folder" type="text" autocomplete="off" placeholder="Optional, e.g. Clients/Acme">
         <label for="uplink-expiry">Expires</label><select id="uplink-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select>
-        <label for="uplink-password">Password</label><input id="uplink-password" type="password" placeholder="Optional">
+        <label for="uplink-password">Password</label><input id="uplink-password" name="memex-uplink-password" type="password" autocomplete="new-password" placeholder="Optional">
       </div>
       <div style="display:flex;gap:20px;margin:12px 2px 2px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:7px;font-weight:500;cursor:pointer"><input type="checkbox" id="uplink-notify-alert" checked> In-app alert on upload</label>
@@ -7074,7 +7133,8 @@ function openFileMenu(fileId, event) {
   return false;
 }
 document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu')) closeFileMenu(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeFileMenu(); closeFilePreview(); } });
+// Escape handling is centralized in the global keydown listener (closeAllMenus →
+// closeTopModal), which covers the row menu and the file preview scrim.
 
 // ---- folder actions ----
 let folderMenuPath = '';
@@ -7475,7 +7535,7 @@ function toggleMute() { callMuted = !callMuted; if (localStream) localStream.get
 function toggleCam() { callCamOff = !callCamOff; if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = !callCamOff); renderCallDock(); }
 // ---- UI ----
 function meetPanelOpen() { return document.getElementById('meet-panel')?.classList.contains('open'); }
-function toggleMeetPanel(e) { e?.stopPropagation(); const p = document.getElementById('meet-panel'); if (!p) return; if (!p.classList.contains('open')) renderMeetPanel(); p.classList.toggle('open'); }
+function toggleMeetPanel(e) { e?.stopPropagation(); const p = document.getElementById('meet-panel'); if (!p) return; const willOpen = !p.classList.contains('open'); closeAllMenus(); if (willOpen) { renderMeetPanel(); p.classList.add('open'); } }
 function closeMeetPanel() { document.getElementById('meet-panel')?.classList.remove('open'); }
 function renderMeetPanel() {
   const p = document.getElementById('meet-panel'); if (!p) return;
