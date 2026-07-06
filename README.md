@@ -74,9 +74,10 @@ Everything runs on infrastructure you control: a self-hosted **Postgres** databa
 ### Admin
 
 - **Settings hub** — Profile · Appearance · Notifications · AI providers · System (storage, at-rest encryption, email/SMTP, integrations, network, scheduled backups) — all backed by a DB-stored settings table; secrets are masked.
+- **Workspace branding** — set the workspace name, logo, and default accent once (System → Workspace branding); they apply everywhere, including the sign-in screen. Individuals can still pick their own accent per device.
+- **Activity log / audit trail** — a filterable admin feed of file events (upload, edit, rename, share, download-via-link, access grant/revoke, trash, purge) attributed to the actor, with date-range and per-person filters and CSV export for compliance evidence.
 - **Usage & cost** — token consumption and estimated spend per user, per operation.
 - **Team management** — list users, assign Admin / Contributor / Viewer roles.
-- **Activity log** — every ingest, query, audit, upload, edit, and share is attributed.
 - **Scheduled backups** — database + documents to one or more destinations on a schedule, with retention pruning; compliance probes check freshness.
 - **Update check** — the header status pill compares the running `VERSION` against published GitHub releases (green / behind / unavailable) and links to `upgrade.sh`.
 - **Settings backup** — export system settings to XML (secrets masked).
