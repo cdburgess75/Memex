@@ -147,7 +147,14 @@ app.get('/u/:token', (req, res) => {
 // would expose server source, compose, and config files. The SPA itself is
 // returned by the catch-all below.
 app.use('/vendor', express.static(path.join(__dirname, '..', 'vendor'), { maxAge: '7d', immutable: true }));
-app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
+// The SPA shell must never be cached: after an upgrade, browsers holding an old
+// index.html would keep running stale client code (mismatched version, missing
+// fixes) until a hard refresh. no-cache forces revalidation on every load so a
+// new deploy is picked up on the next navigation.
+app.get('*', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
