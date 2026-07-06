@@ -25,7 +25,13 @@ async function isConfigured() {
 }
 
 function transportFor(cfg) {
-  const key = JSON.stringify({ h: cfg.host, p: cfg.port, s: cfg.secure, u: cfg.user });
+  // Include the password (hashed — never keep it in plaintext state) in the cache
+  // key so rotating the SMTP password invalidates the pooled transport instead of
+  // silently reusing the old credentials until another field changes / restart.
+  const passHash = cfg.pass
+    ? require('crypto').createHash('sha256').update(String(cfg.pass)).digest('hex')
+    : '';
+  const key = JSON.stringify({ h: cfg.host, p: cfg.port, s: cfg.secure, u: cfg.user, p2: passHash });
   if (_transport && _transportKey === key) return _transport;
   const nodemailer = require('nodemailer');
   _transport = nodemailer.createTransport({

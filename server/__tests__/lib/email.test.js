@@ -57,6 +57,26 @@ describe('sendMail', () => {
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ from: 'u@x.com' }));
   });
 
+  test('rebuilds the transport when the SMTP password changes (cache-key includes pass)', async () => {
+    cfg({ smtp_host: 'smtp.x.com', smtp_user: 'u@x.com', smtp_pass: 'old-pass' });
+    await email.sendMail({ to: 'a@b.com', subject: 's' });
+    expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+    // same everything but a rotated password → must build a fresh transport
+    cfg({ smtp_host: 'smtp.x.com', smtp_user: 'u@x.com', smtp_pass: 'new-pass' });
+    await email.sendMail({ to: 'a@b.com', subject: 's' });
+    expect(nodemailer.createTransport).toHaveBeenCalledTimes(2);
+    expect(nodemailer.createTransport).toHaveBeenLastCalledWith(expect.objectContaining({
+      auth: { user: 'u@x.com', pass: 'new-pass' },
+    }));
+  });
+
+  test('reuses the pooled transport when config is unchanged', async () => {
+    cfg({ smtp_host: 'smtp.x.com', smtp_user: 'u@x.com', smtp_pass: 'p' });
+    await email.sendMail({ to: 'a@b.com', subject: 's' });
+    await email.sendMail({ to: 'c@d.com', subject: 's2' });
+    expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+  });
+
   test('reports sent:false with reason on transport error (never throws)', async () => {
     cfg({ smtp_host: 'smtp.x.com' });
     mockSend.mockRejectedValueOnce(new Error('connection refused'));
