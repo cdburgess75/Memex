@@ -18,6 +18,8 @@ const SENSITIVE = new Set([
   'backup_download_secret',
   'turn_credential',
   'smtp_pass',
+  'graph_client_secret',
+  'graph_cert_key',
 ]);
 
 const MASKED = '●●●●●●●●';
