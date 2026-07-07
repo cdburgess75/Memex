@@ -2808,6 +2808,7 @@ async function _afterLogin() {
   loadSecurityStatus();
   loadComplianceSummary();
   checkForUpdate(false);
+  startUpdatePolling();
   startNotifications();
   connectSignaling();
 }
@@ -2892,8 +2893,9 @@ async function signOut() {
   const refresh = localStorage.getItem('memex_refresh_token');
   _clearTokens();
   // Stop background polling — otherwise the logged-out page keeps hitting
-  // /api/notifications every minute with dead tokens.
+  // /api/notifications and /version/check with dead tokens.
   if (notifTimer) { clearInterval(notifTimer); notifTimer = null; }
+  stopUpdatePolling();
   closeSettings();
   state = { pages: [WELCOME], activePage: 'overview', tab: 'files', log: [] };
   renderIndex();
@@ -3299,6 +3301,28 @@ async function checkForUpdate(manual) {
   }
   refreshStatusPill();
 }
+
+// Periodic update check so a long-open tab notices a deploy on its own (rather
+// than only at page load / on a manual version-pill click). /version/check
+// returns the live running version cheaply (GitHub lookup is cached server-side
+// 10 min), so maybePromptReload fires the "Refresh" banner within one interval
+// of an upgrade. Only runs while signed in.
+let updatePollTimer = null;
+const UPDATE_POLL_MS = 5 * 60 * 1000;
+function startUpdatePolling() {
+  clearInterval(updatePollTimer);
+  updatePollTimer = setInterval(() => {
+    // Skip while the tab is hidden — recheck immediately when it's foregrounded.
+    if (document.hidden) return;
+    checkForUpdate(false);
+  }, UPDATE_POLL_MS);
+}
+function stopUpdatePolling() { clearInterval(updatePollTimer); updatePollTimer = null; }
+// A backgrounded tab is exactly where a stale build lingers — re-check the moment
+// the user returns to it.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && updatePollTimer) checkForUpdate(false);
+});
 
 // One-time banner prompting a reload when the running server version no longer
 // matches the version this page booted with (i.e. an upgrade happened while the
