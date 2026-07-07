@@ -38,7 +38,7 @@ describe('sendMail', () => {
   test('sends via nodemailer with auth + from when configured', async () => {
     cfg({ smtp_host: 'smtp.x.com', smtp_port: '587', smtp_user: 'u@x.com', smtp_pass: 'p', email_from: 'from@x.com' });
     const r = await email.sendMail({ to: 'a@b.com', subject: 'Hi', text: 'body' });
-    expect(r).toEqual({ sent: true });
+    expect(r).toEqual({ sent: true, via: 'smtp' });
     expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
       host: 'smtp.x.com', port: 587, secure: false, auth: { user: 'u@x.com', pass: 'p' },
     }));

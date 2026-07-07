@@ -4517,7 +4517,13 @@ async function saveBrandingSettings() {
 }
 async function saveEmailSettings() {
   const body = {
-    email_from:  document.getElementById('cfg-email-from')?.value.trim() || '',
+    email_provider:        document.getElementById('cfg-email-provider')?.value || '',
+    email_from:            document.getElementById('cfg-email-from')?.value.trim() || '',
+    graph_tenant_id:       document.getElementById('cfg-graph-tenant')?.value.trim() || '',
+    graph_client_id:       document.getElementById('cfg-graph-client')?.value.trim() || '',
+    graph_client_secret:   document.getElementById('cfg-graph-secret')?.value ?? '', // masked value is kept server-side
+    graph_cert_thumbprint: document.getElementById('cfg-graph-thumb')?.value.trim() || '',
+    graph_cert_key:        document.getElementById('cfg-graph-key')?.value ?? '', // masked value is kept server-side
     smtp_host:   document.getElementById('cfg-smtp-host')?.value.trim() || '',
     smtp_port:   document.getElementById('cfg-smtp-port')?.value.trim() || '',
     smtp_secure: document.getElementById('cfg-smtp-secure')?.value || '',
@@ -5095,13 +5101,38 @@ function systemSettingsHtml() {
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
-      <div class="settings-sub" style="margin-top:20px">Email (SMTP)</div>
-      <p class="settings-notice">Backup path for notification emails (uploads, share downloads). Microsoft 365 / Graph is the planned primary; this SMTP option works on any deployment. Leave the host blank to keep email off — in-app notifications still work.</p>
+      <div class="settings-sub" style="margin-top:20px">Email</div>
+      <p class="settings-notice">Notification emails (uploads, share downloads). Microsoft Graph (365) is the durable primary; SMTP is a fallback. Leave both unconfigured to keep email off — in-app notifications still work.</p>
       <div class="settings-grid">
+        <label>Provider</label>
+        <select id="cfg-email-provider">
+          <option value="" ${!s.email_provider?'selected':''}>Auto — Graph if configured, else SMTP</option>
+          <option value="graph" ${s.email_provider==='graph'?'selected':''}>Microsoft Graph (365)</option>
+          <option value="smtp" ${s.email_provider==='smtp'?'selected':''}>SMTP</option>
+        </select>
         <label>From address</label>
-        <input type="text" id="cfg-email-from" value="${esc(s.email_from||'')}" autocomplete="off" placeholder="memex@yourdomain.com">
+        <input type="text" class="sans" id="cfg-email-from" value="${esc(s.email_from||'')}" autocomplete="off" placeholder="memex@yourdomain.com — sender mailbox for both providers">
+      </div>
+
+      <div class="settings-sub" style="margin-top:16px">Microsoft Graph (365)</div>
+      <p class="settings-notice">App-only <code>sendMail</code> from the From mailbox above. Needs <strong>Mail.Send</strong> admin-consented in this tenant, and the app restricted to that mailbox via an Exchange <strong>ApplicationAccessPolicy</strong>. Provide a client secret <em>or</em> a certificate (thumbprint + PEM private key).</p>
+      <div class="settings-grid">
+        <label>Tenant ID</label>
+        <input type="text" id="cfg-graph-tenant" value="${esc(s.graph_tenant_id||'')}" autocomplete="off" placeholder="this deployment's 365 tenant GUID">
+        <label>Client (app) ID</label>
+        <input type="text" id="cfg-graph-client" value="${esc(s.graph_client_id||'')}" autocomplete="off" placeholder="app registration client ID">
+        <label>Client secret</label>
+        <input type="password" id="cfg-graph-secret" value="${esc(s.graph_client_secret||'')}" autocomplete="new-password" placeholder="Leave blank to keep current — or use a certificate instead">
+        <label>Cert thumbprint</label>
+        <input type="text" id="cfg-graph-thumb" value="${esc(s.graph_cert_thumbprint||'')}" autocomplete="off" placeholder="SHA-1 thumbprint (hex) — only if using a certificate">
+        <label>Cert private key (PEM)</label>
+        <textarea id="cfg-graph-key" placeholder="-----BEGIN PRIVATE KEY----- … — leave blank to keep current">${esc(s.graph_cert_key||'')}</textarea>
+      </div>
+
+      <div class="settings-sub" style="margin-top:16px">SMTP (fallback)</div>
+      <div class="settings-grid">
         <label>SMTP host</label>
-        <input type="text" id="cfg-smtp-host" value="${esc(s.smtp_host||'')}" autocomplete="off" placeholder="smtp.provider.com — blank turns email off">
+        <input type="text" id="cfg-smtp-host" value="${esc(s.smtp_host||'')}" autocomplete="off" placeholder="smtp.provider.com — blank turns SMTP off">
         <label>Port</label>
         <input type="text" id="cfg-smtp-port" value="${esc(s.smtp_port||'')}" autocomplete="off" placeholder="587">
         <label>Encryption</label>
