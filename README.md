@@ -149,8 +149,13 @@ Or, from a clone, just run `./install.sh`. Pick **local** mode for a LAN/dev box
 (`http://localhost:3000`) or **public** mode to serve an HTTPS domain via the
 built-in Caddy reverse proxy. The installer never reuses the placeholder
 `changeme` secrets — each deployment gets its own randomly generated Postgres /
-Keycloak / encryption credentials. Re-running it detects an existing `.env` and
-offers to keep your current secrets.
+Keycloak / encryption credentials. In-browser Office editing is enabled by
+default (with the correct SSL mode for local vs public). Re-running it detects an
+existing `.env` and offers to keep your current secrets.
+
+> **Standing up a customer instance?** [DEPLOY.md](DEPLOY.md) is a step-by-step
+> per-customer runbook (install → domain → branding → email → backups) with a
+> copy-paste checklist.
 
 ## Quick start (manual Docker Compose)
 

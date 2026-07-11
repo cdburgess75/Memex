@@ -95,9 +95,11 @@ if [ "$KEEP_ENV" = "0" ]; then
   if [ "$MODE" = "public" ]; then
     ask APP_DOMAIN "Public domain (e.g. memex.acme.com)" ""
     [ -n "${APP_DOMAIN:-}" ] || die "Public mode needs a domain."
-    APP_URL="https://$APP_DOMAIN"; KEYCLOAK_URL="auto"; TRUST_PROXY="1"
+    # Behind HTTPS the editor must be told to speak wss:// — ssl.termination=true.
+    APP_URL="https://$APP_DOMAIN"; KEYCLOAK_URL="auto"; TRUST_PROXY="1"; COLLABORA_SSL="true"
   else
-    APP_URL="http://localhost:$PORT"; KEYCLOAK_URL="http://localhost:$KC_PORT"; TRUST_PROXY=""
+    # Plain http on this box → the editor speaks ws:// (ssl.termination=false).
+    APP_URL="http://localhost:$PORT"; KEYCLOAK_URL="http://localhost:$KC_PORT"; TRUST_PROXY=""; COLLABORA_SSL="false"
   fi
 
   # The seeded Keycloak user admin@memex.local is the only account that exists on
@@ -127,12 +129,21 @@ APP_URL=$APP_URL
 TRUST_PROXY=$TRUST_PROXY
 STORAGE_PROVIDER=local
 STORAGE_ENCRYPTION_KEY=$STORAGE_ENCRYPTION_KEY
+# In-browser Office editing (Collabora) on by default. SSL termination follows
+# the deployment mode: true behind HTTPS (wss), false for plain-http local (ws).
+COLLABORA_ENABLED=true
+COLLABORA_SSL_TERMINATION=$COLLABORA_SSL
 MEMEX_TAG=$MEMEX_TAG
 PORT=$PORT
 EOF
 else
   MODE="$(grep -q '^TRUST_PROXY=1' .env && echo public || echo local)"
   METHOD="${METHOD:-prebuilt}"
+  # Existing .env from an older installer may predate in-browser editing — make
+  # sure the Collabora flags are present so editing works after this run too.
+  grep -q '^COLLABORA_ENABLED=' .env || printf 'COLLABORA_ENABLED=true\n' >> .env
+  grep -q '^COLLABORA_SSL_TERMINATION=' .env \
+    || printf 'COLLABORA_SSL_TERMINATION=%s\n' "$([ "$MODE" = public ] && echo true || echo false)" >> .env
 fi
 # App host port (source of truth: .env) — used by the health check and summary.
 PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2)"; PORT="${PORT:-3000}"
@@ -183,8 +194,12 @@ else
   echo "  ${B}Open${N}  http://localhost:$PORT   (or http://<this-host-ip>:$PORT on your LAN)"
 fi
 echo
+echo "  ${B}Included${N}"
+echo "    In-browser Office editing (Collabora) is enabled."
+echo "    Optional per-deployment setup (Settings → …): Workspace branding, Email (365/SMTP)."
+echo
 echo "  ${B}Manage${N}"
 echo "    Logs:    $DC $COMPOSE logs -f app"
 echo "    Stop:    $DC $COMPOSE down"
-echo "    Update:  git pull && $DC $COMPOSE up -d --build"
+echo "    Update:  ./upgrade.sh            # or: git pull && $DC $COMPOSE up -d --build"
 echo
