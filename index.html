@@ -1216,6 +1216,13 @@ html.office .provider-btn:hover {
 /* Human-readable identity fields (names, workspace title) read as plain text —
    mono is reserved for paths, keys, URLs, and other machine values. */
 .settings-grid input.sans { font-family: var(--ui); font-size: 13.5px; }
+.email-events { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
+.email-event-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--rule-soft); border-radius: 9px; cursor: pointer; }
+.email-event-row:hover { background: var(--accent-wash); }
+.email-event-row input { margin-top: 2px; flex: 0 0 auto; }
+.email-event-row span { display: flex; flex-direction: column; gap: 1px; }
+.email-event-row strong { font-size: 13px; font-weight: 600; }
+.email-event-row em { font-style: normal; font-size: 11.5px; color: var(--ink-soft); }
 .danger-zone { margin-top: 24px; border: 1px solid color-mix(in srgb, #c0392b 45%, var(--rule)); border-radius: 10px; overflow: hidden; }
 .danger-zone-head { padding: 8px 14px; background: color-mix(in srgb, #c0392b 10%, transparent); color: #c0392b; font: 700 11px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
 .danger-zone-row { display: flex; align-items: center; gap: 16px; padding: 14px; flex-wrap: wrap; }
@@ -4529,6 +4536,10 @@ async function saveEmailSettings() {
     smtp_secure: document.getElementById('cfg-smtp-secure')?.value || '',
     smtp_user:   document.getElementById('cfg-smtp-user')?.value.trim() || '',
     smtp_pass:   document.getElementById('cfg-smtp-pass')?.value ?? '', // masked value is kept server-side
+    email_ev_share_granted:    document.getElementById('ev-share-granted')?.checked ? 'true' : 'false',
+    email_ev_share_downloaded: document.getElementById('ev-share-downloaded')?.checked ? 'true' : 'false',
+    email_ev_upload_received:  document.getElementById('ev-upload-received')?.checked ? 'true' : 'false',
+    email_ev_document_edited:  document.getElementById('ev-document-edited')?.checked ? 'true' : 'false',
   };
   try {
     await apiPut('/admin/settings', body);
@@ -4972,6 +4983,9 @@ function systemSettingsHtml() {
   const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
   const brandName = s.brand_name || '';
   const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'M').toUpperCase());
+  // Per-event email toggle checked-state, honoring server defaults when unset
+  // (mirror server/lib/emailEvents.js DEFAULTS).
+  const evOn = (k, def) => ((s['email_ev_' + k] ? s['email_ev_' + k] === 'true' : def) ? 'checked' : '');
   return `<div class="settings-sub">Workspace branding</div>
       <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
       <div class="settings-grid">
@@ -5145,6 +5159,14 @@ function systemSettingsHtml() {
         <input type="text" id="cfg-smtp-user" value="${esc(s.smtp_user||'')}" autocomplete="off" placeholder="Optional (often the from address)">
         <label>Password</label>
         <input type="password" id="cfg-smtp-pass" value="${esc(s.smtp_pass||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+      </div>
+      <div class="settings-sub" style="margin-top:16px">Email notifications</div>
+      <p class="settings-notice">Which events send an email (on top of the in-app bell). Applies workspace-wide; members still have their own in-app opt-out. Needs a provider configured above.</p>
+      <div class="email-events">
+        <label class="email-event-row"><input type="checkbox" id="ev-share-granted" ${evOn('share_granted', true)}> <span><strong>A file is shared with a member</strong><em>Emails the person who was granted access.</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="ev-share-downloaded" ${evOn('share_downloaded', true)}> <span><strong>A share link is downloaded</strong><em>Emails the member who created the link.</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="ev-upload-received" ${evOn('upload_received', true)}> <span><strong>A file arrives via an upload link</strong><em>Emails the link owner (also respects the per-link checkbox).</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="ev-document-edited" ${evOn('document_edited', false)}> <span><strong>A document is edited in the browser</strong><em>Emails the owner. Off by default — Office autosaves often.</em></span></label>
       </div>
       <div class="btn-row"><button class="ghost-btn" onclick="saveEmailSettings()">Save email settings</button><button class="ghost-btn" onclick="sendTestEmail()">Send test email</button></div>
 
