@@ -4762,7 +4762,6 @@ function seedAiEndpoints(s) {
 async function openSettings() {
   document.getElementById('settings-user-info').textContent =
     `${currentUser?.email}  ·  ${currentUser?.role || 'unknown'}`;
-  document.getElementById('erase-kb-btn').style.display = currentUser?.role === 'admin' ? '' : 'none';
   document.getElementById('settings-scrim').classList.add('open');
   settingsTab = 'profile';
   settingsAvatarDraft = null;
