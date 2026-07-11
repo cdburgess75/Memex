@@ -7,6 +7,8 @@ const db = require('../lib/db');
 const settings = require('../lib/settings');
 const compliance = require('../lib/compliance');
 const documentAccess = require('../lib/documentAccess');
+const seafile = require('../lib/seafileMigration');
+const storage = require('../lib/storage');
 
 // GET /api/admin/stats
 router.get('/stats', auth, requireRole('admin'), async (req, res) => {
@@ -284,6 +286,45 @@ router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---- Seafile → Memex migration ----
+// Names already in the target library (non-deleted), lowercased, so re-runs skip
+// files already migrated rather than duplicating them.
+async function targetExistingNames(libraryId) {
+  const rows = await db.query('SELECT name FROM documents WHERE library_id = $1 AND deleted_at IS NULL', [libraryId]);
+  return new Set(rows.map(r => String(r.name).toLowerCase()));
+}
+
+// POST /api/admin/migrate/seafile/test — verify credentials + repo access.
+router.post('/migrate/seafile/test', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { url, username, password, repoId } = req.body || {};
+    if (!url || !username || !password || !repoId) return res.status(400).json({ error: 'url, username, password and repoId are required' });
+    res.json(await seafile.testConnection({ url, username, password, repoId }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// POST /api/admin/migrate/seafile/start — kick off a background migration.
+router.post('/migrate/seafile/start', auth, requireRole('admin'), async (req, res) => {
+  try {
+    if (seafile.isRunning()) return res.status(409).json({ error: 'A migration is already running' });
+    const { url, username, password, repoId, targetLibraryId, destFolder } = req.body || {};
+    if (!url || !username || !password || !repoId || !targetLibraryId) {
+      return res.status(400).json({ error: 'url, username, password, repoId and targetLibraryId are required' });
+    }
+    const files = require('./files'); // required lazily to avoid load-order coupling
+    const st = seafile.start(
+      { url, username, password, repoId, targetLibraryId, destFolder, user: { id: req.user.id, email: req.user.email } },
+      { storage, createDocumentRecord: files.createDocumentRecord, existingNames: targetExistingNames }
+    );
+    res.json(st);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// GET /api/admin/migrate/seafile/status — poll progress (credentials never returned).
+router.get('/migrate/seafile/status', auth, requireRole('admin'), (_req, res) => {
+  res.json(seafile.status());
 });
 
 module.exports = router;

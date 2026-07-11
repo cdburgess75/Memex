@@ -4800,7 +4800,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'email') body.innerHTML = emailSettingsHtml();
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
   else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
-  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); }
+  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); seafileResume(); }
 }
 
 // ---- Admin activity / audit feed ----
@@ -5126,6 +5126,25 @@ function systemSettingsHtml() {
       <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
       <div id="backup-config">Loading…</div>
 
+      <div class="settings-sub" style="margin-top:20px">Import from Seafile</div>
+      <p class="settings-notice">Copy a Seafile library into a Memex library, preserving the folder tree. Files land as normal Memex documents (encrypted, indexed, attributed to you). Re-running skips files already imported. Credentials are used only for the run and are never stored.</p>
+      <div class="settings-grid">
+        <label>Seafile server URL</label>
+        <input type="text" class="sans" id="sf-url" value="${esc(s.seafile_url || 'https://depot.ptechllc.com')}" autocomplete="off" placeholder="https://depot.example.com">
+        <label>Username</label>
+        <input type="text" class="sans" id="sf-user" autocomplete="off" placeholder="service account, e.g. api@ptechllc.com">
+        <label>Password</label>
+        <input type="password" id="sf-pass" autocomplete="new-password" placeholder="used for this run only">
+        <label>Source library ID</label>
+        <input type="text" id="sf-repo" autocomplete="off" placeholder="Seafile repo GUID">
+        <label>Destination library</label>
+        <select id="sf-target">${(librariesList || []).map(l => `<option value="${esc(String(l.id))}">${esc(l.name)}</option>`).join('') || '<option value="">Default library</option>'}</select>
+        <label>Destination subfolder</label>
+        <input type="text" class="sans" id="sf-folder" autocomplete="off" placeholder="Optional, e.g. Imports/Seafile">
+      </div>
+      <div class="btn-row"><button class="ghost-btn" type="button" onclick="seafileTest()">Test connection</button><button class="run-btn" type="button" id="sf-start-btn" onclick="seafileStart()">Start migration</button></div>
+      <div id="sf-status" class="settings-notice" style="display:none;margin-top:8px"></div>
+
       <div class="settings-sub" style="margin-top:20px">Settings export</div>
       <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
       <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
@@ -5228,6 +5247,69 @@ function exportSettingsXml() {
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Settings exported (secrets are masked)');
+}
+
+// ---- Seafile → Memex migration ----
+function seafileForm() {
+  const url = document.getElementById('sf-url')?.value.trim();
+  const username = document.getElementById('sf-user')?.value.trim();
+  const password = document.getElementById('sf-pass')?.value || '';
+  const repoId = document.getElementById('sf-repo')?.value.trim();
+  const targetLibraryId = document.getElementById('sf-target')?.value || '';
+  const destFolder = document.getElementById('sf-folder')?.value.trim() || '';
+  if (!url || !username || !password || !repoId) { toast('Fill in server URL, username, password and library ID'); return null; }
+  return { url, username, password, repoId, targetLibraryId, destFolder };
+}
+function sfStatusEl() { const el = document.getElementById('sf-status'); if (el) el.style.display = 'block'; return el; }
+async function seafileTest() {
+  const body = seafileForm(); if (!body) return;
+  const el = sfStatusEl(); if (!el) return;
+  el.textContent = 'Testing connection…';
+  try {
+    const r = await apiPost('/admin/migrate/seafile/test', body);
+    el.innerHTML = `Connected. Library <strong>${esc(r.repoName || body.repoId)}</strong> — ${r.topLevelEntries} item(s) at the root. Ready to import.`;
+  } catch (e) { el.textContent = 'Connection failed: ' + e.message; }
+}
+async function seafileStart() {
+  const body = seafileForm(); if (!body) return;
+  if (!confirm('Start importing this Seafile library into Memex? It copies every file and may take a while. You can leave this page — it runs in the background.')) return;
+  const el = sfStatusEl(); if (!el) return;
+  el.textContent = 'Starting…';
+  const btn = document.getElementById('sf-start-btn'); if (btn) btn.disabled = true;
+  try { await apiPost('/admin/migrate/seafile/start', body); seafilePoll(); }
+  catch (e) { el.textContent = 'Could not start: ' + e.message; if (btn) btn.disabled = false; }
+}
+let seafilePollTimer = null;
+async function seafilePoll() {
+  clearTimeout(seafilePollTimer);
+  const el = document.getElementById('sf-status');
+  if (!el) return; // tab navigated away — migration keeps running server-side
+  let st;
+  try { st = await apiGet('/admin/migrate/seafile/status'); }
+  catch { seafilePollTimer = setTimeout(seafilePoll, 3000); return; }
+  const btn = document.getElementById('sf-start-btn');
+  const seen = (st.done || 0) + (st.skipped || 0) + (st.failed || 0);
+  const pct = st.total ? Math.round((seen / st.total) * 100) : 0;
+  const errs = (st.errors && st.errors.length)
+    ? `<br><span style="color:var(--ink-faint)">First errors: ${st.errors.slice(0, 5).map(e => esc(e.path)).join(', ')}</span>` : '';
+  if (st.status === 'running') {
+    el.style.display = 'block';
+    el.innerHTML = `Importing… <strong>${seen} of ${st.total}</strong> (${pct}%) · ${st.done} imported, ${st.skipped} skipped, ${st.failed} failed<br><span style="color:var(--ink-faint)">${esc(st.current || '')}</span>`;
+    if (btn) btn.disabled = true;
+    seafilePollTimer = setTimeout(seafilePoll, 2000);
+  } else if (st.status === 'done') {
+    el.style.display = 'block';
+    el.innerHTML = `Import complete. <strong>${st.done} imported</strong>, ${st.skipped} already present, ${st.failed} failed.${errs}`;
+    if (btn) btn.disabled = false;
+  } else if (st.status === 'error') {
+    el.style.display = 'block';
+    el.innerHTML = `Import failed: ${esc(st.error || 'unknown')}${errs}`;
+    if (btn) btn.disabled = false;
+  }
+}
+// On opening the System tab, reflect any migration already in progress.
+async function seafileResume() {
+  try { const st = await apiGet('/admin/migrate/seafile/status'); if (st.status === 'running') seafilePoll(); } catch { /* ignore */ }
 }
 
 /* ---------- scheduled backups ---------- */

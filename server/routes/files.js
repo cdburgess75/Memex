@@ -2013,3 +2013,4 @@ module.exports.uploadLinkClientShape = uploadLinkClientShape;
 module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
+module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
