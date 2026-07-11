@@ -13,7 +13,7 @@ const documentAccess = require('../lib/documentAccess');
 const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
-const email = require('../lib/email');
+const emailEvents = require('../lib/emailEvents');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const { zipFiles } = require('../lib/zip');
@@ -491,6 +491,11 @@ router.get('/share/:token', async (req, res) => {
           dedupeMinutes: 2,
         });
       } catch (e) { console.error('notification (share_downloaded) failed:', e.message); }
+      emailEvents.send('share_downloaded', {
+        to: share.created_by_email,
+        subject: `Your shared file was downloaded: ${share.name}`,
+        text: `"${share.name}" was just downloaded via a Memex share link you created.`,
+      }).catch(() => {});
     }
     res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name)}"`);
@@ -940,6 +945,11 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
           refId: doc.id,
         });
       } catch (e) { console.error('notification (share_granted) failed:', e.message); }
+      emailEvents.send('share_granted', {
+        to: grant.subject_email,
+        subject: `${req.user.email} shared a file with you`,
+        text: `${req.user.email} gave you ${grant.permission} access to "${doc.name}" in Memex.\n\nSign in to Memex to open it.`,
+      }).catch(() => {});
     }
     res.json({ grant });
   } catch (e) {
@@ -1982,10 +1992,11 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
         });
       } catch (e) { console.error('notification (upload_received) failed:', e.message); }
     }
-    // Email alert (per-link opt-out; best-effort, no-op when email isn't configured).
+    // Email alert — gated by BOTH the per-link opt-out and the admin's global
+    // upload-received toggle. Best-effort; no-op when email isn't configured.
     if (row.notify_email !== false && row.created_by_email) {
       const who = uploaderName || 'Someone';
-      email.sendMail({
+      emailEvents.send('upload_received', {
         to: row.created_by_email,
         subject: `New upload${row.label ? ` · ${row.label}` : ''}: ${base}`,
         text: `${who} uploaded "${base}" via your Memex upload link${row.label ? ` (${row.label})` : ''}.\n\nSign in to Memex to view it.`,

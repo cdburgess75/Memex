@@ -6,6 +6,7 @@ const { validateToken, getLock, setLock, clearLock } = require('../lib/wopiToken
 const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
 const notifications = require('../lib/notifications');
+const emailEvents = require('../lib/emailEvents');
 
 function validateFileToken(req, res) {
   const entry = validateToken(req.query.access_token);
@@ -133,6 +134,11 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
           dedupeMinutes: 30,
         });
       } catch (e) { console.error('notification (document_edited) failed:', e.message); }
+      emailEvents.send('document_edited', {
+        to: doc.uploaded_by_email,
+        subject: `${entry.userEmail} edited your file: ${doc.name}`,
+        text: `${entry.userEmail} edited "${doc.name}" in Memex.\n\nSign in to Memex to review the changes.`,
+      }).catch(() => {});
     }
     res.status(200).end();
   } catch (e) {
