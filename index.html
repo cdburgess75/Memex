@@ -4776,7 +4776,13 @@ function closeSettings() { document.getElementById('settings-scrim').classList.r
 
 function settingsTabsList() {
   const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' }, { id: 'notifications', label: 'Notifications' }];
-  if (currentUser?.role === 'admin') tabs.push({ id: 'ai', label: 'AI' }, { id: 'system', label: 'System' });
+  if (currentUser?.role === 'admin') tabs.push(
+    { id: 'workspace', label: 'Workspace' },
+    { id: 'email', label: 'Email' },
+    { id: 'ai', label: 'AI' },
+    { id: 'activity', label: 'Activity' },
+    { id: 'system', label: 'System' }
+  );
   return tabs;
 }
 function renderSettingsTabs() {
@@ -4790,8 +4796,11 @@ function switchSettingsTab(tab) {
   if (tab === 'profile') body.innerHTML = profileSettingsHtml();
   else if (tab === 'appearance') body.innerHTML = appearanceSettingsHtml();
   else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml(); loadNotifications(); }
+  else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml();
+  else if (tab === 'email') body.innerHTML = emailSettingsHtml();
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
-  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); loadActivity(true); }
+  else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
+  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); }
 }
 
 // ---- Admin activity / audit feed ----
@@ -4976,15 +4985,11 @@ function appearanceSettingsHtml() {
     </div>
     <p class="settings-notice" style="margin-top:10px">Theme and accent are saved on this device.</p>`;
 }
-function systemSettingsHtml() {
+function workspaceSettingsHtml() {
   const s = settingsSys || {};
-  const provider = s.storage_provider || 'local';
   const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
   const brandName = s.brand_name || '';
   const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'M').toUpperCase());
-  // Per-event email toggle checked-state, honoring server defaults when unset
-  // (mirror server/lib/emailEvents.js DEFAULTS).
-  const evOn = (k, def) => ((s['email_ev_' + k] ? s['email_ev_' + k] === 'true' : def) ? 'checked' : '');
   return `<div class="settings-sub">Workspace branding</div>
       <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
       <div class="settings-grid">
@@ -5001,9 +5006,12 @@ function systemSettingsHtml() {
         </div>
       </div>
       <p class="settings-notice">PNG, JPG, SVG or WebP, up to 256&nbsp;KB. A transparent PNG or SVG looks best.</p>
-      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveBrandingSettings()">Save branding</button>
-
-      <div class="settings-sub" style="margin-top:20px">File Storage</div>
+      <button class="ghost-btn" style="margin-bottom:4px" onclick="saveBrandingSettings()">Save branding</button>`;
+}
+function systemSettingsHtml() {
+  const s = settingsSys || {};
+  const provider = s.storage_provider || 'local';
+  return `<div class="settings-sub">File Storage</div>
       <p class="settings-notice">Changing the storage provider does not migrate existing files. Files at the previous location may be inaccessible until moved manually.</p>
       <div class="settings-grid">
         <label>Provider</label>
@@ -5114,7 +5122,35 @@ function systemSettingsHtml() {
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
-      <div class="settings-sub" style="margin-top:20px">Email</div>
+      <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
+      <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
+      <div id="backup-config">Loading…</div>
+
+      <div class="settings-sub" style="margin-top:20px">Settings export</div>
+      <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
+      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
+
+      <div class="danger-zone">
+        <div class="danger-zone-head">Danger zone</div>
+        <div class="danger-zone-row">
+          <div>
+            <strong>Erase the knowledge base</strong>
+            <p>Permanently deletes every knowledge page for all team members. Uploaded files are not affected. This cannot be undone.</p>
+          </div>
+          <div class="danger-zone-action">
+            <input type="text" id="erase-confirm" class="sans" autocomplete="off" placeholder="Type ERASE to confirm"
+                   oninput="const b=document.getElementById('erase-btn');if(b)b.disabled=this.value.trim()!=='ERASE'">
+            <button id="erase-btn" class="danger-btn" type="button" disabled onclick="wipeAll()">Erase knowledge base</button>
+          </div>
+        </div>
+      </div>`;
+}
+function emailSettingsHtml() {
+  const s = settingsSys || {};
+  // Per-event email toggle checked-state, honoring server defaults when unset
+  // (mirror server/lib/emailEvents.js DEFAULTS).
+  const evOn = (k, def) => ((s['email_ev_' + k] ? s['email_ev_' + k] === 'true' : def) ? 'checked' : '');
+  return `<div class="settings-sub">Email</div>
       <p class="settings-notice">Notification emails (uploads, share downloads). Microsoft Graph (365) is the durable primary; SMTP is a fallback. Leave both unconfigured to keep email off — in-app notifications still work.</p>
       <div class="settings-grid">
         <label>Provider</label>
@@ -5167,13 +5203,10 @@ function systemSettingsHtml() {
         <label class="email-event-row"><input type="checkbox" id="ev-upload-received" ${evOn('upload_received', true)}> <span><strong>A file arrives via an upload link</strong><em>Emails the link owner (also respects the per-link checkbox).</em></span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-document-edited" ${evOn('document_edited', false)}> <span><strong>A document is edited in the browser</strong><em>Emails the owner. Off by default — Office autosaves often.</em></span></label>
       </div>
-      <div class="btn-row"><button class="ghost-btn" onclick="saveEmailSettings()">Save email settings</button><button class="ghost-btn" onclick="sendTestEmail()">Send test email</button></div>
-
-      <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
-      <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
-      <div id="backup-config">Loading…</div>
-
-      <div class="settings-sub" style="margin-top:20px">Activity log</div>
+      <div class="btn-row"><button class="ghost-btn" onclick="saveEmailSettings()">Save email settings</button><button class="ghost-btn" onclick="sendTestEmail()">Send test email</button></div>`;
+}
+function activitySettingsHtml() {
+  return `<div class="settings-sub">Activity log</div>
       <p class="settings-notice">Audit trail of file events — uploads, edits, shares, downloads, and access changes — for compliance evidence and investigations.</p>
       <div class="activity-filters">
         <input type="text" id="act-actor" placeholder="Filter by person (email)" autocomplete="off" oninput="activityFilterChanged()">
@@ -5182,26 +5215,7 @@ function systemSettingsHtml() {
         <input type="date" id="act-to" onchange="loadActivity(true)" title="To date" aria-label="To date">
         <button class="ghost-btn" type="button" onclick="exportActivityCsv()">Export CSV</button>
       </div>
-      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>
-
-      <div class="settings-sub" style="margin-top:20px">Settings export</div>
-      <p class="settings-notice">Export all system settings to an XML file. Secret values (keys, passwords) are masked in the export.</p>
-      <button class="ghost-btn" onclick="exportSettingsXml()">Export settings (XML)</button>
-
-      <div class="danger-zone">
-        <div class="danger-zone-head">Danger zone</div>
-        <div class="danger-zone-row">
-          <div>
-            <strong>Erase the knowledge base</strong>
-            <p>Permanently deletes every knowledge page for all team members. Uploaded files are not affected. This cannot be undone.</p>
-          </div>
-          <div class="danger-zone-action">
-            <input type="text" id="erase-confirm" class="sans" autocomplete="off" placeholder="Type ERASE to confirm"
-                   oninput="const b=document.getElementById('erase-btn');if(b)b.disabled=this.value.trim()!=='ERASE'">
-            <button id="erase-btn" class="danger-btn" type="button" disabled onclick="wipeAll()">Erase knowledge base</button>
-          </div>
-        </div>
-      </div>`;
+      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};
