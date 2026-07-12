@@ -915,6 +915,14 @@ html.dark .chip { color: var(--accent-soft); }
 .activity-when { color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .activity-more { display: block; width: 100%; border-radius: 0; border: 0; border-top: 1px solid var(--rule-soft); }
 .activity-count { margin: 0; padding: 9px; }
+.access-review-wrap { border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; }
+.access-review-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 560px; }
+.access-review-table th { text-align: left; color: var(--ink-faint); font: 600 11px var(--ui); letter-spacing: 0.03em; text-transform: uppercase; padding: 8px 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.access-review-table td { padding: 8px 12px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+.access-review-table tbody tr:last-child td { border-bottom: 0; }
+.ar-role { display: inline-block; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 11px; background: var(--accent-wash); color: var(--accent-soft); text-transform: capitalize; }
+.ar-role-admin { background: color-mix(in srgb, #c0392b 15%, transparent); color: #c0392b; }
+.ar-role-viewer { background: color-mix(in srgb, #2d7d46 16%, transparent); color: #2d7d46; }
 .modal h2 {
   font-family: var(--display);
   font-weight: 600;
@@ -4799,7 +4807,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml();
   else if (tab === 'email') body.innerHTML = emailSettingsHtml();
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
-  else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
+  else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
   else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); seafileResume(); }
 }
 
@@ -5235,7 +5243,12 @@ function activitySettingsHtml() {
         <input type="date" id="act-to" onchange="loadActivity(true)" title="To date" aria-label="To date">
         <button class="ghost-btn" type="button" onclick="exportActivityCsv()">Export CSV</button>
       </div>
-      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>`;
+      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>
+
+      <div class="settings-sub" style="margin-top:20px">Access review</div>
+      <p class="settings-notice">Every user, their role, library access, direct document shares, and last activity, for periodic review and sign-off.</p>
+      <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
+      <div id="access-review">${emptyState('Loading review', 'Building the access review.')}</div>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};
@@ -5316,6 +5329,38 @@ async function verifyAuditLog() {
     if (r.ok) el.innerHTML = `<span style="color:#2d7d46">✓ Intact — ${r.count} chained event${r.count === 1 ? '' : 's'} verified.</span>`;
     else el.innerHTML = `<span style="color:#c0392b">✗ Integrity check failed at entry ${r.brokenAt}: ${esc(r.reason)}</span>`;
   } catch (e) { el.textContent = 'Verify failed: ' + e.message; }
+}
+// ---- Access review ----
+function accessWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+async function loadAccessReview() {
+  const el = document.getElementById('access-review'); if (!el) return;
+  try { el.innerHTML = renderAccessReview(await apiGet('/admin/access-review')); }
+  catch (e) { el.innerHTML = emptyState('Could not load review', esc(e.message)); }
+}
+function renderAccessReview(r) {
+  const open = (r.openLibraries && r.openLibraries.length)
+    ? `<p class="settings-notice">Open libraries (any signed-in user can access): ${r.openLibraries.map(esc).join(', ')}</p>` : '';
+  const rows = r.users.map(u => `<tr>
+      <td>${esc(u.email)}${u.name ? `<div class="file-row-sub">${esc(u.name)}</div>` : ''}</td>
+      <td><span class="ar-role ar-role-${esc(u.role)}">${esc(u.role)}</span></td>
+      <td>${u.libraries.length ? u.libraries.map(esc).join(', ') : '<span class="cell-empty">—</span>'}</td>
+      <td style="text-align:right">${u.directShares || 0}</td>
+      <td>${u.lastActivity ? esc(accessWhen(u.lastActivity)) : '<span class="cell-empty">never</span>'}</td>
+    </tr>`).join('');
+  return `${open}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th>Libraries</th><th style="text-align:right">Direct shares</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="settings-notice">${r.userCount} user${r.userCount === 1 ? '' : 's'} · generated ${esc(accessWhen(r.generatedAt))}</p>`;
+}
+async function exportAccessReviewCsv() {
+  try {
+    const res = await fetch('/api/admin/access-review.csv', { headers: { Authorization: `Bearer ${await getToken()}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `memex-access-review-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { toast('Export failed: ' + e.message); }
 }
 // On opening the System tab, reflect any migration already in progress.
 async function seafileResume() {

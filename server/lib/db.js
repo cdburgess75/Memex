@@ -3,7 +3,12 @@ const { Pool } = require('pg');
 
 let _pool;
 function getPool() {
-  if (!_pool) _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  if (!_pool) _pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.PG_POOL_MAX) || 20,
+    // Fail fast instead of hanging forever if the pool is momentarily exhausted.
+    connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS) || 5000,
+  });
   return _pool;
 }
 

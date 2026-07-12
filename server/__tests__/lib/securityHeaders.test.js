@@ -3,9 +3,9 @@ const express = require('express');
 const request = require('supertest');
 const securityHeaders = require('../../lib/securityHeaders');
 
-function app() {
+function app(trustProxy = true) {
   const a = express();
-  a.set('trust proxy', true); // so req.secure reflects x-forwarded-proto
+  a.set('trust proxy', trustProxy); // when true, req.secure reflects x-forwarded-proto
   a.use(securityHeaders);
   a.get('/x', (_req, res) => res.send('ok'));
   return a;
@@ -33,6 +33,11 @@ describe('securityHeaders', () => {
     const r = await request(app()).get('/x').set('x-forwarded-proto', 'https');
     expect(r.headers['strict-transport-security']).toMatch(/max-age=\d+/);
     expect(r.headers['strict-transport-security']).toContain('includeSubDomains');
+  });
+
+  test('does NOT send HSTS for a spoofed x-forwarded-proto when trust-proxy is off', async () => {
+    const r = await request(app(false)).get('/x').set('x-forwarded-proto', 'https');
+    expect(r.headers['strict-transport-security']).toBeUndefined();
   });
 
   test('does not set a restrictive CSP (SPA relies on inline scripts)', async () => {

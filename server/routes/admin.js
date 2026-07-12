@@ -268,10 +268,7 @@ router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
          LIMIT 10000`,
       params
     );
-    const csvCell = (v) => {
-      const s = v == null ? '' : String(v);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
+    const { csvCell } = require('../lib/csv');
     const header = ['timestamp', 'event', 'actor', 'document', 'detail'];
     const lines = [header.join(',')];
     for (const r of rows) {
@@ -332,6 +329,24 @@ router.get('/migrate/seafile/status', auth, requireRole('admin'), (_req, res) =>
 router.get('/compliance/audit-verify', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/auditLog').verify());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/access-review — user/role/library-access/last-activity review.
+router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    res.json(await require('../lib/accessReview').build());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/access-review.csv — the same review as a CSV download.
+router.get('/access-review.csv', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const review = require('../lib/accessReview');
+    const csv = review.toCsv(await review.build());
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="memex-access-review-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

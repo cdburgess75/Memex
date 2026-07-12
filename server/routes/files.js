@@ -1057,7 +1057,7 @@ router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'),
       [req.user.id, req.user.email, req.params.shareId, req.params.id]
     );
     if (!share) return res.status(404).json({ error: 'Share link not found' });
-    await logDocumentEvent(req.params.id, 'share_revoked', req.user.id, req.user.email, `share ${req.params.shareId}`);
+    await logDocumentEvent(share.document_id, 'share_revoked', req.user.id, req.user.email, `share ${req.params.shareId}`);
     await logEvent(`share revoke · ${req.params.id}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {

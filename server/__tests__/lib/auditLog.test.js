@@ -3,7 +3,7 @@
 // verifies, and any mutation (contents, deletion/reorder, or a swapped link) is
 // detected at the right entry.
 jest.mock('../../lib/db', () => ({ query: jest.fn(), queryOne: jest.fn(), withTransaction: jest.fn() }));
-const { hashEvent, verifyRows } = require('../../lib/auditLog');
+const { hashEvent, verifyRows, normId } = require('../../lib/auditLog');
 
 // Build a well-formed chain from a list of event field-sets.
 function buildChain(events) {
@@ -36,16 +36,33 @@ describe('hashEvent', () => {
     expect(hashEvent('p', { ...base, ts_ms: 2 })).not.toBe(h);
     expect(hashEvent('p', { ...base, actor_email: 'z@b.com' })).not.toBe(h);
   });
+  test('document_id is normalized so a mixed-case UUID hashes the same as its canonical form', () => {
+    const upper = 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11';
+    const lower = upper.toLowerCase();
+    expect(normId(upper)).toBe(lower);
+    const row = { event_type: 'share_revoked', actor_email: 'a@b.com', detail: 'x', ts_ms: 1 };
+    // append hashes the raw (upper) input; verify hashes the DB-canonical (lower).
+    expect(hashEvent('p', { ...row, document_id: upper })).toBe(hashEvent('p', { ...row, document_id: lower }));
+  });
 });
 
 describe('verifyRows', () => {
-  test('a well-formed chain verifies', () => {
+  test('a well-formed chain verifies and returns the running head', () => {
     const chain = buildChain(EVENTS);
-    expect(verifyRows(chain)).toEqual({ ok: true, count: 3, head: chain[2].hash });
+    expect(verifyRows(chain)).toEqual({ ok: true, prev: chain[2].hash });
   });
 
-  test('empty chain is ok', () => {
-    expect(verifyRows([])).toEqual({ ok: true, count: 0, head: null });
+  test('empty batch carries the prior head through', () => {
+    expect(verifyRows([])).toEqual({ ok: true, prev: '' });
+    expect(verifyRows([], 'abc')).toEqual({ ok: true, prev: 'abc' });
+  });
+
+  test('batches chain across calls via startPrev (keyset pagination)', () => {
+    const chain = buildChain(EVENTS);
+    const first = verifyRows(chain.slice(0, 2), '');
+    expect(first.ok).toBe(true);
+    const second = verifyRows(chain.slice(2), first.prev);
+    expect(second).toEqual({ ok: true, prev: chain[2].hash });
   });
 
   test('detects a mutated field (hash no longer matches contents)', () => {
