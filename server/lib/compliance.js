@@ -68,8 +68,8 @@ const CONTROL_CATALOG = {
   },
   audit_logging: {
     label: 'Audit logging',
-    evidence: 'Activity log, file history, version history, share events, and admin-only history views.',
-    gap: 'Add immutable or append-only audit export.',
+    evidence: 'Tamper-evident (hash-chained) activity log with an admin integrity-verify check, plus file history, version history, share events, and admin history views.',
+    gap: 'Retain periodic exported integrity attestations off-box.',
   },
   encryption: {
     label: 'Encryption at rest',

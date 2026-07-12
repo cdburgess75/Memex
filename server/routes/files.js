@@ -14,6 +14,7 @@ const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
+const auditLog = require('../lib/auditLog');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const { zipFiles } = require('../lib/zip');
@@ -112,10 +113,8 @@ async function logEvent(event, userId, userEmail) {
 }
 
 async function logDocumentEvent(documentId, eventType, userId, userEmail, detail = null) {
-  await db.query(
-    'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
-    [documentId, eventType, userId, userEmail, detail]
-  );
+  // Appended to the tamper-evident hash chain (see lib/auditLog).
+  await auditLog.append({ documentId, eventType, actorId: userId, actorEmail: userEmail, detail });
 }
 
 function requestAuditDetail(req) {

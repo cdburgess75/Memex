@@ -5,7 +5,11 @@ const express = require('express');
 jest.mock('../../lib/db', () => ({
   query: jest.fn().mockResolvedValue([]),
   queryOne: jest.fn().mockResolvedValue(null),
+  withTransaction: jest.fn(),
 }));
+
+// Audit-log append is a side effect of grant/revoke; neutralize it here.
+jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
 
 jest.mock('../../lib/storage', () => ({
   getUrl: jest.fn().mockResolvedValue('http://signed.example/file'),

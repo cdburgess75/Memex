@@ -5226,7 +5226,8 @@ function emailSettingsHtml() {
 }
 function activitySettingsHtml() {
   return `<div class="settings-sub">Activity log</div>
-      <p class="settings-notice">Audit trail of file events — uploads, edits, shares, downloads, and access changes — for compliance evidence and investigations.</p>
+      <p class="settings-notice">Audit trail of file events (uploads, edits, shares, downloads, and access changes) for compliance evidence and investigations. Entries are hash-chained, so any change or deletion is detectable.</p>
+      <p class="settings-notice" style="display:flex;align-items:center;gap:10px;margin-top:0"><button class="ghost-btn" type="button" onclick="verifyAuditLog()">Verify log integrity</button><span id="audit-verify-result"></span></p>
       <div class="activity-filters">
         <input type="text" id="act-actor" placeholder="Filter by person (email)" autocomplete="off" oninput="activityFilterChanged()">
         <select id="act-event" onchange="loadActivity(true)"><option value="">All events</option></select>
@@ -5306,6 +5307,15 @@ async function seafilePoll() {
     el.innerHTML = `Import failed: ${esc(st.error || 'unknown')}${errs}`;
     if (btn) btn.disabled = false;
   }
+}
+async function verifyAuditLog() {
+  const el = document.getElementById('audit-verify-result'); if (!el) return;
+  el.textContent = 'Verifying…';
+  try {
+    const r = await apiGet('/admin/compliance/audit-verify');
+    if (r.ok) el.innerHTML = `<span style="color:#2d7d46">✓ Intact — ${r.count} chained event${r.count === 1 ? '' : 's'} verified.</span>`;
+    else el.innerHTML = `<span style="color:#c0392b">✗ Integrity check failed at entry ${r.brokenAt}: ${esc(r.reason)}</span>`;
+  } catch (e) { el.textContent = 'Verify failed: ' + e.message; }
 }
 // On opening the System tab, reflect any migration already in progress.
 async function seafileResume() {
