@@ -14,8 +14,11 @@ function securityHeaders(req, res, next) {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(self), camera=(self)');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  const proto = req.secure ? 'https' : String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  if (proto === 'https') {
+  // Only over genuine HTTPS. req.secure already honors X-Forwarded-Proto when the
+  // app trusts the proxy (set behind Caddy); reading the raw header ourselves
+  // would let a client on the plain-http listener spoof HSTS onto a cleartext
+  // response when trust-proxy is off.
+  if (req.secure) {
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   }
   next();
