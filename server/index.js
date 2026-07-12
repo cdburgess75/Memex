@@ -47,6 +47,10 @@ app.use((_req, _res, next) => {
 const collaboraProxy = require('./lib/collaboraProxy');
 app.use((req, res, next) => (collaboraProxy.isCollaboraPath(req.path) ? collaboraProxy.httpMiddleware(req, res) : next()));
 
+// Baseline security headers — placed AFTER the Collabora proxy so the editor's
+// proxied responses keep Collabora's own CSP/frame headers untouched.
+app.use(require('./lib/securityHeaders'));
+
 app.use(express.json());
 
 const { apiLimiter, authLimiter, shareLimiter } = makeRateLimiters();
