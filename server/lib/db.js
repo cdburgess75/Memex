@@ -17,4 +17,21 @@ async function queryOne(sql, params = []) {
   return rows[0] ?? null;
 }
 
-module.exports = { query, queryOne };
+// Run fn inside a single-connection transaction. fn receives a client whose
+// .query() participates in the transaction; COMMIT on success, ROLLBACK on throw.
+async function withTransaction(fn) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* connection may be dead */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { query, queryOne, withTransaction };

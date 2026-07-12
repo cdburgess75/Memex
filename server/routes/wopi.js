@@ -7,6 +7,7 @@ const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
+const auditLog = require('../lib/auditLog');
 
 function validateFileToken(req, res) {
   const entry = validateToken(req.query.access_token);
@@ -33,10 +34,7 @@ async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [doc.id, next, doc.name, doc.size || 0, doc.mime_type, versionPath, doc.document_text || null, entry.userId, entry.userEmail, source]
   );
-  await db.query(
-    'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
-    [doc.id, 'version_saved', entry.userId, entry.userEmail, `${source} · version ${next}`]
-  );
+  await auditLog.append({ documentId: doc.id, eventType: 'version_saved', actorId: entry.userId, actorEmail: entry.userEmail, detail: `${source} · version ${next}` });
 }
 
 // GET /wopi/files/:fileId — CheckFileInfo
@@ -115,10 +113,7 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
     } else {
       await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
     }
-    await db.query(
-      'INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail) VALUES ($1, $2, $3, $4, $5)',
-      [doc.id, 'updated', entry.userId, entry.userEmail, `Office save · ${buffer.length} bytes`]
-    );
+    await auditLog.append({ documentId: doc.id, eventType: 'updated', actorId: entry.userId, actorEmail: entry.userEmail, detail: `Office save · ${buffer.length} bytes` });
     // Notify the owner that a collaborator edited their file. Office editors
     // autosave often, so dedupe to at most one ping per 30 min per document.
     if (doc.uploaded_by_email && doc.uploaded_by_email.toLowerCase() !== String(entry.userEmail || '').toLowerCase()) {

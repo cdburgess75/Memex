@@ -327,5 +327,13 @@ router.get('/migrate/seafile/status', auth, requireRole('admin'), (_req, res) =>
   res.json(seafile.status());
 });
 
+// GET /api/admin/compliance/audit-verify — walk and verify the tamper-evident
+// audit-log hash chain. Returns { ok, count, head } or the first break.
+router.get('/compliance/audit-verify', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    res.json(await require('../lib/auditLog').verify());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
 module.exports.activityFilters = activityFilters; // exported for unit tests
