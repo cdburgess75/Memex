@@ -116,8 +116,8 @@ const CONTROL_CATALOG = {
   },
   network_security: {
     label: 'Network security',
-    evidence: 'CORS, bind address, trust proxy, and production Caddy overlay are configurable.',
-    gap: 'Enable HTTPS, security headers, MFA/SSO, and hardened reverse proxy evidence.',
+    evidence: 'Baseline security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS on HTTPS) are enforced; CORS, bind address, trust proxy, and production Caddy overlay are configurable.',
+    gap: 'Enable HTTPS end to end, MFA/SSO, and retain hardened reverse-proxy evidence.',
   },
   risk_register: {
     label: 'Risk register',
