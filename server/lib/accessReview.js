@@ -55,15 +55,19 @@ async function build() {
   return assemble({ roles, profiles, memberships, libraries, lastActivity, shares });
 }
 
+const iso = (v) => (v instanceof Date ? v.toISOString() : (v || ''));
+
 function toCsv(report) {
   const lines = [];
-  lines.push(`# Memex access review — generated ${report.generatedAt}`);
-  if (report.openLibraries.length) lines.push(`# Open libraries (all signed-in users): ${report.openLibraries.join('; ')}`);
+  // Header comment lines go through csvCell too: a library name (contributor-
+  // controllable) with an embedded newline would otherwise split the "# Open
+  // libraries" line into a new physical row that could start with a formula.
+  lines.push(csvCell(`# Memex access review: generated ${report.generatedAt}`));
+  if (report.openLibraries.length) lines.push(csvCell(`# Open libraries (all signed-in users): ${report.openLibraries.join('; ')}`));
   lines.push(['email', 'name', 'role', 'role_assigned', 'libraries', 'direct_shares', 'last_activity'].join(','));
   for (const u of report.users) {
     lines.push([
-      u.email, u.name, u.role, u.roleAssignedAt, u.libraries.join('; '), u.directShares,
-      u.lastActivity instanceof Date ? u.lastActivity.toISOString() : (u.lastActivity || ''),
+      u.email, u.name, u.role, iso(u.roleAssignedAt), u.libraries.join('; '), u.directShares, iso(u.lastActivity),
     ].map(csvCell).join(','));
   }
   return lines.join('\n');

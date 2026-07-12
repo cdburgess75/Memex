@@ -39,4 +39,7 @@ async function withTransaction(fn) {
   }
 }
 
-module.exports = { query, queryOne, withTransaction };
+// Close the pool (integration-test teardown; the app itself never calls this).
+async function end() { if (_pool) { const p = _pool; _pool = null; await p.end(); } }
+
+module.exports = { query, queryOne, withTransaction, end };
