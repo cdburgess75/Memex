@@ -92,6 +92,16 @@ function verifyRows(rows, startPrev = '') {
     if (row.hash !== hashEvent(prev, row)) {
       return { ok: false, brokenAt: Number(row.chain_seq), reason: 'row contents do not match its hash' };
     }
+    // created_at is the field the admin feed/CSV display and order by, and it is
+    // written from ts_ms (which IS hashed). Binding it here so rewriting the
+    // visible timestamp out-of-band (without touching ts_ms/hash) is detected.
+    // Guarded on presence so the pure unit tests (which omit created_at) still run.
+    if (row.created_at != null) {
+      const cms = row.created_at instanceof Date ? row.created_at.getTime() : Date.parse(row.created_at);
+      if (cms !== Number(row.ts_ms)) {
+        return { ok: false, brokenAt: Number(row.chain_seq), reason: 'created_at does not match the hashed timestamp' };
+      }
+    }
     prev = row.hash;
   }
   return { ok: true, prev };
@@ -106,7 +116,7 @@ async function verify() {
   let count = 0;
   for (;;) {
     const rows = await db.query(
-      'SELECT chain_seq, event_type, actor_email, document_id, detail, ts_ms, prev_hash, hash FROM document_events WHERE hash IS NOT NULL AND chain_seq > $1 ORDER BY chain_seq ASC LIMIT $2',
+      'SELECT chain_seq, event_type, actor_email, document_id, detail, ts_ms, prev_hash, hash, created_at FROM document_events WHERE hash IS NOT NULL AND chain_seq > $1 ORDER BY chain_seq ASC LIMIT $2',
       [after, VERIFY_BATCH]
     );
     if (!rows.length) break;

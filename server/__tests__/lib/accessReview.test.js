@@ -78,4 +78,23 @@ describe('toCsv', () => {
     expect(csv).toContain('"\'=HYPERLINK');
     expect(csv).not.toMatch(/,=HYPERLINK/);
   });
+
+  test('a newline-bearing open-library name cannot split the header into a formula row', () => {
+    // A contributor-created library (no members => "open") with an embedded newline.
+    const data = { ...DATA, libraries: [
+      { id: 'L1', name: 'Clients' }, { id: 'L2', name: 'Ops' },
+      { id: 'L3', name: 'Public\n=HYPERLINK("http://evil","x")' },
+    ] };
+    const csv = toCsv(assemble(data, NOW));
+    // The whole "# Open libraries" header must be quoted, so the newline stays
+    // inside one CSV field instead of starting a new physical =formula row.
+    expect(csv).toContain('"# Open libraries');
+  });
+
+  test('role_assigned is ISO even when Postgres returns a Date object', () => {
+    const data = { ...DATA, roles: [{ user_id: 'u1', email: 'dave@x.com', role: 'admin', assigned_at: new Date('2026-02-01T00:00:00.000Z') }] };
+    const csv = toCsv(assemble(data, NOW));
+    expect(csv).toContain('2026-02-01T00:00:00.000Z');
+    expect(csv).not.toMatch(/GMT|Pacific|Daylight/); // never a locale toString()
+  });
 });

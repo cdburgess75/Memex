@@ -332,6 +332,24 @@ router.get('/compliance/audit-verify', auth, requireRole('admin'), async (_req, 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/admin/compliance/evidence — aggregate evidence bundle (JSON).
+router.get('/compliance/evidence', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    res.json(await require('../lib/evidence').build());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/admin/compliance/evidence.md — the same bundle as a Markdown download.
+router.get('/compliance/evidence.md', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const evidence = require('../lib/evidence');
+    const md = evidence.toMarkdown(await evidence.build());
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="memex-compliance-evidence-${new Date().toISOString().slice(0, 10)}.md"`);
+    res.send(md);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/admin/access-review — user/role/library-access/last-activity review.
 router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
   try {

@@ -90,4 +90,15 @@ describe('verifyRows', () => {
     expect(r.ok).toBe(false);
     expect(r.brokenAt).toBe(3);
   });
+
+  test('binds created_at to the hashed ts_ms (rewriting the displayed timestamp is caught)', () => {
+    // The DB stores created_at from ts_ms; the admin feed shows/sorts by it.
+    const withDates = buildChain(EVENTS).map(r => ({ ...r, created_at: new Date(Number(r.ts_ms)) }));
+    expect(verifyRows(withDates).ok).toBe(true); // matching created_at passes
+    const tampered = withDates.map((r, i) => (i === 1 ? { ...r, created_at: new Date(Number(r.ts_ms) + 60000) } : r));
+    const res = verifyRows(tampered);
+    expect(res.ok).toBe(false);
+    expect(res.brokenAt).toBe(2);
+    expect(res.reason).toMatch(/created_at/);
+  });
 });
