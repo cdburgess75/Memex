@@ -416,13 +416,6 @@ router.get('/local-download', async (req, res) => {
   const entry = storage.validateLocalToken(req.query.token);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired download token' });
 
-  let buffer;
-  try {
-    buffer = await storage.download(entry.storagePath);
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
-
   const path = require('path');
   const base = path.basename(entry.storagePath);
   const ext = path.extname(base).toLowerCase().replace('.', '');
@@ -435,16 +428,27 @@ router.get('/local-download', async (req, res) => {
     csv: 'text/plain; charset=utf-8', log: 'text/plain; charset=utf-8', json: 'application/json',
   };
   const inlineType = req.query.inline === '1' ? INLINE_TYPES[ext] : null;
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (inlineType) {
-    res.setHeader('Content-Type', inlineType);
-    res.setHeader('Content-Disposition', `inline; filename="${base}"`);
-    // SVG can carry script — sandbox it so it can't execute if opened directly.
-    if (ext === 'svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-  } else {
-    res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
+
+  try {
+    // Stream the file rather than buffering it in memory: no OOM on large files and
+    // no 2 GiB fs.readFile ceiling.
+    const { stream, length } = await storage.downloadStream(entry.storagePath);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (inlineType) {
+      res.setHeader('Content-Type', inlineType);
+      res.setHeader('Content-Disposition', `inline; filename="${base}"`);
+      // SVG can carry script — sandbox it so it can't execute if opened directly.
+      if (ext === 'svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
+    }
+    if (length != null) res.setHeader('Content-Length', String(length));
+    const { pipeline } = require('stream/promises');
+    await pipeline(stream, res);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+    else res.destroy(e);
   }
-  res.send(buffer);
 });
 
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
@@ -468,7 +472,6 @@ router.get('/share/:token', async (req, res) => {
       return res.status(401).json({ error: 'Share password required' });
     }
 
-    const buffer = await storage.download(share.storage_path);
     await db.query(
       'UPDATE document_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1',
       [share.id]
@@ -496,11 +499,17 @@ router.get('/share/:token', async (req, res) => {
         text: `"${share.name}" was just downloaded via a Memex share link you created.`,
       }).catch(() => {});
     }
+    // Stream the file to the client instead of buffering it in memory (this is a
+    // public endpoint, so buffering a large shared file would be a remote OOM vector).
+    const { stream, length } = await storage.downloadStream(share.storage_path);
     res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name)}"`);
-    res.send(buffer);
+    if (length != null) res.setHeader('Content-Length', String(length));
+    const { pipeline } = require('stream/promises');
+    await pipeline(stream, res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+    else res.destroy(e);
   }
 });
 
