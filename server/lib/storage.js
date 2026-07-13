@@ -33,10 +33,11 @@ async function supabaseDownloadStream(storagePath) {
   if (error) throw error;
   const { Readable } = require('stream');
   if (data && typeof data.stream === 'function' && Readable.fromWeb) {
-    return { stream: Readable.fromWeb(data.stream()), length: typeof data.size === 'number' ? data.size : null };
+    const length = typeof data.size === 'number' ? data.size : null;
+    return { stream: Readable.fromWeb(data.stream()), length, totalSize: length, range: null };
   }
   const buf = Buffer.from(await data.arrayBuffer());
-  return { stream: Readable.from(buf), length: buf.length };
+  return { stream: Readable.from(buf), length: buf.length, totalSize: buf.length, range: null };
 }
 
 async function supabaseGetUrl(storagePath, ttl) {
@@ -169,37 +170,67 @@ async function localDownload(storagePath) {
   return key ? enc.decrypt(raw, key) : raw;
 }
 
-// Streaming download: never buffers the whole file. For an encrypted file we peek
-// the MAGIC+IV+TAG header and pipe the ciphertext through a streaming GCM decipher;
-// legacy/plaintext files (no magic) stream as-is. Returns { stream, length } where
-// length is the plaintext byte length when known (used for Content-Length).
-async function localDownloadStream(storagePath) {
+// Parse an HTTP Range header ("bytes=start-end" / "bytes=start-" / "bytes=-suffix")
+// against the total size. Returns { start, end } (inclusive), { unsatisfiable:true },
+// or null when there's no (usable) range.
+function parseRange(rangeHeader, totalSize) {
+  if (!rangeHeader || !Number.isFinite(totalSize) || totalSize <= 0) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader).trim());
+  if (!m) return null;
+  let start = m[1] === '' ? null : parseInt(m[1], 10);
+  let end = m[2] === '' ? null : parseInt(m[2], 10);
+  if (start === null && end === null) return null;
+  if (start === null) { start = Math.max(0, totalSize - end); end = totalSize - 1; }       // suffix: last N bytes
+  else if (end === null || end >= totalSize) { end = totalSize - 1; }
+  if (start > end || start >= totalSize) return { unsatisfiable: true };
+  return { start, end };
+}
+
+// Streaming download: never buffers the whole file. Returns { stream, length,
+// totalSize, range, unsatisfiable }. opts.rangeHeader enables HTTP Range (206) for
+// non-encrypted files (used for media seeking). GCM ciphertext isn't seekable, so an
+// encrypted file ignores Range and streams in full (still no OOM). For an encrypted
+// file we peek the MAGIC+IV+TAG header and pipe the ciphertext through a streaming
+// decipher; legacy/plaintext files (no magic) stream as-is.
+async function localDownloadStream(storagePath, opts = {}) {
   const fullPath = nodePath.join(await localBase(), storagePath);
   const key = await _encKey();
   const stat = await fs.stat(fullPath);
-  if (!key) return { stream: fsSync.createReadStream(fullPath), length: stat.size };
-  // Peek the 32-byte header to distinguish an encrypted file from a legacy plaintext one.
-  const fd = await fs.open(fullPath, 'r');
-  let header;
-  try {
-    const b = Buffer.alloc(Math.min(32, stat.size));
-    const { bytesRead } = await fd.read(b, 0, b.length, 0);
-    header = b.subarray(0, bytesRead);
-  } finally {
-    await fd.close();
+
+  let encrypted = false, iv = null, tag = null;
+  if (key) {
+    const fd = await fs.open(fullPath, 'r');
+    try {
+      const b = Buffer.alloc(Math.min(32, stat.size));
+      const { bytesRead } = await fd.read(b, 0, b.length, 0);
+      const header = b.subarray(0, bytesRead);
+      if (header.length >= 32 && header.subarray(0, 4).equals(enc.MAGIC)) {
+        encrypted = true; iv = header.subarray(4, 16); tag = header.subarray(16, 32);
+      }
+    } finally { await fd.close(); }
   }
-  if (header.length < 32 || !header.subarray(0, 4).equals(enc.MAGIC)) {
-    return { stream: fsSync.createReadStream(fullPath), length: stat.size };
+  const totalSize = encrypted ? stat.size - 32 : stat.size;
+
+  if (opts.rangeHeader && !encrypted) {
+    const r = parseRange(opts.rangeHeader, totalSize);
+    if (r && r.unsatisfiable) return { unsatisfiable: true, totalSize };
+    if (r) {
+      return {
+        stream: fsSync.createReadStream(fullPath, { start: r.start, end: r.end }),
+        length: r.end - r.start + 1, totalSize, range: { start: r.start, end: r.end },
+      };
+    }
   }
-  const iv = header.subarray(4, 16);
-  const tag = header.subarray(16, 32);
+
+  if (!encrypted) {
+    return { stream: fsSync.createReadStream(fullPath), length: totalSize, totalSize, range: null };
+  }
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);
   const ciphertext = fsSync.createReadStream(fullPath, { start: 32 });
   ciphertext.on('error', (e) => decipher.destroy(e));
   ciphertext.pipe(decipher);
-  // GCM ciphertext length equals plaintext length, so plaintext = filesize - 32-byte header.
-  return { stream: decipher, length: stat.size - 32 };
+  return { stream: decipher, length: totalSize, totalSize, range: null };
 }
 
 async function localGetUrl(storagePath, ttl) {
@@ -271,11 +302,17 @@ async function s3Download(storagePath) {
   return Buffer.concat(chunks);
 }
 
-async function s3DownloadStream(storagePath) {
+async function s3DownloadStream(storagePath, opts = {}) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
-  const res = await (await s3Client()).send(new GetObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
+  const cmd = { Bucket: await s3Bucket(), Key: storagePath };
+  if (opts.rangeHeader) cmd.Range = opts.rangeHeader; // S3 understands the HTTP Range header natively
+  const res = await (await s3Client()).send(new GetObjectCommand(cmd));
+  const length = typeof res.ContentLength === 'number' ? res.ContentLength : null;
+  let range = null, totalSize = length;
+  const m = res.ContentRange && /bytes (\d+)-(\d+)\/(\d+)/.exec(res.ContentRange);
+  if (m) { range = { start: +m[1], end: +m[2] }; totalSize = +m[3]; }
   // aws-sdk v3 Body is a Node Readable stream (S3 stores raw bytes; no app-layer encryption).
-  return { stream: res.Body, length: typeof res.ContentLength === 'number' ? res.ContentLength : null };
+  return { stream: res.Body, length, totalSize, range };
 }
 
 async function s3GetUrl(storagePath, ttl) {
@@ -368,10 +405,10 @@ async function download(storagePath) {
 
 // Streaming variant of download() for serving files to a client without buffering
 // the whole object in memory. Returns { stream, length|null }.
-async function downloadStream(storagePath) {
+async function downloadStream(storagePath, opts = {}) {
   switch (await PROVIDER()) {
-    case 'local': return localDownloadStream(storagePath);
-    case 's3':    return s3DownloadStream(storagePath);
+    case 'local': return localDownloadStream(storagePath, opts);
+    case 's3':    return s3DownloadStream(storagePath, opts);
     default:      return supabaseDownloadStream(storagePath);
   }
 }

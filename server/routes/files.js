@@ -442,14 +442,24 @@ router.get('/local-download', async (req, res) => {
     gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
     txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8',
     csv: 'text/plain; charset=utf-8', log: 'text/plain; charset=utf-8', json: 'application/json',
+    // Media — rendered inline in a <video>/<audio> player.
+    mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', m4v: 'video/mp4', mov: 'video/quicktime',
+    mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', oga: 'audio/ogg',
+    aac: 'audio/aac', flac: 'audio/flac',
   };
   const inlineType = req.query.inline === '1' ? INLINE_TYPES[ext] : null;
 
   try {
-    // Stream the file rather than buffering it in memory: no OOM on large files and
-    // no 2 GiB fs.readFile ceiling.
-    const { stream, length } = await storage.downloadStream(entry.storagePath);
+    // Stream the file rather than buffering it in memory (no OOM, no 2 GiB ceiling).
+    // Range enables <video>/<audio> seeking without re-fetching the whole file.
+    const { stream, length, totalSize, range, unsatisfiable } =
+      await storage.downloadStream(entry.storagePath, { rangeHeader: req.headers.range });
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (unsatisfiable) {
+      res.setHeader('Content-Range', `bytes */${totalSize}`);
+      return res.status(416).end();
+    }
     if (inlineType) {
       res.setHeader('Content-Type', inlineType);
       res.setHeader('Content-Disposition', `inline; filename="${base}"`);
@@ -457,6 +467,10 @@ router.get('/local-download', async (req, res) => {
       if (ext === 'svg') res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     } else {
       res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
+    }
+    if (range) {
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${totalSize}`);
     }
     if (length != null) res.setHeader('Content-Length', String(length));
     const { pipeline } = require('stream/promises');
