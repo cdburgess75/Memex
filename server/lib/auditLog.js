@@ -73,10 +73,13 @@ async function append({ documentId = null, eventType, actorId = null, actorEmail
     const row = { event_type: eventType, actor_email: actorEmail, document_id: docId, detail, ts_ms };
     const hash = hashEvent(prevHash, row);
     const r = await client.query(
+      // ts_ms is bound twice ($6 for the bigint column, $9 for to_timestamp) so a
+      // single parameter is never deduced as both bigint and double precision, which
+      // Postgres rejects with "inconsistent types deduced for parameter $6".
       `INSERT INTO document_events (document_id, event_type, actor_id, actor_email, detail, ts_ms, prev_hash, hash, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($6::double precision / 1000.0))
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9::double precision / 1000.0))
        RETURNING chain_seq, hash`,
-      [docId, eventType, actorId, actorEmail, detail, ts_ms, prevHash, hash]
+      [docId, eventType, actorId, actorEmail, detail, ts_ms, prevHash, hash, ts_ms]
     );
     return r.rows[0];
   }));
