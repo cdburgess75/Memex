@@ -90,25 +90,6 @@ async function getUpload() {
   return _uploadMw;
 }
 
-// A Transform that fails the stream (err.code UPLOAD_TOO_LARGE) as soon as more than
-// maxBytes have passed through, so an oversized streamed upload is aborted before it
-// can fill the disk — not merely rejected after the whole body is written.
-function capGuard(maxBytes) {
-  const { Transform } = require('stream');
-  let seen = 0;
-  return new Transform({
-    transform(chunk, _enc, cb) {
-      seen += chunk.length;
-      if (Number.isFinite(maxBytes) && seen > maxBytes) {
-        const err = new Error('Upload exceeds the maximum allowed size');
-        err.code = 'UPLOAD_TOO_LARGE';
-        return cb(err);
-      }
-      cb(null, chunk);
-    },
-  });
-}
-
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
 }
@@ -726,9 +707,9 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
 
   let storedSize = declaredSize;
   try {
-    const guard = capGuard(maxBytes);
-    req.on('error', (e) => guard.destroy(e));
-    const result = await storage.uploadStream(storagePath, req.pipe(guard), mimetype);
+    // The cap is enforced inside uploadStream's own pipeline (see storage.capStream),
+    // so an over-cap abort rejects here cleanly instead of crashing on a stream race.
+    const result = await storage.uploadStream(storagePath, req, mimetype, { maxBytes });
     if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
@@ -2081,4 +2062,3 @@ module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
 module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
-module.exports.capGuard = capGuard;

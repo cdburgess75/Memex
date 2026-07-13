@@ -323,12 +323,35 @@ async function streamToBuffer(readable) {
   return { buffer: Buffer.concat(chunks), size };
 }
 
-async function uploadStream(storagePath, readable, mimeType) {
+// Wrap a readable so it fails (err.code UPLOAD_TOO_LARGE) once more than maxBytes
+// have been read. Pull-based (Readable.from a generator) so the error is delivered
+// to whoever consumes the stream, never emitted before the consumer attaches a
+// handler — passing the raw stream through a piped Transform can crash on that race.
+function capStream(readable, maxBytes) {
+  const { Readable } = require('stream');
+  let total = 0;
+  return Readable.from((async function* () {
+    for await (const chunk of readable) {
+      total += chunk.length;
+      if (Number.isFinite(maxBytes) && maxBytes > 0 && total > maxBytes) {
+        const err = new Error('Upload exceeds the maximum allowed size');
+        err.code = 'UPLOAD_TOO_LARGE';
+        throw err;
+      }
+      yield chunk;
+    }
+  })());
+}
+
+// opts.maxBytes caps the upload; the whole stream is consumed inside one pipeline so
+// an over-cap abort rejects cleanly rather than emitting an unhandled error.
+async function uploadStream(storagePath, readable, mimeType, opts = {}) {
+  const src = opts && opts.maxBytes ? capStream(readable, opts.maxBytes) : readable;
   switch (await PROVIDER()) {
-    case 'local': return localUploadStream(storagePath, readable);
-    case 's3':    return s3UploadStream(storagePath, readable, mimeType);
+    case 'local': return localUploadStream(storagePath, src);
+    case 's3':    return s3UploadStream(storagePath, src, mimeType);
     default: {
-      const { buffer, size } = await streamToBuffer(readable);
+      const { buffer, size } = await streamToBuffer(src);
       await supabaseUpload(storagePath, buffer, mimeType);
       return { size };
     }

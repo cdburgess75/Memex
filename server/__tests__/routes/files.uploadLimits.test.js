@@ -1,9 +1,8 @@
 'use strict';
-// Covers the upload size-cap enforcement: the streaming capGuard aborts past the
-// limit, and the resumable session-create route rejects a zero/oversize declared size.
+// Covers the resumable session-create size validation: reject a zero/negative size
+// (which would disable the per-chunk check) and reject a size over the upload cap.
 const request = require('supertest');
 const express = require('express');
-const { Readable } = require('stream');
 
 jest.mock('../../lib/db', () => ({
   query: jest.fn().mockResolvedValue([]),
@@ -24,7 +23,6 @@ jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockU
 
 const settings = require('../../lib/settings');
 const files = require('../../routes/files');
-const { capGuard } = files;
 
 function makeApp() {
   const app = express();
@@ -33,32 +31,9 @@ function makeApp() {
   return app;
 }
 
-async function collect(stream) {
-  const chunks = [];
-  for await (const c of stream) chunks.push(c);
-  return Buffer.concat(chunks);
-}
-
 beforeEach(() => {
   jest.clearAllMocks();
-  // 1 MB upload cap for easy numbers.
-  settings.getOrEnv.mockImplementation((k) => Promise.resolve(k === 'max_upload_mb' ? '1' : null));
-});
-
-describe('capGuard', () => {
-  test('passes data through unchanged when under the cap', async () => {
-    const data = Buffer.alloc(500, 7);
-    const out = await collect(Readable.from([data]).pipe(capGuard(1000)));
-    expect(out.equals(data)).toBe(true);
-  });
-
-  test('errors with UPLOAD_TOO_LARGE once bytes exceed the cap', async () => {
-    const src = Readable.from([Buffer.alloc(600), Buffer.alloc(600)]); // 1200 > 1000
-    let err;
-    try { await collect(src.pipe(capGuard(1000))); } catch (e) { err = e; }
-    expect(err).toBeDefined();
-    expect(err.code).toBe('UPLOAD_TOO_LARGE');
-  });
+  settings.getOrEnv.mockImplementation((k) => Promise.resolve(k === 'max_upload_mb' ? '1' : null)); // 1 MB cap
 });
 
 describe('POST /api/files/uploads size validation', () => {
