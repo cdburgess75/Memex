@@ -90,6 +90,25 @@ async function getUpload() {
   return _uploadMw;
 }
 
+// A Transform that fails the stream (err.code UPLOAD_TOO_LARGE) as soon as more than
+// maxBytes have passed through, so an oversized streamed upload is aborted before it
+// can fill the disk — not merely rejected after the whole body is written.
+function capGuard(maxBytes) {
+  const { Transform } = require('stream');
+  let seen = 0;
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      seen += chunk.length;
+      if (Number.isFinite(maxBytes) && seen > maxBytes) {
+        const err = new Error('Upload exceeds the maximum allowed size');
+        err.code = 'UPLOAD_TOO_LARGE';
+        return cb(err);
+      }
+      cb(null, chunk);
+    },
+  });
+}
+
 async function anthropic() {
   return new Anthropic({ apiKey: await settings.getOrEnv('anthropic_api_key') });
 }
@@ -355,20 +374,36 @@ async function chunkDir(sessionId) {
   return path.join(await chunkRoot(), String(sessionId));
 }
 
-async function writeChunk(sessionId, index, readable) {
+async function writeChunk(sessionId, index, readable, maxBytes) {
   const dir = await chunkDir(sessionId);
   await fs.mkdir(dir, { recursive: true });
   const finalPath = path.join(dir, `${index}.part`);
   const tmpPath = `${finalPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
   let bytes = 0;
-  await new Promise((resolve, reject) => {
-    const out = fsSync.createWriteStream(tmpPath);
-    readable.on('data', chunk => { bytes += chunk.length; });
-    readable.on('error', reject);
-    out.on('error', reject);
-    out.on('finish', resolve);
-    readable.pipe(out);
-  });
+  try {
+    await new Promise((resolve, reject) => {
+      const out = fsSync.createWriteStream(tmpPath);
+      readable.on('data', chunk => {
+        bytes += chunk.length;
+        // Abort before an oversized chunk can fill the disk (rather than writing it
+        // all and rejecting afterwards).
+        if (Number.isFinite(maxBytes) && maxBytes > 0 && bytes > maxBytes) {
+          const err = new Error('Chunk exceeds the maximum allowed size');
+          err.code = 'CHUNK_TOO_LARGE';
+          readable.destroy(err);
+          out.destroy();
+          reject(err);
+        }
+      });
+      readable.on('error', reject);
+      out.on('error', reject);
+      out.on('finish', resolve);
+      readable.pipe(out);
+    });
+  } catch (e) {
+    await fs.unlink(tmpPath).catch(() => {});
+    throw e;
+  }
   await fs.rename(tmpPath, finalPath);
   return bytes;
 }
@@ -681,11 +716,23 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   const mimetype = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
   const declaredSize = Number.parseInt(req.headers['content-length'] || '0', 10);
 
+  const mb = await maxUploadMb();
+  const maxBytes = mb * 1024 * 1024;
+  // Fast reject when the declared size is already over the cap; the streaming guard
+  // below is the authoritative check (Content-Length can be absent or spoofed).
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+    return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
+  }
+
   let storedSize = declaredSize;
   try {
-    const result = await storage.uploadStream(storagePath, req, mimetype);
+    const guard = capGuard(maxBytes);
+    req.on('error', (e) => guard.destroy(e));
+    const result = await storage.uploadStream(storagePath, req.pipe(guard), mimetype);
     if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
   } catch (e) {
+    await storage.del(storagePath).catch(() => {});
+    if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
     return res.status(500).json({ error: e.message });
   }
 
@@ -725,7 +772,11 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
   if (!isAllowedFile(displayName)) return res.status(415).json({ error: 'File type not allowed' });
 
   const size = Number.parseInt(req.body.size || '0', 10);
-  if (!Number.isFinite(size) || size < 0) return res.status(400).json({ error: 'Valid file size required' });
+  // Require a real (>0) size: it caps total_chunks and keeps the per-chunk size check
+  // active (a 0 size would disable it). Reject anything over the upload limit up front.
+  if (!Number.isFinite(size) || size <= 0) return res.status(400).json({ error: 'Valid file size required' });
+  const mb = await maxUploadMb();
+  if (size > mb * 1024 * 1024) return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
 
   const mimetype = String(req.body.mimeType || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
   const chunkSize = clampChunkSize(req.body.chunkSize);
@@ -781,7 +832,15 @@ router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'cont
     if (session.status !== 'active') return res.status(409).json({ error: `Upload session is ${session.status}` });
     if (index >= Number(session.total_chunks)) return res.status(400).json({ error: 'Chunk index out of range' });
 
-    const bytes = await writeChunk(session.id, index, req);
+    let bytes;
+    try {
+      // Cap each chunk at the session's chunk_size so an oversized chunk is aborted
+      // mid-write instead of being fully staged to disk before validation.
+      bytes = await writeChunk(session.id, index, req, Number(session.chunk_size || 0));
+    } catch (e) {
+      if (e && e.code === 'CHUNK_TOO_LARGE') return res.status(413).json({ error: 'Chunk exceeds the maximum allowed size' });
+      throw e;
+    }
     const expectedChunkBytes = index === Number(session.total_chunks) - 1
       ? Number(session.size || 0) - (Number(session.total_chunks || 0) - 1) * Number(session.chunk_size || 0)
       : Number(session.chunk_size || 0);
@@ -2022,3 +2081,4 @@ module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
 module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
+module.exports.capGuard = capGuard;
