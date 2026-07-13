@@ -17,6 +17,7 @@ const emailEvents = require('../lib/emailEvents');
 const auditLog = require('../lib/auditLog');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
+const mp4Faststart = require('../lib/mp4Faststart');
 const { zipFiles } = require('../lib/zip');
 const fsSync = require('fs');
 const fs = fsSync.promises;
@@ -450,10 +451,21 @@ router.get('/local-download', async (req, res) => {
   const inlineType = req.query.inline === '1' ? INLINE_TYPES[ext] : null;
 
   try {
+    // For an inline MP4 whose moov atom is at the end (not web-optimized), serve a
+    // fast-started view on the fly so it previews immediately instead of spinning
+    // while the browser hunts the tail. Returns null (→ normal streaming) for any
+    // other case, so this can only help, never break a download.
+    let dl = null;
+    if (inlineType && ['mp4', 'm4v', 'mov'].includes(ext) && await storage.isLocalProvider()) {
+      try {
+        const fsPlan = await mp4Faststart.plan(path.join(await storage.localBase(), entry.storagePath));
+        if (fsPlan) dl = mp4Faststart.createStream(fsPlan, req.headers.range);
+      } catch { /* fall back to normal streaming */ }
+    }
     // Stream the file rather than buffering it in memory (no OOM, no 2 GiB ceiling).
     // Range enables <video>/<audio> seeking without re-fetching the whole file.
-    const { stream, length, totalSize, range, unsatisfiable } =
-      await storage.downloadStream(entry.storagePath, { rangeHeader: req.headers.range });
+    if (!dl) dl = await storage.downloadStream(entry.storagePath, { rangeHeader: req.headers.range });
+    const { stream, length, totalSize, range, unsatisfiable } = dl;
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Accept-Ranges', 'bytes');
     if (unsatisfiable) {
