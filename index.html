@@ -1621,6 +1621,12 @@ html.file-home-mode .masthead-actions { display: flex; }
 .notif-wrap { position: relative; }
 .notif-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
 .notif-btn:hover { color: var(--accent); border-color: var(--accent); }
+.update-cta { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font: 600 12px var(--ui); cursor: pointer; }
+.update-cta:hover { filter: brightness(1.06); }
+.update-cta-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.35); animation: update-pulse 2s ease-in-out infinite; }
+@keyframes update-pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+.update-steps { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); overflow-x: auto; white-space: pre; }
+.update-output { white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0d0f12; color: #cdd3d9; padding: 10px 12px; border-radius: 8px; margin-top: 10px; max-height: 240px; overflow: auto; }
 /* Keyboard focus rings for the header controls (WCAG 2.4.7). Mouse clicks don't
    trigger :focus-visible, so this only shows for keyboard/AT users. */
 .notif-btn:focus-visible, .meet-btn:focus-visible, .user-chip:focus-visible,
@@ -2497,6 +2503,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
       </div>
     </div>
+    <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
     <button class="notif-btn theme-btn" id="theme-btn" type="button" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle light or dark theme"></button>
     <div class="notif-wrap">
       <button class="notif-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications" aria-haspopup="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
@@ -2824,9 +2831,21 @@ async function _afterLogin() {
   loadSecurityStatus();
   loadComplianceSummary();
   checkForUpdate(false);
+  loadLicenseStatus();
   startUpdatePolling();
   startNotifications();
   connectSignaling();
+  // Honor a meeting deep link (?meet=room), surviving the OAuth round trip via the
+  // stash set before the Keycloak redirect. Prompt rather than auto-join so the
+  // signaling socket is connected by the time the user clicks Join.
+  try {
+    const meetRoom = new URLSearchParams(location.search).get('meet') || sessionStorage.getItem('memex_meet_room');
+    sessionStorage.removeItem('memex_meet_room');
+    if (meetRoom) {
+      promptJoinMeeting(meetRoom);
+      try { const u = new URL(location.href); u.searchParams.delete('meet'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
+    }
+  } catch (e) { /* ignore */ }
 }
 
 async function loadFromServer() {
@@ -2874,6 +2893,7 @@ async function signIn(provider) {
   // Preserve the deep link across the Keycloak round-trip (the OAuth callback
   // strips the hash), so a shared #/… link lands where it points after login.
   try { if (hashToNav(location.hash)) sessionStorage.setItem('memex_return_hash', location.hash); } catch (e) {}
+  try { const mp = new URLSearchParams(location.search).get('meet'); if (mp) sessionStorage.setItem('memex_meet_room', mp); } catch (e) {}
   const idpHint = { google: 'google', microsoft: 'microsoft' }[provider];
   const params = new URLSearchParams({
     client_id: _kc.clientId, redirect_uri: window.location.origin,
@@ -3300,6 +3320,8 @@ function closeSecurityStatus() {
 
 // Update check: colors the version pill — green up to date, yellow ≤10 releases
 // behind, red >10. Click to re-check and see details.
+let licenseStatus = null;      // GET /api/license (fetched for admins)
+let latestUpdateInfo = null;   // last /version/check result, shared with the update CTA
 async function checkForUpdate(manual) {
   const el = document.getElementById('update-indicator');
   if (!el) return;
@@ -3313,6 +3335,8 @@ async function checkForUpdate(manual) {
   // booted with, the app was upgraded underneath us — offer a one-click reload
   // so the user isn't left on stale client code.
   maybePromptReload(r.current);
+  latestUpdateInfo = r;
+  updateCtaRefresh(r);
   if (r.behind === 0) {
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
     if (manual) toast(`Up to date (${v})`);
@@ -3362,6 +3386,134 @@ function maybePromptReload(serverVersion) {
     `<div id="reload-banner" class="reload-banner" role="status">Memex was updated to ${esc(serverVersion)}.` +
     `<button class="run-btn" onclick="location.reload()">Refresh</button>` +
     `<button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('reload-banner').remove()">✕</button></div>`);
+}
+
+// ---- Licensed update (admins only) ----
+async function loadLicenseStatus() {
+  if (currentUser?.role !== 'admin') { licenseStatus = null; return; }
+  try { licenseStatus = await apiGet('/license'); } catch { licenseStatus = null; }
+  updateCtaRefresh(latestUpdateInfo);
+}
+// Show the header "Update" call-to-action only when an admin is on an out-of-date
+// build AND the deployment's license entitles updates. Everyone else, and any
+// up-to-date or unlicensed deployment, never sees it.
+function updateCtaRefresh(info) {
+  const btn = document.getElementById('update-cta');
+  if (!btn) return;
+  const isAdmin = currentUser?.role === 'admin';
+  const behind = info?.behind;
+  const eligible = isAdmin && behind != null && behind > 0 && !!licenseStatus?.updatesEntitled;
+  btn.style.display = eligible ? '' : 'none';
+  if (eligible) btn.title = `Update available — ${info.latest} (you're on ${info.current})`;
+}
+async function openUpdateModal() {
+  closeUpdateModal();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="update-scrim" onclick="if(event.target.id==='update-scrim')closeUpdateModal()"><div class="modal"><h2>Software update</h2><p class="sub">Checking…</p></div></div>`);
+  let ver = latestUpdateInfo, lic = licenseStatus;
+  try { ver = await apiGet('/version/check'); } catch { /* keep cached */ }
+  try { lic = await apiGet('/license'); } catch { /* keep cached */ }
+  latestUpdateInfo = ver; licenseStatus = lic; updateCtaRefresh(ver);
+  renderUpdateModal(ver, lic);
+}
+function closeUpdateModal() { document.getElementById('update-scrim')?.remove(); }
+function renderUpdateModal(ver, lic) {
+  const m = document.querySelector('#update-scrim .modal');
+  if (!m) return;
+  const cur = esc(ver?.current || appConfig?.version || 'unknown');
+  const latest = esc(ver?.latest || 'unknown');
+  const behind = ver?.behind;
+  const entitled = !!lic?.updatesEntitled;
+  const until = lic?.updatesUntil ? esc(lic.updatesUntil) : null;
+  const licLine = !lic || !lic.configured
+    ? 'No license is configured on this server.'
+    : !lic.present ? 'No license file found on this server.'
+    : !lic.valid ? 'The license signature is not valid.'
+    : entitled ? `Licensed to ${esc(lic.customer || 'this customer')}${lic.plan ? ' · ' + esc(lic.plan) : ''}${until ? ' · updates through ' + until : ''}.`
+    : `License found${until ? `, updates expired ${until}` : ''} — updates are not currently entitled.`;
+  const upToDate = behind === 0;
+  const steps = 'git -C /opt/memex pull --ff-only &amp;&amp; docker compose up -d --build app';
+  const canRun = entitled && !upToDate;
+  m.innerHTML = `<h2>Software update</h2>
+    <p class="sub">${upToDate ? `You're on the latest release (${cur}).` : `Running ${cur}${behind != null ? ` · ${behind} release${behind === 1 ? '' : 's'} behind` : ''} · latest ${latest}.`}</p>
+    <div class="security-status-card" style="margin:6px 0 14px"><strong>License</strong><span>${licLine}</span></div>
+    <p class="settings-notice">${canRun ? 'Run the update now (if this server has an automatic updater wired up), or apply it manually on the host:' : 'To update manually on the server:'}</p>
+    <pre class="update-steps">${steps}</pre>
+    <div id="update-run-output" class="update-output" style="display:none"></div>
+    <div class="btn-row" style="margin-top:16px">
+      ${canRun ? `<button class="run-btn" onclick="runUpdateNow(this)">Run update now</button>` : ''}
+      <button class="ghost-btn" onclick="closeUpdateModal()">Close</button>
+    </div>`;
+}
+async function runUpdateNow(btnEl) {
+  const out = document.getElementById('update-run-output');
+  if (out) { out.style.display = ''; out.textContent = 'Starting update…'; }
+  btnEl.disabled = true;
+  try {
+    const r = await apiPost('/license/update-run', {});
+    if (r.ok) { if (out) out.textContent = (r.output || 'Update triggered.') + '\n\nThe app may restart — refresh in a minute.'; toast('Update started'); }
+    else if (r.reason === 'no_updater_configured') { if (out) out.textContent = 'No automatic updater is configured on this server (MEMEX_UPDATE_COMMAND is unset). Apply the manual steps above on the host.'; }
+    else { if (out) out.textContent = 'Update did not run: ' + (r.reason || 'unknown') + (r.output ? '\n\n' + r.output : ''); }
+  } catch (e) { if (out) out.textContent = 'Error: ' + e.message; }
+  btnEl.disabled = false;
+}
+
+// ---- Scheduled video meeting (built-in room + emailed .ics invite) ----
+async function joinScheduledMeeting(room) {
+  document.getElementById('meet-invite-banner')?.remove();
+  const id = /^room-/.test(room) ? room : ('room-' + String(room).replace(/[^a-z0-9_-]/gi, ''));
+  if (!callWs || callWs.readyState !== WebSocket.OPEN) { try { await connectSignaling(); } catch { /* retry loop below */ } }
+  for (let i = 0; i < 20 && (!callWs || callWs.readyState !== WebSocket.OPEN); i++) await new Promise(r => setTimeout(r, 150));
+  startRoom(id);
+}
+function promptJoinMeeting(room) {
+  const clean = String(room || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
+  if (!clean) return;
+  document.getElementById('meet-invite-banner')?.remove();
+  document.body.insertAdjacentHTML('beforeend', `<div id="meet-invite-banner" class="reload-banner" role="status">You have a Memex video meeting invite.<button class="run-btn" onclick="joinScheduledMeeting('${esc(clean)}')">Join</button><button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('meet-invite-banner').remove()">✕</button></div>`);
+}
+function openScheduleMeeting() {
+  closeMeetPanel();
+  closeScheduleMeeting();
+  const now = new Date(); now.setSeconds(0, 0); now.setMinutes(now.getMinutes() + (30 - (now.getMinutes() % 30)));
+  const pad = n => String(n).padStart(2, '0');
+  const dval = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const tval = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="schedule-scrim" onclick="if(event.target.id==='schedule-scrim')closeScheduleMeeting()"><div class="modal"><h2>Schedule a meeting</h2>
+    <p class="sub">Invites go out by email with a calendar hook. Attendees join the built-in video room from the link. Only people who have a Memex account can be invited.</p>
+    <label>Title</label><input type="text" id="mt-title" placeholder="e.g. Weekly standup" autocomplete="off">
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:100px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
+    <label>Attendees (emails, comma or space separated)</label><input type="text" id="mt-attendees" placeholder="alex@company.com, sam@company.com" autocomplete="off">
+    <label>Note (optional)</label><textarea id="mt-note" rows="2" placeholder="Agenda or context"></textarea>
+    <div id="mt-result" class="update-output" style="display:none"></div>
+    <div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="submitScheduleMeeting(this)">Send invites</button><button class="ghost-btn" onclick="closeScheduleMeeting()">Cancel</button></div>
+  </div></div>`);
+  setTimeout(() => document.getElementById('mt-title')?.focus(), 30);
+}
+function closeScheduleMeeting() { document.getElementById('schedule-scrim')?.remove(); }
+async function submitScheduleMeeting(btn) {
+  const title = (document.getElementById('mt-title')?.value || '').trim();
+  const date = document.getElementById('mt-date')?.value;
+  const time = document.getElementById('mt-time')?.value;
+  const dur = Number(document.getElementById('mt-dur')?.value) || 30;
+  const attRaw = document.getElementById('mt-attendees')?.value || '';
+  const note = (document.getElementById('mt-note')?.value || '').trim();
+  const attendees = attRaw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  const out = document.getElementById('mt-result');
+  if (!title) { toast('Add a title'); return; }
+  if (!date || !time) { toast('Pick a date and time'); return; }
+  if (!attendees.length) { toast('Add at least one attendee'); return; }
+  const startIso = new Date(`${date}T${time}`).toISOString();
+  btn.disabled = true; if (out) { out.style.display = ''; out.textContent = 'Sending invites…'; }
+  try {
+    const r = await apiPost('/meetings', { title, start: startIso, durationMinutes: dur, attendees, description: note });
+    const parts = [];
+    if (r.sentCount) parts.push(`Invited ${r.sentCount}`);
+    if (r.skippedCount) parts.push(`${r.skippedCount} skipped (no Memex account)`);
+    if (r.failedCount) parts.push(`${r.failedCount} could not be emailed`);
+    if (out) out.textContent = parts.join(' · ') || 'Done.';
+    if (r.sentCount) toast(`Invites sent to ${r.sentCount}`); else toast('No invites sent');
+  } catch (e) { if (out) out.textContent = 'Error: ' + e.message; toast('Failed: ' + e.message); }
+  btn.disabled = false;
 }
 
 function openSecurityStatus() {
@@ -4560,6 +4712,22 @@ async function saveBrandingSettings() {
     toast('Branding saved');
   } catch (e) { toast('Save failed: ' + e.message); }
 }
+// Fill SMTP host/port/encryption from a known relay preset (fields stay editable).
+function applySmtpPreset(key) {
+  const P = {
+    o365:      { host: 'smtp.office365.com', port: '587', secure: 'false' },
+    proofpoint:{ host: '', port: '25', secure: 'false' },
+    sendgrid:  { host: 'smtp.sendgrid.net', port: '587', secure: 'false' },
+    mailgun:   { host: 'smtp.mailgun.org', port: '587', secure: 'false' },
+    ses:       { host: 'email-smtp.us-east-1.amazonaws.com', port: '587', secure: 'false' },
+    postmark:  { host: 'smtp.postmarkapp.com', port: '587', secure: 'false' },
+  }[key];
+  if (!P) return;
+  const host = document.getElementById('cfg-smtp-host'); if (host && (P.host || !host.value)) host.value = P.host;
+  const port = document.getElementById('cfg-smtp-port'); if (port) port.value = P.port;
+  const sec = document.getElementById('cfg-smtp-secure'); if (sec) sec.value = P.secure;
+  const prov = document.getElementById('cfg-email-provider'); if (prov && !prov.value) prov.value = 'smtp';
+}
 async function saveEmailSettings() {
   const body = {
     email_provider:        document.getElementById('cfg-email-provider')?.value || '',
@@ -4574,6 +4742,9 @@ async function saveEmailSettings() {
     smtp_secure: document.getElementById('cfg-smtp-secure')?.value || '',
     smtp_user:   document.getElementById('cfg-smtp-user')?.value.trim() || '',
     smtp_pass:   document.getElementById('cfg-smtp-pass')?.value ?? '', // masked value is kept server-side
+    smtp_require_tls:          document.getElementById('cfg-smtp-requiretls')?.checked ? 'true' : 'false',
+    // Inverted: "accept self-signed" checked means DON'T reject unauthorized certs.
+    smtp_reject_unauthorized:  document.getElementById('cfg-smtp-allowselfsigned')?.checked ? 'false' : 'true',
     email_ev_share_granted:    document.getElementById('ev-share-granted')?.checked ? 'true' : 'false',
     email_ev_share_downloaded: document.getElementById('ev-share-downloaded')?.checked ? 'true' : 'false',
     email_ev_upload_received:  document.getElementById('ev-upload-received')?.checked ? 'true' : 'false',
@@ -5251,6 +5422,21 @@ function emailSettingsHtml() {
         <input type="text" id="cfg-smtp-user" value="${esc(s.smtp_user||'')}" autocomplete="off" placeholder="Optional (often the from address)">
         <label>Password</label>
         <input type="password" id="cfg-smtp-pass" value="${esc(s.smtp_pass||'')}" autocomplete="new-password" placeholder="Leave blank to keep current">
+        <label>Relay preset</label>
+        <select id="cfg-smtp-preset" onchange="applySmtpPreset(this.value)">
+          <option value="">Fill host/port from a known relay…</option>
+          <option value="o365">Microsoft 365 — smtp.office365.com:587</option>
+          <option value="proofpoint">Proofpoint on-prem smarthost — :25</option>
+          <option value="sendgrid">SendGrid — smtp.sendgrid.net:587</option>
+          <option value="mailgun">Mailgun — smtp.mailgun.org:587</option>
+          <option value="ses">Amazon SES — email-smtp.REGION.amazonaws.com:587</option>
+          <option value="postmark">Postmark — smtp.postmarkapp.com:587</option>
+        </select>
+      </div>
+      <p class="settings-notice" style="margin-top:6px">Any SMTP relay works (Proofpoint, 365, SendGrid, Mailgun, SES, Postmark). Point host/port at the relay; leave the username blank for an IP-allowlisted smarthost.</p>
+      <div class="email-events">
+        <label class="email-event-row"><input type="checkbox" id="cfg-smtp-requiretls" ${s.smtp_require_tls==='true'?'checked':''}> <span><strong>Require STARTTLS</strong><em>Refuse to send in the clear if the relay won't negotiate TLS.</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="cfg-smtp-allowselfsigned" ${s.smtp_reject_unauthorized==='false'?'checked':''}> <span><strong>Accept a self-signed relay certificate</strong><em>Only for a trusted on-prem relay using a private-CA cert. Leave off otherwise.</em></span></label>
       </div>
       <div class="settings-sub" style="margin-top:16px">Email notifications</div>
       <p class="settings-notice">Which events send an email (on top of the in-app bell). Applies workspace-wide; members still have their own in-app opt-out. Needs a provider configured above.</p>
@@ -8065,6 +8251,7 @@ function renderMeetPanel() {
     <div class="meet-rule"></div>
     <div class="meet-title">Start a meeting</div>
     <div class="meet-room"><input id="meet-room-input" type="text" placeholder="Room name (e.g. standup)" onkeydown="if(event.key==='Enter')joinRoomFromInput()"><button class="run-btn" onclick="joinRoomFromInput()">Join</button></div>
+    ${currentUser?.role !== 'viewer' ? '<button class="ghost-btn" style="margin-top:10px;width:100%" onclick="openScheduleMeeting()">Schedule a meeting…</button>' : ''}
     ${callRoom ? '<div class="meet-incall">You\'re in a call.</div>' : ''}`;
 }
 function joinRoomFromInput() {

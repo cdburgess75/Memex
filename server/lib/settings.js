@@ -58,6 +58,8 @@ const ENV_MAP = {
   smtp_secure:                    'SMTP_SECURE',
   smtp_user:                      'SMTP_USER',
   smtp_pass:                      'SMTP_PASS',
+  smtp_reject_unauthorized:       'SMTP_REJECT_UNAUTHORIZED',
+  smtp_require_tls:               'SMTP_REQUIRE_TLS',
   graph_tenant_id:                'GRAPH_TENANT_ID',
   graph_client_id:                'GRAPH_CLIENT_ID',
   graph_client_secret:            'GRAPH_CLIENT_SECRET',
@@ -71,6 +73,11 @@ const ENV_MAP = {
   brand_name:                     'BRAND_NAME',
   brand_logo:                     'BRAND_LOGO',
   brand_accent:                   'BRAND_ACCENT',
+  // NOTE: license config (LICENSE_PUBLIC_KEY / LICENSE_PUBLIC_KEY_PATH / LICENSE_FILE)
+  // and the one-click updater command (MEMEX_UPDATE_COMMAND) are deliberately ABSENT
+  // here. They are read from the operator environment only (see server/lib/license.js
+  // and server/routes/license.js), so a customer's own web admin can neither swap the
+  // license trust anchor to forge an entitlement nor turn the updater into an RCE.
 };
 
 const cache = new Map();

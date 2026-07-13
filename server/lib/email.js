@@ -25,7 +25,13 @@ async function smtpConfig() {
   const user = String((await settings.getOrEnv('smtp_user')) || '').trim() || null;
   const pass = (await settings.getOrEnv('smtp_pass')) || null;
   const from = String((await settings.getOrEnv('email_from')) || user || '').trim();
-  return { host, port, secure, user, pass, from };
+  // Relay controls for corporate smarthosts (Proofpoint, on-prem gateways):
+  //  • reject_unauthorized=false accepts a self-signed / private-CA relay cert.
+  //    Defaults to true — you must opt OUT of certificate validation.
+  //  • require_tls forces STARTTLS on a non-465 port (refuse to send in the clear).
+  const rejectUnauthorized = String((await settings.getOrEnv('smtp_reject_unauthorized')) || '').toLowerCase() !== 'false';
+  const requireTLS = String((await settings.getOrEnv('smtp_require_tls')) || '').toLowerCase() === 'true';
+  return { host, port, secure, user, pass, from, rejectUnauthorized, requireTLS };
 }
 
 function transportFor(cfg) {
@@ -35,22 +41,30 @@ function transportFor(cfg) {
   const passHash = cfg.pass
     ? crypto.createHash('sha256').update(String(cfg.pass)).digest('hex')
     : '';
-  const key = JSON.stringify({ h: cfg.host, p: cfg.port, s: cfg.secure, u: cfg.user, p2: passHash });
+  const key = JSON.stringify({ h: cfg.host, p: cfg.port, s: cfg.secure, u: cfg.user, p2: passHash, ru: cfg.rejectUnauthorized, rt: cfg.requireTLS });
   if (_transport && _transportKey === key) return _transport;
   const nodemailer = require('nodemailer');
   _transport = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
     secure: cfg.secure,
+    requireTLS: cfg.requireTLS || undefined,
     auth: cfg.user ? { user: cfg.user, pass: cfg.pass } : undefined,
+    // Only relax cert validation when the operator explicitly opted out (private-CA relays).
+    tls: cfg.rejectUnauthorized === false ? { rejectUnauthorized: false } : undefined,
   });
   _transportKey = key;
   return _transport;
 }
 
-async function smtpSend(cfg, { to, subject, text, html }) {
+async function smtpSend(cfg, { to, subject, text, html, attachments, icalEvent }) {
   const from = cfg.from || cfg.user || 'memex@localhost';
-  await transportFor(cfg).sendMail({ from, to, subject, text, html });
+  const mail = { from, to, subject, text, html };
+  if (Array.isArray(attachments) && attachments.length) mail.attachments = attachments;
+  // nodemailer's icalEvent makes the message a real calendar invite (multipart with
+  // a text/calendar part carrying the method), so clients show accept/decline.
+  if (icalEvent) mail.icalEvent = { method: icalEvent.method || 'REQUEST', filename: icalEvent.filename || 'invite.ics', content: icalEvent.content };
+  await transportFor(cfg).sendMail(mail);
   return { sent: true, via: 'smtp' };
 }
 
@@ -128,7 +142,17 @@ async function graphToken(cfg) {
   return _graphToken.token;
 }
 
-async function graphSend(cfg, { to, subject, text, html }) {
+function graphAttachment(name, contentType, content) {
+  const bytes = Buffer.isBuffer(content) ? content : Buffer.from(String(content), 'utf8');
+  return {
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: name || 'attachment',
+    contentType: contentType || 'application/octet-stream',
+    contentBytes: bytes.toString('base64'),
+  };
+}
+
+async function graphSend(cfg, { to, subject, text, html, attachments, icalEvent }) {
   const token = await graphToken(cfg);
   const recipients = String(to).split(',').map(s => s.trim()).filter(Boolean)
     .map(addr => ({ emailAddress: { address: addr } }));
@@ -137,6 +161,12 @@ async function graphSend(cfg, { to, subject, text, html }) {
     body: html ? { contentType: 'HTML', content: html } : { contentType: 'Text', content: text || '' },
     toRecipients: recipients,
   };
+  // Graph has no icalEvent field; attach the invite as an .ics fileAttachment.
+  // Outlook renders a text/calendar attachment as an accept/decline event.
+  const atts = [];
+  if (icalEvent) atts.push(graphAttachment(icalEvent.filename || 'invite.ics', `text/calendar; method=${icalEvent.method || 'REQUEST'}; charset=UTF-8`, icalEvent.content));
+  for (const a of attachments || []) atts.push(graphAttachment(a.filename, a.contentType, a.content));
+  if (atts.length) message.attachments = atts;
   const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(cfg.from)}/sendMail`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -167,14 +197,16 @@ async function isConfigured() {
 }
 
 // Send an email. Returns { sent: true, via } or { sent: false, reason }. Never throws.
-async function sendMail({ to, subject, text, html }) {
+// `attachments`: [{ filename, contentType, content:Buffer|string }]. `icalEvent`:
+// { method, filename, content } for calendar invites.
+async function sendMail({ to, subject, text, html, attachments, icalEvent }) {
   try {
     if (!to) return { sent: false, reason: 'no_recipient' };
     const provider = await resolveProvider();
     if (!provider) return { sent: false, reason: 'not_configured' };
     return provider.kind === 'graph'
-      ? await graphSend(provider.cfg, { to, subject, text, html })
-      : await smtpSend(provider.cfg, { to, subject, text, html });
+      ? await graphSend(provider.cfg, { to, subject, text, html, attachments, icalEvent })
+      : await smtpSend(provider.cfg, { to, subject, text, html, attachments, icalEvent });
   } catch (e) {
     console.error('email send failed:', e.message);
     return { sent: false, reason: e.message };
