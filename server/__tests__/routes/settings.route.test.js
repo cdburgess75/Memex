@@ -6,9 +6,10 @@ const MASKED = '●●●●●●●●';
 
 // Minimal ENV_MAP for the route to work with
 const MOCK_ENV_MAP = {
-  anthropic_api_key: 'ANTHROPIC_API_KEY',
-  anthropic_model:   'ANTHROPIC_MODEL',
-  storage_provider:  'STORAGE_PROVIDER',
+  anthropic_api_key:    'ANTHROPIC_API_KEY',
+  anthropic_model:      'ANTHROPIC_MODEL',
+  storage_provider:     'STORAGE_PROVIDER',
+  backup_destinations:  'BACKUP_DESTINATIONS',
 };
 
 jest.mock('../../lib/settings', () => ({
@@ -112,5 +113,26 @@ describe('PUT /api/admin/settings', () => {
     expect(res.status).toBe(403);
     expect(settings.set).not.toHaveBeenCalled();
     mockUser = { id: 'u1', email: 'admin@test.com', role: 'admin' };
+  });
+
+  // A GET masks each backup destination's secret_access_key; a naive round-trip PUT
+  // would then persist the mask and destroy the real S3 secret. The merge restores it.
+  test('restores a masked backup secret from the stored destination (no clobber)', async () => {
+    const stored = JSON.stringify([{ id: 'd1', bucket: 'b', secret_access_key: 'REAL-SECRET' }]);
+    settings.getOrEnv.mockImplementation(key => Promise.resolve(key === 'backup_destinations' ? stored : null));
+    const incoming = JSON.stringify([{ id: 'd1', bucket: 'b', secret_access_key: MASKED }]);
+    const res = await request(makeApp()).put('/api/admin/settings').send({ backup_destinations: incoming });
+    expect(res.status).toBe(200);
+    const call = settings.set.mock.calls.find(c => c[0] === 'backup_destinations');
+    expect(call).toBeTruthy();
+    expect(JSON.parse(call[1])[0].secret_access_key).toBe('REAL-SECRET');
+  });
+
+  test('saves a newly provided backup secret verbatim', async () => {
+    const incoming = JSON.stringify([{ id: 'd1', bucket: 'b', secret_access_key: 'NEW-SECRET' }]);
+    const res = await request(makeApp()).put('/api/admin/settings').send({ backup_destinations: incoming });
+    expect(res.status).toBe(200);
+    const call = settings.set.mock.calls.find(c => c[0] === 'backup_destinations');
+    expect(JSON.parse(call[1])[0].secret_access_key).toBe('NEW-SECRET');
   });
 });

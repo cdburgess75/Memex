@@ -53,9 +53,14 @@ app.use(require('./lib/securityHeaders'));
 
 app.use(express.json());
 
-const { apiLimiter, authLimiter, shareLimiter } = makeRateLimiters();
+const { apiLimiter, authLimiter, shareLimiter, uploadLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
 app.use('/api/files/share', shareLimiter);
+// Bulk/resumable uploads (one request per file + per chunk) get a high limiter and
+// are skipped by the general apiLimiter, so a large folder upload isn't 429'd mid-batch.
+app.use('/api/files/upload', uploadLimiter);
+app.use('/api/files/upload-stream', uploadLimiter);
+app.use('/api/files/uploads', uploadLimiter);
 app.use('/api', apiLimiter);
 
 function browserUrlFromRequest(req, fallbackPort) {
