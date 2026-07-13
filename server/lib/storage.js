@@ -28,6 +28,17 @@ async function supabaseDownload(storagePath) {
   return Buffer.from(await data.arrayBuffer());
 }
 
+async function supabaseDownloadStream(storagePath) {
+  const { data, error } = await (await supabaseClient()).storage.from('documents').download(storagePath);
+  if (error) throw error;
+  const { Readable } = require('stream');
+  if (data && typeof data.stream === 'function' && Readable.fromWeb) {
+    return { stream: Readable.fromWeb(data.stream()), length: typeof data.size === 'number' ? data.size : null };
+  }
+  const buf = Buffer.from(await data.arrayBuffer());
+  return { stream: Readable.from(buf), length: buf.length };
+}
+
 async function supabaseGetUrl(storagePath, ttl) {
   const { data, error } = await (await supabaseClient()).storage
     .from('documents')
@@ -158,6 +169,39 @@ async function localDownload(storagePath) {
   return key ? enc.decrypt(raw, key) : raw;
 }
 
+// Streaming download: never buffers the whole file. For an encrypted file we peek
+// the MAGIC+IV+TAG header and pipe the ciphertext through a streaming GCM decipher;
+// legacy/plaintext files (no magic) stream as-is. Returns { stream, length } where
+// length is the plaintext byte length when known (used for Content-Length).
+async function localDownloadStream(storagePath) {
+  const fullPath = nodePath.join(await localBase(), storagePath);
+  const key = await _encKey();
+  const stat = await fs.stat(fullPath);
+  if (!key) return { stream: fsSync.createReadStream(fullPath), length: stat.size };
+  // Peek the 32-byte header to distinguish an encrypted file from a legacy plaintext one.
+  const fd = await fs.open(fullPath, 'r');
+  let header;
+  try {
+    const b = Buffer.alloc(Math.min(32, stat.size));
+    const { bytesRead } = await fd.read(b, 0, b.length, 0);
+    header = b.subarray(0, bytesRead);
+  } finally {
+    await fd.close();
+  }
+  if (header.length < 32 || !header.subarray(0, 4).equals(enc.MAGIC)) {
+    return { stream: fsSync.createReadStream(fullPath), length: stat.size };
+  }
+  const iv = header.subarray(4, 16);
+  const tag = header.subarray(16, 32);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const ciphertext = fsSync.createReadStream(fullPath, { start: 32 });
+  ciphertext.on('error', (e) => decipher.destroy(e));
+  ciphertext.pipe(decipher);
+  // GCM ciphertext length equals plaintext length, so plaintext = filesize - 32-byte header.
+  return { stream: decipher, length: stat.size - 32 };
+}
+
 async function localGetUrl(storagePath, ttl) {
   const token = crypto.randomBytes(32).toString('hex');
   localTokens.set(token, { storagePath, expires: Date.now() + ttl * 1000 });
@@ -227,6 +271,13 @@ async function s3Download(storagePath) {
   return Buffer.concat(chunks);
 }
 
+async function s3DownloadStream(storagePath) {
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  const res = await (await s3Client()).send(new GetObjectCommand({ Bucket: await s3Bucket(), Key: storagePath }));
+  // aws-sdk v3 Body is a Node Readable stream (S3 stores raw bytes; no app-layer encryption).
+  return { stream: res.Body, length: typeof res.ContentLength === 'number' ? res.ContentLength : null };
+}
+
 async function s3GetUrl(storagePath, ttl) {
   const { GetObjectCommand } = require('@aws-sdk/client-s3');
   const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -292,6 +343,16 @@ async function download(storagePath) {
   }
 }
 
+// Streaming variant of download() for serving files to a client without buffering
+// the whole object in memory. Returns { stream, length|null }.
+async function downloadStream(storagePath) {
+  switch (await PROVIDER()) {
+    case 'local': return localDownloadStream(storagePath);
+    case 's3':    return s3DownloadStream(storagePath);
+    default:      return supabaseDownloadStream(storagePath);
+  }
+}
+
 async function getUrl(storagePath, ttl = 3600) {
   switch (await PROVIDER()) {
     case 'local': return localGetUrl(storagePath, ttl);
@@ -319,4 +380,4 @@ async function copy(fromStoragePath, toStoragePath, mimeType) {
   }
 }
 
-module.exports = { upload, uploadStream, download, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase };
+module.exports = { upload, uploadStream, download, downloadStream, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase };
