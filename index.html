@@ -2504,15 +2504,16 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
+    <div class="meet-wrap">
+      <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings and calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
+      <div class="meet-panel" id="meet-panel"></div>
+    </div>
     <button class="notif-btn theme-btn" id="theme-btn" type="button" onclick="toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle light or dark theme"></button>
     <div class="notif-wrap">
       <button class="notif-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications" aria-haspopup="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
       <div class="notif-panel" id="notif-panel"></div>
     </div>
-    <div class="meet-wrap">
-      <button class="meet-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Calls" aria-label="Calls" aria-haspopup="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
-      <div class="meet-panel" id="meet-panel"></div>
-    </div>
+    <button class="notif-btn" id="settings-btn" type="button" onclick="openSettings()" title="Settings" aria-label="Settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -3479,13 +3480,13 @@ function openScheduleMeeting() {
   const dval = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const tval = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="schedule-scrim" onclick="if(event.target.id==='schedule-scrim')closeScheduleMeeting()"><div class="modal"><h2>Schedule a meeting</h2>
-    <p class="sub">Invites go out by email with a calendar hook. Attendees join the built-in video room from the link. Only people who have a Memex account can be invited.</p>
+    <p class="sub">Send email invites with a calendar hook (attendees need a Memex account), or Copy invite to grab a join link you can paste into any chat for a quick meeting.</p>
     <label>Title</label><input type="text" id="mt-title" placeholder="e.g. Weekly standup" autocomplete="off">
     <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:100px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
     <label>Attendees (emails, comma or space separated)</label><input type="text" id="mt-attendees" placeholder="alex@company.com, sam@company.com" autocomplete="off">
     <label>Note (optional)</label><textarea id="mt-note" rows="2" placeholder="Agenda or context"></textarea>
     <div id="mt-result" class="update-output" style="display:none"></div>
-    <div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="submitScheduleMeeting(this)">Send invites</button><button class="ghost-btn" onclick="closeScheduleMeeting()">Cancel</button></div>
+    <div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="submitScheduleMeeting(this)">Send invites</button><button class="ghost-btn" onclick="copyMeetingInvite(this)">Copy invite</button><button class="ghost-btn" onclick="closeScheduleMeeting()">Cancel</button></div>
   </div></div>`);
   setTimeout(() => document.getElementById('mt-title')?.focus(), 30);
 }
@@ -3514,6 +3515,26 @@ async function submitScheduleMeeting(btn) {
     if (r.sentCount) toast(`Invites sent to ${r.sentCount}`); else toast('No invites sent');
   } catch (e) { if (out) out.textContent = 'Error: ' + e.message; toast('Failed: ' + e.message); }
   btn.disabled = false;
+}
+// Quick-meeting path: mint a room + join link entirely client-side (no email, no
+// server, no app_url needed) and copy a paste-ready invite to the clipboard.
+async function copyMeetingInvite() {
+  const title = (document.getElementById('mt-title')?.value || '').trim() || 'Memex meeting';
+  const date = document.getElementById('mt-date')?.value;
+  const time = document.getElementById('mt-time')?.value;
+  const note = (document.getElementById('mt-note')?.value || '').trim();
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'meeting';
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(9))).map(b => b.toString(16).padStart(2, '0')).join('');
+  const room = `room-${slug}-${rand}`;
+  const joinUrl = `${location.origin}/?meet=${encodeURIComponent(room)}`;
+  let when = '';
+  if (date && time) { const d = new Date(`${date}T${time}`); if (!isNaN(d)) when = d.toLocaleString([], { dateStyle: 'full', timeStyle: 'short' }); }
+  const text = [title, when, note, `Join the Memex video meeting: ${joinUrl}`].filter(Boolean).join('\n');
+  const out = document.getElementById('mt-result');
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch { /* clipboard unavailable (e.g. insecure context) */ }
+  if (out) { out.style.display = ''; out.textContent = (copied ? 'Copied to clipboard:\n\n' : 'Copy the invite below:\n\n') + text; }
+  toast(copied ? 'Meeting invite copied' : 'Invite ready below — select and copy');
 }
 
 function openSecurityStatus() {
