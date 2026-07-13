@@ -1555,6 +1555,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-status .upload-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #424242; }
 .file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: #DDEEFF; overflow: hidden; border: 1px solid #BBD7F0; }
 .file-upload-status .upload-fill { height: 100%; width: var(--pct, 0%); background: linear-gradient(90deg, #0F6CBD, #5B5FC7); transition: width 120ms ease; }
+.upload-staging { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: var(--accent-wash); border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); }
+.upload-staging-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.upload-staging-actions .ghost-btn, .upload-staging-actions .run-btn { padding: 5px 12px; font-size: 13px; }
 .file-empty-home { background: #FFFFFF; border: 1px dashed #D8D8D8; border-radius: 12px; padding: 32px; color: #707070; }
 .file-empty-title { color: #323130; font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .file-empty-text { color: #616161; font-size: 14px; line-height: 1.45; max-width: 560px; }
@@ -6738,7 +6741,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFilePickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><main class="file-home-main" id="file-home-main">${mainHtml}</main></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
@@ -7461,6 +7464,33 @@ function handleFilePickerChange(event) {
   uploadFiles(Array.from(event.target.files).map(file => ({ file, path: file.webkitRelativePath || file.name })));
   event.target.value = '';
 }
+
+// The native folder picker can only select ONE folder per dialog, so to upload
+// several folders at once we STAGE each pick and let the user add more before
+// uploading them all together. (Drag-drop already handles multiple folders.)
+let stagedFolderItems = [];
+function handleFolderPickerChange(event) {
+  const picked = Array.from(event.target.files).map(file => ({ file, path: file.webkitRelativePath || file.name }));
+  event.target.value = '';
+  const seen = new Set(stagedFolderItems.map(i => i.path));
+  for (const it of picked) if (!seen.has(it.path)) { stagedFolderItems.push(it); seen.add(it.path); }
+  renderFolderStaging();
+}
+function renderFolderStaging() {
+  const el = document.getElementById('upload-status');
+  if (!el) return;
+  if (!stagedFolderItems.length) { el.innerHTML = ''; return; }
+  const byFolder = {};
+  for (const it of stagedFolderItems) { const top = (it.path || '').split('/')[0] || it.path; byFolder[top] = (byFolder[top] || 0) + 1; }
+  const names = Object.keys(byFolder);
+  const summary = names.map(n => `${esc(n)} (${byFolder[n]})`).join(', ');
+  el.innerHTML = `<div class="upload-staging"><span><strong>${names.length} folder${names.length === 1 ? '' : 's'} ready:</strong> ${summary}</span>` +
+    `<span class="upload-staging-actions"><button class="ghost-btn" onclick="chooseUpload('folder')">Add another folder</button>` +
+    `<button class="run-btn" onclick="uploadStagedFolders()">Upload all</button>` +
+    `<button class="ghost-btn" onclick="clearFolderStaging()">Clear</button></span></div>`;
+}
+function uploadStagedFolders() { const items = stagedFolderItems; stagedFolderItems = []; uploadFiles(items); }
+function clearFolderStaging() { stagedFolderItems = []; const el = document.getElementById('upload-status'); if (el) el.innerHTML = ''; }
 
 function handleFileHomeDropOver(event) {
   event.preventDefault();
