@@ -84,3 +84,33 @@ describe('downloadStream (local)', () => {
     await expect(collect(stream)).rejects.toThrow();
   });
 });
+
+describe('uploadStream maxBytes cap', () => {
+  const { Readable } = require('stream');
+
+  test('an under-cap stream uploads and round-trips', async () => {
+    cfg(null);
+    const data = Buffer.alloc(2000, 9);
+    const r = await storage.uploadStream('documents/under.bin', Readable.from([data]), 'application/octet-stream', { maxBytes: 1024 * 1024 });
+    expect(r.size).toBe(data.length);
+    expect((await storage.download('documents/under.bin')).equals(data)).toBe(true);
+  });
+
+  test('an over-cap stream rejects with UPLOAD_TOO_LARGE and leaves no file behind', async () => {
+    cfg(null);
+    const src = Readable.from([Buffer.alloc(600), Buffer.alloc(600)]); // 1200 > 1000
+    await expect(
+      storage.uploadStream('documents/over.bin', src, 'application/octet-stream', { maxBytes: 1000 })
+    ).rejects.toMatchObject({ code: 'UPLOAD_TOO_LARGE' });
+    expect(fs.existsSync(path.join(TMP, 'documents/over.bin'))).toBe(false);
+  });
+
+  test('over-cap also holds for encrypted storage (cap applies before the cipher)', async () => {
+    cfg(KEY);
+    const src = Readable.from([Buffer.alloc(800), Buffer.alloc(800)]); // 1600 > 1000
+    await expect(
+      storage.uploadStream('documents/overenc.bin', src, 'application/octet-stream', { maxBytes: 1000 })
+    ).rejects.toMatchObject({ code: 'UPLOAD_TOO_LARGE' });
+    expect(fs.existsSync(path.join(TMP, 'documents/overenc.bin'))).toBe(false);
+  });
+});
