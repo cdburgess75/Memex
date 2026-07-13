@@ -42,7 +42,7 @@ router.post('/test-email', auth, requireRole('admin'), async (req, res) => {
     const r = await email.sendMail({
       to: req.user.email,
       subject: 'Memex test email',
-      text: 'This is a test email from Memex. If you received it, your SMTP settings are working.',
+      text: 'This is a test email from Memex. If you received it, your email provider (Microsoft Graph or SMTP relay) is configured correctly.',
     });
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }

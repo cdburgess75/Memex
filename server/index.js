@@ -146,6 +146,8 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/libraries', require('./routes/libraries'));
 app.use('/api/version', require('./routes/version'));
+app.use('/api/license', require('./routes/license'));
+app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));
 
