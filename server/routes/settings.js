@@ -49,6 +49,21 @@ function mergeEndpointSecrets(incomingJson, storedJson, legacyKey) {
   return JSON.stringify(arr);
 }
 
+// On PUT, a still-masked secret_access_key means "keep current" — restore it from
+// the stored destination (matched by id, else by position) so a GET→PUT round-trip
+// can't overwrite a real S3 backup secret with the mask string.
+function mergeBackupSecrets(incomingJson, storedJson) {
+  const stored = parseEndpoints(storedJson);
+  const arr = parseEndpoints(incomingJson).map((d, i) => {
+    if (d.secret_access_key === MASKED) {
+      const prev = (d.id != null && stored.find(s => s.id === d.id)) || stored[i];
+      return { ...d, secret_access_key: prev ? (prev.secret_access_key || '') : '' };
+    }
+    return d;
+  });
+  return JSON.stringify(arr);
+}
+
 // GET /api/admin/settings
 router.get('/', auth, requireRole('admin'), async (req, res) => {
   try {
@@ -77,6 +92,11 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       if (SENSITIVE.has(key) && value === MASKED) continue; // user didn't change it
       if (key === 'ai_endpoints') {
         const merged = mergeEndpointSecrets(value, await settings.getOrEnv('ai_endpoints'), await settings.getOrEnv('openai_api_key'));
+        await settings.set(key, merged === '[]' ? null : merged, req.user.id);
+        continue;
+      }
+      if (key === 'backup_destinations') {
+        const merged = mergeBackupSecrets(value, await settings.getOrEnv('backup_destinations'));
         await settings.set(key, merged === '[]' ? null : merged, req.user.id);
         continue;
       }

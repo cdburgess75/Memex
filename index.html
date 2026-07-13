@@ -5760,7 +5760,12 @@ function fileOwner(f) {
 }
 function fileDate(value) { return value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : ''; }
 function fileSizeLabel(size) { return size > 1024*1024 ? (size/1024/1024).toFixed(1)+' MB' : Math.max(1, Math.round((size || 0)/1024))+' KB'; }
-function fileIconHtml(ext) { return `<div class="file-icon ${ext}">${esc(fileKind(ext).slice(0,3))}</div>`; }
+function fileIconHtml(ext) {
+  // Badge = first 3 letters of the extension (XLS, DOC, PPT, CSV, MP4, MP3, ZIP,
+  // PDF, TXT…), not the friendly app name. The Type column still uses fileKind().
+  const badge = ext ? ext.slice(0, 3) : 'file';
+  return `<div class="file-icon ${ext}">${esc(badge)}</div>`;
+}
 function normalizeFilePath(path) {
   return String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
 }
