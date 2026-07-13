@@ -440,4 +440,4 @@ async function copy(fromStoragePath, toStoragePath, mimeType) {
   }
 }
 
-module.exports = { upload, uploadStream, download, downloadStream, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase };
+module.exports = { upload, uploadStream, download, downloadStream, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase, parseRange };
