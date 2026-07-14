@@ -107,14 +107,51 @@ describe('collaboraEditUrl', () => {
   });
 
   test('falls back to COLLABORA_URL for discovery when no internal URL is set', async () => {
-    settingsMap({ collabora_url: 'https://edit.acme.com' });
+    // app_url is required so the WOPI callback host is a configured value (not the
+    // client Host); it does not affect which host discovery is fetched from.
+    settingsMap({ collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
     global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
     await collaboraEditUrl(doc, 'docx', req);
     expect(global.fetch).toHaveBeenCalledWith('https://edit.acme.com/hosting/discovery', expect.anything());
   });
 
+  test('SSRF: the WOPI callback (fetched server-side) uses the configured host, never the client Host', async () => {
+    // No wopi_internal_url, so the callback host comes from app_url. A crafted
+    // request Host must NOT leak into WOPISrc — that would point Collabora at an
+    // internal target server-side and leak the WOPI access token there. It MAY
+    // appear as the browser-facing iframe origin (the requester's own browser only).
+    settingsMap({ collabora_enabled: 'true', collabora_internal_url: 'http://collabora:9980', app_url: 'http://10.5.91.18:3000' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
+    const evilReq = { user: { id: 'u1', email: 'u@test.com' }, protocol: 'http', get: () => '169.254.169.254' };
+    const url = await collaboraEditUrl(doc, 'docx', evilReq);
+    const wopiSrc = decodeURIComponent(/WOPISrc=([^&]+)/.exec(url)[1]);
+    expect(wopiSrc).toBe('http://10.5.91.18:3000/wopi/files/doc-42');
+    expect(wopiSrc).not.toContain('169.254.169.254');
+    // discovery is fetched from the internal URL, not the attacker Host
+    expect(global.fetch).toHaveBeenCalledWith('http://collabora:9980/hosting/discovery', expect.anything());
+  });
+
+  test('SSRF: discovery is never fetched from the client Host', async () => {
+    // collabora_enabled but no collabora_internal_url and no collabora_url: the old
+    // code fell back to the request origin for the discovery fetch (server-side SSRF).
+    // With no trusted discovery host, editing is disabled instead.
+    settingsMap({ collabora_enabled: 'true', app_url: 'http://10.5.91.18:3000' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
+    const evilReq = { user: { id: 'u1', email: 'u@test.com' }, protocol: 'http', get: () => '169.254.169.254' };
+    expect(await collaboraEditUrl(doc, 'docx', evilReq)).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('editing is disabled when neither wopi_internal_url nor app_url is set', async () => {
+    // Without a configured callback host there is no safe WOPISrc, so editing must
+    // be disabled rather than fall back to trusting the client Host header.
+    settingsMap({ collabora_enabled: 'true', collabora_internal_url: 'http://collabora:9980' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
+    expect(await collaboraEditUrl(doc, 'docx', req)).toBeNull();
+  });
+
   test('returns null (graceful) when discovery is unreachable', async () => {
-    settingsMap({ collabora_url: 'https://edit.acme.com' });
+    settingsMap({ collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
     expect(await collaboraEditUrl(doc, 'docx', req)).toBeNull();
   });
