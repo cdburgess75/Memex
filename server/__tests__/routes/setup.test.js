@@ -67,6 +67,20 @@ describe('setup route', () => {
     expect(settings.set).toHaveBeenCalledWith('tenant_contact_email', 'it@acme.com', 'u1');
   });
 
+  test('POST /tenant saves branding (accent + logo data URI)', async () => {
+    await request(app).post('/api/setup/tenant').send({ orgName: 'Acme', accent: '#123456', logo: 'data:image/png;base64,AAA' });
+    expect(settings.set).toHaveBeenCalledWith('brand_accent', '#123456', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('brand_logo', 'data:image/png;base64,AAA', 'u1');
+  });
+
+  test('POST /tenant with logo="" clears the logo; absent logo leaves it', async () => {
+    await request(app).post('/api/setup/tenant').send({ orgName: 'Acme', logo: '' });
+    expect(settings.set).toHaveBeenCalledWith('brand_logo', null, 'u1');
+    settings.set.mockClear();
+    await request(app).post('/api/setup/tenant').send({ orgName: 'Acme' }); // no logo field
+    expect(settings.set).not.toHaveBeenCalledWith('brand_logo', expect.anything(), 'u1');
+  });
+
   test('POST /tenant is rejected once completed (config goes through Settings then)', async () => {
     settings.get.mockImplementation(async (k) => completed(k));
     const r = await request(app).post('/api/setup/tenant').send({ orgName: 'X' });

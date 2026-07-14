@@ -2453,6 +2453,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 .setup-hint { font-weight: 400; color: var(--ink-faint); font-size: 11px; }
 .setup-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0; }
 .setup-check input { width: auto; height: auto; }
+.setup-brand-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .setup-result { font-size: 12px; min-height: 16px; margin: 2px 0 6px; line-height: 1.4; }
 .setup-ok { color: #2E7D32; }
 .setup-err { color: #C62828; }
@@ -2870,6 +2871,7 @@ function showSetupLocked() {
 async function openSetupWizard() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim')?.classList.remove('open');
+  brandLogoDraft = null; // start from the saved logo (no stale draft from a prior session)
   try { setupState.status = await apiGet('/setup/status'); }
   catch (e) { setupState.status = { adminEmail: currentUser?.email || '', tenant: {}, integrations: { emailProvider: 'none' }, performance: {} }; }
   setupState.step = 0;
@@ -2895,6 +2897,38 @@ function renderSetupWizard() {
   if (step === 2) setupRenderEmailFields();
 }
 
+// Wizard branding preview helpers. Reuse the shared brandLogoDraft (null = unchanged,
+// '' = removed, data URL = newly picked) so the wizard and Settings behave identically.
+function setupHasLogo(s) {
+  return brandLogoDraft !== null ? brandLogoDraft !== '' : !!(s && s.tenant && s.tenant.logo);
+}
+function setupLogoInner(s) {
+  const logo = brandLogoDraft !== null ? brandLogoDraft : ((s && s.tenant && s.tenant.logo) || '');
+  if (logo) return `<img src="${esc(logo)}" alt="">`;
+  const org = (((s && s.tenant && s.tenant.orgName) || 'Depot').trim() || 'Depot');
+  return (org[0] || 'D').toUpperCase();
+}
+function setupOnLogoPick(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  if (file.size > 256 * 1024) { toast('Logo too large — keep it under 256 KB'); ev.target.value = ''; return; }
+  const r = new FileReader();
+  r.onload = () => {
+    brandLogoDraft = String(r.result || '');
+    const prev = document.getElementById('setup-logo-preview');
+    if (prev) { prev.innerHTML = `<img src="${esc(brandLogoDraft)}" alt="">`; prev.classList.add('has-logo'); }
+    const rm = document.getElementById('setup-logo-remove'); if (rm) rm.style.display = '';
+  };
+  r.onerror = () => toast('Could not read that image');
+  r.readAsDataURL(file);
+  ev.target.value = '';
+}
+function setupClearLogo() {
+  brandLogoDraft = '';
+  const prev = document.getElementById('setup-logo-preview');
+  if (prev) { const org = (document.getElementById('setup-org')?.value || 'Depot').trim() || 'Depot'; prev.textContent = (org[0] || 'D').toUpperCase(); prev.classList.remove('has-logo'); }
+  const rm = document.getElementById('setup-logo-remove'); if (rm) rm.style.display = 'none';
+}
 function setupStepHtml(step, s) {
   if (step === 0) return `
     <p class="setup-lead">Your administrator account is managed by the identity server. You set your password at first login; here you can require multi-factor authentication for everyone.</p>
@@ -2904,7 +2938,16 @@ function setupStepHtml(step, s) {
   if (step === 1) return `
     <div class="setup-field"><label>Company / organization name</label><input id="setup-org" value="${esc(s.tenant?.orgName || '')}" placeholder="Acme Corporation"></div>
     <div class="setup-field"><label>Tenant ID <span class="setup-hint">short unique slug</span></label><input id="setup-tenant-id" value="${esc(s.tenant?.tenantId || '')}" placeholder="acme"></div>
-    <div class="setup-field"><label>Primary technical contact email</label><input id="setup-contact" type="email" value="${esc(s.tenant?.contactEmail || '')}" placeholder="it@acme.com"></div>`;
+    <div class="setup-field"><label>Primary technical contact email</label><input id="setup-contact" type="email" value="${esc(s.tenant?.contactEmail || '')}" placeholder="it@acme.com"></div>
+    <div class="setup-field"><label>Logo <span class="setup-hint">optional · PNG/JPG/SVG/WebP, ≤256 KB</span></label>
+      <div class="setup-brand-row">
+        <span class="brand-logo${setupHasLogo(s) ? ' has-logo' : ''}" id="setup-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px;flex:0 0 auto">${setupLogoInner(s)}</span>
+        <input type="file" id="setup-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none" onchange="setupOnLogoPick(event)">
+        <button class="ghost-btn" type="button" onclick="document.getElementById('setup-logo-file').click()">Upload logo</button>
+        <button class="ghost-btn" type="button" id="setup-logo-remove" onclick="setupClearLogo()" style="${setupHasLogo(s) ? '' : 'display:none'}">Remove</button>
+      </div>
+    </div>
+    <div class="setup-field"><label>Accent color</label><input type="color" id="setup-accent" value="${esc(s.tenant?.accent || '#C2603D')}" style="width:56px;height:34px;padding:2px;cursor:pointer"></div>`;
   if (step === 2) return `
     <h3 class="setup-h3">AI (Anthropic)</h3>
     <div class="setup-field setup-inline"><input id="setup-ai-key" type="password" autocomplete="new-password" placeholder="Anthropic API key (sk-ant-…)"><button class="ghost-btn" type="button" onclick="setupTestAi()">Test</button></div>
@@ -2971,11 +3014,16 @@ function setupCollectIntegrations() {
 }
 
 async function setupSaveStep(step) {
-  if (step === 1) return apiPost('/setup/tenant', {
-    orgName: document.getElementById('setup-org')?.value || '',
-    tenantId: document.getElementById('setup-tenant-id')?.value || '',
-    contactEmail: document.getElementById('setup-contact')?.value || '',
-  });
+  if (step === 1) {
+    const body = {
+      orgName: document.getElementById('setup-org')?.value || '',
+      tenantId: document.getElementById('setup-tenant-id')?.value || '',
+      contactEmail: document.getElementById('setup-contact')?.value || '',
+      accent: document.getElementById('setup-accent')?.value || '',
+    };
+    if (brandLogoDraft !== null) body.logo = brandLogoDraft; // only send when changed
+    return apiPost('/setup/tenant', body);
+  }
   if (step === 2) return apiPost('/setup/integrations', setupCollectIntegrations());
   if (step === 3) return apiPost('/setup/performance', {
     maxUploadMb: document.getElementById('setup-max-mb')?.value,
@@ -4900,7 +4948,7 @@ function workspaceSettingsHtml() {
   const s = settingsSys || {};
   const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
   const brandName = s.brand_name || '';
-  const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'M').toUpperCase());
+  const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'D').toUpperCase());
   return `<div class="settings-sub">Workspace branding</div>
       <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
       <div class="settings-grid">
