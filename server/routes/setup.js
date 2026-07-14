@@ -126,8 +126,8 @@ router.post('/test/email', auth, requireRole('admin'), async (req, res) => {
     if (!to) return res.json({ ok: false, error: 'No recipient.' });
     const r = await email.sendMail({
       to,
-      subject: 'Memex setup: test email',
-      text: 'This is a test email from your Memex setup wizard. Receiving it confirms outbound email works.',
+      subject: 'Depot setup: test email',
+      text: 'This is a test email from your Depot setup wizard. Receiving it confirms outbound email works.',
     });
     if (r?.sent) return res.json({ ok: true, to, via: r.via });
     res.json({ ok: false, error: r?.reason === 'not_configured' ? 'Email is not configured yet — save the integration first.' : (r?.reason || 'send failed') });
@@ -191,8 +191,8 @@ router.get('/export', auth, requireRole('admin'), async (_req, res) => {
       out[key] = SENSITIVE.has(key) ? '' : v;
     }
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename="memex-config.json"');
-    res.json({ _note: 'Memex deployment config (secret values blanked). Import into a fresh instance and re-enter secrets.', settings: out });
+    res.setHeader('Content-Disposition', 'attachment; filename="depot-config.json"');
+    res.json({ _note: 'Depot deployment config (secret values blanked). Import into a fresh instance and re-enter secrets.', settings: out });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

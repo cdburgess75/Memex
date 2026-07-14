@@ -10,7 +10,7 @@ module.exports = function uploadPage(token) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Upload files — Memex</title>
+<title>Upload files — Depot</title>
 <style>
   :root { --accent:#C2603D; --accent-soft:#A94E2F; --ink:#242424; --ink-soft:#5b5b5b; --rule:#e5e2dd; --paper:#F4F1EA; }
   * { box-sizing: border-box; }
@@ -46,7 +46,7 @@ module.exports = function uploadPage(token) {
 </head>
 <body>
 <div class="card" id="card">
-  <div class="brand"><span class="brand-logo">M</span><strong>Memex</strong></div>
+  <div class="brand"><span class="brand-logo">D</span><strong>Depot</strong></div>
   <div id="loading" class="sub">Loading…</div>
 
   <div id="gone" class="hidden"><h1>Link unavailable</h1><p class="sub" id="gone-msg">This upload link is no longer active.</p></div>
@@ -71,7 +71,7 @@ module.exports = function uploadPage(token) {
     <div class="files" id="files"></div>
 
     <button id="send" disabled>Upload</button>
-    <div class="note">Uploaded to a private Memex library. Only the requester can see your files.</div>
+    <div class="note">Uploaded to a private Depot library. Only the requester can see your files.</div>
   </form>
 
   <div id="done" class="hidden"><h1>✓ Thank you</h1><p class="sub" id="done-msg">Your files were uploaded.</p></div>

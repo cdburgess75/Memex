@@ -37,7 +37,7 @@ const FRAMEWORKS = [
     setting: 'compliance_pci_dss_enabled',
     name: 'PCI-DSS',
     scope: 'Cardholder-data security posture for environments that process, store, or transmit payment data.',
-    note: 'Memex should avoid cardholder data unless PCI scope is intentionally designed and assessed.',
+    note: 'Depot should avoid cardholder data unless PCI scope is intentionally designed and assessed.',
     controls: ['access_control', 'audit_logging', 'encryption', 'vulnerability_management', 'network_security'],
   },
   {
