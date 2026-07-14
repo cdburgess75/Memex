@@ -4694,6 +4694,7 @@ async function saveNetworkSettings() {
     cors_origins:  document.getElementById('cfg-cors-origins').value.trim(),
     http_proxy:    document.getElementById('cfg-http-proxy').value.trim(),
     max_upload_mb: document.getElementById('cfg-max-upload-mb').value,
+    max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
   };
   try {
@@ -5347,8 +5348,10 @@ function systemSettingsHtml() {
         <input type="text" id="cfg-cors-origins" value="${esc(s.cors_origins||'')}" placeholder="* (all) or comma-separated: https://app.co, https://admin.co">
         <label>Outbound HTTP proxy <span style="font-size:10px;color:var(--ink-faint)">(restart)</span></label>
         <input type="url" id="cfg-http-proxy" value="${esc(s.http_proxy||'')}" placeholder="http://proxy.company.com:8080 — for AI URL fetching through a corporate proxy">
-        <label>Max upload size (MB)</label>
-        <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'50')}" min="1" max="2000" step="1">
+        <label>Max upload size (MB per file)</label>
+        <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'8192')}" min="1" max="1048576" step="1">
+        <label>Max files per upload</label>
+        <input type="number" id="cfg-max-upload-files" value="${esc(s.max_upload_files||'4096')}" min="1" max="1000000" step="1">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
       </div>
@@ -7537,6 +7540,11 @@ async function filesFromFileHomeDrop(dataTransfer) {
 
 async function uploadFiles(items) {
   if (!items.length) return;
+  const fileLimit = appConfig?.maxUploadFiles || 4096;
+  if (items.length > fileLimit) {
+    toast(`Upload is limited to ${fileLimit} files at a time. Uploading the first ${fileLimit} of ${items.length}; upload the rest separately or raise the limit in Settings.`);
+    items = items.slice(0, fileLimit);
+  }
   const statusEl = document.getElementById('upload-status');
   // Re-rendering the whole list and firing a toast after EVERY file is O(n^2) and
   // floods the tab with thousands of toasts, which freezes it on big batches (the

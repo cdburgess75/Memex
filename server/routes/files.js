@@ -70,14 +70,26 @@ function fileSizeLabelForEvent(size) {
 }
 
 async function maxUploadMb() {
-  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '50', 10);
-  return Number.isFinite(mb) && mb > 0 ? mb : 50;
+  const mb = parseInt(await settings.getOrEnv('max_upload_mb') || '8192', 10);
+  return Number.isFinite(mb) && mb > 0 ? mb : 8192;
 }
+async function maxUploadFiles() {
+  const n = parseInt(await settings.getOrEnv('max_upload_files') || '4096', 10);
+  return Number.isFinite(n) && n > 0 ? n : 4096;
+}
+// The buffered (multer memoryStorage) path holds the whole file in RAM, so it must
+// NOT honor the full max_upload_mb (which can be many GB). Large files go through the
+// streaming/chunked paths; the buffered path (legacy /upload + the public upload-link)
+// is capped to a memory-safe size regardless of max_upload_mb.
+const MULTER_MEMORY_MB = 256;
+// Text extraction downloads the whole file into memory, so its size gate is capped
+// independently of max_upload_mb — a multi-GB file must never be buffered to index it.
+const TEXT_EXTRACTION_MAX_BYTES = 25 * 1024 * 1024;
 
 let _uploadMb = 0;
 let _uploadMw = null;
 async function getUpload() {
-  const mb = await maxUploadMb();
+  const mb = Math.min(await maxUploadMb(), MULTER_MEMORY_MB);
   if (mb !== _uploadMb || !_uploadMw) {
     _uploadMb = mb;
     _uploadMw = multer({
@@ -406,8 +418,7 @@ async function chunkedFileStream(session) {
 async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId }) {
   let canIngest = false;
   let documentText = null;
-  const extractionLimit = (await maxUploadMb()) * 1024 * 1024;
-  if (storedSize > 0 && storedSize <= extractionLimit) {
+  if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
     try {
       const buffer = await storage.download(storagePath);
       documentText = await extractText(buffer, displayName);
@@ -746,8 +757,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   try {
     let canIngest = false;
     let documentText = null;
-    const extractionLimit = (await maxUploadMb()) * 1024 * 1024;
-    if (storedSize > 0 && storedSize <= extractionLimit) {
+    if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
       try {
         const buffer = await storage.download(storagePath);
         documentText = await extractText(buffer, displayName);

@@ -104,6 +104,10 @@ app.get('/api/config', async (req, res) => {
       accent: (await settings.getOrEnv('brand_accent')) || '',
     };
   } catch { /* defaults */ }
+  // Upload guardrails, so the client can warn/cap before sending (server still enforces).
+  let maxUploadMb = 8192, maxUploadFiles = 4096;
+  try { const v = parseInt((await settings.getOrEnv('max_upload_mb')) || '8192', 10); if (Number.isFinite(v) && v > 0) maxUploadMb = v; } catch { /* default */ }
+  try { const v = parseInt((await settings.getOrEnv('max_upload_files')) || '4096', 10); if (Number.isFinite(v) && v > 0) maxUploadFiles = v; } catch { /* default */ }
   res.json({
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
@@ -111,6 +115,8 @@ app.get('/api/config', async (req, res) => {
     version: VERSION,
     editingEnabled,
     brand,
+    maxUploadMb,
+    maxUploadFiles,
   });
 });
 
