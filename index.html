@@ -957,6 +957,10 @@ html.dark .chip { color: var(--accent-soft); }
    so the image (often a transparent PNG) shows on its own. */
 .brand-logo.has-logo, .login-mark.has-logo { background: none; box-shadow: none; }
 .brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
+/* Masthead with a real logo: give it a taller, natural-width slot and drop the wordmark. */
+.brand--has-logo h1 { display: none; }
+.brand--has-logo .brand-logo.has-logo { width: auto; height: 40px; min-width: 0; border-radius: 6px; }
+.brand--has-logo .brand-logo.has-logo img { width: auto; height: 40px; max-width: 280px; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
@@ -3376,11 +3380,14 @@ function applyBranding(brand) {
   const name = brandDefaults.name || 'Depot';
   document.title = name;
   document.querySelectorAll('.brand h1, .login-modal h2').forEach(el => { el.textContent = name; });
-  const letter = (name.trim()[0] || 'M').toUpperCase();
+  const letter = (name.trim()[0] || 'D').toUpperCase();
   document.querySelectorAll('.brand-logo, .login-mark').forEach(el => {
-    if (brandDefaults.logo) { el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="">`; el.classList.add('has-logo'); }
+    if (brandDefaults.logo) { el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`; el.classList.add('has-logo'); }
     else { el.textContent = letter; el.classList.remove('has-logo'); }
   });
+  // With a real logo, give it room and drop the wordmark; the letter-tile + name
+  // stay only when no custom logo is set.
+  document.querySelectorAll('.brand').forEach(b => b.classList.toggle('brand--has-logo', !!brandDefaults.logo));
   // Brand accent is the default only when the user has no device override.
   if (brandDefaults.accent && !localStorage.getItem('memex_accent')) applyAccent(brandDefaults.accent, false);
 }
