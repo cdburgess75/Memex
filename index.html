@@ -7553,6 +7553,34 @@ async function uploadFiles(items) {
     toast(`Upload is limited to ${fileLimit} files at a time. Uploading the first ${fileLimit} of ${items.length}; upload the rest separately or raise the limit in Settings.`);
     items = items.slice(0, fileLimit);
   }
+  // Pre-upload size guardrail. Files over the configured per-file limit are dropped
+  // (the server rejects them anyway), and a large batch prompts a confirm so a long
+  // upload isn't started by accident. Both messages name the configured limit so the
+  // threshold is visible.
+  const maxMb = appConfig?.maxUploadMb || 8192;
+  const maxBytes = maxMb * 1024 * 1024;
+  const sizeOf = it => (it.file || it).size || 0;
+  const nameOf = it => (it.path || (it.file || it).webkitRelativePath || (it.file || it).name || 'file');
+  const humanGB = n => n >= 1024 * 1024 * 1024 ? (n / (1024 ** 3)).toFixed(2) + ' GB' : (n / (1024 * 1024)).toFixed(0) + ' MB';
+  const LARGE_UPLOAD_WARN_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB — warn before a long upload
+  const oversized = items.filter(it => sizeOf(it) > maxBytes);
+  const keep = items.filter(it => sizeOf(it) <= maxBytes);
+  const keepTotal = keep.reduce((s, it) => s + sizeOf(it), 0);
+  if (oversized.length || keepTotal >= LARGE_UPLOAD_WARN_BYTES) {
+    const lines = [];
+    if (oversized.length) {
+      lines.push(`${oversized.length} file${oversized.length === 1 ? '' : 's'} exceed the ${maxMb} MB per-file limit and will be skipped:`);
+      lines.push(oversized.slice(0, 5).map(it => `  • ${nameOf(it)} (${humanGB(sizeOf(it))})`).join('\n'));
+      if (oversized.length > 5) lines.push(`  …and ${oversized.length - 5} more`);
+      lines.push('');
+    }
+    lines.push(`About to upload ${keep.length} file${keep.length === 1 ? '' : 's'} totaling ${humanGB(keepTotal)} (per-file limit: ${maxMb} MB).`);
+    if (keepTotal >= LARGE_UPLOAD_WARN_BYTES) lines.push('Large uploads can take a while and use significant bandwidth.');
+    lines.push('\nContinue?');
+    if (!confirm(lines.join('\n'))) return;
+    items = keep;
+    if (!items.length) return;
+  }
   const statusEl = document.getElementById('upload-status');
   // Re-rendering the whole list and firing a toast after EVERY file is O(n^2) and
   // floods the tab with thousands of toasts, which freezes it on big batches (the
@@ -8266,7 +8294,7 @@ function onSignal(m) {
     case 'welcome': callSelf = m.self; break;
     case 'presence':
       callOnline = (m.users || []).filter(u => u.userId !== callSelf?.userId);
-      updatePresenceDot(); if (meetPanelOpen()) renderMeetPanel(); break;
+      updatePresenceDot(); if (meetPanelOpen()) refreshMeetPeople(); break;
     case 'call':
       if (callRoom) { wsSend({ type: 'call-reject', to: m.from.userId, room: m.room }); break; }
       incomingCall = { from: m.from, room: m.room }; renderIncomingCall(); break;
@@ -8443,17 +8471,28 @@ function toggleCam() { callCamOff = !callCamOff; if (localStream) localStream.ge
 function meetPanelOpen() { return document.getElementById('meet-panel')?.classList.contains('open'); }
 function toggleMeetPanel(e) { e?.stopPropagation(); const p = document.getElementById('meet-panel'); if (!p) return; const willOpen = !p.classList.contains('open'); closeAllMenus(); if (willOpen) { renderMeetPanel(); p.classList.add('open'); } }
 function closeMeetPanel() { document.getElementById('meet-panel')?.classList.remove('open'); }
-function renderMeetPanel() {
-  const p = document.getElementById('meet-panel'); if (!p) return;
-  const people = callOnline.length
+function meetPeopleHtml() {
+  return callOnline.length
     ? callOnline.map(u => `<button class="meet-person" onclick="callMember('${esc(u.userId)}', '${esc(u.name)}')"><span class="meet-person-dot"></span><span class="meet-person-name">${esc(u.name)}</span><span class="meet-call-ico">📞</span></button>`).join('')
     : '<div class="meet-empty">No one else is online right now.</div>';
-  p.innerHTML = `<div class="meet-title">People online</div><div class="meet-people">${people}</div>
+}
+function renderMeetPanel() {
+  const p = document.getElementById('meet-panel'); if (!p) return;
+  p.innerHTML = `<div class="meet-title">People online</div><div class="meet-people">${meetPeopleHtml()}</div>
     <div class="meet-rule"></div>
     <div class="meet-title">Start a meeting</div>
     <div class="meet-room"><input id="meet-room-input" type="text" placeholder="Room name (e.g. standup)" onkeydown="if(event.key==='Enter')joinRoomFromInput()"><button class="run-btn" onclick="joinRoomFromInput()">Join</button></div>
     ${currentUser?.role !== 'viewer' ? '<button class="ghost-btn" style="margin-top:10px;width:100%" onclick="openScheduleMeeting()">Schedule a meeting…</button>' : ''}
     ${callRoom ? '<div class="meet-incall">You\'re in a call.</div>' : ''}`;
+}
+// Presence ticks arrive while the panel is open; re-rendering the whole panel would
+// wipe a room name being typed. Update only the People-online list, leaving the
+// input (and its focus/caret) untouched. Fall back to a full render if the shell
+// isn't built yet.
+function refreshMeetPeople() {
+  const list = document.querySelector('#meet-panel .meet-people');
+  if (list) list.innerHTML = meetPeopleHtml();
+  else renderMeetPanel();
 }
 function joinRoomFromInput() {
   const v = (document.getElementById('meet-room-input')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
