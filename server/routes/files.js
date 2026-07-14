@@ -445,6 +445,22 @@ async function chunkRoot() {
   return path.join(await storage.localBase(), '.uploads');
 }
 
+// Free bytes on the storage volume. Fails OPEN (returns Infinity) if statfs isn't
+// available or errors — a measurement problem must never block an upload.
+async function freeDiskBytes() {
+  try {
+    if (typeof fs.statfs !== 'function') return Infinity;
+    const st = await fs.statfs(await storage.localBase());
+    return Number(st.bavail) * Number(st.bsize);
+  } catch { return Infinity; }
+}
+// Minimum free space to keep after an upload (guards against filling the volume and
+// taking the app down). Admin-tunable via min_free_disk_mb; default 2 GB.
+async function minFreeDiskBytes() {
+  const mb = parseInt((await settings.getOrEnv('min_free_disk_mb')) || '2048', 10);
+  return (Number.isFinite(mb) && mb >= 0 ? mb : 2048) * 1024 * 1024;
+}
+
 async function chunkDir(sessionId) {
   return path.join(await chunkRoot(), String(sessionId));
 }
@@ -886,6 +902,12 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
     if (!(await storage.isLocalProvider())) {
       return res.status(400).json({ error: 'Resumable chunk uploads currently require local storage' });
     }
+    // Disk-space guard: refuse to start an upload that would drive free space below
+    // the floor. Reserve the whole declared size up front so a huge upload can't fill
+    // the volume partway through. Fails open if free space can't be measured.
+    if ((await freeDiskBytes()) - size < (await minFreeDiskBytes())) {
+      return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
+    }
     const session = await db.queryOne(
       `INSERT INTO upload_sessions
        (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email)
@@ -929,6 +951,12 @@ router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'cont
     if (!session) return res.status(404).json({ error: 'Upload session not found' });
     if (session.status !== 'active') return res.status(409).json({ error: `Upload session is ${session.status}` });
     if (index >= Number(session.total_chunks)) return res.status(400).json({ error: 'Chunk index out of range' });
+
+    // Stop accepting chunks if the volume has dropped below the floor since the
+    // session started, so a long upload can't fill the disk and take the app down.
+    if ((await freeDiskBytes()) < (await minFreeDiskBytes())) {
+      return res.status(507).json({ error: 'Server is low on disk space; upload paused. Try again later.' });
+    }
 
     let bytes;
     try {

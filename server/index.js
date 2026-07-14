@@ -205,6 +205,9 @@ const server = app.listen(PORT, BIND, async () => {
   // Add the tamper-evident audit-log columns before the first event append.
   try { await require('./lib/auditLog').ensureChain(); console.log('[startup] audit-log chain ready'); }
   catch (e) { console.error('[startup] audit-log chain init failed:', e.message); }
+  // Periodically reclaim staged chunks from abandoned resumable uploads.
+  try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
+  catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
 });
 
 // WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
