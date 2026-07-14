@@ -51,7 +51,11 @@ app.use((req, res, next) => (collaboraProxy.isCollaboraPath(req.path) ? collabor
 // proxied responses keep Collabora's own CSP/frame headers untouched.
 app.use(require('./lib/securityHeaders'));
 
-app.use(express.json());
+// Body limit raised from the 100 KB default so branding can carry a logo: the client
+// caps logos at 256 KB, which becomes ~342 KB once base64-encoded into the settings
+// JSON. 1 MB leaves headroom for that plus the rest of the payload. (Bulk file uploads
+// don't go through this parser — they stream via the upload routes.)
+app.use(express.json({ limit: '1mb' }));
 
 const { apiLimiter, authLimiter, shareLimiter, uploadLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
