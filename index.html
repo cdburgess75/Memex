@@ -7597,24 +7597,53 @@ async function uploadFiles(items) {
 
   let uploaded = 0, failed = 0, lastRender = 0;
   const firstErrors = [];
-  for (const item of items) {
+  const total = items.length;
+
+  // Upload one item, record the doc, and return a small result. Shared by the serial
+  // (small-batch) and concurrent (large-batch) paths below.
+  const uploadOne = async (item, fileStatusEl) => {
     const file = item.file || item;
     const displayName = item.path || file.webkitRelativePath || file.name;
-    setUploadStatus(statusEl, `Uploading ${uploaded + failed + 1} of ${items.length}: ${displayName}`, 0, file.size);
     try {
       const { doc, canIngest } = file.size >= RESUMABLE_UPLOAD_THRESHOLD
-        ? await uploadFileResumable(file, displayName, statusEl, uploaded + failed + 1, items.length)
+        ? await uploadFileResumable(file, displayName, fileStatusEl, 0, total)
         : await uploadFileStream(file, displayName);
       filesList.unshift(doc);
-      uploaded += 1;
-      const now = performance.now();
-      if (!many || now - lastRender > 700) { renderList(); lastRender = now; }
-      if (!many) toast(canIngest ? `${displayName} uploaded. Click "Index" to add it` : `${displayName} uploaded`);
+      return { ok: true, canIngest, displayName };
     } catch (e) {
-      failed += 1;
-      if (firstErrors.length < 3) firstErrors.push(`${displayName}: ${e.message}`);
-      if (!many) toast(`Upload error for ${displayName}: ${e.message}`);
+      return { ok: false, error: e, displayName };
     }
+  };
+
+  if (!many) {
+    // Small batches: serial, with per-file byte progress and per-file toasts.
+    for (const item of items) {
+      const file = item.file || item;
+      const displayName = item.path || file.webkitRelativePath || file.name;
+      setUploadStatus(statusEl, `Uploading ${uploaded + failed + 1} of ${total}: ${displayName}`, 0, file.size);
+      const r = await uploadOne(item, statusEl);
+      if (r.ok) { uploaded += 1; toast(r.canIngest ? `${displayName} uploaded. Click "Index" to add it` : `${displayName} uploaded`); }
+      else { failed += 1; toast(`Upload error for ${displayName}: ${r.error.message}`); }
+      renderList();
+    }
+  } else {
+    // Large batches: a bounded-concurrency pool. Uploading a few files at once removes
+    // the per-file round-trip latency that makes a thousand-file folder crawl when
+    // serial. Progress is count-based (a per-file byte bar is meaningless across N in
+    // flight), rendering stays throttled, and one summary toast fires at the end.
+    const UPLOAD_CONCURRENCY = 4;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < items.length) {
+        const r = await uploadOne(items[idx++], null);
+        if (r.ok) uploaded += 1;
+        else { failed += 1; if (firstErrors.length < 3) firstErrors.push(`${r.displayName}: ${r.error.message}`); }
+        const now = performance.now();
+        if (now - lastRender > 700) { renderList(); lastRender = now; }
+        setUploadStatus(statusEl, `Uploading ${uploaded + failed} of ${total}…`, uploaded + failed, total);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, items.length) }, worker));
   }
   renderList();
   if (statusEl) statusEl.textContent = (uploaded || failed) ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.` : '';
