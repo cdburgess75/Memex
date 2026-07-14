@@ -7569,7 +7569,7 @@ async function uploadFiles(items) {
   if (oversized.length || keepTotal >= LARGE_UPLOAD_WARN_BYTES) {
     const lines = [];
     if (oversized.length) {
-      lines.push(`${oversized.length} file${oversized.length === 1 ? '' : 's'} exceed the ${maxMb} MB per-file limit and will be skipped:`);
+      lines.push(`${oversized.length} file${oversized.length === 1 ? '' : 's'} exceed${oversized.length === 1 ? 's' : ''} the ${maxMb} MB per-file limit and will be skipped:`);
       lines.push(oversized.slice(0, 5).map(it => `  • ${nameOf(it)} (${humanGB(sizeOf(it))})`).join('\n'));
       if (oversized.length > 5) lines.push(`  …and ${oversized.length - 5} more`);
       lines.push('');

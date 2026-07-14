@@ -328,6 +328,21 @@ async function requestOrigin(req) {
   return (await settings.getOrEnv('app_url') || '').replace(/\/$/, '');
 }
 
+// The base for WOPISrc — the callback URL Collabora fetches SERVER-SIDE (carrying
+// the WOPI access token) to read and write the document. It must be an
+// operator-configured host and MUST NOT derive from the client Host header:
+// otherwise an authenticated user could send Host: <internal-target> and turn
+// Collabora into an SSRF probe against the internal network while leaking the
+// access token to that host. Prefer the explicit internal URL (the address
+// Collabora reaches the app on), then the canonical app_url. Returns null when
+// neither is configured, which disables editing rather than trusting the request.
+async function wopiCallbackBase() {
+  const internalUrl = (await settings.getOrEnv('wopi_internal_url') || '').replace(/\/$/, '');
+  if (internalUrl) return internalUrl;
+  const appUrl = (await settings.getOrEnv('app_url') || '').replace(/\/$/, '');
+  return appUrl || null;
+}
+
 // Office file types Collabora can edit.
 const COLLABORA_EDIT_EXTS = new Set(['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
 
@@ -361,8 +376,18 @@ async function collaboraEditUrl(doc, ext, req) {
   // real request origin (not publicAppBase, which can swap in a stale app_url) —
   // the editor iframe loads from the same origin the browser is already on.
   const browserBase = configuredBase || (await requestOrigin(req)).replace(/\/$/, '');
-  const discoveryBase = (await settings.getOrEnv('collabora_internal_url') || browserBase).replace(/\/$/, '');
-  const wopiHost = ((await settings.getOrEnv('wopi_internal_url')) || (await publicAppBase(req))).replace(/\/$/, '');
+  // discoveryBase and wopiHost are both fetched SERVER-SIDE, so neither may derive
+  // from the client Host header — otherwise an authenticated user could send
+  // Host: <internal-target> and make the server (discovery) or Collabora (WOPI)
+  // connect there. Only browserBase may reflect the request origin, since it merely
+  // prefixes the URL the requester's own browser loads the iframe from.
+  // Discovery: internal Collabora URL, then the configured external Collabora URL.
+  const discoveryBase = ((await settings.getOrEnv('collabora_internal_url')) || configuredBase).replace(/\/$/, '');
+  const wopiHost = await wopiCallbackBase();
+  if (!discoveryBase || !wopiHost) {
+    console.error('Collabora editing disabled: set collabora_internal_url or collabora_url for discovery, and wopi_internal_url or app_url for the WOPI callback — these server-side fetch hosts must not come from the client Host header.');
+    return null;
+  }
 
   let discovery;
   try {
