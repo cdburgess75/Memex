@@ -7608,7 +7608,8 @@ async function uploadFiles(items) {
       const { doc, canIngest } = file.size >= RESUMABLE_UPLOAD_THRESHOLD
         ? await uploadFileResumable(file, displayName, fileStatusEl, 0, total)
         : await uploadFileStream(file, displayName);
-      filesList.unshift(doc);
+      // A deduped re-upload returns an existing doc; don't add it to the list twice.
+      if (!filesList.some(d => d.id === doc.id)) filesList.unshift(doc);
       return { ok: true, canIngest, displayName };
     } catch (e) {
       return { ok: false, error: e, displayName };

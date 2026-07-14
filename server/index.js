@@ -210,6 +210,17 @@ const server = app.listen(PORT, BIND, async () => {
   catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
 });
 
+// Timeouts tuned for large/slow uploads (U9). keepAliveTimeout sits above the common
+// 60s reverse-proxy idle timeout so a connection reused between chunks isn't closed
+// out from under an in-flight upload (a frequent source of 502s behind a proxy);
+// headersTimeout must exceed keepAliveTimeout (Node requirement). requestTimeout still
+// bounds a whole request (a slowloris guard) but is generous so a slow multi-GB upload
+// on a poor link isn't cut off mid-transfer. All override-able via env.
+const timeoutMs = (name, def) => { const v = parseInt(process.env[name] || '', 10); return Number.isFinite(v) && v >= 0 ? v : def; };
+server.keepAliveTimeout = timeoutMs('KEEPALIVE_TIMEOUT_MS', 65_000);
+server.headersTimeout   = timeoutMs('HEADERS_TIMEOUT_MS', 66_000);
+server.requestTimeout   = timeoutMs('REQUEST_TIMEOUT_MS', 30 * 60 * 1000);
+
 // WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
 try { require('./lib/signaling').init(server); console.log('[startup] WebRTC signaling on /ws'); }
 catch (e) { console.error('[startup] signaling init failed:', e.message); }
