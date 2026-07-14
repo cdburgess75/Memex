@@ -1753,6 +1753,9 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .fc-caret:not(.fc-caret-empty):hover { background: var(--surface-2); color: var(--accent); }
 .fc-caret-empty { visibility: hidden; }
 .file-commander-count { color: var(--ink-faint); font-size: 12px; }
+.file-commander-folder .fc-dots { display: inline-flex; align-items: center; justify-content: center; opacity: 0; color: var(--ink-faint); cursor: pointer; border-radius: 4px; padding: 1px; }
+.file-commander-folder:hover .fc-dots { opacity: 0.7; }
+.file-commander-folder .fc-dots:hover { opacity: 1; color: var(--accent); background: var(--accent-wash); }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 .file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
 .file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
@@ -6071,7 +6074,7 @@ function commanderFolderPane(files) {
         const caret = hasChildren(folder.path)
           ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${collapsed.has(folder.path) ? 'Expand' : 'Collapse'}">${collapsed.has(folder.path) ? '▶' : '▼'}</span>`
           : rootCaret;
-        return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
+        return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="fc-dots" data-folder="${esc(folder.path)}" role="button" aria-label="Folder actions" title="Folder actions" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</span><span class="file-commander-count">${folder.count}</span></button>`;
       }).join('')
     : `<div class="file-empty-text" style="padding:8px 6px">Upload a folder to build this tree.</div>`;
   return `<aside class="file-commander-folders"><div class="file-commander-title">Folders</div><button class="file-commander-folder${rootActive}" data-folder="" onclick="maybeOpenFolder('')">${rootCaret}${ALL_FILES_SVG}<span class="fc-name">All files</span><span class="file-commander-count">${files.length}</span></button>${rows}</aside>`;
