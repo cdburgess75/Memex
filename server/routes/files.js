@@ -1756,7 +1756,7 @@ router.post('/folder/rename', auth, requireRole('admin', 'contributor'), async (
     const parent = oldPath.split('/').slice(0, -1).join('/');
     const newPath = parent ? `${parent}/${newName}` : newName;
     const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3)
+      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
        WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
@@ -1793,7 +1793,7 @@ router.post('/folder/reparent', auth, requireRole('admin', 'contributor'), async
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
     const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3)
+      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
        WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]

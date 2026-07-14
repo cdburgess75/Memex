@@ -6091,9 +6091,10 @@ function fileLibraryCommandBarHtml() {
   if (total) {
     const first = selected[0];
     const singleFile = selected.length === 1 && folderCount === 0;
+    const singleFolder = folderCount === 1 && selected.length === 0;
     const label = `${total} selected`;
     const fileOnly = folderCount === 0;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
   return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
@@ -7063,6 +7064,11 @@ function openSelectedFile() {
   if (!f) return;
   openRecommendedFile(f.id);
 }
+// Single-folder selection helpers for the command bar (Open / Rename a folder that
+// is selected via its checkbox, mirroring the sidebar folder menu actions).
+function selectedFolderPath() { return [...selectedFolderPaths][0] || ''; }
+function openSelectedFolder() { const p = selectedFolderPath(); if (p) { clearFileSelection(); openFolder(p); } }
+function renameSelectedFolder() { const p = selectedFolderPath(); if (p) renameFolder(p); }
 
 async function downloadSelectedItems() {
   const files = selectedFiles();
