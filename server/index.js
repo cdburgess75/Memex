@@ -56,6 +56,10 @@ app.use(express.json());
 const { apiLimiter, authLimiter, shareLimiter, uploadLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
 app.use('/api/files/share', shareLimiter);
+// Public folder ZIP downloads. Mount matches only the token route
+// (/api/files/folder/share/:token), not the authed /folder/shares create/list —
+// Express requires a segment boundary, and "shares" continues past "share".
+app.use('/api/files/folder/share', shareLimiter);
 // Bulk/resumable uploads (one request per file + per chunk) get a high limiter and
 // are skipped by the general apiLimiter, so a large folder upload isn't 429'd mid-batch.
 app.use('/api/files/upload', uploadLimiter);

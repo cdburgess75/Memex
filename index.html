@@ -2993,8 +2993,10 @@ async function apiPut(path, body) {
   return res.json();
 }
 
-async function apiDelete(path) {
-  const res = await fetch('/api' + path, { method: 'DELETE', headers: { Authorization: `Bearer ${await getToken()}` } });
+async function apiDelete(path, body) {
+  const opts = { method: 'DELETE', headers: { Authorization: `Bearer ${await getToken()}` } };
+  if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch('/api' + path, opts);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -3755,6 +3757,9 @@ function renderSearchResults(q, results) {
 
 /* ---------- markdown ---------- */
 function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+// Attribute-safe escape: also escapes quotes so untrusted values interpolated into
+// a quoted HTML attribute (e.g. data-email="...") can't break out of the attribute.
+function escAttr(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function emptyState(title, text, action = '') {
   return `<div class="file-empty-home"><div class="file-empty-title">${esc(title)}</div><div class="file-empty-text">${esc(text)}</div>${action ? `<div class="file-empty-actions">${action}</div>` : ''}</div>`;
@@ -7928,15 +7933,20 @@ function openFolderMenu(path, event) {
   if (!path) return false;
   folderMenuPath = path;
   closeFileMenu();
+  const canShare = currentUser?.role !== 'viewer';
   const items = [
     `<button class="file-menu-item" onclick="closeFileMenu();openFolder(folderMenuPath)">Open</button>`,
     `<div class="file-menu-rule"></div>`,
+    canShare ? `<button class="file-menu-item" onclick="closeFileMenu();openFolderShare(folderMenuPath)">Share…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
+    `<div class="file-menu-rule"></div>`,
     `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>`,
     `<div class="file-menu-rule"></div>`,
     `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>`,
-  ].join('');
+  ].filter(Boolean).join('');
   const menu = document.createElement('div');
   menu.className = 'file-row-menu'; menu.id = 'file-row-menu'; menu.innerHTML = items;
   document.body.appendChild(menu);
@@ -7996,6 +8006,115 @@ function moveFolderToLibrary(path) {
     try { const r = await apiPost('/files/folder/move', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
     catch (e) { toast('Move failed: ' + e.message); }
   });
+}
+// Move a folder under a different parent folder (reparent). Reuses the folder
+// picker, excluding the folder itself and its own descendants.
+async function moveFolderToParent(path) {
+  openFolderPicker('Move to folder', [path], async dest => {
+    try {
+      const r = await apiPost('/files/folder/reparent', { path, target: dest });
+      if (currentFolderPath === path) currentFolderPath = r.path;
+      else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
+      await loadFiles();
+      toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`);
+    } catch (e) { toast('Move failed: ' + e.message); }
+  });
+}
+// Copy every file in a folder into another library (originals stay in place).
+function copyFolderToLibrary(path) {
+  if (!Array.isArray(librariesList) || !librariesList.length) { toast('No library to copy to'); return; }
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open'; scrim.id = 'folder-copy-scrim';
+  scrim.onclick = e => { if (e.target.id === 'folder-copy-scrim') scrim.remove(); };
+  scrim.innerHTML = `<div class="modal"><h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="document.getElementById('folder-copy-scrim').remove()">Cancel</button></div></div>`;
+  document.body.appendChild(scrim);
+  scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
+    scrim.remove();
+    toast('Copying folder…');
+    try { const r = await apiPost('/files/folder/copy', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Copied ${r.count} file${r.count === 1 ? '' : 's'}`); }
+    catch (e) { toast('Copy failed: ' + e.message); }
+  });
+}
+
+// ---- Folder sharing: public download link + internal member access ----
+let folderSharePath = null;
+function closeFolderShare() { document.getElementById('folder-share-scrim')?.remove(); }
+async function openFolderShare(path) {
+  folderSharePath = path;
+  closeFolderShare();
+  const name = path.split('/').pop();
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="folder-share-scrim" onclick="if(event.target.id==='folder-share-scrim')closeFolderShare()"><div class="modal file-share-modal"><button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2>Share folder</h2><p class="sub">${esc(name)}</p>
+    <section class="file-share-section"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that downloads this folder as a ZIP — no sign-in needed. It shares the files that are in the folder right now.</p>
+      <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
+      <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
+      <div class="file-share-result" id="folder-share-result"><input class="file-share-url" id="folder-share-url" readonly><button class="file-library-tool" onclick="copyFolderShareUrl()">Copy link</button></div>
+      <div class="file-share-list" id="folder-share-list">${emptyState('Loading links', 'Checking existing links for this folder.')}</div>
+    </section>
+    <section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Give a signed-in person view or edit access to every file in this folder.</p>
+      <div class="file-access-form"><input id="folder-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="folder-access-permission"><option value="read">Can view</option><option value="write">Can edit</option></select><button class="run-btn" onclick="grantFolderAccess()">Grant</button></div>
+      <div class="file-share-list" id="folder-access-list">${emptyState('Loading access', 'Checking who can open this folder.')}</div>
+    </section>
+    <div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeFolderShare()">Close</button></div>
+  </div></div>`);
+  await loadFolderShareLinks();
+  await loadFolderAccess();
+}
+async function loadFolderShareLinks() {
+  const list = document.getElementById('folder-share-list');
+  if (!folderSharePath || !list) return;
+  try {
+    const data = await apiGet('/files/folder/links?path=' + encodeURIComponent(folderSharePath));
+    const shares = data.shares || [];
+    if (!shares.length) { list.innerHTML = emptyState('No links yet', 'Create one above to share this folder outside the workspace.'); return; }
+    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">${s.file_count} file${s.file_count === 1 ? '' : 's'} · Expires: ${shareDate(s.expires_at)} · Downloads: ${s.access_count || 0}${s.has_password ? ' · Password' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-id="${esc(String(s.id))}" onclick="revokeFolderShareLink(this.dataset.id)">Revoke</button>`}</div>`).join('');
+  } catch (e) { list.innerHTML = emptyState('Could not load links', e.message); }
+}
+async function createFolderShareLink() {
+  if (!folderSharePath) return;
+  const days = document.getElementById('folder-share-expiry')?.value || '7';
+  const password = document.getElementById('folder-share-password')?.value || '';
+  try {
+    const data = await apiPost('/files/folder/links', { path: folderSharePath, expiresInDays: days, neverExpires: days === '0', password });
+    const url = data.share?.url;
+    const result = document.getElementById('folder-share-result');
+    const input = document.getElementById('folder-share-url');
+    if (url && result && input) { input.value = url; result.classList.add('open', 'show'); await copyText(url).catch(() => {}); toast('Folder link created'); }
+    const pw = document.getElementById('folder-share-password'); if (pw) pw.value = '';
+    await loadFolderShareLinks();
+  } catch (e) { toast('Share failed: ' + e.message); }
+}
+function copyFolderShareUrl() { const el = document.getElementById('folder-share-url'); if (el && el.value) { copyText(el.value); toast('Link copied'); } }
+async function revokeFolderShareLink(id) {
+  if (!id || !confirm('Revoke this folder link? People with the link will no longer be able to download it.')) return;
+  try { await apiDelete('/files/folder/links/' + id); toast('Link revoked'); await loadFolderShareLinks(); }
+  catch (e) { toast('Revoke failed: ' + e.message); }
+}
+async function loadFolderAccess() {
+  const list = document.getElementById('folder-access-list');
+  if (!folderSharePath || !list) return;
+  try {
+    const data = await apiGet('/files/folder/members?path=' + encodeURIComponent(folderSharePath));
+    const grants = data.grants || [];
+    if (!grants.length) { list.innerHTML = emptyState('No additional access', 'Only owners and admins can open these files.'); return; }
+    list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${g.permission === 'mixed' ? 'Mixed access' : permissionLabel(g.permission)} · ${g.doc_count} file${g.doc_count === 1 ? '' : 's'}</div></div><button class="file-library-tool" data-email="${escAttr(g.subject_email || g.subject_id)}" onclick="revokeFolderAccess(this.dataset.email)">Revoke</button></div>`).join('');
+  } catch (e) { list.innerHTML = emptyState('Could not load access', e.message); }
+}
+async function grantFolderAccess() {
+  if (!folderSharePath) return;
+  const email = document.getElementById('folder-access-email')?.value.trim();
+  const permission = document.getElementById('folder-access-permission')?.value || 'read';
+  if (!email) return toast('Enter an email address');
+  try {
+    const r = await apiPost('/files/folder/members', { path: folderSharePath, email, permission });
+    const input = document.getElementById('folder-access-email'); if (input) input.value = '';
+    toast(`Access granted to ${r.count} file${r.count === 1 ? '' : 's'}`);
+    await loadFolderAccess();
+  } catch (e) { toast('Grant failed: ' + e.message); }
+}
+async function revokeFolderAccess(email) {
+  if (!folderSharePath || !email) return;
+  try { const r = await apiDelete('/files/folder/members', { path: folderSharePath, email }); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); await loadFolderAccess(); }
+  catch (e) { toast('Revoke failed: ' + e.message); }
 }
 
 async function openInDesktopOffice(fileId) {

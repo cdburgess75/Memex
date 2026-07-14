@@ -18,7 +18,7 @@ const auditLog = require('../lib/auditLog');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
-const { zipFiles } = require('../lib/zip');
+const { zipStream } = require('../lib/zip');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -41,6 +41,7 @@ const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
 let uploadSessionsEnsured = false;
 let shareLinksEnsured = false;
+let folderShareLinksEnsured = false;
 
 function cleanDisplayName(name) {
   return String(name || '')
@@ -211,6 +212,61 @@ async function ensureShareLinksTable() {
   await db.query('CREATE INDEX IF NOT EXISTS document_share_links_document_idx ON document_share_links(document_id, created_at DESC)');
   await db.query('CREATE INDEX IF NOT EXISTS document_share_links_active_idx ON document_share_links(token_hash) WHERE revoked_at IS NULL');
   shareLinksEnsured = true;
+}
+
+// Public download links for a whole folder. Unlike per-file links (which reference
+// one document_id), a folder link snapshots the exact set of document IDs the
+// creator could read under the folder at creation time (document_ids[]). The public
+// download serves only that frozen set, so a later ACL change can never widen what
+// the link exposes, and files added to the folder afterward are NOT retroactively
+// shared. Same token/password/expiry/revoke model as document_share_links.
+async function ensureFolderShareLinksTable() {
+  if (folderShareLinksEnsured) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS folder_share_links (
+      id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      folder_path          TEXT        NOT NULL,
+      document_ids         UUID[]      NOT NULL DEFAULT '{}',
+      token_hash           TEXT        NOT NULL UNIQUE,
+      password_salt        TEXT,
+      password_hash        TEXT,
+      expires_at           TIMESTAMPTZ,
+      revoked_at           TIMESTAMPTZ,
+      revoked_by           UUID,
+      revoked_by_email     TEXT,
+      created_by           UUID,
+      created_by_email     TEXT,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_accessed_at      TIMESTAMPTZ,
+      access_count         INTEGER     NOT NULL DEFAULT 0
+    )
+  `);
+  await db.query('CREATE INDEX IF NOT EXISTS folder_share_links_creator_idx ON folder_share_links(created_by, created_at DESC)');
+  await db.query('CREATE INDEX IF NOT EXISTS folder_share_links_active_idx ON folder_share_links(token_hash) WHERE revoked_at IS NULL');
+  folderShareLinksEnsured = true;
+}
+
+// Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
+// bounds peak RAM — matched between the authed /folder/zip route and the public link).
+const FOLDER_ZIP_MAX_BYTES = 500 * 1024 * 1024;
+// Upper bound on how many files a single folder copy will duplicate in one request,
+// so a pathological folder can't tie up the event loop (or disk) unbounded.
+const FOLDER_COPY_MAX_FILES = 5000;
+
+function folderShareClientShape(row, url = null) {
+  return {
+    id: row.id,
+    folder_path: row.folder_path,
+    file_count: Array.isArray(row.document_ids) ? row.document_ids.length : Number(row.file_count || 0),
+    expires_at: row.expires_at,
+    revoked_at: row.revoked_at,
+    created_at: row.created_at,
+    created_by_email: row.created_by_email,
+    last_accessed_at: row.last_accessed_at,
+    access_count: Number(row.access_count || 0),
+    has_password: !!row.password_hash,
+    url,
+  };
 }
 
 function tokenHash(token) {
@@ -1751,18 +1807,278 @@ router.get('/folder/zip', auth, async (req, res) => {
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
     const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
-    if (total > 500 * 1024 * 1024) return res.status(413).json({ error: 'Folder is too large to zip (over 500 MB)' });
-    const parent = folderPath.split('/').slice(0, -1).join('/');
-    const entries = [];
-    for (const d of docs) {
-      const buf = await storage.download(d.storage_path);
-      entries.push({ name: parent ? d.name.slice(parent.length + 1) : d.name, data: buf });
-    }
+    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to zip (over 500 MB)' });
     const base = folderPath.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
-    res.send(zipFiles(entries));
+    // Stream the archive (one file buffered at a time) rather than building the
+    // whole ZIP in memory — bounds peak RAM regardless of folder size.
+    await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, folderPath)), res);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+    else res.destroy(e);
+  }
+});
+
+// Lazy ZIP entries for a folder's documents, each named relative to the folder's
+// own parent so the archive unpacks into a single top-level folder. load() fetches
+// one file's bytes on demand, so zipStream only ever holds one file in memory.
+function folderZipEntries(docs, folderPath) {
+  const parent = folderPath.split('/').slice(0, -1).join('/');
+  return docs.map(d => ({
+    name: parent ? d.name.slice(parent.length + 1) : d.name,
+    load: () => storage.download(d.storage_path),
+  }));
+}
+
+// GET /api/files/folder/links?path=... — list the caller's folder download links.
+router.get('/folder/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureFolderShareLinksTable();
+  try {
+    const folderPath = safeDocName(req.query.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const adminAll = (req.user.role === 'admin');
+    const rows = await db.query(
+      `SELECT id, folder_path, document_ids, expires_at, revoked_at, created_at,
+              created_by_email, last_accessed_at, access_count, password_hash
+       FROM folder_share_links
+       WHERE folder_path = $1 ${adminAll ? '' : 'AND created_by = $2'}
+       ORDER BY revoked_at IS NULL DESC, created_at DESC
+       LIMIT 100`,
+      adminAll ? [folderPath] : [folderPath, req.user.id]
+    );
+    res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/links — mint a public download link for a folder.
+router.post('/folder/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureFolderShareLinksTable();
+  try {
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    // Snapshot exactly the files the CREATOR may re-publish under this folder.
+    // Requires 'write' (not 'read') to mint a public link — same bar the per-file
+    // share (POST /:id/shares) enforces, so a read-only grantee can't re-expose files.
+    const docs = await db.query(
+      `SELECT d.id, d.size FROM documents d
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}`,
+      [folderPath, ...documentAccess.userParams(req.user, 'write')]
+    );
+    if (!docs.length) return res.status(404).json({ error: 'No files in this folder to share' });
+    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
+    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to share as a link (over 500 MB)' });
+
+    const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
+    const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
+    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+    const token = crypto.randomBytes(32).toString('base64url');
+    const { salt, hash } = passwordParts(String(req.body?.password || '').trim());
+
+    const share = await db.queryOne(
+      `INSERT INTO folder_share_links
+       (folder_path, document_ids, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email)
+       VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8)
+       RETURNING id, folder_path, document_ids, expires_at, revoked_at, created_at,
+                 created_by_email, last_accessed_at, access_count, password_hash`,
+      [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email]
+    );
+    const url = `${await publicAppBase(req)}/api/files/folder/share/${token}`;
+    await logEvent(`folder share create · ${folderPath} (${docs.length})`, req.user.id, req.user.email);
+    res.json({ share: folderShareClientShape(share, url) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/files/folder/links/:shareId — revoke a folder download link.
+router.delete('/folder/links/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureFolderShareLinksTable();
+  try {
+    const adminAll = (req.user.role === 'admin');
+    const share = await db.queryOne(
+      `UPDATE folder_share_links
+       SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
+       WHERE id = $3 AND revoked_at IS NULL ${adminAll ? '' : 'AND created_by = $4'}
+       RETURNING id, folder_path`,
+      adminAll ? [req.user.id, req.user.email, req.params.shareId] : [req.user.id, req.user.email, req.params.shareId, req.user.id]
+    );
+    if (!share) return res.status(404).json({ error: 'Folder share link not found' });
+    await logEvent(`folder share revoke · ${share.folder_path}`, req.user.id, req.user.email);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/files/folder/share/:token — public, revocable, expiring folder ZIP download.
+router.get('/folder/share/:token', async (req, res) => {
+  await ensureFolderShareLinksTable();
+  const hash = tokenHash(req.params.token);
+  try {
+    const share = await db.queryOne('SELECT * FROM folder_share_links WHERE token_hash = $1', [hash]);
+    if (!share || share.revoked_at) return res.status(404).json({ error: 'Share link not found' });
+    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Share link expired' });
+    }
+    const password = req.query.password || req.headers['x-share-password'];
+    if (!verifySharePassword(password, share.password_salt, share.password_hash)) {
+      return res.status(401).json({ error: 'Share password required' });
+    }
+    // Serve only the frozen snapshot set, skipping any file deleted since creation.
+    const ids = Array.isArray(share.document_ids) ? share.document_ids : [];
+    const docs = ids.length ? await db.query(
+      `SELECT id, name, storage_path, size FROM documents
+       WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY name`,
+      [ids]
+    ) : [];
+    if (!docs.length) return res.status(404).json({ error: 'These files are no longer available' });
+    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
+    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to download' });
+
+    await db.query('UPDATE folder_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
+    await logEvent(`folder share download · ${share.folder_path}`, null, null);
+    if (share.created_by_email) {
+      try {
+        await notifications.create({
+          userId: share.created_by || null,
+          userEmail: share.created_by_email,
+          type: 'share_downloaded',
+          title: 'Your shared folder was downloaded',
+          body: `"${share.folder_path.split('/').pop()}" · via folder link`,
+          dedupeMinutes: 2,
+        });
+      } catch (e) { console.error('notification (folder share_downloaded) failed:', e.message); }
+      emailEvents.send('share_downloaded', {
+        to: share.created_by_email,
+        subject: `Your shared folder was downloaded: ${share.folder_path.split('/').pop()}`,
+        text: `The folder "${share.folder_path}" was just downloaded via a Memex share link you created.`,
+      }).catch(() => {});
+    }
+    const base = share.folder_path.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
+    // Stream (one file in memory at a time) — this is a public, unauthenticated
+    // route, so buffering the whole archive would be a remote-OOM vector.
+    await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, share.folder_path)), res);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+    else res.destroy(e);
+  }
+});
+
+// GET /api/files/folder/members?path=... — who has been granted access across a folder.
+router.get('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    await documentAccess.ensureDocumentAclTable();
+    const folderPath = safeDocName(req.query.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    // Only surface grants on files the caller can administer, and collapse the
+    // per-file rows into one line per person (with how many files they can reach).
+    const rows = await db.query(
+      `SELECT acl.subject_id,
+              max(acl.subject_email) AS subject_email,
+              CASE WHEN count(DISTINCT acl.permission) > 1 THEN 'mixed' ELSE max(acl.permission) END AS permission,
+              count(*) AS doc_count,
+              max(acl.created_at) AS created_at
+       FROM document_acl acl
+       JOIN documents d ON d.id = acl.document_id
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 2)}
+         AND lower(acl.subject_id) <> lower($${2 + documentAccess.userParams(req.user, 'admin').length})
+       GROUP BY acl.subject_id
+       ORDER BY subject_email`,
+      [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase()]
+    );
+    res.json({ grants: rows.map(r => ({ ...r, doc_count: Number(r.doc_count) })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/members — grant one person access to every file in a folder.
+router.post('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    await documentAccess.ensureDocumentAclTable();
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const email = documentAccess.normalizeEmail(req.body?.email);
+    // Reject anything that isn't a plain address (no quotes/spaces/angle brackets) —
+    // defense in depth so a crafted value can't ride into the UI or outbound mail.
+    if (!/^[^\s@"'<>]+@[^\s@"'<>]+\.[^\s@"'<>]+$/.test(email)) return res.status(400).json({ error: 'Valid user email is required' });
+    const permission = req.body?.permission || 'read';
+    if (!documentAccess.validPermission(permission)) return res.status(400).json({ error: 'Permission must be read, write, or admin' });
+    // Only files the caller administers; skip the folder marker.
+    const rows = await db.query(
+      `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
+       SELECT d.id, 'user', $2, $2, $3, $4, $5 FROM documents d
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep'
+         AND ${documentAccess.condition('d', 6)}
+       ON CONFLICT (document_id, subject_type, subject_id)
+       DO UPDATE SET permission = EXCLUDED.permission, subject_email = EXCLUDED.subject_email,
+                     granted_by = EXCLUDED.granted_by, granted_by_email = EXCLUDED.granted_by_email
+       RETURNING document_id`,
+      [folderPath, email, permission, req.user.id, String(req.user.email || '').toLowerCase(), ...documentAccess.userParams(req.user, 'admin')]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'No files you manage in this folder' });
+    await logEvent(`folder access grant · ${folderPath} · ${email} · ${permission} (${rows.length})`, req.user.id, req.user.email);
+    if (email !== String(req.user.email || '').toLowerCase()) {
+      const folderName = folderPath.split('/').pop();
+      try {
+        await notifications.create({
+          userEmail: email,
+          type: 'share_granted',
+          title: `${req.user.email} shared a folder with you`,
+          body: `"${folderName}" · ${rows.length} file${rows.length === 1 ? '' : 's'} · ${permission} access`,
+        });
+      } catch (e) { console.error('notification (folder share_granted) failed:', e.message); }
+      emailEvents.send('share_granted', {
+        to: email,
+        subject: `${req.user.email} shared a folder with you`,
+        text: `${req.user.email} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Memex.\n\nSign in to Memex to open it.`,
+      }).catch(() => {});
+    }
+    res.json({ ok: true, count: rows.length, permission });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/files/folder/members — revoke a person's access across a folder.
+router.delete('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    await documentAccess.ensureDocumentAclTable();
+    const folderPath = safeDocName(req.body?.path, '');
+    const email = documentAccess.normalizeEmail(req.body?.email);
+    if (!folderPath || !email) return res.status(400).json({ error: 'path and email required' });
+    if (email === String(req.user.email || '').toLowerCase()) return res.status(400).json({ error: "You can't revoke your own access" });
+    const rows = await db.query(
+      `DELETE FROM document_acl acl USING documents d
+       WHERE acl.document_id = d.id AND acl.subject_type = 'user' AND lower(acl.subject_id) = lower($2)
+         AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 3)}
+       RETURNING acl.document_id`,
+      [folderPath, email, ...documentAccess.userParams(req.user, 'admin')]
+    );
+    await logEvent(`folder access revoke · ${folderPath} · ${email} (${rows.length})`, req.user.id, req.user.email);
+    res.json({ ok: true, count: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/folder/copy — duplicate a folder's files into another library.
+router.post('/folder/copy', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    await libraries.ensureLibraries();
+    const folderPath = safeDocName(req.body?.path, '');
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
+    const docs = await db.query(
+      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path FROM documents d
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}`,
+      [folderPath, ...documentAccess.userParams(req.user, 'read')]
+    );
+    if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
+    if (docs.length > FOLDER_COPY_MAX_FILES) return res.status(413).json({ error: `Too many files to copy at once (over ${FOLDER_COPY_MAX_FILES})` });
+    for (const d of docs) {
+      const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
+      await storage.copy(d.storage_path, newPath, d.mime_type);
+      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
+    }
+    await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
+    res.json({ ok: true, count: docs.length });
+  } catch (e) { console.error('folder copy failed:', e); res.status(500).json({ error: e.message }); }
 });
 
 // PUT /api/files/:id/content — overwrite a text file's content (md/txt/csv) and re-index
