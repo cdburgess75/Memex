@@ -75,6 +75,8 @@ const ENV_MAP = {
   brand_name:                     'BRAND_NAME',
   brand_logo:                     'BRAND_LOGO',
   brand_accent:                   'BRAND_ACCENT',
+  tenant_id:                      'TENANT_ID',
+  tenant_contact_email:           'TENANT_CONTACT_EMAIL',
   // NOTE: license config (LICENSE_PUBLIC_KEY / LICENSE_PUBLIC_KEY_PATH / LICENSE_FILE)
   // and the one-click updater command (MEMEX_UPDATE_COMMAND) are deliberately ABSENT
   // here. They are read from the operator environment only (see server/lib/license.js

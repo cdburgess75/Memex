@@ -2428,6 +2428,36 @@ html.dark .file-action-btn.danger { color: #E57373; }
   margin-top: 8px;
   letter-spacing: 0.04em;
 }
+/* First-boot Setup Wizard */
+.setup-modal { width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+.setup-head { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.setup-head h2 { margin: 0; }
+.setup-head .sub { margin: 2px 0 0; }
+.setup-steps { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.setup-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-faint); padding: 4px 9px; border-radius: 999px; background: var(--surface-2); }
+.setup-dot.active { color: var(--accent); background: var(--accent-wash); font-weight: 600; }
+.setup-dot.done { color: var(--ink); }
+.setup-dot-n { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 50%; background: var(--rule); font-size: 10px; }
+.setup-dot.active .setup-dot-n { background: var(--accent); color: #fff; }
+.setup-body { min-height: 190px; }
+.setup-lead { color: var(--ink-faint); font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+.setup-field { margin-bottom: 12px; }
+.setup-field > label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--ink); }
+.setup-field input, .setup-field select, #setup-email-fields input { width: 100%; height: 36px; border: 1px solid var(--rule); border-radius: 8px; padding: 0 10px; background: var(--surface-2); color: var(--ink); }
+#setup-email-fields input { margin-bottom: 8px; }
+.setup-inline { display: flex; gap: 8px; align-items: center; }
+.setup-inline input { flex: 1; min-width: 0; }
+.setup-inline .ghost-btn { white-space: nowrap; }
+.setup-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.setup-h3 { font-size: 13px; margin: 16px 0 8px; }
+.setup-hint { font-weight: 400; color: var(--ink-faint); font-size: 11px; }
+.setup-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0; }
+.setup-check input { width: auto; height: auto; }
+.setup-result { font-size: 12px; min-height: 16px; margin: 2px 0 6px; line-height: 1.4; }
+.setup-ok { color: #2E7D32; }
+.setup-err { color: #C62828; }
+.setup-muted { color: var(--ink-faint); }
+.setup-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 18px; }
 </style>
 </head>
 <body>
@@ -2829,6 +2859,12 @@ async function _afterLogin() {
   document.getElementById('login-scrim').classList.remove('open');
   await loadFromServer();
   currentUser = await apiGet('/auth/me');
+  // First-boot gate: on a not-yet-configured instance, route the admin into the Setup
+  // Wizard (and non-admins to a "setup in progress" screen) instead of the app.
+  if (appConfig?.setupRequired) {
+    if (currentUser?.role === 'admin') { openSetupWizard(); return; }
+    showSetupLocked(); return;
+  }
   await loadLibraries();
   await loadAiModels();
   renderSearchScope();
@@ -2852,6 +2888,203 @@ async function _afterLogin() {
       try { const u = new URL(location.href); u.searchParams.delete('meet'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {}
     }
   } catch (e) { /* ignore */ }
+}
+
+// ─── First-boot Setup Wizard (Deployment Blueprint) ─────────────────────────
+const SETUP_STEPS = ['Security', 'Tenant', 'Integrations', 'Performance'];
+let setupState = { step: 0, status: null, busy: false };
+
+function showSetupLocked() {
+  document.documentElement.classList.remove('auth-locked');
+  document.getElementById('login-scrim')?.classList.remove('open');
+  if (document.getElementById('setup-scrim')) return;
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="setup-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Setup in progress</h2><p class="sub">An administrator is finishing the initial setup of this Memex instance. Please check back shortly.</p></div></div>`);
+}
+
+async function openSetupWizard() {
+  document.documentElement.classList.remove('auth-locked');
+  document.getElementById('login-scrim')?.classList.remove('open');
+  try { setupState.status = await apiGet('/setup/status'); }
+  catch (e) { setupState.status = { adminEmail: currentUser?.email || '', tenant: {}, integrations: { emailProvider: 'none' }, performance: {} }; }
+  setupState.step = 0;
+  renderSetupWizard();
+}
+
+function renderSetupWizard() {
+  const s = setupState.status || {};
+  const step = setupState.step;
+  const dots = SETUP_STEPS.map((label, i) => `<div class="setup-dot${i === step ? ' active' : ''}${i < step ? ' done' : ''}"><span class="setup-dot-n">${i < step ? '✓' : i + 1}</span>${label}</div>`).join('');
+  const last = step === SETUP_STEPS.length - 1;
+  const html = `<div class="scrim open" id="setup-scrim"><div class="modal setup-modal">
+    <div class="setup-head"><div class="login-mark" aria-hidden="true">M</div><div><h2>Welcome — let's set up Memex</h2><p class="sub">Step ${step + 1} of ${SETUP_STEPS.length}: ${SETUP_STEPS[step]}</p></div></div>
+    <div class="setup-steps">${dots}</div>
+    <div class="setup-body">${setupStepHtml(step, s)}</div>
+    <div class="setup-foot">
+      ${step > 0 ? `<button class="ghost-btn" onclick="setupBack()">Back</button>` : '<span></span>'}
+      <button class="run-btn" id="setup-next-btn" onclick="${last ? 'setupFinish()' : 'setupNext()'}">${last ? 'Finish setup' : 'Save & continue'}</button>
+    </div>
+  </div></div>`;
+  const el = document.getElementById('setup-scrim');
+  if (el) el.outerHTML = html; else document.body.insertAdjacentHTML('beforeend', html);
+  if (step === 2) setupRenderEmailFields();
+}
+
+function setupStepHtml(step, s) {
+  if (step === 0) return `
+    <p class="setup-lead">Your administrator account is managed by the identity server. You set your password at first login; here you can require multi-factor authentication for everyone.</p>
+    <div class="setup-field"><label>Administrator</label><input value="${esc(s.adminEmail || currentUser?.email || '')}" readonly></div>
+    <label class="setup-check"><input type="checkbox" id="setup-mfa" ${s.mfaRequired ? 'checked' : ''} onchange="setupToggleMfa(this.checked)"> Require multi-factor authentication (TOTP) for all users</label>
+    <div id="setup-mfa-result" class="setup-result"></div>`;
+  if (step === 1) return `
+    <div class="setup-field"><label>Company / organization name</label><input id="setup-org" value="${esc(s.tenant?.orgName || '')}" placeholder="Acme Corporation"></div>
+    <div class="setup-field"><label>Tenant ID <span class="setup-hint">short unique slug</span></label><input id="setup-tenant-id" value="${esc(s.tenant?.tenantId || '')}" placeholder="acme"></div>
+    <div class="setup-field"><label>Primary technical contact email</label><input id="setup-contact" type="email" value="${esc(s.tenant?.contactEmail || '')}" placeholder="it@acme.com"></div>`;
+  if (step === 2) return `
+    <h3 class="setup-h3">AI (Anthropic)</h3>
+    <div class="setup-field setup-inline"><input id="setup-ai-key" type="password" autocomplete="new-password" placeholder="Anthropic API key (sk-ant-…)"><button class="ghost-btn" type="button" onclick="setupTestAi()">Test</button></div>
+    <div id="setup-ai-result" class="setup-result"></div>
+    <h3 class="setup-h3">Email <span class="setup-hint">optional — for notifications</span></h3>
+    <div class="setup-field"><label>Provider</label><select id="setup-email-provider" onchange="setupRenderEmailFields()">
+      <option value="none"${(s.integrations?.emailProvider || 'none') === 'none' ? ' selected' : ''}>None</option>
+      <option value="smtp"${s.integrations?.emailProvider === 'smtp' ? ' selected' : ''}>SMTP relay</option>
+      <option value="graph"${s.integrations?.emailProvider === 'graph' ? ' selected' : ''}>Microsoft 365 (Graph)</option>
+    </select></div>
+    <div id="setup-email-fields"></div>
+    <div id="setup-email-result" class="setup-result"></div>`;
+  const p = s.performance || {};
+  return `
+    <div class="setup-field"><label>Max upload size per file (MB)</label><input id="setup-max-mb" type="number" min="1" value="${p.maxUploadMb || 8192}"></div>
+    <div class="setup-field"><label>Max files per upload</label><input id="setup-max-files" type="number" min="1" value="${p.maxUploadFiles || 4096}"></div>
+    <div class="setup-field"><label>Keep at least this much disk free (MB)</label><input id="setup-min-disk" type="number" min="0" value="${p.minFreeDiskMb || 2048}"></div>
+    <label class="setup-check"><input type="checkbox" id="setup-backup" ${p.backupEnabled ? 'checked' : ''}> Enable scheduled backups</label>
+    <div class="setup-field"><label>Backup interval (hours)</label><input id="setup-backup-hours" type="number" min="1" value="${p.backupIntervalHours || 24}"></div>
+    <p class="setup-lead" style="margin-top:14px">After setup you can replicate this deployment elsewhere: <a href="#" onclick="setupExportConfig(event)">download config JSON</a> (secrets blanked).</p>`;
+}
+
+function setupRenderEmailFields() {
+  const host = document.getElementById('setup-email-fields');
+  if (!host) return;
+  const prov = document.getElementById('setup-email-provider')?.value || 'none';
+  if (prov === 'smtp') host.innerHTML = `
+    <div class="setup-grid2"><input id="setup-smtp-host" placeholder="SMTP host (smtp.example.com)"><input id="setup-smtp-port" type="number" placeholder="Port (587)"></div>
+    <div class="setup-grid2"><input id="setup-smtp-user" placeholder="Username" autocomplete="off"><input id="setup-smtp-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
+    <input id="setup-email-from" placeholder="From address (memex@example.com)">
+    <label class="setup-check"><input type="checkbox" id="setup-smtp-secure"> Use TLS (SMTPS on port 465)</label>
+    <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
+  else if (prov === 'graph') host.innerHTML = `
+    <input id="setup-graph-tenant" placeholder="Graph tenant ID">
+    <input id="setup-graph-client" placeholder="Graph client ID">
+    <input id="setup-graph-secret" type="password" placeholder="Graph client secret" autocomplete="new-password">
+    <input id="setup-email-from" placeholder="From address (memex@yourtenant.com)">
+    <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
+  else host.innerHTML = '';
+}
+
+function setupBack() { if (setupState.step > 0) { setupState.step--; renderSetupWizard(); } }
+
+function setupCollectIntegrations() {
+  const prov = document.getElementById('setup-email-provider')?.value || 'none';
+  const body = {
+    anthropicApiKey: document.getElementById('setup-ai-key')?.value || '',
+    emailProvider: prov,
+    emailFrom: document.getElementById('setup-email-from')?.value || '',
+  };
+  if (prov === 'smtp') Object.assign(body, {
+    smtpHost: document.getElementById('setup-smtp-host')?.value || '',
+    smtpPort: document.getElementById('setup-smtp-port')?.value || '',
+    smtpUser: document.getElementById('setup-smtp-user')?.value || '',
+    smtpPass: document.getElementById('setup-smtp-pass')?.value || '',
+    smtpSecure: !!document.getElementById('setup-smtp-secure')?.checked,
+  });
+  if (prov === 'graph') Object.assign(body, {
+    graphTenantId: document.getElementById('setup-graph-tenant')?.value || '',
+    graphClientId: document.getElementById('setup-graph-client')?.value || '',
+    graphClientSecret: document.getElementById('setup-graph-secret')?.value || '',
+  });
+  return body;
+}
+
+async function setupSaveStep(step) {
+  if (step === 1) return apiPost('/setup/tenant', {
+    orgName: document.getElementById('setup-org')?.value || '',
+    tenantId: document.getElementById('setup-tenant-id')?.value || '',
+    contactEmail: document.getElementById('setup-contact')?.value || '',
+  });
+  if (step === 2) return apiPost('/setup/integrations', setupCollectIntegrations());
+  if (step === 3) return apiPost('/setup/performance', {
+    maxUploadMb: document.getElementById('setup-max-mb')?.value,
+    maxUploadFiles: document.getElementById('setup-max-files')?.value,
+    minFreeDiskMb: document.getElementById('setup-min-disk')?.value,
+    backupEnabled: !!document.getElementById('setup-backup')?.checked,
+    backupIntervalHours: document.getElementById('setup-backup-hours')?.value,
+  });
+  return null; // step 0: MFA is toggled inline, nothing to save on Next
+}
+
+async function setupNext() {
+  if (setupState.busy) return;
+  setupState.busy = true;
+  const btn = document.getElementById('setup-next-btn'); if (btn) btn.disabled = true;
+  try {
+    await setupSaveStep(setupState.step);
+    setupState.step++;
+    renderSetupWizard();
+  } catch (e) { toast('Could not save: ' + e.message); if (btn) btn.disabled = false; }
+  finally { setupState.busy = false; }
+}
+
+async function setupFinish() {
+  if (setupState.busy) return;
+  setupState.busy = true;
+  const btn = document.getElementById('setup-next-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Finishing…'; }
+  try {
+    await setupSaveStep(3);
+    await apiPost('/setup/complete', {});
+    toast('Setup complete — welcome to Memex');
+    setTimeout(() => window.location.reload(), 700);
+  } catch (e) { toast('Could not finish: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Finish setup'; } setupState.busy = false; }
+}
+
+async function setupToggleMfa(enable) {
+  const out = document.getElementById('setup-mfa-result');
+  if (out) out.innerHTML = '<span class="setup-muted">Applying…</span>';
+  try {
+    const r = await apiPost('/setup/mfa', { enable });
+    if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ MFA ${enable ? 'required' : 'disabled'} — users set up an authenticator at next login.</span>` : `<span class="setup-err">${esc(r.error || 'Failed')} ${esc(r.hint || '')}</span>`;
+  } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
+}
+
+async function setupTestAi() {
+  const out = document.getElementById('setup-ai-result');
+  const key = document.getElementById('setup-ai-key')?.value || '';
+  if (out) out.innerHTML = '<span class="setup-muted">Testing…</span>';
+  try {
+    const r = await apiPost('/setup/test/ai', { anthropicApiKey: key });
+    if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ ${esc(r.detail || 'Reachable')} · ${esc(r.model || '')}</span>` : `<span class="setup-err">✗ ${esc(r.error || 'Failed')}</span>`;
+  } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
+}
+
+async function setupTestEmail() {
+  const out = document.getElementById('setup-email-result');
+  if (out) out.innerHTML = '<span class="setup-muted">Saving & sending…</span>';
+  try {
+    await apiPost('/setup/integrations', setupCollectIntegrations());
+    const r = await apiPost('/setup/test/email', {});
+    if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ Test email sent to ${esc(r.to)} via ${esc(r.via || 'email')}.</span>` : `<span class="setup-err">✗ ${esc(r.error || 'Failed')}</span>`;
+  } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
+}
+
+async function setupExportConfig(ev) {
+  if (ev) ev.preventDefault();
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/setup/export', { headers: { Authorization: 'Bearer ' + token } });
+    if (!res.ok) { toast('Export failed'); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'memex-config.json';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  } catch (e) { toast('Export failed: ' + e.message); }
 }
 
 async function loadFromServer() {
