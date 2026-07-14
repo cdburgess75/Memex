@@ -112,6 +112,11 @@ app.get('/api/config', async (req, res) => {
   let maxUploadMb = 8192, maxUploadFiles = 4096;
   try { const v = parseInt((await settings.getOrEnv('max_upload_mb')) || '8192', 10); if (Number.isFinite(v) && v > 0) maxUploadMb = v; } catch { /* default */ }
   try { const v = parseInt((await settings.getOrEnv('max_upload_files')) || '4096', 10); if (Number.isFinite(v) && v > 0) maxUploadFiles = v; } catch { /* default */ }
+  // First-boot gate: the client routes the admin to the Setup Wizard until the durable
+  // setup_completed flag is set. FIRST_BOOT=force re-opens setup on a configured box.
+  let setupRequired = false;
+  try { setupRequired = String((await settings.get('setup_completed')) || '').toLowerCase() !== 'true'; } catch { /* if the DB is unreadable, don't spuriously gate a running system */ }
+  if (String(process.env.FIRST_BOOT || '').toLowerCase() === 'force') setupRequired = true;
   res.json({
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
@@ -121,6 +126,7 @@ app.get('/api/config', async (req, res) => {
     brand,
     maxUploadMb,
     maxUploadFiles,
+    setupRequired,
   });
 });
 
@@ -162,6 +168,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/libraries', require('./routes/libraries'));
 app.use('/api/version', require('./routes/version'));
 app.use('/api/license', require('./routes/license'));
+app.use('/api/setup', require('./routes/setup'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));

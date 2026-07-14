@@ -183,6 +183,9 @@ echo
 echo "  ${B}First login${N}"
 echo "    Email:    admin@memex.local"
 echo "    Password: memex-admin   (you'll be forced to change it)"
+echo "    Then the Setup Wizard walks you through tenant identity, integrations,"
+echo "    and performance limits — no host-file editing needed."
+echo "    (Re-run setup later on a configured box with FIRST_BOOT=force.)"
 echo
 if [ "$MODE" = "public" ]; then
   echo "  ${B}Go live on your domain${N} (${APP_URL:-https://your-domain})"
