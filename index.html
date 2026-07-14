@@ -6124,9 +6124,9 @@ function quickAccessHtml() {
 }
 const FILE_TYPE_TABS = [
   { id: 'all', label: 'All', exts: null },
-  { id: 'docs', label: 'Docs', exts: ['docx', 'doc', 'odt', 'rtf'] },
-  { id: 'sheets', label: 'Sheets', exts: ['xlsx', 'xls', 'csv', 'ods'] },
-  { id: 'slides', label: 'Slides', exts: ['pptx', 'ppt', 'odp'] },
+  { id: 'docs', label: 'Documents', exts: ['docx', 'doc', 'odt', 'rtf'] },
+  { id: 'sheets', label: 'Spreadsheets', exts: ['xlsx', 'xls', 'csv', 'ods'] },
+  { id: 'slides', label: 'Presentations', exts: ['pptx', 'ppt', 'odp'] },
   { id: 'pdf', label: 'PDF', exts: ['pdf'] },
   { id: 'images', label: 'Images', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'heic'] },
   { id: 'text', label: 'Text', exts: ['txt', 'md', 'log', 'json'] },
@@ -7538,25 +7538,37 @@ async function filesFromFileHomeDrop(dataTransfer) {
 async function uploadFiles(items) {
   if (!items.length) return;
   const statusEl = document.getElementById('upload-status');
+  // Re-rendering the whole list and firing a toast after EVERY file is O(n^2) and
+  // floods the tab with thousands of toasts, which freezes it on big batches (the
+  // "stopped at ~2000" symptom). For large batches, throttle the re-render and show
+  // one summary toast instead of a per-file storm; small batches keep live feedback.
+  const many = items.length > 8;
+  const renderList = () => { document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList(); };
 
-  let uploaded = 0;
+  let uploaded = 0, failed = 0, lastRender = 0;
+  const firstErrors = [];
   for (const item of items) {
     const file = item.file || item;
     const displayName = item.path || file.webkitRelativePath || file.name;
-    setUploadStatus(statusEl, `Uploading ${uploaded + 1} of ${items.length}: ${displayName}`, 0, file.size);
+    setUploadStatus(statusEl, `Uploading ${uploaded + failed + 1} of ${items.length}: ${displayName}`, 0, file.size);
     try {
       const { doc, canIngest } = file.size >= RESUMABLE_UPLOAD_THRESHOLD
-        ? await uploadFileResumable(file, displayName, statusEl, uploaded + 1, items.length)
+        ? await uploadFileResumable(file, displayName, statusEl, uploaded + failed + 1, items.length)
         : await uploadFileStream(file, displayName);
       filesList.unshift(doc);
-      document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
       uploaded += 1;
-      toast(canIngest ? `${displayName} uploaded — click "Index" to add it` : `${displayName} uploaded`);
+      const now = performance.now();
+      if (!many || now - lastRender > 700) { renderList(); lastRender = now; }
+      if (!many) toast(canIngest ? `${displayName} uploaded. Click "Index" to add it` : `${displayName} uploaded`);
     } catch (e) {
-      toast(`Upload error for ${displayName}: ${e.message}`);
+      failed += 1;
+      if (firstErrors.length < 3) firstErrors.push(`${displayName}: ${e.message}`);
+      if (!many) toast(`Upload error for ${displayName}: ${e.message}`);
     }
   }
-  if (statusEl) statusEl.textContent = uploaded ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}.` : '';
+  renderList();
+  if (statusEl) statusEl.textContent = (uploaded || failed) ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.` : '';
+  if (many) toast(`Uploaded ${uploaded} file${uploaded === 1 ? '' : 's'}${failed ? `, ${failed} failed (${firstErrors[0] || ''})` : ''}`);
 }
 
 function setUploadStatus(statusEl, label, doneBytes = 0, totalBytes = 0) {
