@@ -51,6 +51,8 @@ router.get('/status', auth, async (req, res) => {
         orgName: (await g('brand_name')) || '',
         tenantId: (await g('tenant_id')) || '',
         contactEmail: (await g('tenant_contact_email')) || '',
+        logo: (await g('brand_logo')) || '',
+        accent: (await g('brand_accent')) || '',
       },
       integrations: {
         aiConfigured: !!(await g('anthropic_api_key')),
@@ -74,6 +76,10 @@ router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req
     await settings.set('brand_name', trimmedOrNull(req.body.orgName), req.user.id);
     await settings.set('tenant_id', trimmedOrNull(req.body.tenantId), req.user.id);
     await settings.set('tenant_contact_email', trimmedOrNull(req.body.contactEmail), req.user.id);
+    // Branding: accent set when provided; logo set on a data URI, removed on '' (empty),
+    // left untouched when the field is absent (the client only sends it when changed).
+    if (req.body.accent) await settings.set('brand_accent', String(req.body.accent), req.user.id);
+    if (req.body.logo !== undefined) await settings.set('brand_logo', req.body.logo === '' ? null : String(req.body.logo), req.user.id);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
