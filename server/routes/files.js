@@ -7,6 +7,7 @@ const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
+const encryption = require('../lib/encryption');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
@@ -465,11 +466,61 @@ async function chunkDir(sessionId) {
   return path.join(await chunkRoot(), String(sessionId));
 }
 
+// The at-rest key used for staged chunks — the SAME key storage.js uses for final
+// files. Null when encryption isn't configured (the common case), in which case
+// chunks are staged and streamed exactly as before.
+async function chunkEncKey() {
+  try { return encryption.resolveKey(await settings.getOrEnv('storage_encryption_key')); }
+  catch { return null; }
+}
+
+// Read a stream fully into a buffer, aborting past maxBytes (used only on the
+// encryption path, where the whole chunk is needed for AES-GCM). A chunk is small
+// (chunk_size; default 8 MB), so this does not reintroduce whole-file buffering.
+function readCappedBuffer(readable, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const parts = [];
+    let bytes = 0;
+    readable.on('data', c => {
+      bytes += c.length;
+      if (Number.isFinite(maxBytes) && maxBytes > 0 && bytes > maxBytes) {
+        const err = new Error('Chunk exceeds the maximum allowed size');
+        err.code = 'CHUNK_TOO_LARGE';
+        readable.destroy(err);
+        reject(err);
+        return;
+      }
+      parts.push(c);
+    });
+    readable.on('error', reject);
+    readable.on('end', () => resolve(Buffer.concat(parts)));
+  });
+}
+
 async function writeChunk(sessionId, index, readable, maxBytes) {
   const dir = await chunkDir(sessionId);
   await fs.mkdir(dir, { recursive: true });
   const finalPath = path.join(dir, `${index}.part`);
   const tmpPath = `${finalPath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  const key = await chunkEncKey();
+
+  // U8: encrypt staged chunks at rest when a storage key is configured, so no
+  // plaintext file data ever touches disk (the final stored file is already
+  // encrypted; this closes the transient staging gap). Returns the PLAINTEXT byte
+  // count, which is what the caller's size checks expect.
+  if (key) {
+    const buf = await readCappedBuffer(readable, maxBytes);
+    try {
+      await fs.writeFile(tmpPath, encryption.encrypt(buf, key));
+      await fs.rename(tmpPath, finalPath);
+    } catch (e) {
+      await fs.unlink(tmpPath).catch(() => {});
+      throw e;
+    }
+    return buf.length;
+  }
+
+  // No encryption: stream straight to disk (unchanged — low, constant memory).
   let bytes = 0;
   try {
     await new Promise((resolve, reject) => {
@@ -504,31 +555,72 @@ async function removeUploadSessionFiles(sessionId) {
 }
 
 async function chunkedFileStream(session) {
+  const key = await chunkEncKey();
   return Readable.from((async function* () {
     for (let i = 0; i < Number(session.total_chunks || 0); i += 1) {
-      const stream = fsSync.createReadStream(path.join(await chunkDir(session.id), `${i}.part`));
-      for await (const chunk of stream) yield chunk;
+      const p = path.join(await chunkDir(session.id), `${i}.part`);
+      if (key) {
+        // decrypt() is a no-op on chunks that lack the magic (e.g. staged before a
+        // key was set), so a mid-session key change degrades gracefully to plaintext.
+        yield encryption.decrypt(await fs.readFile(p), key);
+      } else {
+        for await (const chunk of fsSync.createReadStream(p)) yield chunk;
+      }
     }
   })());
 }
 
+// content_hash (U6 re-upload dedupe) is added in place; a nullable TEXT column and a
+// partial index are metadata-only changes, so this is instant even on a large table.
+let _docColsEnsured = false;
+async function ensureDocumentColumns() {
+  if (_docColsEnsured) return;
+  await db.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash TEXT');
+  await db.query('CREATE INDEX IF NOT EXISTS documents_content_hash_idx ON documents(library_id, content_hash) WHERE content_hash IS NOT NULL AND deleted_at IS NULL');
+  _docColsEnsured = true;
+}
+
 async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId }) {
+  await ensureDocumentColumns();
   let canIngest = false;
   let documentText = null;
+  let contentHash = null;
   if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
     try {
       const buffer = await storage.download(storagePath);
+      contentHash = crypto.createHash('sha256').update(buffer).digest('hex'); // U6: reuse the bytes we already read
       documentText = await extractText(buffer, displayName);
       canIngest = documentText !== null && documentText.trim().length > 0;
     } catch (e) {
       console.error('Text extraction failed (non-fatal):', e.message);
     }
   }
+  const lib = libraryId || (await libraries.defaultLibraryId());
+
+  // U6 dedupe: a byte-identical re-upload — same content hash, same name, same library,
+  // visible to this user — returns the existing document instead of creating a
+  // duplicate. Conservative by design: a changed file has a different hash and is never
+  // skipped, so nothing is ever silently dropped. Only computed for files up to the
+  // text-extraction size, where we already have the bytes in hand (no extra read).
+  if (contentHash) {
+    const existing = await db.queryOne(
+      `SELECT ${DOCUMENT_COLUMNS} FROM documents d
+       WHERE d.deleted_at IS NULL AND d.content_hash = $1 AND d.name = $2 AND d.library_id = $3
+         AND ${documentAccess.condition('d', 4)}
+       LIMIT 1`,
+      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'read')]
+    );
+    if (existing) {
+      await storage.del(storagePath).catch(() => {}); // discard the redundant blob
+      await logEvent(`upload dedupe · ${displayName}`, user.id, user.email);
+      return { doc: existing, canIngest: false, deduped: true };
+    }
+  }
 
   const doc = await db.queryOne(
-    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
-    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, libraryId || (await libraries.defaultLibraryId())]
+    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
+    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, lib, contentHash]
   );
   await documentAccess.grantOwnerAdmin(doc.id, user);
   await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
@@ -2467,3 +2559,5 @@ module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
 module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
+module.exports.writeChunk = writeChunk;
+module.exports.chunkedFileStream = chunkedFileStream;
