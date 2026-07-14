@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memex</title>
+<title>Depot</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  /* Memex signature — light */
+  /* Depot signature — light */
   --paper: #FBFBFA;
   --surface: #FFFFFF;
   --surface-2: #F4F4F2;
@@ -29,7 +29,7 @@
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 html.dark {
-  /* Memex signature — dark */
+  /* Depot signature — dark */
   --paper: #16151A;
   --surface: #1D1C22;
   --surface-2: #26242C;
@@ -2465,8 +2465,8 @@ html.dark .file-action-btn.danger { color: #E57373; }
 <!-- Login screen — shown until auth is confirmed -->
 <div class="scrim open" id="login-scrim">
   <div class="modal login-modal">
-    <div class="login-mark" aria-hidden="true">M</div>
-    <h2>Memex</h2>
+    <div class="login-mark" aria-hidden="true">D</div>
+    <h2>Depot</h2>
     <p class="sub">Your team's files, notes, and AI answers in one private workspace.</p>
     <div class="login-providers">
       <button class="provider-btn" onclick="signIn('google')">
@@ -2497,8 +2497,8 @@ html.dark .file-action-btn.danger { color: #E57373; }
   <div class="masthead-left">
     <div class="brand-block">
       <div class="brand">
-        <span class="brand-logo" aria-hidden="true">M</span>
-        <h1>Memex</h1>
+        <span class="brand-logo" aria-hidden="true">D</span>
+        <h1>Depot</h1>
       </div>
     </div>
     <div class="file-upload-actions masthead-upload-wrap">
@@ -2526,7 +2526,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
     <button class="search-scope-btn" id="search-control-btn" type="button" onclick="toggleSearchControlMenu(event)" title="Search scope & AI model" aria-haspopup="true"><span id="search-control-label">Auto</span><span class="chev">⌄</span></button>
     <div class="search-scope-menu" id="search-control-menu"></div>
-    <input id="global-search" type="search" placeholder="Search or ask Memex…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Memex">
+    <input id="global-search" type="search" placeholder="Search or ask Depot…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Depot">
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
@@ -2787,7 +2787,7 @@ async function initApp() {
     appConfig = config; // expose globally for functions outside initApp (previewFile, checkForUpdate)
     applyBranding(config.brand); // brand the login card + header before anything renders
   } catch (e) {
-    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Memex is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
+    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">D</div><h2>Depot is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
     setTheme(localStorage.getItem('memex_theme') || 'light');
     return;
   }
@@ -2796,9 +2796,9 @@ async function initApp() {
 
   if (config.version) {
     const menuEl = document.getElementById('app-menu-version');
-    if (menuEl) menuEl.textContent = `Memex · ${config.version}`;
+    if (menuEl) menuEl.textContent = `Depot · ${config.version}`;
     const loginEl = document.getElementById('login-version');
-    if (loginEl) loginEl.textContent = `Memex · ${config.version}`;
+    if (loginEl) loginEl.textContent = `Depot · ${config.version}`;
     const upEl = document.getElementById('update-indicator');
     if (upEl && upEl.textContent === 'Version') upEl.textContent = config.version;
   }
@@ -2864,7 +2864,7 @@ function showSetupLocked() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim')?.classList.remove('open');
   if (document.getElementById('setup-scrim')) return;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="setup-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">M</div><h2>Setup in progress</h2><p class="sub">An administrator is finishing the initial setup of this Memex instance. Please check back shortly.</p></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="setup-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">D</div><h2>Setup in progress</h2><p class="sub">An administrator is finishing the initial setup of this Depot instance. Please check back shortly.</p></div></div>`);
 }
 
 async function openSetupWizard() {
@@ -2882,7 +2882,7 @@ function renderSetupWizard() {
   const dots = SETUP_STEPS.map((label, i) => `<div class="setup-dot${i === step ? ' active' : ''}${i < step ? ' done' : ''}"><span class="setup-dot-n">${i < step ? '✓' : i + 1}</span>${label}</div>`).join('');
   const last = step === SETUP_STEPS.length - 1;
   const html = `<div class="scrim open" id="setup-scrim"><div class="modal setup-modal">
-    <div class="setup-head"><div class="login-mark" aria-hidden="true">M</div><div><h2>Welcome — let's set up Memex</h2><p class="sub">Step ${step + 1} of ${SETUP_STEPS.length}: ${SETUP_STEPS[step]}</p></div></div>
+    <div class="setup-head"><div class="login-mark" aria-hidden="true">D</div><div><h2>Welcome — let's set up Depot</h2><p class="sub">Step ${step + 1} of ${SETUP_STEPS.length}: ${SETUP_STEPS[step]}</p></div></div>
     <div class="setup-steps">${dots}</div>
     <div class="setup-body">${setupStepHtml(step, s)}</div>
     <div class="setup-foot">
@@ -2934,14 +2934,14 @@ function setupRenderEmailFields() {
   if (prov === 'smtp') host.innerHTML = `
     <div class="setup-grid2"><input id="setup-smtp-host" placeholder="SMTP host (smtp.example.com)"><input id="setup-smtp-port" type="number" placeholder="Port (587)"></div>
     <div class="setup-grid2"><input id="setup-smtp-user" placeholder="Username" autocomplete="off"><input id="setup-smtp-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
-    <input id="setup-email-from" placeholder="From address (memex@example.com)">
+    <input id="setup-email-from" placeholder="From address (depot@example.com)">
     <label class="setup-check"><input type="checkbox" id="setup-smtp-secure"> Use TLS (SMTPS on port 465)</label>
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
   else if (prov === 'graph') host.innerHTML = `
     <input id="setup-graph-tenant" placeholder="Graph tenant ID">
     <input id="setup-graph-client" placeholder="Graph client ID">
     <input id="setup-graph-secret" type="password" placeholder="Graph client secret" autocomplete="new-password">
-    <input id="setup-email-from" placeholder="From address (memex@yourtenant.com)">
+    <input id="setup-email-from" placeholder="From address (depot@yourtenant.com)">
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
   else host.innerHTML = '';
 }
@@ -3006,7 +3006,7 @@ async function setupFinish() {
   try {
     await setupSaveStep(3);
     await apiPost('/setup/complete', {});
-    toast('Setup complete — welcome to Memex');
+    toast('Setup complete — welcome to Depot');
     setTimeout(() => window.location.reload(), 700);
   } catch (e) { toast('Could not finish: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = 'Finish setup'; } setupState.busy = false; }
 }
@@ -3048,7 +3048,7 @@ async function setupExportConfig(ev) {
     if (!res.ok) { toast('Export failed'); return; }
     const blob = await res.blob();
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'memex-config.json';
+    a.href = URL.createObjectURL(blob); a.download = 'depot-config.json';
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
   } catch (e) { toast('Export failed: ' + e.message); }
 }
@@ -3294,7 +3294,7 @@ function applyAccent(hex, persist = true) {
 }
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
-  // Memex has one signature look + dark mode; migrate any legacy theme name to light.
+  // Depot has one signature look + dark mode; migrate any legacy theme name to light.
   theme = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.classList.remove('dark', 'office', 'office-dark', 'drive', 'dropbox', 'aurora', 'graphite');
   if (theme === 'dark') document.documentElement.classList.add('dark');
@@ -3325,7 +3325,7 @@ function applyBranding(brand) {
     logo: (brand && brand.logo || '').trim(),
     accent: (brand && brand.accent || '').trim(),
   };
-  const name = brandDefaults.name || 'Memex';
+  const name = brandDefaults.name || 'Depot';
   document.title = name;
   document.querySelectorAll('.brand h1, .login-modal h2').forEach(el => { el.textContent = name; });
   const letter = (name.trim()[0] || 'M').toUpperCase();
@@ -3585,7 +3585,7 @@ function maybePromptReload(serverVersion) {
   if (serverVersion === appConfig.version) return;
   if (document.getElementById('reload-banner')) return;
   document.body.insertAdjacentHTML('beforeend',
-    `<div id="reload-banner" class="reload-banner" role="status">Memex was updated to ${esc(serverVersion)}.` +
+    `<div id="reload-banner" class="reload-banner" role="status">Depot was updated to ${esc(serverVersion)}.` +
     `<button class="run-btn" onclick="location.reload()">Refresh</button>` +
     `<button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('reload-banner').remove()">✕</button></div>`);
 }
@@ -3671,7 +3671,7 @@ function promptJoinMeeting(room) {
   const clean = String(room || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 80);
   if (!clean) return;
   document.getElementById('meet-invite-banner')?.remove();
-  document.body.insertAdjacentHTML('beforeend', `<div id="meet-invite-banner" class="reload-banner" role="status">You have a Memex video meeting invite.<button class="run-btn" onclick="joinScheduledMeeting('${esc(clean)}')">Join</button><button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('meet-invite-banner').remove()">✕</button></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div id="meet-invite-banner" class="reload-banner" role="status">You have a Depot video meeting invite.<button class="run-btn" onclick="joinScheduledMeeting('${esc(clean)}')">Join</button><button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('meet-invite-banner').remove()">✕</button></div>`);
 }
 function openScheduleMeeting() {
   closeMeetPanel();
@@ -3681,7 +3681,7 @@ function openScheduleMeeting() {
   const dval = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const tval = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="schedule-scrim" onclick="if(event.target.id==='schedule-scrim')closeScheduleMeeting()"><div class="modal"><h2>Schedule a meeting</h2>
-    <p class="sub">Send email invites with a calendar hook (attendees need a Memex account), or Copy invite to grab a join link you can paste into any chat for a quick meeting.</p>
+    <p class="sub">Send email invites with a calendar hook (attendees need a Depot account), or Copy invite to grab a join link you can paste into any chat for a quick meeting.</p>
     <label>Title</label><input type="text" id="mt-title" placeholder="e.g. Weekly standup" autocomplete="off">
     <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:100px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
     <label>Attendees (emails, comma or space separated)</label><input type="text" id="mt-attendees" placeholder="alex@company.com, sam@company.com" autocomplete="off">
@@ -3710,7 +3710,7 @@ async function submitScheduleMeeting(btn) {
     const r = await apiPost('/meetings', { title, start: startIso, durationMinutes: dur, attendees, description: note });
     const parts = [];
     if (r.sentCount) parts.push(`Invited ${r.sentCount}`);
-    if (r.skippedCount) parts.push(`${r.skippedCount} skipped (no Memex account)`);
+    if (r.skippedCount) parts.push(`${r.skippedCount} skipped (no Depot account)`);
     if (r.failedCount) parts.push(`${r.failedCount} could not be emailed`);
     if (out) out.textContent = parts.join(' · ') || 'Done.';
     if (r.sentCount) toast(`Invites sent to ${r.sentCount}`); else toast('No invites sent');
@@ -3720,7 +3720,7 @@ async function submitScheduleMeeting(btn) {
 // Quick-meeting path: mint a room + join link entirely client-side (no email, no
 // server, no app_url needed) and copy a paste-ready invite to the clipboard.
 async function copyMeetingInvite() {
-  const title = (document.getElementById('mt-title')?.value || '').trim() || 'Memex meeting';
+  const title = (document.getElementById('mt-title')?.value || '').trim() || 'Depot meeting';
   const date = document.getElementById('mt-date')?.value;
   const time = document.getElementById('mt-time')?.value;
   const note = (document.getElementById('mt-note')?.value || '').trim();
@@ -3730,7 +3730,7 @@ async function copyMeetingInvite() {
   const joinUrl = `${location.origin}/?meet=${encodeURIComponent(room)}`;
   let when = '';
   if (date && time) { const d = new Date(`${date}T${time}`); if (!isNaN(d)) when = d.toLocaleString([], { dateStyle: 'full', timeStyle: 'short' }); }
-  const text = [title, when, note, `Join the Memex video meeting: ${joinUrl}`].filter(Boolean).join('\n');
+  const text = [title, when, note, `Join the Depot video meeting: ${joinUrl}`].filter(Boolean).join('\n');
   const out = document.getElementById('mt-result');
   let copied = false;
   try { await navigator.clipboard.writeText(text); copied = true; } catch { /* clipboard unavailable (e.g. insecure context) */ }
@@ -3821,9 +3821,9 @@ function exportComplianceReport() {
     return `<h2>${x(f.name)} <span class="${f.enabled ? 'on' : 'off'}">${f.enabled ? 'ENABLED' : 'not enabled'}</span> · ${ready}/${f.controls.length} ready</h2><p class="scope">${x(f.scope || '')}</p><table><thead><tr><th>Status</th><th>Control</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
   }).join('');
   const probeLine = data.probes?.lastRun ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}` : 'Live checks not run';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Memex compliance evidence — ${x(new Date().toISOString().slice(0,10))}</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Depot compliance evidence — ${x(new Date().toISOString().slice(0,10))}</title>
 <style>body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;max-width:900px;margin:32px auto;padding:0 20px}h1{font-size:22px}h2{font-size:16px;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:4px}.on{color:#2E7D32;font-size:11px}.off{color:#999;font-size:11px}.scope{color:#666;margin:2px 0 8px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th{text-align:left;font-size:11px;text-transform:uppercase;color:#666;border-bottom:1px solid #ccc;padding:4px 8px}td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}.s{font-weight:700;font-size:11px;white-space:nowrap}.s.ok{color:#2E7D32}.s.no{color:#C0392B}.s.pa{color:#B7791F}.att{color:#666;font-size:12px;margin-top:3px}.meta{color:#666;font-size:12px}.disc{background:#f6f6f6;padding:10px 12px;border-radius:6px;font-size:12px;color:#555}</style></head>
-<body><h1>Memex — Compliance Evidence Report</h1>
+<body><h1>Depot — Compliance Evidence Report</h1>
 <p class="meta">Generated ${x(new Date().toLocaleString())} · App ${x(app.version || 'unknown')} (${x(app.git?.branch || '')} ${x(app.git?.commit || '')}) · ${x(probeLine)}</p>
 <p class="disc">${x(data.disclaimer || 'Readiness profiles track controls and evidence only; they do not certify the organization.')}</p>
 ${sections}</body></html>`;
@@ -4905,7 +4905,7 @@ function workspaceSettingsHtml() {
       <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
       <div class="settings-grid">
         <label>Workspace name</label>
-        <input type="text" class="sans" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Memex">
+        <input type="text" class="sans" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Depot">
         <label>Default accent</label>
         <label class="accent-custom" style="justify-self:start"><input type="color" id="cfg-brand-accent" value="${esc(s.brand_accent||'#C2603D')}"><span>Pick a color</span></label>
         <label>Logo</label>
@@ -5040,7 +5040,7 @@ function systemSettingsHtml() {
       <div id="backup-config">Loading…</div>
 
       <div class="settings-sub" style="margin-top:20px">Import from Seafile</div>
-      <p class="settings-notice">Copy a Seafile library into a Memex library, preserving the folder tree. Files land as normal Memex documents (encrypted, indexed, attributed to you). Re-running skips files already imported. Credentials are used only for the run and are never stored.</p>
+      <p class="settings-notice">Copy a Seafile library into a Depot library, preserving the folder tree. Files land as normal Depot documents (encrypted, indexed, attributed to you). Re-running skips files already imported. Credentials are used only for the run and are never stored.</p>
       <div class="settings-grid">
         <label>Seafile server URL</label>
         <input type="text" class="sans" id="sf-url" value="${esc(s.seafile_url || 'https://depot.ptechllc.com')}" autocomplete="off" placeholder="https://depot.example.com">
@@ -5077,7 +5077,7 @@ function emailSettingsHtml() {
           <option value="smtp" ${s.email_provider==='smtp'?'selected':''}>SMTP</option>
         </select>
         <label>From address</label>
-        <input type="text" class="sans" id="cfg-email-from" value="${esc(s.email_from||'')}" autocomplete="off" placeholder="memex@yourdomain.com — sender mailbox for both providers">
+        <input type="text" class="sans" id="cfg-email-from" value="${esc(s.email_from||'')}" autocomplete="off" placeholder="depot@yourdomain.com — sender mailbox for both providers">
       </div>
 
       <div class="settings-sub" style="margin-top:16px">Microsoft Graph (365)</div>
@@ -5168,7 +5168,7 @@ function exportSettingsXml() {
   toast('Settings exported (secrets are masked)');
 }
 
-// ---- Seafile → Memex migration ----
+// ---- Seafile → Depot migration ----
 function seafileForm() {
   const url = document.getElementById('sf-url')?.value.trim();
   const username = document.getElementById('sf-user')?.value.trim();
@@ -5191,7 +5191,7 @@ async function seafileTest() {
 }
 async function seafileStart() {
   const body = seafileForm(); if (!body) return;
-  if (!confirm('Start importing this Seafile library into Memex? It copies every file and may take a while. You can leave this page — it runs in the background.')) return;
+  if (!confirm('Start importing this Seafile library into Depot? It copies every file and may take a while. You can leave this page — it runs in the background.')) return;
   const el = sfStatusEl(); if (!el) return;
   el.textContent = 'Starting…';
   const btn = document.getElementById('sf-start-btn'); if (btn) btn.disabled = true;

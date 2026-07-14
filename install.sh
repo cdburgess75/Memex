@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Memex one-command installer.
+# Depot one-command installer.
 #
 #   Public repo, anywhere:
 #     curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/install.sh | bash
@@ -63,9 +63,9 @@ docker info >/dev/null 2>&1 || die "Can't reach the Docker daemon. Is it running
 
 # ── Get the code ─────────────────────────────────────────────────────────────
 if [ -f docker-compose.yml ] && [ -f index.html ]; then
-  info "Using the Memex repo in $(pwd)"
+  info "Using the Depot repo in $(pwd)"
 else
-  command -v git >/dev/null 2>&1 || die "git not found — needed to download Memex."
+  command -v git >/dev/null 2>&1 || die "git not found — needed to download Depot."
   if [ -d "$TARGET_DIR/.git" ]; then
     info "Updating existing clone in ./$TARGET_DIR"; git -C "$TARGET_DIR" pull --ff-only
   else
@@ -93,7 +93,7 @@ if [ "$KEEP_ENV" = "0" ]; then
   KC_PORT="${KC_PORT:-8080}"     # keycloak host port
 
   if [ "$MODE" = "public" ]; then
-    ask APP_DOMAIN "Public domain (e.g. memex.acme.com)" ""
+    ask APP_DOMAIN "Public domain (e.g. depot.acme.com)" ""
     [ -n "${APP_DOMAIN:-}" ] || die "Public mode needs a domain."
     # Behind HTTPS the editor must be told to speak wss:// — ssl.termination=true.
     APP_URL="https://$APP_DOMAIN"; KEYCLOAK_URL="auto"; TRUST_PROXY="1"; COLLABORA_SSL="true"
@@ -178,7 +178,7 @@ for _ in $(seq 1 60); do
 done
 
 echo
-if [ "$ok" = "1" ]; then info "Memex is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
+if [ "$ok" = "1" ]; then info "Depot is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
 echo
 echo "  ${B}First login${N}"
 echo "    Email:    admin@memex.local"
@@ -191,7 +191,7 @@ if [ "$MODE" = "public" ]; then
   echo "  ${B}Go live on your domain${N} (${APP_URL:-https://your-domain})"
   echo "    1. DNS A record  → this server's public IP"
   echo "    2. Port-forward  → TCP 80 and 443 to this host"
-  echo "    3. In Memex: Settings → System → App URL = ${APP_URL:-https://your-domain}"
+  echo "    3. In Depot: Settings → System → App URL = ${APP_URL:-https://your-domain}"
   echo "    Caddy then auto-issues a Let's Encrypt cert on first visit."
 else
   echo "  ${B}Open${N}  http://localhost:$PORT   (or http://<this-host-ip>:$PORT on your LAN)"

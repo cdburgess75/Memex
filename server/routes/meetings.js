@@ -1,9 +1,9 @@
 'use strict';
-// Schedule an internal video meeting: pick a time + attendees, and Memex emails
+// Schedule an internal video meeting: pick a time + attendees, and Depot emails
 // each a calendar invite (.ics, METHOD:REQUEST) carrying a deep link into the
 // built-in WebRTC room. The room is ad-hoc (no persistence needed — a named room
 // exists the moment someone joins it), so the recipient's own calendar holds the
-// schedule and reminders. Attendees are restricted to KNOWN Memex accounts so this
+// schedule and reminders. Attendees are restricted to KNOWN Depot accounts so this
 // endpoint can't be abused as an open mail relay.
 const express = require('express');
 const router = express.Router();
@@ -80,7 +80,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     const attendees = wanted.filter((e) => known.has(e));
     const skipped = wanted.filter((e) => !known.has(e));
     if (!attendees.length) {
-      return res.status(400).json({ error: 'no attendees match a Memex account' });
+      return res.status(400).json({ error: 'no attendees match a Depot account' });
     }
 
     // Room id (ad-hoc). Honor a caller-provided slug, else derive from the title;
@@ -95,11 +95,11 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     const uid = `${crypto.randomUUID()}@memex`;
     const when = start.toUTCString();
     const bodyText =
-      `${organizer.name} invited you to a Memex video meeting.\n\n` +
+      `${organizer.name} invited you to a Depot video meeting.\n\n` +
       `${title}\n${when} (${duration} min)\n\n` +
       (description ? `${description}\n\n` : '') +
       `Join: ${joinUrl}\n\n` +
-      `The link opens Memex and drops you straight into the meeting room.`;
+      `The link opens Depot and drops you straight into the meeting room.`;
 
     const icsContent = ics.buildEvent({
       uid,
@@ -126,7 +126,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     }));
 
     // Return COUNTS only — never echo which specific addresses matched (or didn't)
-    // a Memex account, so this endpoint can't be used as a directory-enumeration
+    // a Depot account, so this endpoint can't be used as a directory-enumeration
     // oracle. The organizer supplied the addresses; a summary is enough feedback.
     const sentCount = results.filter((r) => r.sent).length;
     res.json({
