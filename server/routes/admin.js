@@ -13,12 +13,7 @@ const storage = require('../lib/storage');
 // GET /api/admin/stats
 router.get('/stats', auth, requireRole('admin'), async (req, res) => {
   try {
-    const [countRows, activityRows] = await Promise.all([
-      db.query('SELECT COUNT(*) AS count FROM pages'),
-      db.query('SELECT user_email, created_at FROM activity_log ORDER BY created_at DESC LIMIT 100'),
-    ]);
-
-    const pageCount = parseInt(countRows[0]?.count ?? 0, 10);
+    const activityRows = await db.query('SELECT user_email, created_at FROM activity_log ORDER BY created_at DESC LIMIT 100');
     const recentActivity = activityRows.slice(0, 20);
 
     const tally = {};
@@ -31,7 +26,7 @@ router.get('/stats', auth, requireRole('admin'), async (req, res) => {
       .slice(0, 10)
       .map(([email, count]) => ({ email, count }));
 
-    res.json({ pageCount, recentActivity, topContributors });
+    res.json({ recentActivity, topContributors });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

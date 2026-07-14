@@ -2,19 +2,6 @@
 -- No auth.users references, no Supabase storage, no RLS with authenticated role.
 -- Server enforces all access control via middleware.
 
--- Pages
-CREATE TABLE IF NOT EXISTS pages (
-  id          TEXT        PRIMARY KEY,
-  title       TEXT        NOT NULL,
-  category    TEXT        NOT NULL DEFAULT 'concept',
-  content     TEXT        NOT NULL DEFAULT '',
-  sources     INTEGER     NOT NULL DEFAULT 0,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by  UUID,
-  updated_by  UUID
-);
-
 -- Activity log
 CREATE TABLE IF NOT EXISTS activity_log (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -31,45 +18,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
   role        TEXT        NOT NULL DEFAULT 'contributor' CHECK (role IN ('admin','contributor','viewer')),
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   assigned_by UUID
-);
-
--- Full-text search
-ALTER TABLE pages
-  ADD COLUMN IF NOT EXISTS content_fts tsvector
-  GENERATED ALWAYS AS (
-    to_tsvector('english', coalesce(title,'') || ' ' || coalesce(content,''))
-  ) STORED;
-
-CREATE INDEX IF NOT EXISTS pages_fts_idx ON pages USING GIN(content_fts);
-
-CREATE OR REPLACE FUNCTION search_pages(query_text TEXT)
-RETURNS TABLE(id TEXT, title TEXT, category TEXT, headline TEXT) AS $$
-  SELECT
-    p.id,
-    p.title,
-    p.category,
-    ts_headline(
-      'english',
-      p.content,
-      websearch_to_tsquery('english', query_text),
-      'StartSel=<<, StopSel=>>, MaxFragments=2, MaxWords=15, MinWords=5'
-    ) AS headline
-  FROM pages p
-  WHERE p.content_fts @@ websearch_to_tsquery('english', query_text)
-  ORDER BY ts_rank(p.content_fts, websearch_to_tsquery('english', query_text)) DESC
-  LIMIT 20;
-$$ LANGUAGE sql STABLE;
-
--- Page version history
-CREATE TABLE IF NOT EXISTS page_versions (
-  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  page_id         TEXT        NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-  title           TEXT        NOT NULL,
-  category        TEXT        NOT NULL,
-  content         TEXT        NOT NULL,
-  saved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  saved_by        UUID,
-  saved_by_email  TEXT
 );
 
 -- API token usage tracking
