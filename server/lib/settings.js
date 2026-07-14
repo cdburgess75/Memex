@@ -35,6 +35,7 @@ const ENV_MAP = {
   http_proxy:                     'HTTP_PROXY',
   max_upload_mb:                  'MAX_UPLOAD_MB',
   max_upload_files:               'MAX_UPLOAD_FILES',
+  min_free_disk_mb:               'MIN_FREE_DISK_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
   compliance_soc2_enabled:        'COMPLIANCE_SOC2_ENABLED',
   compliance_hipaa_enabled:       'COMPLIANCE_HIPAA_ENABLED',
