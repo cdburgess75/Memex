@@ -113,13 +113,6 @@ async function MODEL() {
   return (await settings.getOrEnv('anthropic_model')) || 'claude-sonnet-4-6';
 }
 
-function buildContext(pages) {
-  return (pages || [])
-    .filter(p => p.id !== 'overview')
-    .map(p => `### [[${p.title}]]  (${p.category})\n${p.content}`)
-    .join('\n\n---\n\n');
-}
-
 async function logEvent(event, userId, userEmail) {
   await db.query(
     'INSERT INTO activity_log (event, user_id, user_email) VALUES ($1, $2, $3)',
@@ -1351,98 +1344,6 @@ router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'),
   }
 });
 
-// POST /api/files/:id/ingest
-router.post('/:id/ingest', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  const { focus } = req.body;
-
-  try {
-    const doc = await documentAccess.getAccessibleDocument({
-      id: req.params.id,
-      user: req.user,
-      required: 'read',
-      columns: `${DOCUMENT_COLUMNS}, d.document_text`,
-      deleted: 'active',
-    });
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-    let buffer;
-    try {
-      buffer = await storage.download(doc.storage_path);
-    } catch (e) {
-      return res.status(500).json({ error: e.message });
-    }
-
-    let text;
-    try {
-      text = doc.document_text || await extractText(buffer, doc.name);
-    } catch (e) {
-      return res.status(422).json({ error: `Text extraction failed: ${e.message}` });
-    }
-
-    if (!text || !text.trim()) {
-      return res.status(422).json({ error: 'Could not extract text from this file' });
-    }
-
-    const pages = await db.query('SELECT * FROM pages');
-    const ctx = buildContext(pages);
-
-    const system = `You maintain a team knowledge base. Ingest the source the user provides.
-
-Existing pages:
-${ctx || '(empty — this is the first source)'}
-
-Return ONLY valid JSON, no markdown fences, in this shape:
-{"summary":"2-3 sentence summary","pages":[{"id":"kebab-slug","title":"Page Title","category":"concept|entity|source|analysis","content":"# Page Title\\n\\nMarkdown body. Use [[Page Title]] to link related pages. Use ## for subheads and - for bullets."}]}
-
-Create or update 2-4 pages. Prefer updating an existing page (reuse its exact id) when the source adds to it. Always include one "source" page summarizing this document. Cross-link generously with [[page links]].${focus ? '\nUser emphasis: ' + focus : ''}`;
-
-    const [ai, model] = await Promise.all([anthropic(), MODEL()]);
-    const message = await ai.messages.create({
-      model,
-      max_tokens: 1400,
-      system,
-      messages: [{ role: 'user', content: 'Source:\n\n' + text.slice(0, 8000) }],
-    });
-
-    await db.query(
-      'INSERT INTO api_usage (user_id, user_email, operation, model, input_tokens, output_tokens) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.user.id, req.user.email, 'ingest', model, message.usage.input_tokens, message.usage.output_tokens]
-    );
-
-    const raw = message.content.map(b => b.text || '').join('');
-    let parsed;
-    try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    } catch {
-      return res.status(422).json({ error: 'Claude returned invalid JSON — try again' });
-    }
-
-    const touched = [];
-    for (const p of (parsed.pages || [])) {
-      const existing = await db.queryOne('SELECT id, sources FROM pages WHERE id = $1', [p.id]);
-      let row;
-      if (existing) {
-        row = await db.queryOne(
-          `UPDATE pages SET title = $1, category = $2, content = $3, sources = $4,
-           updated_at = $5, updated_by = $6 WHERE id = $7 RETURNING *`,
-          [p.title, p.category, p.content, (existing.sources || 0) + 1, new Date().toISOString(), req.user.id, p.id]
-        );
-      } else {
-        row = await db.queryOne(
-          `INSERT INTO pages (id, title, category, content, sources, created_by, updated_by)
-           VALUES ($1, $2, $3, $4, 1, $5, $6) RETURNING *`,
-          [p.id, p.title, p.category, p.content, req.user.id, req.user.id]
-        );
-      }
-      if (row) touched.push(row);
-    }
-
-    await logEvent(`ingest · ${touched.length} pages · ${parsed.pages?.[0]?.title || doc.name}`, req.user.id, req.user.email);
-    res.json({ summary: parsed.summary, pages: touched });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // GET /api/files/:id/url
 router.get('/:id/url', auth, async (req, res) => {
