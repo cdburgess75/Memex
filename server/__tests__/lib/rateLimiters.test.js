@@ -1,6 +1,8 @@
 'use strict';
 
-const { intFromEnv, rateLimitEnabled, makeRateLimiters, isUploadPath } = require('../../lib/rateLimiters');
+jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn() }));
+const settings = require('../../lib/settings');
+const { intFromEnv, rateLimitEnabled, makeRateLimiters, isUploadPath, uploadRequestLimit, UPLOAD_LIMIT_FLOOR } = require('../../lib/rateLimiters');
 
 describe('rateLimiters', () => {
   const originalEnv = process.env;
@@ -66,5 +68,30 @@ describe('rateLimiters', () => {
     process.env.RATE_LIMIT_SHARE_WINDOW_MS = '60000';
     expect(intFromEnv('RATE_LIMIT_SHARE_MAX', 60)).toBe(12);
     expect(intFromEnv('RATE_LIMIT_SHARE_WINDOW_MS', 900000)).toBe(60000);
+  });
+});
+
+describe('uploadRequestLimit (auto-scales the upload cap off max_upload_files)', () => {
+  beforeEach(() => { delete process.env.RATE_LIMIT_UPLOAD_MAX; settings.getOrEnv.mockReset(); });
+
+  test('explicit RATE_LIMIT_UPLOAD_MAX always wins', async () => {
+    process.env.RATE_LIMIT_UPLOAD_MAX = '7000';
+    settings.getOrEnv.mockResolvedValue('4096');
+    await expect(uploadRequestLimit()).resolves.toBe(7000);
+  });
+
+  test('scales to max_upload_files × per-file requests when above the floor', async () => {
+    settings.getOrEnv.mockResolvedValue('10000');
+    await expect(uploadRequestLimit()).resolves.toBe(120000); // 10000 * 12
+  });
+
+  test('never drops below the floor for a small file limit', async () => {
+    settings.getOrEnv.mockResolvedValue('100');
+    await expect(uploadRequestLimit()).resolves.toBe(UPLOAD_LIMIT_FLOOR); // 30000
+  });
+
+  test('defaults to 4096 files when the setting is unavailable', async () => {
+    settings.getOrEnv.mockRejectedValue(new Error('db down'));
+    await expect(uploadRequestLimit()).resolves.toBe(49152); // max(30000, 4096 * 12)
   });
 });

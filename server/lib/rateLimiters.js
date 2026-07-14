@@ -1,5 +1,6 @@
 'use strict';
 const { rateLimit } = require('express-rate-limit');
+const settings = require('./settings');
 
 // The authenticated bulk-upload routes issue one request per file (and per chunk
 // for resumable uploads), so a legitimate folder of hundreds of files would blow
@@ -20,6 +21,26 @@ function intFromEnv(name, fallback) {
 
 function rateLimitEnabled() {
   return process.env.RATE_LIMIT_ENABLED !== 'false';
+}
+
+// Per-window upload-request budget. A folder upload issues several requests per file
+// (resumable: session create + one per chunk + complete), so the cap must scale with
+// the configured file-count limit or a legitimate large upload 429s mid-batch. An
+// explicit RATE_LIMIT_UPLOAD_MAX always wins; otherwise budget generously per allowed
+// file, with a high floor that also covers a fast single large-file (many-chunk)
+// upload. Evaluated per request (settings are cached), so raising max_upload_files in
+// the admin UI takes effect without a restart.
+const UPLOAD_REQUESTS_PER_FILE = 12;
+const UPLOAD_LIMIT_FLOOR = 30000;
+async function uploadRequestLimit() {
+  const envMax = Number.parseInt(process.env.RATE_LIMIT_UPLOAD_MAX || '', 10);
+  if (Number.isFinite(envMax) && envMax > 0) return envMax;
+  let files = 4096;
+  try {
+    const v = Number.parseInt((await settings.getOrEnv('max_upload_files')) || '4096', 10);
+    if (Number.isFinite(v) && v > 0) files = v;
+  } catch { /* default */ }
+  return Math.max(UPLOAD_LIMIT_FLOOR, files * UPLOAD_REQUESTS_PER_FILE);
 }
 
 function createLimiter(options) {
@@ -44,7 +65,7 @@ function makeRateLimiters() {
     }),
     uploadLimiter: createLimiter({
       windowMs,
-      limit: intFromEnv('RATE_LIMIT_UPLOAD_MAX', 5000),
+      limit: (_req, _res) => uploadRequestLimit(),
       message: 'Too many upload requests. Please slow down and try again shortly.',
     }),
     authLimiter: createLimiter({
@@ -60,4 +81,4 @@ function makeRateLimiters() {
   };
 }
 
-module.exports = { intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath };
+module.exports = { intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath, uploadRequestLimit, UPLOAD_LIMIT_FLOOR, UPLOAD_REQUESTS_PER_FILE };
