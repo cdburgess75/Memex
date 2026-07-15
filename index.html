@@ -4741,10 +4741,10 @@ async function openSettings() {
 function closeSettings() { document.getElementById('settings-scrim').classList.remove('open'); }
 
 function settingsTabsList() {
-  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'appearance', label: 'Appearance' }, { id: 'notifications', label: 'Notifications' }];
+  // Consolidated tabs: Profile holds profile + appearance; Notifications holds
+  // notification prefs (+ admin-only email config); System folds in Workspace branding.
+  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }];
   if (currentUser?.role === 'admin') tabs.push(
-    { id: 'workspace', label: 'Workspace' },
-    { id: 'email', label: 'Email' },
     { id: 'ai', label: 'AI' },
     { id: 'activity', label: 'Activity' },
     { id: 'system', label: 'System' }
@@ -4759,14 +4759,12 @@ function switchSettingsTab(tab) {
   settingsTab = tab;
   renderSettingsTabs();
   const body = document.getElementById('settings-body');
-  if (tab === 'profile') body.innerHTML = profileSettingsHtml();
-  else if (tab === 'appearance') body.innerHTML = appearanceSettingsHtml();
-  else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml(); loadNotifications(); }
-  else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml();
-  else if (tab === 'email') body.innerHTML = emailSettingsHtml();
+  const admin = currentUser?.role === 'admin';
+  if (tab === 'profile') body.innerHTML = profileSettingsHtml() + appearanceSettingsHtml();
+  else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml() + (admin ? emailSettingsHtml() : ''); loadNotifications(); }
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
   else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
-  else if (tab === 'system') { body.innerHTML = systemSettingsHtml(); loadBackupConfig(); seafileResume(); }
+  else if (tab === 'system') { body.innerHTML = workspaceSettingsHtml() + systemSettingsHtml(); loadBackupConfig(); seafileResume(); }
 }
 
 // ---- Admin activity / audit feed ----
@@ -4937,17 +4935,17 @@ async function saveProfile() {
 function appearanceSettingsHtml() {
   const dark = document.documentElement.classList.contains('dark');
   const current = (localStorage.getItem('memex_accent') || '').toLowerCase();
-  const swatches = ACCENT_PRESETS.map(p => `<button class="accent-swatch${current === p.hex.toLowerCase() ? ' active' : ''}" title="${p.name}" style="--sw:${p.hex}" onclick="applyAccent('${p.hex}');switchSettingsTab('appearance')"></button>`).join('');
+  const swatches = ACCENT_PRESETS.map(p => `<button class="accent-swatch${current === p.hex.toLowerCase() ? ' active' : ''}" title="${p.name}" style="--sw:${p.hex}" onclick="applyAccent('${p.hex}');switchSettingsTab('profile')"></button>`).join('');
   return `<div class="settings-sub">Theme</div>
     <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="${dark ? 'ghost-btn' : 'run-btn'}" onclick="setTheme('light');switchSettingsTab('appearance')">Light</button>
-      <button class="${dark ? 'run-btn' : 'ghost-btn'}" onclick="setTheme('dark');switchSettingsTab('appearance')">Dark</button>
+      <button class="${dark ? 'ghost-btn' : 'run-btn'}" onclick="setTheme('light');switchSettingsTab('profile')">Light</button>
+      <button class="${dark ? 'run-btn' : 'ghost-btn'}" onclick="setTheme('dark');switchSettingsTab('profile')">Dark</button>
     </div>
     <div class="settings-sub" style="margin-top:16px">Accent color</div>
     <div class="accent-swatches">${swatches}</div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
-      <label class="accent-custom"><input type="color" value="${current || '#C2603D'}" onchange="applyAccent(this.value);switchSettingsTab('appearance')"><span>Custom…</span></label>
-      <button class="ghost-btn" onclick="applyAccent('');switchSettingsTab('appearance')">Reset to default</button>
+      <label class="accent-custom"><input type="color" value="${current || '#C2603D'}" onchange="applyAccent(this.value);switchSettingsTab('profile')"><span>Custom…</span></label>
+      <button class="ghost-btn" onclick="applyAccent('');switchSettingsTab('profile')">Reset to default</button>
     </div>
     <p class="settings-notice" style="margin-top:10px">Theme and accent are saved on this device.</p>`;
 }
