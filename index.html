@@ -1277,6 +1277,10 @@ html.office .provider-btn:hover {
   margin-bottom: 16px;
 }
 .data-table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 8px; }
+/* Keep wide admin tables from bleeding past the viewport on narrow/zoomed views:
+   give each its own horizontal scroll instead of overflowing the page. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
+.table-scroll > table { margin-bottom: 0; min-width: 480px; }
 .data-table th {
   font-family: var(--mono);
   font-size: 10px;
@@ -4135,7 +4139,7 @@ function toggleAiLib(id) {
   if (el) el.innerHTML = aiLibraryChipsInner();
 }
 function fmtBytes(bytes) {
-  const b = bytes || 0;
+  const b = Number(bytes) || 0;
   if (b < 1024) return b + ' B';
   if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
   return (b / (1024 * 1024)).toFixed(1) + ' MB';
@@ -4224,7 +4228,6 @@ async function renderAdmin() {
       apiGet('/files').catch(() => []),
       apiGet('/admin/compliance').catch(() => null)
     ]);
-    const pageCount = stats.pageCount ?? 0;
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
     const contributors = Array.isArray(stats.topContributors) ? stats.topContributors : [];
     const activity = Array.isArray(stats.recentActivity) ? stats.recentActivity : [];
@@ -4282,17 +4285,17 @@ async function renderAdmin() {
         </div>
         <div style="margin-bottom:20px">
           <div class="result-label" style="margin-bottom:8px">By user</div>
-          <table class="data-table">
+          <div class="table-scroll"><table class="data-table">
             <thead><tr><th>Email</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
             <tbody>${byUserRows}</tbody>
-          </table>
+          </table></div>
         </div>
         <div>
           <div class="result-label" style="margin-bottom:8px">By operation</div>
-          <table class="data-table">
+          <div class="table-scroll"><table class="data-table">
             <thead><tr><th>Operation</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
             <tbody>${byOpRows}</tbody>
-          </table>
+          </table></div>
         </div>
       </div>`;
     }
@@ -4318,15 +4321,17 @@ async function renderAdmin() {
 
     const teamHtml = `<div class="usage-section">
       <h3>Team</h3>
-      <table class="data-table">
+      <div class="table-scroll"><table class="data-table">
         <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th></tr></thead>
         <tbody>${userRows}</tbody>
-      </table>
+      </table></div>
     </div>`;
 
     // Build storage section
     const fileList = Array.isArray(files) ? files : [];
-    const totalBytes = fileList.reduce((s, f) => s + (f.size || 0), 0);
+    // f.size arrives as a string (Postgres bigint -> JSON string); Number() it so
+    // the reduce adds instead of concatenating into an Infinity-coercing megastring.
+    const totalBytes = fileList.reduce((s, f) => s + (Number(f.size) || 0), 0);
     const fileRows = fileList.length
       ? fileList.map(f => {
           const ext = (f.name.split('.').pop() || '').toUpperCase();
@@ -4356,10 +4361,10 @@ async function renderAdmin() {
           <div class="stat-label">Total size</div>
         </div>
       </div>
-      <table class="data-table">
+      <div class="table-scroll"><table class="data-table">
         <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th></th></tr></thead>
         <tbody>${fileRows}</tbody>
-      </table>
+      </table></div>
     </div>`;
 
     setWorkspacePanel(`<div class="panel">
@@ -4367,10 +4372,6 @@ async function renderAdmin() {
       ${usageHtml}
       ${storageHtml}
       <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-num">${pageCount}</div>
-          <div class="stat-label">Pages</div>
-        </div>
         <div class="stat-card">
           <div class="stat-num">${activityCount}</div>
           <div class="stat-label">Recent events</div>
@@ -4381,15 +4382,15 @@ async function renderAdmin() {
         </div>
       </div>
       <div class="result-label" style="margin-top:24px">Top contributors</div>
-      <table class="admin-table" style="margin-bottom:28px">
+      <div class="table-scroll" style="margin-bottom:28px"><table class="admin-table">
         <thead><tr><th>User</th><th>Actions</th></tr></thead>
         <tbody>${contributorRows}</tbody>
-      </table>
+      </table></div>
       <div class="result-label">Recent activity</div>
-      <table class="admin-table" style="margin-bottom:32px">
+      <div class="table-scroll" style="margin-bottom:32px"><table class="admin-table">
         <thead><tr><th>Time</th><th>User</th><th>Event</th></tr></thead>
         <tbody>${activityRows}</tbody>
-      </table>
+      </table></div>
       ${teamHtml}
     </div>`, 'admin');
   } catch (e) {
