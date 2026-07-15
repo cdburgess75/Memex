@@ -1804,16 +1804,22 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-pinned-section.collapsed .file-pinned-header .chev { transform: rotate(-90deg); }
 .file-pinned-section.collapsed .file-pinned-body { display: none; }
 .file-pinned-body { display: grid; gap: 2px; }
-.file-pinned-item { justify-content: space-between; }
-.file-pinned-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-pin-star { flex: 0 0 auto; color: var(--accent); opacity: 0.75; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+/* Pinned rail rows: the library-switch button and the unpin button are siblings
+   (never nested) so both are keyboard-operable. */
+.file-pinned-item-wrap { display: flex; align-items: center; }
+.file-pinned-item { flex: 1 1 auto; min-width: 0; }
+.file-pinned-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--accent); opacity: 0.75; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
 .file-pin-star:hover { opacity: 1; background: var(--surface-2); }
-/* Pin star inside the library dropdown rows */
-.library-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.file-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Library dropdown rows: switch button + pin button as siblings */
+.library-menu-item-wrap { display: flex; align-items: center; }
+.library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; }
 .library-menu-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.library-pin-star { flex: 0 0 auto; color: var(--ink-faint); opacity: 0.7; font-size: 13px; line-height: 1; padding: 0 2px; }
+.library-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); opacity: 0.7; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
 .library-pin-star.pinned { color: var(--accent); opacity: 1; }
-.library-pin-star:hover { opacity: 1; }
+.library-pin-star:hover { opacity: 1; background: var(--surface-2); }
+.library-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* In-rail folder tree (reuses .file-commander-folder rows, transparent in the rail) */
 .file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; }
 .file-rail-tree:empty { display: none; }
@@ -1910,6 +1916,7 @@ html.dark .file-upload-menu button:hover,
 html.dark .file-search-menu button:hover { background: #172638; }
 html.dark .file-library-heading,
 html.dark .file-nav-section,
+html.dark .file-pinned-header,
 html.dark .file-home-title,
 html.dark .file-section-title,
 html.dark .file-home-card-value,
@@ -2053,6 +2060,7 @@ html.graphite .file-upload-menu button:hover,
 html.graphite .file-search-menu button:hover { background: var(--accent-wash); }
 html.office-dark .file-library-heading,
 html.office-dark .file-nav-section,
+html.office-dark .file-pinned-header,
 html.office-dark .file-home-title,
 html.office-dark .file-section-title,
 html.office-dark .file-home-card-value,
@@ -2064,6 +2072,7 @@ html.office-dark .file-share-grid label,
 html.office-dark .file-library-selected-count,
 html.drive .file-library-heading,
 html.drive .file-nav-section,
+html.drive .file-pinned-header,
 html.drive .file-home-title,
 html.drive .file-section-title,
 html.drive .file-home-card-value,
@@ -2075,6 +2084,7 @@ html.drive .file-share-grid label,
 html.drive .file-library-selected-count,
 html.graphite .file-library-heading,
 html.graphite .file-nav-section,
+html.graphite .file-pinned-header,
 html.graphite .file-home-title,
 html.graphite .file-section-title,
 html.graphite .file-home-card-value,
@@ -2333,7 +2343,10 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .compliance-control-gap { grid-column: 1; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
   .file-library-commandbar { align-items: stretch; flex-direction: column; }
-  .file-library-command-left, .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
+  .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
+  /* command-left holds the Create/Upload dropdown menus — no overflow clip here;
+     the type tabs already scroll inside their own overflow container. */
+  .file-library-command-left { width: 100%; flex-wrap: nowrap; padding-bottom: 3px; }
   .file-library-search { width: 100%; }
   .file-library-table-wrap { border: 0; background: transparent; overflow: visible; }
   .file-library-table, .file-library-table tbody, .file-library-table tr, .file-library-table td { display: block; width: 100%; min-width: 0; }
@@ -2733,6 +2746,19 @@ function toggleFileFavorite(id, event) {
 function refreshFileRailTree() {
   const tree = document.getElementById('file-rail-tree');
   if (tree) tree.innerHTML = fileRailTreeHtml();
+}
+// When navigating into a folder, make sure its ancestors are expanded in the rail
+// tree so the active folder is actually visible (keeps rail in sync with the pane).
+function expandRailAncestors(path) {
+  if (!path) return;
+  const set = commanderCollapsed();
+  const parts = path.split('/').filter(Boolean);
+  let anc = '', changed = false;
+  for (let i = 0; i < parts.length; i++) {
+    anc = anc ? `${anc}/${parts[i]}` : parts[i];
+    if (set.has(anc)) { set.delete(anc); changed = true; }
+  }
+  if (changed) localStorage.setItem('memex_commander_collapsed', JSON.stringify([...set]));
 }
 
 // ---- file table columns (sortable + show/hide, persisted) ----
@@ -5777,6 +5803,7 @@ function setFileLayoutMode(mode) {
 }
 function openFolder(path = '', push = true) {
   currentFolderPath = normalizeFilePath(path);
+  expandRailAncestors(currentFolderPath);
   clearFileSelection(false);
   detailsPaneOpen = false;
   renderDocumentLibraryList();
@@ -6014,7 +6041,7 @@ function filePinnedSectionHtml() {
   if (!pins.length) return `<div class="file-pinned-section" id="file-pinned-section" hidden></div>`;
   const collapsed = filePinnedCollapsed ? ' collapsed' : '';
   const items = pins.map(l =>
-    `<button class="file-nav-link file-pinned-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span>${esc(l.name)}</span><span class="file-pin-star" role="button" tabindex="0" aria-label="Unpin ${esc(l.name)}" title="Unpin" onclick="toggleLibraryPin(event,'${l.id}')">★</span></button>`
+    `<div class="file-pinned-item-wrap"><button class="file-nav-link file-pinned-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span>${esc(l.name)}</span></button><button class="file-pin-star" type="button" aria-label="Unpin ${esc(l.name)}" title="Unpin" onclick="toggleLibraryPin(event,'${l.id}')">★</button></div>`
   ).join('');
   return `<div class="file-pinned-section${collapsed}" id="file-pinned-section"><button class="file-pinned-header" type="button" onclick="togglePinnedSection()"><span>Pinned</span><span class="chev">⌄</span></button><div class="file-pinned-body">${items}</div></div>`;
 }
@@ -6301,7 +6328,7 @@ async function loadLibraries() {
 function libraryMenuInnerHtml() {
   const items = librariesList.map(l => {
     const pinned = pinnedLibraryIds.has(String(l.id));
-    return `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span><span class="library-pin-star${pinned ? ' pinned' : ''}" role="button" tabindex="0" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</span></button>`;
+    return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span></button><button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
   }).join('');
   return `<div class="library-menu-label">Libraries</div>${items}<div class="library-menu-sep"></div>${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>`;
 }
@@ -6723,8 +6750,11 @@ function renderDocumentLibraryList() {
   const q = (document.getElementById('global-search')?.value || '').trim().toLowerCase();
   const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
-  const rows = (q ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
-  const folders = q ? [] : childFoldersForPath(source);
+  // Favorites is a flat, cross-folder view (like Shared): show every matching file
+  // regardless of which folder it lives in, and don't surface folder rows.
+  const flatView = fileView === 'favorites';
+  const rows = (q || flatView ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
+  const folders = (q || flatView) ? [] : childFoldersForPath(source);
   lastRenderedFolderPaths = folders.map(f => f.path);
   selectedFolderPaths = new Set([...selectedFolderPaths].filter(p => lastRenderedFolderPaths.includes(p)));
   const tableRows = [...folders.map(folderLibraryRow), ...sortFiles(rows).map(fileLibraryRow)].join('');
@@ -6777,7 +6807,13 @@ async function openFileDetails(fileId) {
 
 function updateFileLibraryChrome() {
   const commandbar = document.getElementById('file-library-commandbar');
-  if (commandbar) commandbar.innerHTML = fileLibraryCommandBarHtml();
+  if (commandbar) {
+    // Preserve an open Create/Upload menu across the rebuild so a background
+    // upload finishing (or any list re-render) doesn't dismiss it mid-use.
+    const openMenu = commandbar.querySelector('.file-upload-menu.open')?.id;
+    commandbar.innerHTML = fileLibraryCommandBarHtml();
+    if (openMenu) document.getElementById(openMenu)?.classList.add('open');
+  }
   renderFileDetailsPane();
 }
 
