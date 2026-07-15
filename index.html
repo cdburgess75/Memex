@@ -1286,12 +1286,13 @@ html.office .provider-btn:hover {
 /* Keep wide admin tables from bleeding past the viewport on narrow/zoomed views:
    give each its own horizontal scroll instead of overflowing the page. */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
-.table-scroll > table { margin-bottom: 0; min-width: 480px; }
-/* On a wide panel, auto table-layout dumps the slack into a mid-row gap. Instead
-   let the first column (name/email/operation) absorb the slack and ellipsize,
-   while the metadata columns hug their content on the right. */
-.data-table th:not(:first-child), .data-table td:not(:first-child) { width: 1%; white-space: nowrap; }
-.data-table td:first-child { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-scroll > table { margin-bottom: 0; }
+/* On the wide file-home panel a width:100% table stretches its columns apart and
+   leaves a big mid-row gap. Left-pack instead: size the table to its content, cap
+   the name/label column with an ellipsis, and let metadata columns hug. */
+.data-table { width: auto; max-width: 100%; }
+.data-table th:not(:first-child), .data-table td:not(:first-child) { white-space: nowrap; }
+.data-table td:first-child { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-table th {
   font-family: var(--mono);
   font-size: 10px;
