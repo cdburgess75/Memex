@@ -1287,12 +1287,13 @@ html.office .provider-btn:hover {
    give each its own horizontal scroll instead of overflowing the page. */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
 .table-scroll > table { margin-bottom: 0; }
-/* On the wide file-home panel a width:100% table stretches its columns apart and
-   leaves a big mid-row gap. Left-pack instead: size the table to its content, cap
-   the name/label column with an ellipsis, and let metadata columns hug. */
-.data-table { width: auto; max-width: 100%; }
-.data-table th:not(:first-child), .data-table td:not(:first-child) { white-space: nowrap; }
-.data-table td:first-child { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Fixed layout so columns take exact proportions of the container at any width:
+   the name/label column gets 40%, the rest share the remainder, and every cell
+   ellipsizes. This fills the width with no mid-row gap on wide panels and stays
+   readable (no character-by-character wrapping) when the panel is narrow. */
+.data-table { table-layout: fixed; }
+.data-table th, .data-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-table th:first-child, .data-table td:first-child { width: 40%; }
 .data-table th {
   font-family: var(--mono);
   font-size: 10px;
@@ -4380,7 +4381,7 @@ async function renderAdmin() {
             <td title="${esc(f.name)}">${esc(f.name)}</td>
             <td>${esc(ext)}</td>
             <td>${fmtBytes(f.size || 0)}</td>
-            <td>${esc(f.uploaded_by_email || '')}</td>
+            <td title="${esc(f.uploaded_by_email || '')}">${esc(f.uploaded_by_email || '')}</td>
             <td>${t}</td>
             <td><button class="ghost-btn" style="padding:3px 10px;font-size:11px;color:#C0392B;border-color:transparent"
               data-fid="${f.id}" data-fname="${esc(f.name)}"
