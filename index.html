@@ -11,7 +11,7 @@
 <style>
 :root {
   /* Depot signature — light */
-  --masthead-h: 92px; /* header height — kept in sync with the file-home layout calcs */
+  --masthead-h: 60px; /* header height — kept in sync with the file-home layout calcs */
   --paper: #FBFBFA;
   --surface: #FFFFFF;
   --surface-2: #F4F4F2;
@@ -70,22 +70,22 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   background: var(--accent);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 19px;
   letter-spacing: -0.02em;
 }
 .brand h1 {
   font-family: var(--ui);
   font-weight: 600;
-  font-size: 25px;
+  font-size: 21px;
   letter-spacing: -0.01em;
   line-height: 1;
 }
@@ -974,8 +974,8 @@ html.dark .chip { color: var(--accent-soft); }
 .brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
 /* Masthead with a real logo: give it a taller, natural-width slot and drop the wordmark. */
 .brand--has-logo h1 { display: none; }
-.brand--has-logo .brand-logo.has-logo { width: auto; height: 50px; min-width: 0; border-radius: 6px; }
-.brand--has-logo .brand-logo.has-logo img { width: auto; height: 50px; max-width: 320px; }
+.brand--has-logo .brand-logo.has-logo { width: auto; height: 42px; min-width: 0; border-radius: 6px; }
+.brand--has-logo .brand-logo.has-logo img { width: auto; height: 42px; max-width: 300px; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
@@ -1827,14 +1827,15 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; }
 .file-rail-tree:empty { display: none; }
 .file-rail-tree .file-commander-folder { grid-template-columns: 14px 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
-/* Breadcrumb row + toggle */
-.file-library-breadcrumb-row { margin-bottom: 4px; }
+/* Breadcrumb — leads the command-bar toolbar (Option A), can shrink so the row stays one line */
+.file-library-command-left .file-library-breadcrumb { flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
 .file-library-breadcrumb .crumb-root { font-weight: 700; color: var(--ink); }
-.file-library-breadcrumb .crumb-sep { color: var(--ink-faint); }
-.file-library-breadcrumb .crumb-spacer { flex: 1 1 auto; }
-.file-library-breadcrumb.hidden-path { justify-content: flex-end; }
-.file-breadcrumb-toggle { border: 0; background: transparent; color: var(--ink-faint); font: 500 12px var(--ui); cursor: pointer; padding: 4px 7px; border-radius: 6px; }
+.file-library-breadcrumb button:not(.file-breadcrumb-toggle) { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+.file-library-breadcrumb .crumb-sep { color: var(--ink-faint); flex: 0 0 auto; }
+.file-breadcrumb-toggle { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; padding: 4px 6px; border-radius: 6px; flex: 0 0 auto; }
 .file-breadcrumb-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.file-breadcrumb-toggle svg { display: block; }
+.file-breadcrumb-show { font: 500 12px var(--ui); }
 /* Favorite star on file rows */
 .file-fav-btn.on { color: var(--accent); }
 .file-fav-btn:hover { color: var(--accent); }
@@ -2736,8 +2737,7 @@ function refreshPinnedSection() {
 function toggleBreadcrumbPath() {
   fileBreadcrumbHidden = !fileBreadcrumbHidden;
   localStorage.setItem('memex_breadcrumb_hidden', fileBreadcrumbHidden ? 'true' : 'false');
-  const bc = document.getElementById('file-library-breadcrumb');
-  if (bc) bc.innerHTML = fileBreadcrumbHtml();
+  updateFileLibraryChrome(); // the breadcrumb now lives in the command bar
 }
 function toggleFileFavorite(id, event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -5801,13 +5801,14 @@ function folderLibraryRow(folder) {
   return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div class="file-library-breadcrumb-row" id="file-library-breadcrumb"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
 }
+const EYE_OFF_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
+const EYE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+// The breadcrumb now leads the command-bar toolbar (Option A) rather than sitting
+// in its own row. Root crumb is the current library.
 function fileBreadcrumbHtml() {
-  const toggle = `<button class="file-breadcrumb-toggle" type="button" onclick="toggleBreadcrumbPath()">${fileBreadcrumbHidden ? 'Show path' : 'Hide path'}</button>`;
-  // Hidden: keep only the toggle so the path can be brought back.
-  if (fileBreadcrumbHidden) return `<div class="file-library-breadcrumb hidden-path">${toggle}</div>`;
-  // Root crumb is the current library (no separate "Home" landing view yet).
+  if (fileBreadcrumbHidden) return `<button class="file-breadcrumb-toggle file-breadcrumb-show" type="button" title="Show path" aria-label="Show path" onclick="toggleBreadcrumbPath()">${EYE_SVG}<span>Path</span></button>`;
   const parts = currentFolderPath.split('/').filter(Boolean);
   let path = '';
   const crumbs = [`<button class="crumb-root" data-folder="" onclick="openFolder(this.dataset.folder)">${esc(currentLibraryName())}</button>`];
@@ -5815,7 +5816,7 @@ function fileBreadcrumbHtml() {
     path = path ? `${path}/${part}` : part;
     crumbs.push('<span class="crumb-sep">›</span>', `<button data-folder="${esc(path)}" onclick="openFolder(this.dataset.folder)">${esc(part)}</button>`);
   });
-  return `<div class="file-library-breadcrumb">${crumbs.join('')}<span class="crumb-spacer"></span>${toggle}</div>`;
+  return `<div class="file-library-breadcrumb">${crumbs.join('')}<button class="file-breadcrumb-toggle" type="button" title="Hide path" aria-label="Hide path" onclick="toggleBreadcrumbPath()">${EYE_OFF_SVG}</button></div>`;
 }
 function fileLayoutToggleHtml() {
   return `<span class="file-layout-toggle" role="group" aria-label="File layout"><button class="${fileLayoutMode === 'list' ? 'active' : ''}" onclick="setFileLayoutMode('list')">List</button><button class="${fileLayoutMode === 'commander' ? 'active' : ''}" onclick="setFileLayoutMode('commander')">Commander</button></span>`;
@@ -5991,7 +5992,7 @@ function fileLibraryCommandBarHtml() {
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
-  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileBreadcrumbHtml()}<span class="file-library-sep"></span>${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
@@ -6802,8 +6803,6 @@ function renderDocumentLibraryList() {
   const allSelected = selectables.length > 0 && selectables.every(isSel);
   const someSelected = !allSelected && selectables.some(isSel);
   const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
-  const breadcrumb = document.getElementById('file-library-breadcrumb');
-  if (breadcrumb) breadcrumb.innerHTML = fileBreadcrumbHtml();
   refreshFileRailTree();
   const inner = (!folders.length && !rows.length)
     ? (q
