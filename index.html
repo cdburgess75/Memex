@@ -3710,7 +3710,7 @@ document.addEventListener('visibilitychange', () => {
 function maybePromptReload(serverVersion) {
   if (!serverVersion || !appConfig?.version) { clientStaleVersion = null; }
   else { clientStaleVersion = serverVersion !== appConfig.version ? serverVersion : null; }
-  refreshUpdateAction();
+  refreshStatusPill(); // recolors the pill (amber when stale) and refreshes the popover action
 }
 
 // The single contextual action shown in the status popover when things aren't
