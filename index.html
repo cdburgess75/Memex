@@ -227,6 +227,12 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .status-popover-title { font: 700 11px var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 8px 6px; }
 .status-popover .security-indicator { display: flex; width: 100%; align-items: center; justify-content: flex-start; padding: 7px 12px 7px 28px; font-size: 12px; box-shadow: none; }
 #update-indicator { font-family: var(--mono); letter-spacing: -0.02em; }
+/* Inline update-check result, shown in the status popover (no bottom toast). */
+.status-note { padding: 2px 12px 4px 28px; font: 500 11.5px var(--body); color: var(--ink-soft); line-height: 1.35; }
+.status-note:empty { display: none; }
+.status-note.ok { color: #2E7D32; }
+.status-note.warning { color: #B7791F; }
+.status-note.critical { color: #C0392B; }
 .security-modal-grid { display: grid; gap: 12px; margin-top: 16px; }
 .security-status-card { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
 .security-status-card strong { display: block; color: var(--ink); margin-bottom: 4px; }
@@ -2550,6 +2556,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button class="security-indicator info" id="security-indicator" type="button" onclick="closeStatusMenu();openSecurityStatus()" title="Host firewall monitoring">Security</button>
         <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="closeStatusMenu();openComplianceStatus()" title="Compliance readiness">Compliance</button>
         <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
+        <div class="status-note" id="update-note" role="status" aria-live="polite"></div>
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
@@ -3608,13 +3615,21 @@ function closeSecurityStatus() {
 // behind, red >10. Click to re-check and see details.
 let licenseStatus = null;      // GET /api/license (fetched for admins)
 let latestUpdateInfo = null;   // last /version/check result, shared with the update CTA
+// The update-check result shows inline in the status popover (not as a bottom
+// toast), so it stays put next to the Version row for as long as the popover is open.
+function setUpdateNote(text, cls) {
+  const note = document.getElementById('update-note');
+  if (!note) return;
+  note.textContent = text || '';
+  note.className = 'status-note' + (cls ? ' ' + cls : '');
+}
 async function checkForUpdate(manual) {
   const el = document.getElementById('update-indicator');
   if (!el) return;
-  if (manual) { el.className = 'security-indicator'; el.textContent = 'Checking…'; el.title = 'Checking for updates…'; }
+  if (manual) { el.className = 'security-indicator'; el.textContent = 'Checking…'; el.title = 'Checking for updates…'; setUpdateNote('Checking for updates…'); }
   let r;
   try { r = await apiGet('/version/check'); }
-  catch (e) { el.className = 'security-indicator'; el.textContent = appConfig?.version || 'version'; el.title = 'Update check failed'; refreshStatusPill(); if (manual) toast('Update check failed'); return; }
+  catch (e) { el.className = 'security-indicator'; el.textContent = appConfig?.version || 'version'; el.title = 'Update check failed'; setUpdateNote('Update check failed. Try again shortly.', 'warning'); refreshStatusPill(); return; }
   const v = r.current || appConfig?.version || 'version';
   el.textContent = v;
   // If the server is now running a different version than the one this page
@@ -3625,16 +3640,18 @@ async function checkForUpdate(manual) {
   updateCtaRefresh(r);
   if (r.behind === 0) {
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
-    if (manual) toast(`Up to date (${v})`);
+    setUpdateNote(`Up to date — ${v}`, 'ok');
   } else if (r.behind != null && r.behind <= 10) {
-    el.className = 'security-indicator warning'; el.title = `${r.behind} release${r.behind === 1 ? '' : 's'} behind — latest ${r.latest}. Run ./upgrade.sh to update.`;
-    if (manual) toast(`${r.behind} release${r.behind === 1 ? '' : 's'} behind — latest ${r.latest}`);
+    const msg = `${r.behind} release${r.behind === 1 ? '' : 's'} behind — latest ${r.latest}. Run ./upgrade.sh to update.`;
+    el.className = 'security-indicator warning'; el.title = msg;
+    setUpdateNote(msg, 'warning');
   } else if (r.behind != null) {
-    el.className = 'security-indicator critical'; el.title = `${r.behind} releases behind — latest ${r.latest}. Update recommended: ./upgrade.sh`;
-    if (manual) toast(`${r.behind} releases behind — latest ${r.latest}. Update recommended.`);
+    const msg = `${r.behind} releases behind — latest ${r.latest}. Update recommended: ./upgrade.sh`;
+    el.className = 'security-indicator critical'; el.title = msg;
+    setUpdateNote(msg, 'critical');
   } else {
     el.className = 'security-indicator'; el.title = 'Update check unavailable';
-    if (manual) toast('Update check unavailable');
+    setUpdateNote('Update check unavailable.');
   }
   refreshStatusPill();
 }
