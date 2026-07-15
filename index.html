@@ -11,7 +11,7 @@
 <style>
 :root {
   /* Depot signature — light */
-  --masthead-h: 60px; /* header height — kept in sync with the file-home layout calcs */
+  --masthead-h: 50px; /* header height — kept in sync with the file-home layout calcs */
   --paper: #FBFBFA;
   --surface: #FFFFFF;
   --surface-2: #F4F4F2;
@@ -70,22 +70,22 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   background: var(--accent);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 19px;
+  font-size: 17px;
   letter-spacing: -0.02em;
 }
 .brand h1 {
   font-family: var(--ui);
   font-weight: 600;
-  font-size: 21px;
+  font-size: 19px;
   letter-spacing: -0.01em;
   line-height: 1;
 }
@@ -98,11 +98,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 42px;
+  height: 38px;
   padding: 0 6px 0 14px;
   background: var(--surface-2);
   border: 1px solid transparent;
-  border-radius: 21px;
+  border-radius: 19px;
   color: var(--ink-faint);
   transition: background .15s, border-color .15s, box-shadow .15s;
 }
@@ -974,8 +974,8 @@ html.dark .chip { color: var(--accent-soft); }
 .brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
 /* Masthead with a real logo: give it a taller, natural-width slot and drop the wordmark. */
 .brand--has-logo h1 { display: none; }
-.brand--has-logo .brand-logo.has-logo { width: auto; height: 42px; min-width: 0; border-radius: 6px; }
-.brand--has-logo .brand-logo.has-logo img { width: auto; height: 42px; max-width: 300px; }
+.brand--has-logo .brand-logo.has-logo { width: auto; height: 34px; min-width: 0; border-radius: 6px; }
+.brand--has-logo .brand-logo.has-logo img { width: auto; height: 34px; max-width: 260px; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
