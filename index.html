@@ -1795,6 +1795,43 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-commander-folder:hover .fc-dots { opacity: 0.7; }
 .file-commander-folder .fc-dots:hover { opacity: 1; color: var(--accent); background: var(--accent-wash); }
 .file-commander-main { min-width: 0; overflow-x: auto; }
+/* ---- Two-column file-home redesign: pinned rail, in-rail folder tree, breadcrumb ---- */
+/* Pinned libraries section */
+.file-pinned-section { display: grid; gap: 2px; }
+.file-pinned-section[hidden] { display: none; }
+.file-pinned-header { width: 100%; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 2px; font: 800 12px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: #707070; cursor: pointer; }
+.file-pinned-header .chev { font-size: 11px; transition: transform 0.15s ease; }
+.file-pinned-section.collapsed .file-pinned-header .chev { transform: rotate(-90deg); }
+.file-pinned-section.collapsed .file-pinned-body { display: none; }
+.file-pinned-body { display: grid; gap: 2px; }
+.file-pinned-item { justify-content: space-between; }
+.file-pinned-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-pin-star { flex: 0 0 auto; color: var(--accent); opacity: 0.75; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+.file-pin-star:hover { opacity: 1; background: var(--surface-2); }
+/* Pin star inside the library dropdown rows */
+.library-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.library-menu-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-pin-star { flex: 0 0 auto; color: var(--ink-faint); opacity: 0.7; font-size: 13px; line-height: 1; padding: 0 2px; }
+.library-pin-star.pinned { color: var(--accent); opacity: 1; }
+.library-pin-star:hover { opacity: 1; }
+/* In-rail folder tree (reuses .file-commander-folder rows, transparent in the rail) */
+.file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; }
+.file-rail-tree:empty { display: none; }
+.file-rail-tree .file-commander-folder { grid-template-columns: 14px 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+/* Breadcrumb row + toggle */
+.file-library-breadcrumb-row { margin-bottom: 4px; }
+.file-library-breadcrumb .crumb-root { font-weight: 700; color: var(--ink); }
+.file-library-breadcrumb .crumb-sep { color: var(--ink-faint); }
+.file-library-breadcrumb .crumb-spacer { flex: 1 1 auto; }
+.file-library-breadcrumb.hidden-path { justify-content: flex-end; }
+.file-breadcrumb-toggle { border: 0; background: transparent; color: var(--ink-faint); font: 500 12px var(--ui); cursor: pointer; padding: 4px 7px; border-radius: 6px; }
+.file-breadcrumb-toggle:hover { background: var(--surface-2); color: var(--ink); }
+/* Favorite star on file rows */
+.file-fav-btn.on { color: var(--accent); }
+.file-fav-btn:hover { color: var(--accent); }
+/* Command-bar Create/Upload sizing (moved from the masthead) */
+.file-library-command-left .masthead-upload-wrap { flex: 0 0 auto; }
+.file-library-command-left .masthead-upload { padding: 7px 12px; font-size: 13px; }
 .file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
 .file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
@@ -2265,11 +2302,11 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 820px) {
   html.file-home-mode .masthead { align-items: flex-start; }
   .file-home-shell { display: block; }
-  .file-home-nav { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid #E5E5E5; }
+  .file-home-nav { position: sticky; top: 0; max-height: none; z-index: 4; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid #E5E5E5; }
   .file-library-nav { margin-top: 0; }
   .file-library-heading { padding: 8px 10px; }
   .file-library-nav-body { gap: 8px; }
-  .file-nav-section, .file-quick-list { display: none; }
+  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree { display: none; }
   .file-nav-main { display: flex; gap: 8px; flex-wrap: wrap; overflow: visible; padding-bottom: 2px; }
   .file-nav-link { flex: 0 0 auto; width: auto; white-space: nowrap; padding: 8px 12px; }
   .file-nav-icon { width: auto; }
@@ -2540,26 +2577,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <h1>Depot</h1>
       </div>
     </div>
-    <div class="file-upload-actions masthead-upload-wrap">
-      <button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button>
-      <div class="file-upload-menu file-create-menu" id="file-create-menu">
-        <button onclick="closeCreateMenu();createFolder()">New folder</button>
-        <button onclick="closeCreateMenu();createFile('docx')">New Word document</button>
-        <button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button>
-        <button onclick="closeCreateMenu();createFile('md')">New Markdown file</button>
-        <button onclick="closeCreateMenu();createFile('txt')">New Text file</button>
-        <div class="menu-rule"></div>
-        <button onclick="closeCreateMenu();openUploadLinksModal()">Request files (upload link)</button>
-        <button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>
-      </div>
-    </div>
-    <div class="file-upload-actions masthead-upload-wrap">
-      <button class="masthead-upload masthead-upload-secondary" type="button" onclick="toggleUploadMenu(event)"><span class="plus">↑</span><span>Upload</span><span class="chev">⌄</span></button>
-      <div class="file-upload-menu" id="file-upload-menu">
-        <button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button>
-        <button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button>
-      </div>
-    </div>
   </div>
   <div class="masthead-search">
     <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
@@ -2673,6 +2690,50 @@ let fileDensity = localStorage.getItem('memex_file_density') === 'compact' ? 'co
 // first file list renders.
 document.documentElement.setAttribute('data-density', fileDensity);
 let currentFolderPath = '';
+// Redesign state: pinned libraries (rail shortcuts), collapse/toggle prefs, and
+// per-device file favorites. All client-persisted (localStorage) — see plan.
+const _loadIdSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]').map(String)); } catch { return new Set(); } };
+let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
+let favoriteFileIds = _loadIdSet('memex_favorite_files');
+let filePinnedCollapsed = localStorage.getItem('memex_pinned_collapsed') === 'true';
+let fileBreadcrumbHidden = localStorage.getItem('memex_breadcrumb_hidden') === 'true';
+function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); }
+function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON.stringify([...favoriteFileIds])); }
+function toggleLibraryPin(event, id) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  id = String(id);
+  pinnedLibraryIds.has(id) ? pinnedLibraryIds.delete(id) : pinnedLibraryIds.add(id);
+  savePinnedLibraries();
+  const menu = document.getElementById('library-menu');
+  if (menu) menu.innerHTML = libraryMenuInnerHtml();
+  refreshPinnedSection();
+}
+function togglePinnedSection() {
+  filePinnedCollapsed = !filePinnedCollapsed;
+  localStorage.setItem('memex_pinned_collapsed', filePinnedCollapsed ? 'true' : 'false');
+  document.getElementById('file-pinned-section')?.classList.toggle('collapsed', filePinnedCollapsed);
+}
+function refreshPinnedSection() {
+  const sec = document.getElementById('file-pinned-section');
+  if (sec) sec.outerHTML = filePinnedSectionHtml();
+}
+function toggleBreadcrumbPath() {
+  fileBreadcrumbHidden = !fileBreadcrumbHidden;
+  localStorage.setItem('memex_breadcrumb_hidden', fileBreadcrumbHidden ? 'true' : 'false');
+  const bc = document.getElementById('file-library-breadcrumb');
+  if (bc) bc.innerHTML = fileBreadcrumbHtml();
+}
+function toggleFileFavorite(id, event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  id = String(id);
+  favoriteFileIds.has(id) ? favoriteFileIds.delete(id) : favoriteFileIds.add(id);
+  saveFavoriteFiles();
+  renderDocumentLibraryList();
+}
+function refreshFileRailTree() {
+  const tree = document.getElementById('file-rail-tree');
+  if (tree) tree.innerHTML = fileRailTreeHtml();
+}
 
 // ---- file table columns (sortable + show/hide, persisted) ----
 const FILE_COLUMN_DEFS = [
@@ -5634,7 +5695,8 @@ function fileHomeRow(f) {
 }
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 function fileLibraryActions(f) {
-  return `<button class="file-library-icon-btn" title="Actions" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
+  const fav = favoriteFileIds.has(String(f.id));
+  return `<button class="file-library-icon-btn file-fav-btn${fav ? ' on' : ''}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button><button class="file-library-icon-btn" title="Actions" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
 }
 function ownerCellHtml(owner) {
   const initials = (owner || '').split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -5675,17 +5737,21 @@ function folderLibraryRow(folder) {
   return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div class="file-library-breadcrumb-row" id="file-library-breadcrumb"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
 }
 function fileBreadcrumbHtml() {
+  const toggle = `<button class="file-breadcrumb-toggle" type="button" onclick="toggleBreadcrumbPath()">${fileBreadcrumbHidden ? 'Show path' : 'Hide path'}</button>`;
+  // Hidden: keep only the toggle so the path can be brought back.
+  if (fileBreadcrumbHidden) return `<div class="file-library-breadcrumb hidden-path">${toggle}</div>`;
+  // Root crumb is the current library (no separate "Home" landing view yet).
   const parts = currentFolderPath.split('/').filter(Boolean);
   let path = '';
-  const crumbs = [`<button data-folder="" onclick="openFolder(this.dataset.folder)">All files</button>`];
+  const crumbs = [`<button class="crumb-root" data-folder="" onclick="openFolder(this.dataset.folder)">${esc(currentLibraryName())}</button>`];
   parts.forEach(part => {
     path = path ? `${path}/${part}` : part;
-    crumbs.push('<span>/</span>', `<button data-folder="${esc(path)}" onclick="openFolder(this.dataset.folder)">${esc(part)}</button>`);
+    crumbs.push('<span class="crumb-sep">›</span>', `<button data-folder="${esc(path)}" onclick="openFolder(this.dataset.folder)">${esc(part)}</button>`);
   });
-  return `<div class="file-library-breadcrumb">${crumbs.join('')}</div>`;
+  return `<div class="file-library-breadcrumb">${crumbs.join('')}<span class="crumb-spacer"></span>${toggle}</div>`;
 }
 function fileLayoutToggleHtml() {
   return `<span class="file-layout-toggle" role="group" aria-label="File layout"><button class="${fileLayoutMode === 'list' ? 'active' : ''}" onclick="setFileLayoutMode('list')">List</button><button class="${fileLayoutMode === 'commander' ? 'active' : ''}" onclick="setFileLayoutMode('commander')">Commander</button></span>`;
@@ -5860,7 +5926,7 @@ function fileLibraryCommandBarHtml() {
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
-  return `<div class="file-library-commandbar"><div class="file-library-command-left"><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}${fileLayoutToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
@@ -5939,6 +6005,50 @@ function scheduleFileSearch() {
 
 function fileNavButton(label, symbol, action, active) {
   return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}"><span>${label}</span></button>`;
+}
+
+// Pinned libraries: a collapsible rail section of favorited libraries for quick
+// switching, each with a star to unpin. Renders nothing when no library is pinned.
+function filePinnedSectionHtml() {
+  const pins = (librariesList || []).filter(l => pinnedLibraryIds.has(String(l.id)));
+  if (!pins.length) return `<div class="file-pinned-section" id="file-pinned-section" hidden></div>`;
+  const collapsed = filePinnedCollapsed ? ' collapsed' : '';
+  const items = pins.map(l =>
+    `<button class="file-nav-link file-pinned-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span>${esc(l.name)}</span><span class="file-pin-star" role="button" tabindex="0" aria-label="Unpin ${esc(l.name)}" title="Unpin" onclick="toggleLibraryPin(event,'${l.id}')">★</span></button>`
+  ).join('');
+  return `<div class="file-pinned-section${collapsed}" id="file-pinned-section"><button class="file-pinned-header" type="button" onclick="togglePinnedSection()"><span>Pinned</span><span class="chev">⌄</span></button><div class="file-pinned-body">${items}</div></div>`;
+}
+
+// Finder-style folder tree shown in the rail under the Files item. Reuses the
+// Commander collapse/expand state and folder model so toggling stays in sync.
+function fileRailTreeHtml() {
+  const folders = allFoldersForFiles(filesList);
+  if (!folders.length) return '';
+  const collapsed = commanderCollapsed();
+  const hasChildren = p => folders.some(f => f.path.startsWith(p + '/'));
+  const hiddenByAncestor = p => {
+    const parts = p.split('/').filter(Boolean);
+    let anc = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      anc = anc ? `${anc}/${parts[i]}` : parts[i];
+      if (collapsed.has(anc)) return true;
+    }
+    return false;
+  };
+  return folders.filter(f => !hiddenByAncestor(f.path)).map(folder => {
+    const depth = folder.path.split('/').filter(Boolean).length - 1;
+    const caret = hasChildren(folder.path)
+      ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${collapsed.has(folder.path) ? 'Expand' : 'Collapse'}">${collapsed.has(folder.path) ? '▶' : '▼'}</span>`
+      : '<span class="fc-caret fc-caret-empty"></span>';
+    return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
+  }).join('');
+}
+
+// The production Create + Upload buttons, emitted from the file command bar (so
+// they survive its re-renders) rather than the masthead. Menu ids/handlers kept
+// verbatim so existing create/upload flows keep resolving by id.
+function fileCommandCreateUploadHtml() {
+  return `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button><div class="file-upload-menu file-create-menu" id="file-create-menu"><button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button><div class="menu-rule"></div><button onclick="closeCreateMenu();openUploadLinksModal()">Request files (upload link)</button><button onclick="closeCreateMenu();openNewLibraryModal()">New library</button></div></div><div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload masthead-upload-secondary" type="button" onclick="toggleUploadMenu(event)"><span class="plus">↑</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button><button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button></div></div>`;
 }
 
 function friendlyUserName() {
@@ -6189,9 +6299,10 @@ async function loadLibraries() {
 }
 
 function libraryMenuInnerHtml() {
-  const items = librariesList.map(l =>
-    `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')">${esc(l.name)}</button>`
-  ).join('');
+  const items = librariesList.map(l => {
+    const pinned = pinnedLibraryIds.has(String(l.id));
+    return `<button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span><span class="library-pin-star${pinned ? ' pinned' : ''}" role="button" tabindex="0" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</span></button>`;
+  }).join('');
   return `<div class="library-menu-label">Libraries</div>${items}<div class="library-menu-sep"></div>${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>`;
 }
 function startRailResize(event) {
@@ -6486,9 +6597,12 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
       <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">Shared library</span></span><span class="chev">⌄</span></button>
       <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
+    ${filePinnedSectionHtml()}
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
+        ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
+        ${fileNavButton('Favorites', 'V', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared', 'S', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
@@ -6534,7 +6648,7 @@ function setFileView(view) {
   document.querySelectorAll('.file-nav-link').forEach(btn => {
     const label = btn.textContent.trim();
     const isFilesHome = ['Files','Shared','Links','Favorites','Trash'].includes(label);
-    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
+    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'favorites' && label === 'Favorites') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
   });
   if (view === 'trash') {
     document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Recycle bin</h2></div><div class="file-table-wrap" id="file-list">${emptyState('Loading trash', 'Checking recently deleted files.')}</div>`, 'files', 'trash');
@@ -6607,7 +6721,7 @@ function renderDocumentLibraryList() {
   if (quick) quick.innerHTML = quickAccessHtml();
   if (!el) return;
   const q = (document.getElementById('global-search')?.value || '').trim().toLowerCase();
-  const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.slice(0, 12) : filesList;
+  const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   const rows = (q ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
   const folders = q ? [] : childFoldersForPath(source);
@@ -6622,14 +6736,15 @@ function renderDocumentLibraryList() {
   const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
   const breadcrumb = document.getElementById('file-library-breadcrumb');
   if (breadcrumb) breadcrumb.innerHTML = fileBreadcrumbHtml();
+  refreshFileRailTree();
   const inner = (!folders.length && !rows.length)
     ? (q
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
         : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.'))
     : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
-  el.innerHTML = (fileLayoutMode === 'commander'
-    ? `<div class="file-commander-shell">${commanderFolderPane(source)}<div class="file-commander-main">${inner}</div></div>`
-    : inner);
+  // The folder tree now lives in the rail, so the main pane is always the flat
+  // list (folders + files) for the current folder.
+  el.innerHTML = inner;
   updateFileLibraryChrome();
 }
 
