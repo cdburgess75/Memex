@@ -3039,20 +3039,59 @@ function setupLogoInner(s) {
   const org = (((s && s.tenant && s.tenant.orgName) || 'Depot').trim() || 'Depot');
   return (org[0] || 'D').toUpperCase();
 }
+// Accept almost any image and normalize it to a small, header-ready data URL.
+// Vector SVG is kept as-is; raster formats are decoded and downscaled (max 160px
+// tall) then re-encoded, so a large or oddly-formatted upload never needs manual
+// resizing and never blows the settings size limit.
+function prepareLogoDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No file chosen'));
+    const isSvg = /svg/i.test(file.type || '') || /\.svg$/i.test(file.name || '');
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that file'));
+    if (isSvg) {
+      reader.onload = () => {
+        const url = String(reader.result || '');
+        if (url.length < 512 * 1024) return resolve(url); // vector stays crisp at any size
+        reject(new Error('That SVG is unusually large — export it as a PNG instead.'));
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const MAXH = 160, MAXW = 640;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h) return reject(new Error('Could not read that image'));
+          const scale = Math.min(1, MAXH / h, MAXW / w);
+          w = Math.max(1, Math.round(w * scale));
+          h = Math.max(1, Math.round(h * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          let out = canvas.toDataURL('image/png'); // keeps transparency, tiny at this size
+          try { const webp = canvas.toDataURL('image/webp', 0.92); if (webp.startsWith('data:image/webp') && webp.length < out.length) out = webp; } catch { /* webp unsupported */ }
+          resolve(out);
+        } catch (e) { reject(new Error('Could not process that image')); }
+      };
+      img.onerror = () => reject(new Error("Couldn't read that image — try a PNG, JPG, or SVG."));
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
 function setupOnLogoPick(ev) {
   const file = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
   if (!file) return;
-  if (file.size > 256 * 1024) { toast('Logo too large — keep it under 256 KB'); ev.target.value = ''; return; }
-  const r = new FileReader();
-  r.onload = () => {
-    brandLogoDraft = String(r.result || '');
+  prepareLogoDataUrl(file).then(url => {
+    brandLogoDraft = url;
     const prev = document.getElementById('setup-logo-preview');
     if (prev) { prev.innerHTML = `<img src="${esc(brandLogoDraft)}" alt="">`; prev.classList.add('has-logo'); }
     const rm = document.getElementById('setup-logo-remove'); if (rm) rm.style.display = '';
-  };
-  r.onerror = () => toast('Could not read that image');
-  r.readAsDataURL(file);
-  ev.target.value = '';
+  }).catch(e => toast(e.message || 'Could not use that image'));
 }
 function setupClearLogo() {
   brandLogoDraft = '';
@@ -3070,10 +3109,10 @@ function setupStepHtml(step, s) {
     <div class="setup-field"><label>Company / organization name</label><input id="setup-org" value="${esc(s.tenant?.orgName || '')}" placeholder="Acme Corporation"></div>
     <div class="setup-field"><label>Tenant ID <span class="setup-hint">short unique slug</span></label><input id="setup-tenant-id" value="${esc(s.tenant?.tenantId || '')}" placeholder="acme"></div>
     <div class="setup-field"><label>Primary technical contact email</label><input id="setup-contact" type="email" value="${esc(s.tenant?.contactEmail || '')}" placeholder="it@acme.com"></div>
-    <div class="setup-field"><label>Logo <span class="setup-hint">optional · PNG/JPG/SVG/WebP, ≤256 KB</span></label>
+    <div class="setup-field"><label>Logo <span class="setup-hint">optional · any image, resized automatically</span></label>
       <div class="setup-brand-row">
         <span class="brand-logo${setupHasLogo(s) ? ' has-logo' : ''}" id="setup-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px;flex:0 0 auto">${setupLogoInner(s)}</span>
-        <input type="file" id="setup-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none" onchange="setupOnLogoPick(event)">
+        <input type="file" id="setup-logo-file" accept="image/*" style="display:none" onchange="setupOnLogoPick(event)">
         <button class="ghost-btn" type="button" onclick="document.getElementById('setup-logo-file').click()">Upload logo</button>
         <button class="ghost-btn" type="button" id="setup-logo-remove" onclick="setupClearLogo()" style="${setupHasLogo(s) ? '' : 'display:none'}">Remove</button>
       </div>
@@ -4662,13 +4701,9 @@ async function saveNetworkSettings() {
 let brandLogoDraft = null;
 function onBrandLogoPick(ev) {
   const file = ev.target.files && ev.target.files[0];
-  if (!file) return;
-  if (file.size > 256 * 1024) { toast('Logo too large — keep it under 256 KB'); ev.target.value = ''; return; }
-  const r = new FileReader();
-  r.onload = () => { brandLogoDraft = String(r.result || ''); switchSettingsTab('system'); };
-  r.onerror = () => toast('Could not read that image');
-  r.readAsDataURL(file);
   ev.target.value = '';
+  if (!file) return;
+  prepareLogoDataUrl(file).then(url => { brandLogoDraft = url; switchSettingsTab('system'); }).catch(e => toast(e.message || 'Could not use that image'));
 }
 function clearBrandLogo() { brandLogoDraft = ''; switchSettingsTab('system'); }
 async function saveBrandingSettings() {
@@ -5142,12 +5177,12 @@ function workspaceSettingsHtml() {
         <label>Logo</label>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="brand-logo${logo ? ' has-logo' : ''}" id="brand-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px">${logoInner}</span>
-          <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none" onchange="onBrandLogoPick(event)">
+          <input type="file" id="brand-logo-file" accept="image/*" style="display:none" onchange="onBrandLogoPick(event)">
           <button class="ghost-btn" type="button" onclick="document.getElementById('brand-logo-file').click()">Upload logo</button>
           ${logo ? `<button class="ghost-btn" type="button" onclick="clearBrandLogo()">Remove</button>` : ''}
         </div>
       </div>
-      <p class="settings-notice">PNG, JPG, SVG or WebP, up to 256&nbsp;KB. A transparent PNG or SVG looks best.</p>
+      <p class="settings-notice">Any image format — large images are resized automatically. A transparent PNG or SVG looks best.</p>
       <button class="ghost-btn" style="margin-bottom:4px" onclick="saveBrandingSettings()">Save branding</button>`;
 }
 function systemSettingsHtml() {
