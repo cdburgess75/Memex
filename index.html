@@ -1281,6 +1281,11 @@ html.office .provider-btn:hover {
    give each its own horizontal scroll instead of overflowing the page. */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
 .table-scroll > table { margin-bottom: 0; min-width: 480px; }
+/* On a wide panel, auto table-layout dumps the slack into a mid-row gap. Instead
+   let the first column (name/email/operation) absorb the slack and ellipsize,
+   while the metadata columns hug their content on the right. */
+.data-table th:not(:first-child), .data-table td:not(:first-child) { width: 1%; white-space: nowrap; }
+.data-table td:first-child { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-table th {
   font-family: var(--mono);
   font-size: 10px;
@@ -4340,7 +4345,7 @@ async function renderAdmin() {
           const ext = (f.name.split('.').pop() || '').toUpperCase();
           const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
           return `<tr>
-            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</td>
+            <td title="${esc(f.name)}">${esc(f.name)}</td>
             <td>${esc(ext)}</td>
             <td>${fmtBytes(f.size || 0)}</td>
             <td>${esc(f.uploaded_by_email || '')}</td>
