@@ -136,7 +136,7 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       compliance.summary(),
     ]);
     res.json({
-      disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Memex or the operating organization.',
+      disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Depot or the operating organization.',
       frameworks,
       updates,
       summary,

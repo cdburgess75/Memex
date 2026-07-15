@@ -1346,7 +1346,10 @@ html.office .provider-btn:hover {
 .control-ready { background: #EAF7EA; color: #107C41; }
 .control-partial { background: #FFF7E6; color: #9A5B00; }
 .control-gap { background: #FDECEC; color: #B32636; }
-.update-posture { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 18px; }
+/* Exactly three update cards (app / host / dependencies): lay them out 3-up so the
+   third never orphans into a half-empty row, and stack them on narrow screens. */
+.update-posture { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+@media (max-width: 720px) { .update-posture { grid-template-columns: 1fr; } }
 .update-card { border: 1px solid var(--rule); border-radius: 8px; padding: 14px; background: var(--surface); }
 .update-card strong { display: block; color: var(--ink); margin-bottom: 5px; }
 .update-card span { display: block; color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
