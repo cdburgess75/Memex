@@ -233,6 +233,12 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .status-note.ok { color: #2E7D32; }
 .status-note.warning { color: #B7791F; }
 .status-note.critical { color: #C0392B; }
+/* Contextual update action inside the status popover: Refresh (a newer build is
+   running) or Update available (server behind a release). Replaces the old
+   bottom banner. */
+.status-update-cta { display: none; width: 100%; margin: 4px 0 2px; padding: 8px 12px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: 600 12px var(--ui); cursor: pointer; text-align: center; }
+.status-update-cta.show { display: block; }
+.status-update-cta:hover { filter: brightness(1.06); }
 .security-modal-grid { display: grid; gap: 12px; margin-top: 16px; }
 .security-status-card { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
 .security-status-card strong { display: block; color: var(--ink); margin-bottom: 4px; }
@@ -2569,6 +2575,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
         <button class="security-indicator info admin-menu-item" id="compliance-indicator" type="button" onclick="closeStatusMenu();openComplianceStatus()" title="Compliance readiness">Compliance</button>
         <button class="security-indicator" id="update-indicator" type="button" onclick="checkForUpdate(true)" title="Check for updates">Version</button>
         <div class="status-note" id="update-note" role="status" aria-live="polite"></div>
+        <button class="status-update-cta" id="status-update-btn" type="button"></button>
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
@@ -3490,15 +3497,18 @@ function statusSeverity(el) {
 function refreshStatusPill() {
   const pill = document.getElementById('status-pill');
   if (!pill) return;
-  const sev = Math.max(
+  let sev = Math.max(
     statusSeverity(document.getElementById('update-indicator')),
     statusSeverity(document.getElementById('security-indicator')),
     statusSeverity(document.getElementById('compliance-indicator')),
     0
   );
+  // A stale client (a newer build is live) counts as an amber "attention" state.
+  if (clientStaleVersion) sev = Math.max(sev, 2);
   const level = sev === 3 ? 'critical' : sev === 2 ? 'warning' : sev === 1 ? 'ok' : 'info';
   pill.className = `security-indicator ${level}`;
   pill.textContent = sev >= 2 ? 'Attention' : 'Status';
+  refreshUpdateAction();
 }
 function toggleStatusMenu(event) {
   event?.stopPropagation();
@@ -3627,6 +3637,7 @@ function closeSecurityStatus() {
 // behind, red >10. Click to re-check and see details.
 let licenseStatus = null;      // GET /api/license (fetched for admins)
 let latestUpdateInfo = null;   // last /version/check result, shared with the update CTA
+let clientStaleVersion = null; // set when a newer build is live than this page booted with
 // The update-check result shows inline in the status popover (not as a bottom
 // toast), so it stays put next to the Version row for as long as the popover is open.
 function setUpdateNote(text, cls) {
@@ -3693,14 +3704,34 @@ document.addEventListener('visibilitychange', () => {
 // One-time banner prompting a reload when the running server version no longer
 // matches the version this page booted with (i.e. an upgrade happened while the
 // tab was open). Shown once per page life.
+// A newer build is running on the server than this page booted with. Rather than
+// flashing a fixed banner at the bottom, we record it so the Status pill goes
+// amber and the popover offers a Refresh action (see refreshUpdateAction).
 function maybePromptReload(serverVersion) {
-  if (!serverVersion || !appConfig?.version) return;
-  if (serverVersion === appConfig.version) return;
-  if (document.getElementById('reload-banner')) return;
-  document.body.insertAdjacentHTML('beforeend',
-    `<div id="reload-banner" class="reload-banner" role="status">Depot was updated to ${esc(serverVersion)}.` +
-    `<button class="run-btn" onclick="location.reload()">Refresh</button>` +
-    `<button class="reload-x" type="button" aria-label="Dismiss" onclick="document.getElementById('reload-banner').remove()">✕</button></div>`);
+  if (!serverVersion || !appConfig?.version) { clientStaleVersion = null; }
+  else { clientStaleVersion = serverVersion !== appConfig.version ? serverVersion : null; }
+  refreshUpdateAction();
+}
+
+// The single contextual action shown in the status popover when things aren't
+// current: Refresh if this tab is running stale client code, else (for admins)
+// Update available when the server is behind a release. Hidden when all current.
+function refreshUpdateAction() {
+  const btn = document.getElementById('status-update-btn');
+  if (!btn) return;
+  const isAdmin = currentUser?.role === 'admin';
+  if (clientStaleVersion) {
+    btn.textContent = 'Refresh to update';
+    btn.onclick = () => location.reload();
+    btn.classList.add('show');
+  } else if (isAdmin && latestUpdateInfo?.behind > 0) {
+    btn.textContent = 'Update available';
+    btn.onclick = () => { closeStatusMenu(); openUpdateModal(); };
+    btn.classList.add('show');
+  } else {
+    btn.classList.remove('show');
+    btn.onclick = null;
+  }
 }
 
 // ---- Licensed update (admins only) ----
