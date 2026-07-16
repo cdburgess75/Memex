@@ -1,16 +1,45 @@
 name: Publish image
 
-# Publishes the app image to GHCR:
+# Publishes the app image to GHCR — but only after the test suite passes:
 #   - push to main           -> :latest  (+ :sha-<short>)
 #   - push a tag like v1.2.3 -> :v1.2.3   (pinned release for customers)
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
+  # Quality gate: the image build below `needs` this, so a red suite blocks any
+  # publish. Runs serially (--runInBand) for deterministic, contention-free CI.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Run tests
+        working-directory: server
+        run: npm test -- --ci --runInBand
+
   build-and-push:
+    needs: test
+    # Don't publish on pull_request events (no push to GHCR for PRs / forks);
+    # only real pushes to main and release tags produce an image.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
