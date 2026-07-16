@@ -22,6 +22,25 @@ function securityHeaders(req, res, next) {
   // Only the directives that are safe without de-inlining the SPA (see note above):
   // no plugins, no injected <base>, and no framing by other origins.
   res.setHeader('Content-Security-Policy', "object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
+  // Report-only: the fuller policy we intend to ENFORCE once observed. This blocks
+  // NOTHING (report-only), but the browser reports violations to /api/csp-report so
+  // the real allowlist (Keycloak + Collabora connections, external images, editor
+  // iframes) can be built before enforcing connect-src — the directive that actually
+  // stops XSS token exfiltration. script-src keeps 'unsafe-inline' (the SPA is inline).
+  res.setHeader('Content-Security-Policy-Report-Only', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+    "report-uri /api/csp-report",
+  ].join('; '));
   // Only over genuine HTTPS. req.secure already honors X-Forwarded-Proto when the
   // app trusts the proxy (set behind Caddy); reading the raw header ourselves
   // would let a client on the plain-http listener spoof HSTS onto a cleartext
