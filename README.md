@@ -246,6 +246,6 @@ Please open an issue to discuss substantial changes before a large PR.
 
 ## License
 
-Depot is **proprietary software** — see the [LICENSE](LICENSE) file. All rights reserved by Ptech LLC; use is governed by a separate commercial agreement. It is not open source. The bundled third-party open-source components remain under their own licenses (see [GUMBO.md](GUMBO.md)).
+Depot is **proprietary software** — see the [LICENSE](LICENSE) file. All rights reserved by ParaTech LLC; use is governed by a separate commercial agreement. It is not open source. The bundled third-party open-source components remain under their own licenses (see [GUMBO.md](GUMBO.md)).
 
 > The LICENSE file is a starting template, not legal advice — have counsel review and finalize it (entity name, governing law, contact) before relying on it.

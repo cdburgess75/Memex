@@ -1,6 +1,6 @@
 Depot / Memex Software License
 
-Copyright (c) 2026 Ptech LLC. All rights reserved.
+Copyright (c) 2026 ParaTech LLC. All rights reserved.
 
 IMPORTANT: This is a proprietary license, not an open-source license. This file is a
 starting template provided for convenience. It is NOT legal advice. Have it reviewed
@@ -10,7 +10,7 @@ confirm the legal entity name, before relying on it.
 1. Definitions
    "Software" means this software (marketed as "Depot"), including its source code,
    object code, documentation, configuration, and any updates provided to you.
-   "Licensor" means Ptech LLC.
+   "Licensor" means ParaTech LLC.
    "Licensee" ("you") means the individual or entity authorized to use the Software
    under a separate written commercial agreement with Licensor (the "Agreement").
 
@@ -69,8 +69,9 @@ confirm the legal entity name, before relying on it.
    the Agreement.
 
 9. Governing law
-   This license is governed by the laws of [State/Country], without regard to its
-   conflict-of-laws rules, unless the Agreement specifies otherwise.
+   This license is governed by the laws of the State of Louisiana, United States,
+   without regard to its conflict-of-laws rules, unless the Agreement specifies
+   otherwise.
 
 10. Precedence and contact
     If this license conflicts with a signed Agreement between you and Licensor, the
