@@ -70,6 +70,22 @@ describe('file route document access checks', () => {
     expect(db.queryOne.mock.calls[0][0]).toContain('FROM document_acl da');
   });
 
+  test('download URL records the read in the tamper-evident audit chain', async () => {
+    const auditLog = require('../../lib/auditLog');
+    db.queryOne.mockResolvedValueOnce({ id: 'doc-9', name: 'report.pdf', storage_path: 'documents/x.pdf' });
+    storage.getUrl.mockResolvedValueOnce('https://signed.example/x');
+
+    const res = await request(makeApp()).get('/api/files/doc-9/url');
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('https://signed.example/x');
+    expect(auditLog.append).toHaveBeenCalledWith(expect.objectContaining({
+      documentId: 'doc-9',
+      eventType: 'downloaded',
+      actorEmail: 'user@test.com',
+    }));
+  });
+
   test('file list includes ACL condition', async () => {
     const res = await request(makeApp()).get('/api/files');
 

@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const settings = require('../lib/settings');
+const db = require('../lib/db');
 
 const ALL_KEYS = Object.keys(settings.ENV_MAP);
 
@@ -87,6 +88,26 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
 // PUT /api/admin/settings
 router.put('/', auth, requireRole('admin'), async (req, res) => {
   try {
+    // Guard the encryption key: changing it silently makes every already-stored local
+    // file undecryptable (GCM auth-tag failure on read). Refuse a real change while
+    // encrypted files exist unless the caller explicitly confirms. A masked value means
+    // "unchanged" and is left to the loop below to skip.
+    const incomingKey = req.body.storage_encryption_key;
+    if (incomingKey && incomingKey !== MASKED && !req.body.confirm_key_change) {
+      const current = await settings.getOrEnv('storage_encryption_key');
+      const provider = (await settings.getOrEnv('storage_provider')) || 'local';
+      if (incomingKey !== current && provider === 'local') {
+        const row = await db.queryOne('SELECT COUNT(*)::int AS n FROM documents WHERE deleted_at IS NULL');
+        if (row && row.n > 0) {
+          return res.status(409).json({
+            code: 'ENC_KEY_CHANGE_BLOCKED',
+            affected: row.n,
+            error: `Changing the storage encryption key will make all ${row.n} existing file(s) permanently undecryptable. Re-send with "confirm_key_change": true only if you understand this.`,
+          });
+        }
+      }
+    }
+
     for (const [key, value] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
       if (SENSITIVE.has(key) && value === MASKED) continue; // user didn't change it

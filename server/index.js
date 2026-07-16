@@ -13,20 +13,23 @@ try {
   VERSION = require('fs').readFileSync(path.join(__dirname, '..', 'VERSION'), 'utf8').trim() || 'dev';
 } catch { /* VERSION file optional */ }
 
-// Dynamic CORS — origins configurable via admin settings
-// Falls back to last known-good value (or env var) on DB error rather than opening up
+// Dynamic CORS — origins configurable via admin settings.
+// Default (no cors_origins set) is same-origin only: the SPA is served by this same
+// server, so cross-origin XHR is not needed and reflecting arbitrary origins would be
+// an unnecessary exposure. Admins widen it explicitly via Settings → cors_origins.
+// Falls back to the last known-good value (or env var) on DB error rather than opening up.
 let _lastCorsOpts = null;
 app.use(cors((_req, callback) => {
   settings.getOrEnv('cors_origins').then(raw => {
     _lastCorsOpts = (!raw || raw === '*')
-      ? { origin: true }
+      ? { origin: false }
       : { origin: raw.split(',').map(o => o.trim()).filter(Boolean) };
     callback(null, _lastCorsOpts);
   }).catch(() => {
     const fallback = _lastCorsOpts
       ?? (process.env.CORS_ORIGINS && process.env.CORS_ORIGINS !== '*'
         ? { origin: process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean) }
-        : { origin: true });
+        : { origin: false });
     callback(null, fallback);
   });
 }));

@@ -4143,7 +4143,7 @@ async function attestControl(controlId, met) {
 /* ---------- sidebar ---------- */
 /* ---------- full-text search ---------- */
 /* ---------- markdown ---------- */
-function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 // Attribute-safe escape: also escapes quotes so untrusted values interpolated into
 // a quoted HTML attribute (e.g. data-email="...") can't break out of the attribute.
 function escAttr(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -4646,14 +4646,27 @@ function generateEncKey() {
   toast('Key generated — copy it somewhere safe, then click Save. It will be hidden in 8 seconds.');
 }
 
-async function saveEncryptionSettings() {
+async function saveEncryptionSettings(confirmChange) {
   const key = document.getElementById('cfg-enc-key').value.trim();
+  const body = { storage_encryption_key: key || null };
+  if (confirmChange) body.confirm_key_change = true;
   try {
-    await apiPut('/admin/settings', { storage_encryption_key: key || null });
+    await apiPut('/admin/settings', body);
     document.getElementById('cfg-enc-key').value = '';
     document.getElementById('cfg-enc-key').type = 'password';
     toast(key ? 'Encryption key saved — new uploads will be encrypted' : 'Encryption key cleared — new uploads will not be encrypted');
-  } catch (e) { toast('Save failed: ' + e.message); }
+  } catch (e) {
+    // The server refuses a key change that would strand existing files unless we
+    // confirm it explicitly. Surface the warning and let the admin decide.
+    let info = null; try { info = JSON.parse(e.message); } catch {}
+    if (info && info.code === 'ENC_KEY_CHANGE_BLOCKED') {
+      if (confirm(`${info.error}\n\nProceed anyway? Existing files will only open again if the previous key is restored.`)) {
+        return saveEncryptionSettings(true);
+      }
+      return;
+    }
+    toast('Save failed: ' + e.message);
+  }
 }
 
 async function saveIntegrationSettings() {
@@ -8408,7 +8421,7 @@ function toggleMeetPanel(e) { e?.stopPropagation(); const p = document.getElemen
 function closeMeetPanel() { document.getElementById('meet-panel')?.classList.remove('open'); }
 function meetPeopleHtml() {
   return callOnline.length
-    ? callOnline.map(u => `<button class="meet-person" onclick="callMember('${esc(u.userId)}', '${esc(u.name)}')"><span class="meet-person-dot"></span><span class="meet-person-name">${esc(u.name)}</span><span class="meet-call-ico">📞</span></button>`).join('')
+    ? callOnline.map(u => `<button class="meet-person" data-uid="${esc(u.userId)}" data-uname="${esc(u.name)}" onclick="callMember(this.dataset.uid, this.dataset.uname)"><span class="meet-person-dot"></span><span class="meet-person-name">${esc(u.name)}</span><span class="meet-call-ico">📞</span></button>`).join('')
     : '<div class="meet-empty">No one else is online right now.</div>';
 }
 function renderMeetPanel() {

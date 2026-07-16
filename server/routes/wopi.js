@@ -53,7 +53,7 @@ router.get('/files/:fileId', async (req, res) => {
       OwnerId: doc.uploaded_by,
       UserId: entry.userId,
       UserFriendlyName: entry.userEmail,
-      UserCanWrite: true,
+      UserCanWrite: !!entry.canWrite,
       SupportsUpdate: true,
       SupportsLock: true,
       SupportsGetLock: true,
@@ -85,6 +85,11 @@ router.get('/files/:fileId/contents', async (req, res) => {
 router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
   const entry = validateFileToken(req, res);
   if (!entry) return;
+  // Defense in depth: the token already carries the user's real write permission
+  // (set at mint time) and Collabora opens read-only for viewers, but refuse the
+  // save server-side too so a crafted PutFile from a read-only session cannot
+  // overwrite the document.
+  if (!entry.canWrite) return res.status(403).json({ error: 'No write permission for this document' });
 
   try {
     const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);

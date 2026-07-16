@@ -155,7 +155,15 @@ async function downloadSecret() {
 function sign(name, exp, secret) {
   return crypto.createHmac('sha256', secret).update(`${name}.${exp}`).digest('hex');
 }
-async function signToken(name, ttlMs = 7 * 24 * 3600 * 1000) {
+// The signed download URL is session-less (the webhook "pull" destination has no
+// session) and grants whoever holds it the whole dataset archive, so keep the
+// validity window short. Default 6h — the pull notification fires right after a
+// backup completes — and configurable for slower external tooling.
+function downloadTtlMs() {
+  const h = Number(process.env.MEMEX_BACKUP_DOWNLOAD_TTL_HOURS);
+  return (Number.isFinite(h) && h > 0 ? h : 6) * 3600 * 1000;
+}
+async function signToken(name, ttlMs = downloadTtlMs()) {
   const exp = Date.now() + ttlMs;
   return `${exp}.${sign(name, exp, await downloadSecret())}`;
 }

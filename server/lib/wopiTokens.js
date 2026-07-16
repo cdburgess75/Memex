@@ -1,11 +1,11 @@
 // WOPI access tokens: map token → { fileId, userId, userEmail, expires }
 const tokens = new Map();
 
-function generateToken(fileId, userId, userEmail) {
+function generateToken(fileId, userId, userEmail, canWrite = false) {
   const crypto = require('crypto');
   const token = crypto.randomBytes(32).toString('hex');
   const expires = Date.now() + 60 * 60 * 1000; // 1 hour
-  tokens.set(token, { fileId, userId, userEmail, expires });
+  tokens.set(token, { fileId, userId, userEmail, canWrite: !!canWrite, expires });
   // Prune expired tokens
   if (tokens.size > 500) {
     const now = Date.now();

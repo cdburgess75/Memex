@@ -6,10 +6,11 @@ const MASKED = '●●●●●●●●';
 
 // Minimal ENV_MAP for the route to work with
 const MOCK_ENV_MAP = {
-  anthropic_api_key:    'ANTHROPIC_API_KEY',
-  anthropic_model:      'ANTHROPIC_MODEL',
-  storage_provider:     'STORAGE_PROVIDER',
-  backup_destinations:  'BACKUP_DESTINATIONS',
+  anthropic_api_key:      'ANTHROPIC_API_KEY',
+  anthropic_model:        'ANTHROPIC_MODEL',
+  storage_provider:       'STORAGE_PROVIDER',
+  storage_encryption_key: 'STORAGE_ENCRYPTION_KEY',
+  backup_destinations:    'BACKUP_DESTINATIONS',
 };
 
 jest.mock('../../lib/settings', () => ({
@@ -20,6 +21,9 @@ jest.mock('../../lib/settings', () => ({
   _reset:     jest.fn(),
 }));
 const settings = require('../../lib/settings');
+
+jest.mock('../../lib/db', () => ({ queryOne: jest.fn() }));
+const db = require('../../lib/db');
 
 let mockUser = { id: 'u1', email: 'admin@test.com', role: 'admin' };
 jest.mock('../../middleware/auth', () => (req, _res, next) => {
@@ -134,5 +138,53 @@ describe('PUT /api/admin/settings', () => {
     expect(res.status).toBe(200);
     const call = settings.set.mock.calls.find(c => c[0] === 'backup_destinations');
     expect(JSON.parse(call[1])[0].secret_access_key).toBe('NEW-SECRET');
+  });
+
+  // Changing the storage encryption key strands every existing local file, so the
+  // route refuses it while files exist unless the caller explicitly confirms.
+  test('blocks an encryption key change when local files exist and it is not confirmed', async () => {
+    settings.getOrEnv.mockImplementation(key => {
+      if (key === 'storage_encryption_key') return Promise.resolve('OLD-KEY');
+      if (key === 'storage_provider') return Promise.resolve('local');
+      return Promise.resolve(null);
+    });
+    db.queryOne.mockResolvedValue({ n: 3 });
+
+    const res = await request(makeApp()).put('/api/admin/settings').send({ storage_encryption_key: 'NEW-KEY' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ENC_KEY_CHANGE_BLOCKED');
+    expect(res.body.affected).toBe(3);
+    expect(settings.set).not.toHaveBeenCalledWith('storage_encryption_key', expect.anything(), expect.anything());
+  });
+
+  test('allows the encryption key change when explicitly confirmed', async () => {
+    settings.getOrEnv.mockImplementation(key => {
+      if (key === 'storage_encryption_key') return Promise.resolve('OLD-KEY');
+      if (key === 'storage_provider') return Promise.resolve('local');
+      return Promise.resolve(null);
+    });
+    db.queryOne.mockResolvedValue({ n: 3 });
+
+    const res = await request(makeApp())
+      .put('/api/admin/settings')
+      .send({ storage_encryption_key: 'NEW-KEY', confirm_key_change: true });
+
+    expect(res.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('storage_encryption_key', 'NEW-KEY', 'u1');
+  });
+
+  test('does not block when no local files exist yet', async () => {
+    settings.getOrEnv.mockImplementation(key => {
+      if (key === 'storage_encryption_key') return Promise.resolve('OLD-KEY');
+      if (key === 'storage_provider') return Promise.resolve('local');
+      return Promise.resolve(null);
+    });
+    db.queryOne.mockResolvedValue({ n: 0 });
+
+    const res = await request(makeApp()).put('/api/admin/settings').send({ storage_encryption_key: 'NEW-KEY' });
+
+    expect(res.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('storage_encryption_key', 'NEW-KEY', 'u1');
   });
 });

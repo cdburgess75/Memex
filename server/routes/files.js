@@ -402,7 +402,13 @@ async function collaboraEditUrl(doc, ext, req) {
   try { const u = new URL(urlsrc); pathAndQuery = u.pathname + u.search; }
   catch { pathAndQuery = urlsrc.startsWith('/') ? urlsrc : `/${urlsrc}`; }
   const sep = pathAndQuery.includes('?') ? (/[?&]$/.test(pathAndQuery) ? '' : '&') : '?';
-  const token = generateToken(doc.id, req.user.id, req.user.email);
+  // The office route only requires `read`, so a read-only grantee can reach here.
+  // Encode the user's ACTUAL write permission into the WOPI token; Collabora then
+  // opens read-only for viewers, and PutFile is refused server-side (see wopi.js).
+  const canWrite = !!(await documentAccess.getAccessibleDocument({
+    id: doc.id, user: req.user, required: 'write', columns: 'd.id', deleted: 'active',
+  }));
+  const token = generateToken(doc.id, req.user.id, req.user.email, canWrite);
   const wopiSrc = encodeURIComponent(`${wopiHost}/wopi/files/${doc.id}`);
   return `${browserBase}${pathAndQuery}${sep}WOPISrc=${wopiSrc}&access_token=${token}`;
 }
@@ -898,6 +904,10 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
 
     res.json({ doc, canIngest });
   } catch (e) {
+    // The blob was already written; if the DB insert/grant/audit failed, delete it
+    // so a failed upload can't orphan an encrypted blob with no row pointing at it
+    // (mirrors the upload-stream path's cleanup).
+    await storage.del(storagePath).catch(() => {});
     res.status(500).json({ error: e.message });
   }
 });
@@ -1359,6 +1369,9 @@ router.get('/:id/url', auth, async (req, res) => {
 
     const url = await storage.getUrl(doc.storage_path, 3600);
     await logEvent(`download · ${doc.name}`, req.user.id, req.user.email);
+    // Also record the read in the tamper-evident chain — "who accessed this file"
+    // is the most important audit event and was previously only in activity_log.
+    await logDocumentEvent(doc.id, 'downloaded', req.user.id, req.user.email, doc.name);
     res.json({ url, name: doc.name });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1390,6 +1403,8 @@ router.get('/:id/office', auth, async (req, res) => {
     catch (e) { console.error('Collabora edit URL failed:', e.message); }
 
     await logEvent(`view · ${doc.name}`, req.user.id, req.user.email);
+    // Mirror the read into the tamper-evident chain (see /:id/url above).
+    await logDocumentEvent(doc.id, 'viewed', req.user.id, req.user.email, doc.name);
     res.json({ viewUrl, editUrl, ext });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1662,10 +1677,11 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
       id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active',
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    let name = String(req.body?.name || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
+    // Sanitize the new name the same way uploads are (strip HTML-significant and
+    // control characters, neutralize traversal segments) so a rename cannot store a
+    // name the upload path would never have accepted.
+    const name = cleanDisplayName(req.body?.name).slice(0, 400);
     if (!name) return res.status(400).json({ error: 'name required' });
-    if (name.split('/').some(seg => seg === '..' || seg === '.')) return res.status(400).json({ error: 'invalid name' });
-    name = name.slice(0, 400);
     const updated = await db.queryOne('UPDATE documents SET name = $2 WHERE id = $1 RETURNING *', [req.params.id, name]);
     await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
     res.json({ success: true, name: updated.name });
@@ -1720,7 +1736,9 @@ router.post('/:id/open', auth, async (req, res) => {
 function safeDocName(folder, base) {
   const clean = s => String(s || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').trim();
   const f = clean(folder), b = clean(base);
-  const segs = [...f.split('/'), b].map(s => s.trim()).filter(Boolean);
+  // Strip HTML-significant and control characters per segment (matches upload
+  // sanitization) while still rejecting traversal segments outright.
+  const segs = [...f.split('/'), b].map(s => s.trim().replace(/[^a-zA-Z0-9._ -]/g, '_')).filter(Boolean);
   if (segs.some(s => s === '..' || s === '.')) return null;
   return segs.join('/').slice(0, 400) || null;
 }
@@ -1771,9 +1789,11 @@ router.post('/folder', auth, requireRole('admin', 'contributor'), async (req, re
 router.post('/folder/rename', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const oldPath = safeDocName(req.body?.path, '');
-    const newName = String(req.body?.name || '').trim();
-    if (!oldPath || !newName) return res.status(400).json({ error: 'path and name required' });
-    if (/[\/\\]/.test(newName) || newName === '..' || newName === '.') return res.status(400).json({ error: 'invalid name' });
+    const rawName = String(req.body?.name || '').trim();
+    if (!oldPath || !rawName) return res.status(400).json({ error: 'path and name required' });
+    if (/[\/\\]/.test(rawName) || rawName === '..' || rawName === '.') return res.status(400).json({ error: 'invalid name' });
+    // Strip HTML-significant and control characters (single folder segment).
+    const newName = rawName.replace(/[^a-zA-Z0-9._ -]/g, '_');
     const parent = oldPath.split('/').slice(0, -1).join('/');
     const newPath = parent ? `${parent}/${newName}` : newName;
     const rows = await db.query(

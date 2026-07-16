@@ -77,4 +77,27 @@ describe('WOPI routes', () => {
 
     expect(res.status).toBe(401);
   });
+
+  test('CheckFileInfo reports UserCanWrite from the token, not hardcoded true', async () => {
+    const readToken = generateToken('doc-1', 'user-1', 'viewer@test.com', false);
+    const writeToken = generateToken('doc-1', 'user-1', 'editor@test.com', true);
+
+    const readRes = await request(makeApp()).get(`/wopi/files/doc-1?access_token=${readToken}`);
+    const writeRes = await request(makeApp()).get(`/wopi/files/doc-1?access_token=${writeToken}`);
+
+    expect(readRes.body.UserCanWrite).toBe(false);
+    expect(writeRes.body.UserCanWrite).toBe(true);
+  });
+
+  test('PutFile refuses to overwrite when the token has no write permission', async () => {
+    const readToken = generateToken('doc-1', 'user-1', 'viewer@test.com', false);
+
+    const res = await request(makeApp())
+      .post(`/wopi/files/doc-1/contents?access_token=${readToken}`)
+      .set('Content-Type', 'application/octet-stream')
+      .send(Buffer.from('malicious overwrite'));
+
+    expect(res.status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
 });
