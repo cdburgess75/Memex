@@ -2716,8 +2716,43 @@ let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
 let favoriteFileIds = _loadIdSet('memex_favorite_files');
 let filePinnedCollapsed = localStorage.getItem('memex_pinned_collapsed') === 'true';
 let fileBreadcrumbHidden = localStorage.getItem('memex_breadcrumb_hidden') === 'true';
-function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); }
-function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON.stringify([...favoriteFileIds])); }
+function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); syncPreferencesToServer(); }
+function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON.stringify([...favoriteFileIds])); syncPreferencesToServer(); }
+// Cross-device sync: pins/favorites are cached in localStorage (works offline) but the
+// server is the source of truth so they follow the user. Debounced so a burst of
+// toggles becomes a single request.
+function sendPreferences() {
+  if (!currentUser) return Promise.resolve();
+  return apiPut('/preferences', { pinnedLibraries: [...pinnedLibraryIds], favoriteFiles: [...favoriteFileIds] }).catch(() => {});
+}
+let _prefSyncTimer = null;
+function syncPreferencesToServer() {
+  if (!currentUser) return; // pre-login (initial localStorage read) — nothing to sync yet
+  clearTimeout(_prefSyncTimer);
+  _prefSyncTimer = setTimeout(sendPreferences, 600);
+}
+async function loadServerPreferences() {
+  try {
+    const p = await apiGet('/preferences');
+    const sPins = Array.isArray(p?.pinnedLibraries) ? p.pinnedLibraries.map(String) : [];
+    const sFavs = Array.isArray(p?.favoriteFiles) ? p.favoriteFiles.map(String) : [];
+    if (!sPins.length && !sFavs.length && (pinnedLibraryIds.size || favoriteFileIds.size)) {
+      // Server has nothing yet but this browser has local prefs — migrate them up
+      // instead of wiping them (first run after this feature shipped).
+      await sendPreferences();
+      return;
+    }
+    pinnedLibraryIds = new Set(sPins);
+    favoriteFileIds = new Set(sFavs);
+    localStorage.setItem('memex_pinned_libraries', JSON.stringify(sPins));
+    localStorage.setItem('memex_favorite_files', JSON.stringify(sFavs));
+  } catch { /* offline / unavailable — keep the localStorage cache */ }
+  // Reflect loaded prefs in any already-rendered UI (guards no-op before those exist).
+  refreshPinnedSection();
+  const menu = document.getElementById('library-menu');
+  if (menu) menu.innerHTML = libraryMenuInnerHtml();
+  if (document.getElementById('file-library-view')) renderDocumentLibraryList();
+}
 function toggleLibraryPin(event, id) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
   id = String(id);
@@ -2967,6 +3002,7 @@ async function _afterLogin() {
     showSetupLocked(); return;
   }
   await loadLibraries();
+  await loadServerPreferences();
   await loadAiModels();
   renderSearchScope();
   renderUserChip();
