@@ -51,4 +51,14 @@ describe('securityHeaders', () => {
     expect(csp).not.toMatch(/script-src/);
     expect(csp).not.toMatch(/connect-src/);
   });
+
+  test('sends a report-only CSP with connect-src + report-uri (enforces nothing yet)', async () => {
+    const r = await request(app()).get('/x');
+    const ro = r.headers['content-security-policy-report-only'];
+    expect(ro).toBeDefined();
+    expect(ro).toContain("connect-src 'self'");
+    expect(ro).toContain('report-uri /api/csp-report');
+    // The connect-src lockdown lives ONLY in the report-only header, never enforced yet.
+    expect(r.headers['content-security-policy']).not.toContain('connect-src');
+  });
 });

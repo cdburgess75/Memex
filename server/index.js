@@ -172,6 +172,7 @@ app.use('/api/admin/settings', require('./routes/settings'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/preferences', require('./routes/preferences'));
+app.use('/api/csp-report', require('./routes/cspReport')); // CSP (report-only) violation sink — unauthenticated by design
 app.use('/api/libraries', require('./routes/libraries'));
 app.use('/api/version', require('./routes/version'));
 app.use('/api/license', require('./routes/license'));
