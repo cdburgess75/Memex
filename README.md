@@ -16,7 +16,7 @@
 
 Most teams end up with files scattered across a consumer cloud drive, notes in a separate wiki, and no real answer to "who can see this?" or "prove what happened to that document." Memex collapses that into one private, self-hosted workspace:
 
-- **One place for files and knowledge.** Upload documents into permissioned libraries, and keep living notes as knowledge pages next to them. It is a working hub, not a wiki.
+- **One private place for your files.** Upload documents into permissioned libraries with folders, versioning, sharing, and audit, all in one self-hosted hub.
 - **AI that only knows what you give it.** Ask questions and get answers grounded in your own indexed files and pages, with the AI provider and model configurable (Anthropic by default, OpenAI-compatible endpoints, or a self-hosted Ollama).
 - **Edit in the browser, keep the data.** Word, Excel, and PowerPoint files open in a self-hosted Collabora editor over WOPI. No Microsoft or Google account, and the bytes never leave your server.
 - **Built for review and audit.** Every file event is written to a tamper-evident, hash-chained activity log. Admins get a one-click access review, a compliance readiness view across six frameworks, and evidence exports.
@@ -33,7 +33,7 @@ It stands out because it is genuinely self-contained: a Docker Compose stack you
 |---|---|
 | **Documents** | Permissioned libraries, folder trees, drag-and-drop upload, folder upload, versions, trash / restore / purge, per-document history. |
 | **In-browser Office editing** | Word / Excel / PowerPoint editing via self-hosted Collabora (WOPI), proxied same-origin. Read-only preview when editing is off. |
-| **Knowledge and AI** | Markdown knowledge pages, plus AI Q&A grounded in your indexed files and pages. Configurable provider and model. |
+| **AI** | AI Q&A grounded in your indexed files. Configurable provider and model. |
 | **Search** | Scoped search (auto, file contents, file names, or Ask AI) with an inline model picker. |
 | **Sharing and access** | Public share links (expiry, optional password), granular per-document ACLs (read / write / admin), and library membership. |
 | **File requests** | Inbound upload links: collect files from people with no account, straight into a chosen library and folder. |
@@ -86,7 +86,7 @@ Memex/
 │   │   ├── auth.js            #   sign-in, token exchange, profile
 │   │   ├── files.js           #   upload, download, share, ACLs, libraries wiring
 │   │   ├── wopi.js            #   WOPI host for Collabora (CheckFileInfo/GetFile/PutFile)
-│   │   ├── pages.js  ai.js    #   knowledge pages and AI Q&A
+│   │   ├── ai.js              #   AI Q&A over your indexed files
 │   │   ├── notifications.js   #   in-app bell + email test
 │   │   ├── admin.js           #   users, roles, compliance, audit-verify, access review, Seafile import
 │   │   ├── settings.js        #   admin settings (masked secrets)
