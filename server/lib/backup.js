@@ -35,6 +35,29 @@ function keycloakDbUrl(dbUrl) {
   return String(dbUrl || '').replace(/\/([^/?#]+)(\?[^#]*)?$/, '/keycloak$2');
 }
 
+// Key escrow: wrap the at-rest encryption key with an operator-held passphrase so it
+// can be recovered from a backup, WITHOUT making the archive self-decrypting (you
+// need the separately-held passphrase to unwrap it). scrypt-derived key + AES-256-GCM.
+function wrapKeyWithPassphrase(plaintext, passphrase) {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(String(passphrase), salt, 32);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const data = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()]);
+  return JSON.stringify({
+    v: 1, kdf: 'scrypt', cipher: 'aes-256-gcm',
+    salt: salt.toString('base64'), iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64'),
+  });
+}
+function unwrapKeyWithPassphrase(wrapped, passphrase) {
+  const o = JSON.parse(wrapped);
+  const key = crypto.scryptSync(String(passphrase), Buffer.from(o.salt, 'base64'), 32);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(o.iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(o.tag, 'base64'));
+  return Buffer.concat([decipher.update(Buffer.from(o.data, 'base64')), decipher.final()]).toString('utf8');
+}
+
 function parseDestinations(raw) {
   if (!raw) return [];
   try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
@@ -95,6 +118,20 @@ async function createArchive() {
       console.error('[backup] Keycloak DB dump failed:', e.message);
     }
 
+    // Escrow the at-rest encryption key: if a backup passphrase is configured (env
+    // ONLY — never DB, so it can't ride along in the pg_dump), wrap the encryption key
+    // with it and include it. This makes the key recoverable from a backup without
+    // making the archive self-decrypting (recover with scripts/recover-key.js).
+    let keyNote = 'not escrowed (set MEMEX_BACKUP_KEY_PASSPHRASE to include the recoverable at-rest key)';
+    const backupPassphrase = process.env.MEMEX_BACKUP_KEY_PASSPHRASE;
+    const encKey = await settings.getOrEnv('storage_encryption_key');
+    if (backupPassphrase && encKey) {
+      await fsp.writeFile(path.join(work, 'encryption-key.enc'), wrapKeyWithPassphrase(encKey, backupPassphrase));
+      keyNote = 'encryption-key.enc (AES-256-GCM, scrypt-derived from MEMEX_BACKUP_KEY_PASSPHRASE)';
+    } else if (backupPassphrase && !encKey) {
+      keyNote = 'no at-rest encryption key configured — nothing to escrow';
+    }
+
     const docsDir = (await settings.getOrEnv('storage_local_path')) || '/data/documents';
     let docsNote = 'not backed up (non-local storage or directory missing)';
     if (fs.existsSync(docsDir)) {
@@ -103,7 +140,7 @@ async function createArchive() {
     }
 
     await fsp.writeFile(path.join(work, 'manifest.txt'),
-      [`created_at=${new Date().toISOString()}`, 'database_dump=postgres-memex.dump', `database_dump_keycloak=${kcNote}`, `documents=${docsNote}`, 'source=memex in-app backup'].join('\n') + '\n');
+      [`created_at=${new Date().toISOString()}`, 'database_dump=postgres-memex.dump', `database_dump_keycloak=${kcNote}`, `documents=${docsNote}`, `encryption_key=${keyNote}`, 'source=memex in-app backup'].join('\n') + '\n');
 
     const name = `memex-backup-${ts}.tar.gz`;
     const archivePath = path.join(STAGING, name);
@@ -223,4 +260,4 @@ async function reschedule() {
   _timer.unref?.();
 }
 
-module.exports = { getConfig, status, runBackup, reschedule, verifyToken, signToken, signedDownloadUrl, stagingPath, keycloakDbUrl, STAGING };
+module.exports = { getConfig, status, runBackup, reschedule, verifyToken, signToken, signedDownloadUrl, stagingPath, keycloakDbUrl, wrapKeyWithPassphrase, unwrapKeyWithPassphrase, STAGING };
