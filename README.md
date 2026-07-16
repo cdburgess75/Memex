@@ -246,4 +246,6 @@ Please open an issue to discuss substantial changes before a large PR.
 
 ## License
 
-License to be finalized. Until a `LICENSE` file is added to this repository, treat the code as all rights reserved by the maintainers. Replace this section with your chosen SPDX license (for example MIT or Apache-2.0) and add the corresponding `LICENSE` file.
+Depot is **proprietary software** — see the [LICENSE](LICENSE) file. All rights reserved by Ptech LLC; use is governed by a separate commercial agreement. It is not open source. The bundled third-party open-source components remain under their own licenses (see [GUMBO.md](GUMBO.md)).
+
+> The LICENSE file is a starting template, not legal advice — have counsel review and finalize it (entity name, governing law, contact) before relying on it.

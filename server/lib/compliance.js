@@ -131,10 +131,23 @@ const CONTROL_CATALOG = {
 // { ready, evidence } reflecting the system's actual state. Manual controls
 // (CONTROL_CATALOG[x].manual) are not here — they come from attestations.
 const CHECKS = {
-  access_control: async () => ({
-    ready: true,
-    evidence: 'Keycloak authentication is enforced on every request, with admin/contributor/viewer roles.',
-  }),
+  access_control: async () => {
+    // Don't assert readiness unconditionally — reflect whether role-based access is
+    // actually configured (roles assigned, at least one admin), and be explicit that
+    // MFA/SSO enforcement and access-review export are not yet evidenced.
+    let roles = 0, admins = 0;
+    try {
+      roles = (await db.queryOne('SELECT count(*)::int AS n FROM user_roles'))?.n || 0;
+      admins = (await db.queryOne("SELECT count(*)::int AS n FROM user_roles WHERE role = 'admin'"))?.n || 0;
+    } catch { /* table may be absent on a fresh install */ }
+    const ready = roles > 0 && admins > 0;
+    return {
+      ready,
+      evidence: ready
+        ? `Keycloak authentication is enforced on every request; role-based access is configured (${roles} role assignment(s), ${admins} admin(s)). MFA/SSO enforcement and scheduled access-review export remain to be evidenced.`
+        : 'Keycloak authentication is enforced, but no role assignments were found yet — assign admin/contributor/viewer roles to complete access control.',
+    };
+  },
   audit_logging: async () => {
     let n = 0;
     try { n = (await db.queryOne('SELECT count(*)::int AS n FROM activity_log'))?.n || 0; } catch { /* table may be absent */ }
@@ -198,7 +211,7 @@ const CHECKS = {
     return {
       ready: https,
       evidence: https
-        ? 'App URL is configured for HTTPS; CORS, bind address, and trust-proxy are set.'
+        ? 'App URL is configured for HTTPS (config-level only — run the live checks to verify the certificate and reachability). CORS, bind address, and trust-proxy are set.'
         : 'App URL is not set to HTTPS — traffic may be unencrypted in transit.',
     };
   },
@@ -414,4 +427,4 @@ async function updateStatus() {
   };
 }
 
-module.exports = { FRAMEWORKS, CONTROL_CATALOG, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };
+module.exports = { FRAMEWORKS, CONTROL_CATALOG, CHECKS, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };
