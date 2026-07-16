@@ -976,12 +976,9 @@ html.dark .chip { color: var(--accent-soft); }
 .brand--has-logo h1 { display: none; }
 .brand--has-logo .brand-logo.has-logo { width: auto; height: 46px; min-width: 0; border-radius: 6px; }
 .brand--has-logo .brand-logo.has-logo img { width: auto; height: 46px; max-width: 300px; }
-/* Dark themes: a light plate behind the logo so dark/ink logos stay legible and
-   keep their real colors (no invert). Padding fits inside the 56px header. */
-html.dark .brand--has-logo .brand-logo.has-logo,
-html.office-dark .brand--has-logo .brand-logo.has-logo,
-html.drive .brand--has-logo .brand-logo.has-logo,
-html.graphite .brand--has-logo .brand-logo.has-logo { background: #fff; padding: 3px 9px; border-radius: 8px; }
+/* Dark mode: no plate — lighten the logo in place so its dark text and tagline
+   read on the dark header, keeping roughly the original hues (invert + hue-rotate). */
+html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rotate(180deg); }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
