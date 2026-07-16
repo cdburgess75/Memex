@@ -36,11 +36,15 @@ $DC $COMPOSE pull app || die "Pull failed — is the tag published and the GHCR 
 # shellcheck disable=SC2086
 $DC $COMPOSE up -d app
 
+# App host port (source of truth: .env) — the health probe honors a non-default PORT.
+PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2)"; PORT="${PORT:-3000}"
+
 info "Waiting for the app to become healthy…"
 ok=0
 for _ in $(seq 1 40); do
-  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' http://localhost:3000/ 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
+  # /healthz pings the database, so a 200 means a real boot (not just the SPA shell).
+  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "http://localhost:$PORT/healthz" 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
   sleep 3
 done
 if [ "$ok" = "1" ]; then info "Upgrade complete — now running :$TAG. 🎉"
-else warn "App didn't answer on :3000 yet — check '$DC $COMPOSE logs -f app'."; fi
+else warn "App didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi

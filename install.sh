@@ -194,7 +194,7 @@ fi
 info "Waiting for the app to become healthy…"
 ok=0
 for _ in $(seq 1 60); do
-  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "http://localhost:$PORT/" 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
+  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "http://localhost:$PORT/healthz" 2>/dev/null || true)" = "200" ]; then ok=1; break; fi
   sleep 3
 done
 

@@ -179,6 +179,24 @@ app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/wopi', require('./routes/wopi'));
 
+// Liveness/readiness probe. Unlike the SPA catch-all (which returns 200 with
+// index.html even when the backend is dead), this actually pings the database, so
+// installers, upgraders, and orchestrators can tell a real boot from a shell that
+// only serves static HTML. Unauthenticated and never cached. 503 when the DB is
+// unreachable; a 2.5s race keeps the probe responsive if the DB hangs.
+app.get(['/healthz', '/api/health'], async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    await Promise.race([
+      require('./lib/db').query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('db check timed out')), 2500)),
+    ]);
+    res.json({ status: 'ok', version: VERSION, db: 'up' });
+  } catch (e) {
+    res.status(503).json({ status: 'error', version: VERSION, db: 'down', error: e.message });
+  }
+});
+
 // Public inbound-upload page (file requests) — a self-contained page that lets a
 // non-member upload without an account. Served here (before the SPA catch-all)
 // so it doesn't require auth. The token is only used client-side to hit the
@@ -250,3 +268,26 @@ server.on('upgrade', (req, socket, head) => {
   if (collaboraProxy.isCollaboraPath(pathname)) collaboraProxy.handleUpgrade(req, socket, head);
   else if (pathname !== '/ws') socket.destroy();
 });
+
+// Graceful shutdown. A redeploy/`docker compose up` sends SIGTERM; without this Node
+// exits instantly, cutting in-flight uploads/requests and leaking DB connections.
+// Stop background timers, let the HTTP server drain, close the pool, then exit —
+// with a hard cap so a hung connection can't block shutdown forever.
+let _shuttingDown = false;
+function shutdown(signal) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  console.log(`[shutdown] ${signal} received — draining…`);
+  try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
+  try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
+  const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
+  forced.unref?.();
+  server.close(() => {
+    Promise.resolve(require('./lib/db').end?.()).catch(() => {}).finally(() => {
+      console.log('[shutdown] http server + db pool closed. bye.');
+      process.exit(0);
+    });
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
