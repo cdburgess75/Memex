@@ -976,6 +976,12 @@ html.dark .chip { color: var(--accent-soft); }
 .brand--has-logo h1 { display: none; }
 .brand--has-logo .brand-logo.has-logo { width: auto; height: 46px; min-width: 0; border-radius: 6px; }
 .brand--has-logo .brand-logo.has-logo img { width: auto; height: 46px; max-width: 300px; }
+/* Dark themes: a light plate behind the logo so dark/ink logos stay legible and
+   keep their real colors (no invert). Padding fits inside the 56px header. */
+html.dark .brand--has-logo .brand-logo.has-logo,
+html.office-dark .brand--has-logo .brand-logo.has-logo,
+html.drive .brand--has-logo .brand-logo.has-logo,
+html.graphite .brand--has-logo .brand-logo.has-logo { background: #fff; padding: 3px 9px; border-radius: 8px; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
@@ -1372,7 +1378,7 @@ html.office .provider-btn:hover {
 
 /* Files home */
 html.file-home-mode body { background: #F7F7F8; background-image: none; }
-html.file-home-mode .masthead { max-width: none; padding-left: 36px; padding-right: 36px; }
+html.file-home-mode .masthead { max-width: none; padding-left: 20px; padding-right: 32px; }
 html.file-home-mode .shell { max-width: none; width: 100%; grid-template-columns: 1fr; min-height: calc(100vh - var(--masthead-h)); margin: 0; padding: 0; }
 html.file-home-mode .index-col { display: none; }
 html.file-home-mode .work-col { min-height: calc(100vh - var(--masthead-h)); }
