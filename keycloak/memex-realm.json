@@ -5,6 +5,14 @@
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "sslRequired": "external",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 30,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
   "clients": [
     {
       "clientId": "memex-app",
