@@ -51,6 +51,13 @@ module.exports = async function auth(req, res, next) {
        RETURNING role`,
       [userId, userEmail, assignedRole]
     ) ?? { role: assignedRole };
+    // Auto-provisioning assigns a role with no human approval, so record it in the
+    // tamper-evident chain. Best-effort and fire-and-forget: auditing must never
+    // block or fail authentication.
+    require('../lib/auditLog').append({
+      eventType: 'user_provisioned', actorId: userId, actorEmail: userEmail,
+      detail: `auto-assigned role ${assignedRole}`,
+    }).catch(() => {});
   }
 
   req.user = {

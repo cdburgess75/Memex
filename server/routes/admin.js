@@ -55,6 +55,7 @@ router.put('/users/:userId/role', auth, requireRole('admin'), async (req, res) =
   }
 
   try {
+    const prev = await db.queryOne('SELECT role FROM user_roles WHERE user_id = $1', [userId]);
     await db.query(
       `INSERT INTO user_roles (user_id, role, assigned_by, assigned_at)
        VALUES ($1, $2, $3, $4)
@@ -64,6 +65,15 @@ router.put('/users/:userId/role', auth, requireRole('admin'), async (req, res) =
          assigned_at = EXCLUDED.assigned_at`,
       [userId, role, req.user.id, new Date().toISOString()]
     );
+    // Privilege change is a security event — record it in the tamper-evident chain.
+    if ((prev?.role || null) !== role) {
+      try {
+        await require('../lib/auditLog').append({
+          eventType: 'role_changed', actorId: req.user.id, actorEmail: req.user.email,
+          detail: `user ${userId}: ${prev?.role || 'none'} → ${role}`,
+        });
+      } catch (e) { console.error('audit role_changed failed:', e.message); }
+    }
     res.json({ role });
   } catch (e) {
     res.status(500).json({ error: e.message });

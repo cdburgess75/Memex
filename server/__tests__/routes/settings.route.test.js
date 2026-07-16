@@ -25,6 +25,9 @@ const settings = require('../../lib/settings');
 jest.mock('../../lib/db', () => ({ queryOne: jest.fn() }));
 const db = require('../../lib/db');
 
+jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
+const auditLog = require('../../lib/auditLog');
+
 let mockUser = { id: 'u1', email: 'admin@test.com', role: 'admin' };
 jest.mock('../../middleware/auth', () => (req, _res, next) => {
   req.user = mockUser;
@@ -82,6 +85,17 @@ describe('PUT /api/admin/settings', () => {
       .send({ anthropic_model: 'claude-opus-4-8' });
     expect(res.status).toBe(200);
     expect(settings.set).toHaveBeenCalledWith('anthropic_model', 'claude-opus-4-8', 'u1');
+  });
+
+  test('records a settings_changed audit event listing the changed keys (not values)', async () => {
+    await request(makeApp())
+      .put('/api/admin/settings')
+      .send({ anthropic_model: 'claude-opus-4-8' });
+    expect(auditLog.append).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'settings_changed',
+      actorEmail: 'admin@test.com',
+      detail: expect.stringContaining('anthropic_model'),
+    }));
   });
 
   test('does not overwrite sensitive value when masked sentinel is sent', async () => {

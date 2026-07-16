@@ -221,6 +221,9 @@ const server = app.listen(PORT, BIND, async () => {
   // Periodically reclaim staged chunks from abandoned resumable uploads.
   try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
   catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
+  // Periodically hard-delete trashed documents past the retention window.
+  try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
+  catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
 });
 
 // Timeouts tuned for large/slow uploads (U9). keepAliveTimeout sits above the common

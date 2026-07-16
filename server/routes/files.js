@@ -11,6 +11,7 @@ const encryption = require('../lib/encryption');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
+const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
@@ -154,6 +155,7 @@ async function saveDocumentVersion(doc, user, source = 'replace') {
     [doc.id, next, doc.name, doc.size || 0, doc.mime_type, versionPath, doc.document_text || null, user.id, user.email, source]
   );
   await logDocumentEvent(doc.id, 'version_saved', user.id, user.email, `${source} · version ${next}`);
+  await pruneOldVersions(doc.id);
   return version;
 }
 
@@ -878,6 +880,12 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
   const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `documents/${Date.now()}-${sanitizedName}`;
 
+  // Keep a single upload from filling the volume (the chunked path already does this;
+  // the direct paths did not). Fails open for non-local storage (freeDiskBytes → ∞).
+  if ((await freeDiskBytes()) - size < (await minFreeDiskBytes())) {
+    return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
+  }
+
   try {
     await storage.upload(storagePath, buffer, mimetype);
   } catch (e) {
@@ -932,6 +940,12 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   // below is the authoritative check (Content-Length can be absent or spoofed).
   if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
     return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
+  }
+
+  // Disk-space guard using the declared size (Content-Length may be absent, in which
+  // case the maxBytes cap below still bounds a single upload). Fails open for non-local.
+  if ((await freeDiskBytes()) - (Number.isFinite(declaredSize) ? Math.max(0, declaredSize) : 0) < (await minFreeDiskBytes())) {
+    return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
   }
 
   let storedSize = declaredSize;
