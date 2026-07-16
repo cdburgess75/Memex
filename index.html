@@ -6116,7 +6116,7 @@ let fileSearchSeq = 0;
 function scheduleFileSearch() {
   clearTimeout(fileSearchTimer);
   fileSearchTimer = setTimeout(() => {
-    if (document.getElementById('file-library-view')) renderDocumentLibraryList();
+    if (document.getElementById('file-library-view')) renderDocumentLibraryList({ rowsOnly: true });
     else renderFileList();
   }, 180);
 }
@@ -6832,11 +6832,15 @@ async function loadFiles() {
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
   } catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
 }
-function renderDocumentLibraryList() {
+// opts.rowsOnly re-renders just the file rows and skips the quick-access list,
+// breadcrumb, rail folder tree, and command bar — none of which change when the
+// user types in the search box. Search uses it so each keystroke does O(rows) work
+// instead of rebuilding the entire file-home chrome + folder tree every time.
+function renderDocumentLibraryList(opts = {}) {
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
   selectedFileIds = new Set([...selectedFileIds].filter(id => filesList.some(f => String(f.id) === id)));
-  if (quick) quick.innerHTML = quickAccessHtml();
+  if (!opts.rowsOnly && quick) quick.innerHTML = quickAccessHtml();
   if (!el) return;
   const q = (document.getElementById('global-search')?.value || '').trim().toLowerCase();
   const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
@@ -6855,9 +6859,11 @@ function renderDocumentLibraryList() {
   const allSelected = selectables.length > 0 && selectables.every(isSel);
   const someSelected = !allSelected && selectables.some(isSel);
   const selectAllClass = allSelected ? ' selected' : someSelected ? ' partial' : '';
-  const bc = document.getElementById('file-library-breadcrumb');
-  if (bc) bc.innerHTML = fileBreadcrumbHtml();
-  refreshFileRailTree();
+  if (!opts.rowsOnly) {
+    const bc = document.getElementById('file-library-breadcrumb');
+    if (bc) bc.innerHTML = fileBreadcrumbHtml();
+    refreshFileRailTree();
+  }
   const inner = (!folders.length && !rows.length)
     ? (q
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
@@ -6866,7 +6872,7 @@ function renderDocumentLibraryList() {
   // The folder tree now lives in the rail, so the main pane is always the flat
   // list (folders + files) for the current folder.
   el.innerHTML = inner;
-  updateFileLibraryChrome();
+  if (!opts.rowsOnly) updateFileLibraryChrome();
 }
 
 function selectedFiles() {
