@@ -8,6 +8,7 @@ const { extractText } = require('../lib/textExtraction');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const auditLog = require('../lib/auditLog');
+const { pruneOldVersions } = require('../lib/documentVersions');
 
 function validateFileToken(req, res) {
   const entry = validateToken(req.query.access_token);
@@ -35,6 +36,7 @@ async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
     [doc.id, next, doc.name, doc.size || 0, doc.mime_type, versionPath, doc.document_text || null, entry.userId, entry.userEmail, source]
   );
   await auditLog.append({ documentId: doc.id, eventType: 'version_saved', actorId: entry.userId, actorEmail: entry.userEmail, detail: `${source} · version ${next}` });
+  await pruneOldVersions(doc.id);
 }
 
 // GET /wopi/files/:fileId — CheckFileInfo

@@ -30,6 +30,12 @@ async function ensureChain() {
     // Partial index so the head lookup (DESC LIMIT 1) and verify walk (ASC) are
     // index scans, not full-table seq scans held under the append lock.
     await db.query('CREATE INDEX IF NOT EXISTS document_events_chain_idx ON document_events (chain_seq) WHERE hash IS NOT NULL');
+    // document_id is part of the hashed row, so it must never change after append.
+    // The original FK used ON DELETE SET NULL, which silently rewrote document_id
+    // (and thus broke the chain) whenever a document was purged. Drop the FK so a
+    // purge leaves audit rows untouched; a dangling document_id is expected and
+    // correct for an append-only, tamper-evident log (the admin feed LEFT JOINs).
+    await db.query('ALTER TABLE document_events DROP CONSTRAINT IF EXISTS document_events_document_id_fkey');
     ensured = true;
   })();
   try { await ensuring; } finally { ensuring = null; }

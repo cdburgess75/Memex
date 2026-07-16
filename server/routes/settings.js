@@ -108,22 +108,35 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       }
     }
 
+    const changed = [];
     for (const [key, value] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
       if (SENSITIVE.has(key) && value === MASKED) continue; // user didn't change it
       if (key === 'ai_endpoints') {
         const merged = mergeEndpointSecrets(value, await settings.getOrEnv('ai_endpoints'), await settings.getOrEnv('openai_api_key'));
         await settings.set(key, merged === '[]' ? null : merged, req.user.id);
+        changed.push(key);
         continue;
       }
       if (key === 'backup_destinations') {
         const merged = mergeBackupSecrets(value, await settings.getOrEnv('backup_destinations'));
         await settings.set(key, merged === '[]' ? null : merged, req.user.id);
+        changed.push(key);
         continue;
       }
       await settings.set(key, value === '' ? null : value, req.user.id);
+      changed.push(key);
     }
     await settings.refresh();
+    // Record WHICH settings changed (key names only, never values) in the audit chain.
+    if (changed.length) {
+      try {
+        await require('../lib/auditLog').append({
+          eventType: 'settings_changed', actorId: req.user.id, actorEmail: req.user.email,
+          detail: changed.join(', '),
+        });
+      } catch (e) { console.error('audit settings_changed failed:', e.message); }
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

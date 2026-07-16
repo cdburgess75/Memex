@@ -37,6 +37,7 @@ const ENV_MAP = {
   max_upload_files:               'MAX_UPLOAD_FILES',
   min_free_disk_mb:               'MIN_FREE_DISK_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
+  max_document_versions:          'MAX_DOCUMENT_VERSIONS',
   compliance_soc2_enabled:        'COMPLIANCE_SOC2_ENABLED',
   compliance_hipaa_enabled:       'COMPLIANCE_HIPAA_ENABLED',
   compliance_gdpr_enabled:        'COMPLIANCE_GDPR_ENABLED',
