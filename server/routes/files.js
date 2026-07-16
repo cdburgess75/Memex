@@ -1817,6 +1817,7 @@ router.post('/folder/rename', auth, requireRole('admin', 'contributor'), async (
       [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
     );
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1833,6 +1834,7 @@ router.post('/folder/delete', auth, requireRole('admin', 'contributor'), async (
       [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write')]
     );
     await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1854,6 +1856,7 @@ router.post('/folder/reparent', auth, requireRole('admin', 'contributor'), async
       [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
     );
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1870,6 +1873,8 @@ router.post('/folder/move', auth, requireRole('admin', 'contributor'), async (re
        RETURNING d.id`,
       [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write')]
     );
+    await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1965,6 +1970,7 @@ router.post('/folder/links', auth, requireRole('admin', 'contributor'), async (r
     );
     const url = `${await publicAppBase(req)}/api/files/folder/share/${token}`;
     await logEvent(`folder share create · ${folderPath} (${docs.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_share_created', req.user.id, req.user.email, `${folderPath} (${docs.length})`);
     res.json({ share: folderShareClientShape(share, url) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1983,6 +1989,7 @@ router.delete('/folder/links/:shareId', auth, requireRole('admin', 'contributor'
     );
     if (!share) return res.status(404).json({ error: 'Folder share link not found' });
     await logEvent(`folder share revoke · ${share.folder_path}`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_share_revoked', req.user.id, req.user.email, share.folder_path);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2014,6 +2021,7 @@ router.get('/folder/share/:token', async (req, res) => {
 
     await db.query('UPDATE folder_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
     await logEvent(`folder share download · ${share.folder_path}`, null, null);
+    await logDocumentEvent(null, 'folder_share_downloaded', null, null, `${share.folder_path} · ${requestAuditDetail(req)}`);
     if (share.created_by_email) {
       try {
         await notifications.create({
@@ -2095,6 +2103,7 @@ router.post('/folder/members', auth, requireRole('admin', 'contributor'), async 
     );
     if (!rows.length) return res.status(404).json({ error: 'No files you manage in this folder' });
     await logEvent(`folder access grant · ${folderPath} · ${email} · ${permission} (${rows.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_access_granted', req.user.id, req.user.email, `${folderPath} · ${email} · ${permission} (${rows.length})`);
     if (email !== String(req.user.email || '').toLowerCase()) {
       const folderName = folderPath.split('/').pop();
       try {
@@ -2131,6 +2140,7 @@ router.delete('/folder/members', auth, requireRole('admin', 'contributor'), asyn
       [folderPath, email, ...documentAccess.userParams(req.user, 'admin')]
     );
     await logEvent(`folder access revoke · ${folderPath} · ${email} (${rows.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_access_revoked', req.user.id, req.user.email, `${folderPath} · ${email} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2157,6 +2167,7 @@ router.post('/folder/copy', auth, requireRole('admin', 'contributor'), async (re
       await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
     }
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
+    await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);
     res.json({ ok: true, count: docs.length });
   } catch (e) { console.error('folder copy failed:', e); res.status(500).json({ error: e.message }); }
 });
