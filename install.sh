@@ -200,6 +200,30 @@ done
 
 echo
 if [ "$ok" = "1" ]; then info "Depot is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
+
+# Public (internet-facing) installs: narrow Keycloak's sign-in redirect URIs from
+# the wide-open default ("*") to this deployment's domain, so a leaked auth code
+# can't be redirected to an attacker's site. Best-effort with retries (Keycloak may
+# still be starting); on any failure the realm keeps its default — no worse than
+# before. LAN/local installs are left as-is (lower risk, and their access origins
+# aren't known at install time).
+if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
+  info "Locking Keycloak sign-in redirects to ${APP_URL}…"
+  kc_locked=0
+  for _ in $(seq 1 20); do
+    # shellcheck disable=SC2086
+    if $DC $COMPOSE exec -T -e APPURL="$APP_URL" keycloak sh -c '
+        kc=/opt/keycloak/bin/kcadm.sh
+        "$kc" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+        cid=$("$kc" get clients -r memex -q clientId=memex-app --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
+        [ -n "$cid" ] || exit 1
+        "$kc" update "clients/$cid" -r memex -s "redirectUris=[\"$APPURL/*\"]" -s "webOrigins=[\"+\"]" >/dev/null 2>&1
+      '; then kc_locked=1; break; fi
+    sleep 3
+  done
+  if [ "$kc_locked" = "1" ]; then info "Keycloak redirects locked to ${APP_URL}."
+  else warn "Couldn't auto-lock Keycloak redirects (it may still be starting). The realm keeps its default; you can narrow it later in the Keycloak admin console: Clients → memex-app → Valid redirect URIs → ${APP_URL}/* (and Web origins → +)."; fi
+fi
 echo
 echo "  ${B}First login${N}"
 echo "    Email:    admin@memex.local"
