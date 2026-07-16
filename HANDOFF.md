@@ -235,7 +235,7 @@ Database/schema:
 
 - `postgres/init/01_schema.sql`
 - Tables added this session (also runtime-ensured, no separate migration tooling): `libraries`, `library_members`, `user_profiles`, and `documents.library_id`.
-- Supabase-era migrations retained under `supabase/migrations`
+- Schema migrations: forward-only `.sql` files under `server/migrations/` (see `server/lib/migrations.js`)
 
 Auth:
 

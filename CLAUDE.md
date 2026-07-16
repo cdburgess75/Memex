@@ -126,7 +126,10 @@ The app uses Postgres directly via `pg` (node-postgres). All queries go through 
 
 **Manual setup**: Run `postgres/init/01_schema.sql` against any Postgres 14+ instance.
 
-**Supabase** (legacy): The original migrations in `supabase/migrations/` still work on Supabase-hosted Postgres. They reference `auth.users` (FK constraints) and use Supabase Storage — those features are not used when running standalone. If migrating an existing Supabase instance, the app works as-is; the `auth.users` FK constraints are benign since Keycloak UUIDs are stored in the same UUID columns.
+**Schema migrations**: forward-only, ordered `.sql` files in `server/migrations/`, applied
+once at startup and recorded in `schema_migrations` (see `server/lib/migrations.js`). Add new
+schema changes there. (The dead Supabase-era `supabase/migrations/` directory — which described
+a different, wrong schema — was removed.)
 
 ### Environment variables
 
