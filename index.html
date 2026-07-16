@@ -11,7 +11,7 @@
 <style>
 :root {
   /* Depot signature — light */
-  --masthead-h: 50px; /* header height — kept in sync with the file-home layout calcs */
+  --masthead-h: 56px; /* header height — kept in sync with the file-home layout calcs */
   --paper: #FBFBFA;
   --surface: #FFFFFF;
   --surface-2: #F4F4F2;
@@ -70,22 +70,22 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-logo {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   background: var(--accent);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 20px;
   letter-spacing: -0.02em;
 }
 .brand h1 {
   font-family: var(--ui);
   font-weight: 600;
-  font-size: 19px;
+  font-size: 22px;
   letter-spacing: -0.01em;
   line-height: 1;
 }
@@ -974,8 +974,8 @@ html.dark .chip { color: var(--accent-soft); }
 .brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
 /* Masthead with a real logo: give it a taller, natural-width slot and drop the wordmark. */
 .brand--has-logo h1 { display: none; }
-.brand--has-logo .brand-logo.has-logo { width: auto; height: 34px; min-width: 0; border-radius: 6px; }
-.brand--has-logo .brand-logo.has-logo img { width: auto; height: 34px; max-width: 260px; }
+.brand--has-logo .brand-logo.has-logo { width: auto; height: 44px; min-width: 0; border-radius: 6px; }
+.brand--has-logo .brand-logo.has-logo img { width: auto; height: 44px; max-width: 300px; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-note {
