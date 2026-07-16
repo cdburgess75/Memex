@@ -223,6 +223,13 @@ const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
 const server = app.listen(PORT, BIND, async () => {
   console.log(`Memex running on http://${BIND}:${PORT}`);
+  // Apply forward-only schema migrations before anything reads or writes the schema.
+  try {
+    const r = await require('./lib/migrations').run({ log: console.log });
+    console.log(r.applied.length ? `[startup] applied ${r.applied.length} migration(s)` : '[startup] schema migrations up to date');
+  } catch (e) {
+    console.error('[startup] schema migrations FAILED:', e.message);
+  }
   // One-time, idempotent: ensure every existing document has an owner/admin ACL row
   // (the historical grantOwnerAdmin bug left pre-existing docs without one).
   try {
