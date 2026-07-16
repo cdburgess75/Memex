@@ -2,6 +2,14 @@
 
 _Planning document only. This is not legal advice, an audit opinion, or a certification claim._
 
+> **Status note (2026-07-16).** Several Milestone 1 items have shipped (HTTPS, Keycloak SSO, rate
+> limiting, trash/restore/purge/versioning, activity logging, access-review export, security headers,
+> local backup + verify tooling). The load-bearing gaps that remain are encryption-key custody and
+> tested off-box backups (including the Keycloak database), audit coverage of downloads/logins/admin
+> actions in the tamper-evident log, and malware scanning. The compliance-readiness pills in the admin
+> panel currently overstate readiness from thin config signals; treat this roadmap's gap list as the
+> more accurate picture. See **`REMEDIATION_PLAN.md`** for the reconciled, ranked status of every item.
+
 ## Goal
 
 Move Memex/FileDepot from a useful internal file store toward an audit-ready business file

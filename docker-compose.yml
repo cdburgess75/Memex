@@ -32,7 +32,9 @@ services:
     volumes:
       - ./keycloak/memex-realm.json:/opt/keycloak/data/import/memex-realm.json:ro
     ports:
-      - "${KEYCLOAK_PUBLIC_PORT:-8080}:8080"
+      # KC_BIND is loopback in public mode (Caddy proxies over the internal network)
+      # and blank → 0.0.0.0 in local mode so a LAN browser can reach the login page.
+      - "${KC_BIND:-0.0.0.0}:${KEYCLOAK_PUBLIC_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +85,9 @@ services:
       - /srv/memex-documents:/data/documents
       - backups_data:/data/backups
     ports:
-      - "${PORT:-3000}:3000"
+      # APP_BIND is loopback in public mode (Caddy proxies over the internal network)
+      # and blank → 0.0.0.0 in local mode for direct LAN access.
+      - "${APP_BIND:-0.0.0.0}:${PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,7 +110,10 @@ services:
       username: ${COLLABORA_ADMIN_USER:-admin}
       password: ${COLLABORA_ADMIN_PASSWORD:-changeme}
     ports:
-      - "${COLLABORA_PORT:-9980}:9980"
+      # The app reaches Collabora over the internal network (COLLABORA_INTERNAL_URL)
+      # and proxies the editor same-origin, so the host port is only for optional
+      # direct/debug access — bind it to loopback, never 0.0.0.0.
+      - "${COLLABORA_BIND:-127.0.0.1}:${COLLABORA_PORT:-9980}:9980"
     cap_add:
       - MKNOD
     depends_on:

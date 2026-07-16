@@ -1,5 +1,13 @@
 # Memex → Small-Business File Store: Recommendations
 
+> **Status note (2026-07-16): this document is largely historical.** Most of Phase 1 and Phase 2
+> below have since shipped (TLS via Caddy, rate limiting, trash, full-text search, secure share
+> links, external upload links, folders, document versioning, notifications, per-document access
+> control). The prerequisite it opens with ("runs at plain HTTP, SSO is dead") is resolved. For the
+> current, reconciled status of every item and the ranked list of what is still open, see
+> **`REMEDIATION_PLAN.md`** (which supersedes this file for planning). The text below is kept for
+> context and design rationale.
+
 ## Executive summary
 
 Memex is closer to a real file store than it looks. It already has **pluggable storage**

@@ -110,6 +110,14 @@ if [ "$KEEP_ENV" = "0" ]; then
   POSTGRES_PASSWORD="$(gen 24)"
   KEYCLOAK_ADMIN_PASSWORD="$(gen 24)"
   STORAGE_ENCRYPTION_KEY="$(gen 32)"
+  # Collabora's admin console defaulted to 'changeme' and was never generated —
+  # give it a strong password like every other service secret.
+  COLLABORA_ADMIN_PASSWORD="$(gen 24)"
+  # In public (Caddy/HTTPS) mode the app and Keycloak are reached through the proxy
+  # over the internal Docker network, so bind their host ports to loopback only.
+  # In local mode they must stay on 0.0.0.0 so a browser elsewhere on the LAN can
+  # reach them directly (empty value → the compose default of 0.0.0.0).
+  if [ "$MODE" = "public" ]; then HOST_BIND="127.0.0.1"; else HOST_BIND=""; fi
 
   info "Writing .env (generated secrets — keep this file safe)"
   umask 077
@@ -133,6 +141,12 @@ STORAGE_ENCRYPTION_KEY=$STORAGE_ENCRYPTION_KEY
 # the deployment mode: true behind HTTPS (wss), false for plain-http local (ws).
 COLLABORA_ENABLED=true
 COLLABORA_SSL_TERMINATION=$COLLABORA_SSL
+COLLABORA_ADMIN_USER=admin
+COLLABORA_ADMIN_PASSWORD=$COLLABORA_ADMIN_PASSWORD
+# Host bind addresses for the app / Keycloak ports (loopback in public mode where
+# Caddy fronts them; blank → 0.0.0.0 for direct LAN access in local mode).
+APP_BIND=$HOST_BIND
+KC_BIND=$HOST_BIND
 MEMEX_TAG=$MEMEX_TAG
 PORT=$PORT
 EOF
@@ -144,6 +158,13 @@ else
   grep -q '^COLLABORA_ENABLED=' .env || printf 'COLLABORA_ENABLED=true\n' >> .env
   grep -q '^COLLABORA_SSL_TERMINATION=' .env \
     || printf 'COLLABORA_SSL_TERMINATION=%s\n' "$([ "$MODE" = public ] && echo true || echo false)" >> .env
+  # Backfill the Collabora admin password on older installs that ran with 'changeme'.
+  grep -q '^COLLABORA_ADMIN_PASSWORD=' .env || printf 'COLLABORA_ADMIN_USER=admin\nCOLLABORA_ADMIN_PASSWORD=%s\n' "$(gen 24)" >> .env
+  # Public installs: keep the app + Keycloak host ports on loopback (Caddy fronts them).
+  if [ "$MODE" = public ]; then
+    grep -q '^APP_BIND=' .env || printf 'APP_BIND=127.0.0.1\n' >> .env
+    grep -q '^KC_BIND=' .env || printf 'KC_BIND=127.0.0.1\n' >> .env
+  fi
 fi
 # App host port (source of truth: .env) — used by the health check and summary.
 PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2)"; PORT="${PORT:-3000}"
