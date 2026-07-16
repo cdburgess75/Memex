@@ -26,6 +26,15 @@ function execFileP(cmd, args, opts = {}) {
 }
 
 function bool(v) { return ['1', 'true', 'yes', 'on'].includes(String(v || '').toLowerCase()); }
+
+// Keycloak stores its data (users, credentials, sessions) in a separate `keycloak`
+// database on the same Postgres server. Derive its connection string from
+// DATABASE_URL by swapping only the final path segment (the database name),
+// preserving host, credentials, and any query parameters.
+function keycloakDbUrl(dbUrl) {
+  return String(dbUrl || '').replace(/\/([^/?#]+)(\?[^#]*)?$/, '/keycloak$2');
+}
+
 function parseDestinations(raw) {
   if (!raw) return [];
   try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
@@ -73,6 +82,19 @@ async function createArchive() {
     if (!dbUrl) throw new Error('DATABASE_URL is not set');
     await execFileP('pg_dump', ['-Fc', '-d', dbUrl, '-f', path.join(work, 'postgres-memex.dump')], { timeout: 180000 });
 
+    // Also capture the Keycloak database — without it a restore reconstitutes only
+    // the seed realm and loses every account created since install. Best-effort so a
+    // transient issue doesn't sink the whole backup, but the outcome is always
+    // recorded in the manifest (never a silent omission).
+    let kcNote = 'not captured';
+    try {
+      await execFileP('pg_dump', ['-Fc', '-d', keycloakDbUrl(dbUrl), '-f', path.join(work, 'postgres-keycloak.dump')], { timeout: 180000 });
+      kcNote = 'postgres-keycloak.dump';
+    } catch (e) {
+      kcNote = `not captured (${e.message})`;
+      console.error('[backup] Keycloak DB dump failed:', e.message);
+    }
+
     const docsDir = (await settings.getOrEnv('storage_local_path')) || '/data/documents';
     let docsNote = 'not backed up (non-local storage or directory missing)';
     if (fs.existsSync(docsDir)) {
@@ -81,7 +103,7 @@ async function createArchive() {
     }
 
     await fsp.writeFile(path.join(work, 'manifest.txt'),
-      [`created_at=${new Date().toISOString()}`, 'database_dump=postgres-memex.dump', `documents=${docsNote}`, 'source=memex in-app backup'].join('\n') + '\n');
+      [`created_at=${new Date().toISOString()}`, 'database_dump=postgres-memex.dump', `database_dump_keycloak=${kcNote}`, `documents=${docsNote}`, 'source=memex in-app backup'].join('\n') + '\n');
 
     const name = `memex-backup-${ts}.tar.gz`;
     const archivePath = path.join(STAGING, name);
@@ -201,4 +223,4 @@ async function reschedule() {
   _timer.unref?.();
 }
 
-module.exports = { getConfig, status, runBackup, reschedule, verifyToken, signToken, signedDownloadUrl, stagingPath, STAGING };
+module.exports = { getConfig, status, runBackup, reschedule, verifyToken, signToken, signedDownloadUrl, stagingPath, keycloakDbUrl, STAGING };
