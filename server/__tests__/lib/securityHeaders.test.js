@@ -40,8 +40,15 @@ describe('securityHeaders', () => {
     expect(r.headers['strict-transport-security']).toBeUndefined();
   });
 
-  test('does not set a restrictive CSP (SPA relies on inline scripts)', async () => {
+  test('sets a safe CSP (no script-src/connect-src, so the inline-script SPA still works)', async () => {
     const r = await request(app()).get('/x');
-    expect(r.headers['content-security-policy']).toBeUndefined();
+    const csp = r.headers['content-security-policy'];
+    expect(csp).toBeDefined();
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'self'");
+    expect(csp).toContain("frame-ancestors 'self'");
+    // Deliberately absent: restricting these would blank the single-file SPA.
+    expect(csp).not.toMatch(/script-src/);
+    expect(csp).not.toMatch(/connect-src/);
   });
 });
