@@ -149,13 +149,19 @@ const CHECKS = {
     };
   },
   audit_logging: async () => {
-    let n = 0;
-    try { n = (await db.queryOne('SELECT count(*)::int AS n FROM activity_log'))?.n || 0; } catch { /* table may be absent */ }
+    // Green requires the TAMPER-EVIDENT hash chain to be active (that is the control
+    // the product advertises) — not merely rows in the plain, editable activity feed.
+    let chain = 0, activity = 0;
+    try { chain = (await db.queryOne('SELECT count(*)::int AS n FROM document_events WHERE hash IS NOT NULL'))?.n || 0; } catch { /* chain columns may be absent */ }
+    try { activity = (await db.queryOne('SELECT count(*)::int AS n FROM activity_log'))?.n || 0; } catch { /* table may be absent */ }
+    const ready = chain > 0;
     return {
-      ready: n > 0,
-      evidence: n > 0
-        ? `Activity log active (${n.toLocaleString()} events), plus file, version, and share history.`
-        : 'Activity log is present but has no events recorded yet.',
+      ready,
+      evidence: ready
+        ? `Tamper-evident hash-chained log active (${chain.toLocaleString()} chained event(s); plain activity feed ${activity.toLocaleString()}), plus file, version, and share history.`
+        : activity > 0
+          ? `The plain activity feed has ${activity.toLocaleString()} event(s), but the tamper-evident hash chain has no entries yet — not evidenced as tamper-evident.`
+          : 'No audit events recorded yet.',
     };
   },
   encryption: async () => {
@@ -168,13 +174,26 @@ const CHECKS = {
     };
   },
   backup_restore: async () => {
+    // Green requires a backup to have actually run successfully — not just that a
+    // backup script exists on disk. (A live probe of backup freshness overrides this
+    // when available; see evaluateControls.)
     let has = false;
     try { has = fs.readdirSync(path.join(ROOT, 'scripts')).some(f => /backup/i.test(f)); } catch { /* no scripts dir */ }
+    let lastOk = false, lastRun = null;
+    try {
+      const st = JSON.parse((await settings.get('backup_last_status')) || 'null');
+      lastOk = !!st?.ok;
+      const lr = await settings.get('backup_last_run');
+      lastRun = lr ? Number(lr) : null;
+    } catch { /* no recorded run */ }
+    const ready = has && lastOk;
     return {
-      ready: has,
-      evidence: has
-        ? 'Backup and verify scripts are present under scripts/.'
-        : 'No backup script found under scripts/.',
+      ready,
+      evidence: ready
+        ? `Backup tooling present and a backup has completed successfully${lastRun ? ` (last run ${new Date(lastRun).toISOString()})` : ''}. Retain a restore-test record to complete this control.`
+        : has
+          ? 'Backup scripts are present, but no successful backup run is recorded yet — run a backup (and a restore drill) to evidence this control.'
+          : 'No backup script found under scripts/.',
     };
   },
   change_management: async ({ git }) => ({
