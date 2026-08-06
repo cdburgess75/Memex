@@ -988,13 +988,6 @@ html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rota
   line-height: 1.45;
 }
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
-.login-form { display: flex; flex-direction: column; gap: 10px; }
-.login-form input {
-  min-height: 48px;
-  border-radius: 6px;
-  padding: 11px 13px;
-  font-size: 15px;
-}
 .login-divider {
   color: var(--ink-faint);
   font-family: var(--body);
@@ -2573,15 +2566,15 @@ html.dark .file-action-btn.danger { color: #E57373; }
         Sign in with Microsoft 365
       </button>
       <div class="login-divider">or</div>
-      <form class="login-form" onsubmit="return signInPassword(event)">
-        <input id="login-email" type="email" autocomplete="username" placeholder="Email"
-               aria-label="Email">
-        <input id="login-password" type="password" autocomplete="current-password" placeholder="Password"
-               aria-label="Password">
-        <button class="provider-btn" type="submit">
-          Sign in with email &amp; password
-        </button>
-      </form>
+      <!-- Email/password is handled by Keycloak's own hosted login page via the
+           standard Authorization Code + PKCE redirect (signIn() with no provider
+           omits kc_idp_hint). Depot never sees the password, which is what lets
+           Keycloak enforce MFA, brute-force protection, and password policy. The
+           old in-page form used the direct-grant (ROPC) flow, deprecated in OAuth
+           2.1 and disabled on the shipped realm client — so it could never work. -->
+      <button class="provider-btn" onclick="signIn()">
+        Sign in with email &amp; password
+      </button>
       <div class="login-note">Theme choices are saved on this device. Your files stay permission-scoped after sign-in.</div>
     </div>
     <div class="login-version" id="login-version"></div>
@@ -3360,27 +3353,6 @@ async function signIn(provider) {
     ...(idpHint ? { kc_idp_hint: idpHint } : {}),
   });
   window.location.href = `${_kcAuthUrl()}/auth?${params}`;
-}
-
-async function signInPassword(ev) {
-  if (ev) ev.preventDefault();
-  const email = (document.getElementById("login-email").value || "").trim();
-  const password = document.getElementById("login-password").value || "";
-  if (!email || !password) { toast("Enter email and password"); return false; }
-  try {
-    const res = await fetch(`${_kcAuthUrl()}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: _kc.clientId, grant_type: "password",
-        scope: "openid email profile", username: email, password,
-      }),
-    });
-    if (!res.ok) { toast("Sign-in failed — check your email and password"); return false; }
-    _storeTokens(await res.json());
-    await _afterLogin();
-  } catch (e) { toast("Sign-in error: " + e.message); }
-  return false;
 }
 
 async function signOut() {
