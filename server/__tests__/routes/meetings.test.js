@@ -35,7 +35,10 @@ beforeEach(() => {
   settings.getOrEnv.mockImplementation(async (k) => (k === 'app_url' ? 'https://memex.example' : null));
 });
 
-const good = { title: 'Standup', start: '2026-07-20T15:00:00.000Z', durationMinutes: 30, attendees: ['ann@x.com', 'sam@x.com'] };
+// Relative to now, not a fixed date: the route rejects a start more than 24h in the
+// past (meetings.js), so a hardcoded timestamp turns the whole suite red the moment
+// it ages out — which is exactly what happened to the previous fixture.
+const good = { title: 'Standup', start: new Date(Date.now() + 86400000).toISOString(), durationMinutes: 30, attendees: ['ann@x.com', 'sam@x.com'] };
 
 describe('POST /api/meetings', () => {
   test('emails a calendar invite with the deep link to each known attendee', async () => {
