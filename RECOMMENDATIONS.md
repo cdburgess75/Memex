@@ -21,7 +21,7 @@ gated behind one hard prerequisite.
 
 ## ⚠️ Prerequisite that blocks almost everything: HTTPS + a real hostname
 
-Memex runs at `http://192.168.1.32` — plain HTTP on a LAN IP. Consequence already hit:
+Memex runs at `http://<server-ip>` — plain HTTP on a LAN IP. Consequence already hit:
 `crypto.subtle` doesn't exist on insecure origins, which is why SSO is dead and we're on a
 password-grant workaround. The same constraint makes **every external-facing feature unsafe** —
 share/upload links over plain HTTP leak their tokens in transit.
