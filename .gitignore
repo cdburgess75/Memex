@@ -4,7 +4,11 @@ node_modules/
 memex-backup.json
 
 # Local environment
-.env
+# Match every .env variant, not just the exact name: a hand-made .env.backup or
+# .env.save carries the same live POSTGRES_PASSWORD, KEYCLOAK_ADMIN_PASSWORD and
+# STORAGE_ENCRYPTION_KEY, and this repo is public.
+.env*
+!.env.example
 .local-secrets/
 
 # Local tooling (preview launch config, plans)
