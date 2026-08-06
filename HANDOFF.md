@@ -12,13 +12,13 @@ Important: this document intentionally does not print live passwords, API keys, 
 
 Memex is a self-hosted file library and knowledge workspace. It is currently a single-page frontend (`index.html`) backed by a Node/Express API (`server/`), Postgres, Keycloak, local document storage, and optional Anthropic/Google/S3 integrations.
 
-The current live deployment is on the Ubuntu host `frog` at `192.168.1.32`.
+The current live deployment is on the Ubuntu host `<app-host>` at `<server-ip>`.
 
 Current exposed LAN services:
 
-- Memex app: `http://192.168.1.32:3000`
-- Keycloak: `http://192.168.1.32:8080`
-- SSH: `root@192.168.1.32`
+- Memex app: `http://<server-ip>:3000`
+- Keycloak: `http://<server-ip>:8080`
+- SSH: `root@<server-ip>`
 - Postgres: internal Docker network only
 
 Current container status verified 2026-06-15:
@@ -57,12 +57,12 @@ Do not treat the app as a firewall. UFW should be enabled and managed on the Ubu
 
 Live host:
 
-- Hostname: `frog`
-- Current verified LAN IP: `192.168.1.32`
-- User previously mentioned `10.0.2.15`; current deploy and checks were performed against `192.168.1.32`.
+- Hostname: `<app-host>`
+- Current verified LAN IP: `<server-ip>`
+- User previously mentioned `<server-ip>`; current deploy and checks were performed against `<server-ip>`.
 - SSH user: `root`
-- App URL: `http://192.168.1.32:3000`
-- Keycloak URL: `http://192.168.1.32:8080`
+- App URL: `http://<server-ip>:3000`
+- Keycloak URL: `http://<server-ip>:8080`
 - Production domain plan: `files.ptechllc.com`
 
 Current listening ports verified:
@@ -82,7 +82,7 @@ Production reverse proxy plan:
 HTTPS prerequisites:
 
 - DNS A record: `files.ptechllc.com -> public IP`
-- Router port-forward: TCP `80` and `443` to `192.168.1.32`
+- Router port-forward: TCP `80` and `443` to `<server-ip>`
 - Then run:
 
 ```bash
@@ -164,8 +164,8 @@ docker compose logs --tail=100 postgres
 Smoke checks:
 
 ```bash
-curl http://192.168.1.32:3000/api/config
-curl http://192.168.1.32:8080/realms/memex/.well-known/openid-configuration
+curl http://<server-ip>:3000/api/config
+curl http://<server-ip>:8080/realms/memex/.well-known/openid-configuration
 ```
 
 ## Current Docker Compose
@@ -423,7 +423,7 @@ Configured in `.env`, Docker environment, DB-backed settings, or operator passwo
 
 Known operational credentials and handling:
 
-- Root SSH credential for `root@192.168.1.32`
+- Root SSH credential for `root@<server-ip>`
   - Supplied out-of-band during development.
   - Do not commit or paste into docs.
   - Rotate before production.
@@ -684,7 +684,7 @@ npm test
 Deploy live app:
 
 ```bash
-ssh root@192.168.1.32
+ssh root@<server-ip>
 cd /opt/memex
 git pull --ff-only
 docker compose up -d --build app
@@ -693,7 +693,7 @@ docker compose up -d --build app
 Check live app:
 
 ```bash
-curl http://192.168.1.32:3000/api/config
+curl http://<server-ip>:3000/api/config
 ```
 
 Check live Docker services:

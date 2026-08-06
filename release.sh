@@ -66,7 +66,7 @@ git tag -a "$VER" -m "Memex $VER"
 info "Pushing $BRANCH and tag $VER…"
 git push origin "$BRANCH"
 git push origin "refs/tags/$VER"
-# Hosts (frog etc.) deploy from main, so fast-forward main to this release too when
+# Deployment hosts deploy from main, so fast-forward main to this release too when
 # cutting from a feature branch. No --force: a genuinely diverged main is rejected
 # and surfaced as an error rather than clobbered.
 if [ "$BRANCH" != "main" ]; then
