@@ -17,7 +17,9 @@ if docker compose version >/dev/null 2>&1; then DC="docker compose"
 elif command -v docker-compose >/dev/null 2>&1; then DC="docker-compose"
 else echo "Docker Compose not found." >&2; exit 2; fi
 COMPOSE="-f docker-compose.yml"
-grep -q '^TRUST_PROXY=1' .env 2>/dev/null && COMPOSE="$COMPOSE -f docker-compose.prod.yml"
+MODE="$(sed -n 's/^MEMEX_MODE=//p' .env 2>/dev/null)"
+[ -n "$MODE" ] || MODE="$(grep -q '^TRUST_PROXY=1' .env 2>/dev/null && echo public || echo local)"
+[ "$MODE" = "public" ] && COMPOSE="$COMPOSE -f docker-compose.prod.yml"
 
 echo "Restore drill (non-destructive) — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # shellcheck disable=SC2086

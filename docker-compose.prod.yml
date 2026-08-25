@@ -16,7 +16,7 @@
 
 services:
   caddy:
-    image: caddy:2
+    image: caddy:${CADDY_TAG:-2.11}
     restart: unless-stopped
     ports:
       - "80:80"

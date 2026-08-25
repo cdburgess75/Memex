@@ -224,60 +224,73 @@ app.get('*', (_req, res) => {
 
 const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
-const server = app.listen(PORT, BIND, async () => {
-  console.log(`Memex running on http://${BIND}:${PORT}`);
-  // Apply forward-only schema migrations before anything reads or writes the schema.
+
+// Schema migrations run BEFORE the server accepts traffic, and a failure refuses
+// startup instead of being logged and ignored. /healthz only pings the database,
+// so a listening server with a half-applied schema would report "healthy" to
+// upgrade tooling and monitoring while requests break. Exiting turns that into a
+// visible crash loop (restart: unless-stopped), and the operator response is to
+// roll back the image tag: each migration commits in its own transaction, so the
+// database rests at the last fully-applied migration — which the previous
+// release runs against cleanly (migrations are forward-only and additive).
+let server;
+async function start() {
   try {
     const r = await require('./lib/migrations').run({ log: console.log });
     console.log(r.applied.length ? `[startup] applied ${r.applied.length} migration(s)` : '[startup] schema migrations up to date');
   } catch (e) {
-    console.error('[startup] schema migrations FAILED:', e.message);
+    console.error('[startup] schema migrations FAILED — not starting:', e.message);
+    process.exit(1);
   }
-  // One-time, idempotent: ensure every existing document has an owner/admin ACL row
-  // (the historical grantOwnerAdmin bug left pre-existing docs without one).
-  try {
-    const granted = await require('./lib/documentAccess').backfillOwnerGrants();
-    console.log(`[startup] owner-ACL backfill: ${granted} grant(s) created`);
-  } catch (e) {
-    console.error('[startup] owner-ACL backfill failed:', e.message);
-  }
-  // Arm the scheduled-backup timer (no-op unless backups are enabled).
-  try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
-  // Add the tamper-evident audit-log columns before the first event append.
-  try { await require('./lib/auditLog').ensureChain(); console.log('[startup] audit-log chain ready'); }
-  catch (e) { console.error('[startup] audit-log chain init failed:', e.message); }
-  // Periodically reclaim staged chunks from abandoned resumable uploads.
-  try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
-  catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
-  // Periodically hard-delete trashed documents past the retention window.
-  try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
-  catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
-});
 
-// Timeouts tuned for large/slow uploads (U9). keepAliveTimeout sits above the common
-// 60s reverse-proxy idle timeout so a connection reused between chunks isn't closed
-// out from under an in-flight upload (a frequent source of 502s behind a proxy);
-// headersTimeout must exceed keepAliveTimeout (Node requirement). requestTimeout still
-// bounds a whole request (a slowloris guard) but is generous so a slow multi-GB upload
-// on a poor link isn't cut off mid-transfer. All override-able via env.
-const timeoutMs = (name, def) => { const v = parseInt(process.env[name] || '', 10); return Number.isFinite(v) && v >= 0 ? v : def; };
-server.keepAliveTimeout = timeoutMs('KEEPALIVE_TIMEOUT_MS', 65_000);
-server.headersTimeout   = timeoutMs('HEADERS_TIMEOUT_MS', 66_000);
-server.requestTimeout   = timeoutMs('REQUEST_TIMEOUT_MS', 30 * 60 * 1000);
+  server = app.listen(PORT, BIND, async () => {
+    console.log(`Memex running on http://${BIND}:${PORT}`);
+    // One-time, idempotent: ensure every existing document has an owner/admin ACL row
+    // (the historical grantOwnerAdmin bug left pre-existing docs without one).
+    try {
+      const granted = await require('./lib/documentAccess').backfillOwnerGrants();
+      console.log(`[startup] owner-ACL backfill: ${granted} grant(s) created`);
+    } catch (e) {
+      console.error('[startup] owner-ACL backfill failed:', e.message);
+    }
+    // Arm the scheduled-backup timer (no-op unless backups are enabled).
+    try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
+    // Add the tamper-evident audit-log columns before the first event append.
+    try { await require('./lib/auditLog').ensureChain(); console.log('[startup] audit-log chain ready'); }
+    catch (e) { console.error('[startup] audit-log chain init failed:', e.message); }
+    // Periodically reclaim staged chunks from abandoned resumable uploads.
+    try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
+    catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
+    // Periodically hard-delete trashed documents past the retention window.
+    try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
+    catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
+  });
 
-// WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
-try { require('./lib/signaling').init(server); console.log('[startup] WebRTC signaling on /ws'); }
-catch (e) { console.error('[startup] signaling init failed:', e.message); }
+  // Timeouts tuned for large/slow uploads (U9). keepAliveTimeout sits above the common
+  // 60s reverse-proxy idle timeout so a connection reused between chunks isn't closed
+  // out from under an in-flight upload (a frequent source of 502s behind a proxy);
+  // headersTimeout must exceed keepAliveTimeout (Node requirement). requestTimeout still
+  // bounds a whole request (a slowloris guard) but is generous so a slow multi-GB upload
+  // on a poor link isn't cut off mid-transfer. All override-able via env.
+  const timeoutMs = (name, def) => { const v = parseInt(process.env[name] || '', 10); return Number.isFinite(v) && v >= 0 ? v : def; };
+  server.keepAliveTimeout = timeoutMs('KEEPALIVE_TIMEOUT_MS', 65_000);
+  server.headersTimeout   = timeoutMs('HEADERS_TIMEOUT_MS', 66_000);
+  server.requestTimeout   = timeoutMs('REQUEST_TIMEOUT_MS', 30 * 60 * 1000);
 
-// Route the Collabora editor WebSocket (/cool/.../ws) through the same-origin proxy.
-// Anything that is neither the signaling socket (/ws) nor a Collabora path —
-// including the blocked Collabora admin websocket — is closed instead of hanging.
-server.on('upgrade', (req, socket, head) => {
-  let pathname;
-  try { pathname = new URL(req.url, 'http://x').pathname; } catch { pathname = req.url; }
-  if (collaboraProxy.isCollaboraPath(pathname)) collaboraProxy.handleUpgrade(req, socket, head);
-  else if (pathname !== '/ws') socket.destroy();
-});
+  // WebSocket signaling for member video/audio calls (presence + WebRTC brokering).
+  try { require('./lib/signaling').init(server); console.log('[startup] WebRTC signaling on /ws'); }
+  catch (e) { console.error('[startup] signaling init failed:', e.message); }
+
+  // Route the Collabora editor WebSocket (/cool/.../ws) through the same-origin proxy.
+  // Anything that is neither the signaling socket (/ws) nor a Collabora path —
+  // including the blocked Collabora admin websocket — is closed instead of hanging.
+  server.on('upgrade', (req, socket, head) => {
+    let pathname;
+    try { pathname = new URL(req.url, 'http://x').pathname; } catch { pathname = req.url; }
+    if (collaboraProxy.isCollaboraPath(pathname)) collaboraProxy.handleUpgrade(req, socket, head);
+    else if (pathname !== '/ws') socket.destroy();
+  });
+}
 
 // Graceful shutdown. A redeploy/`docker compose up` sends SIGTERM; without this Node
 // exits instantly, cutting in-flight uploads/requests and leaking DB connections.
@@ -288,6 +301,7 @@ function shutdown(signal) {
   if (_shuttingDown) return;
   _shuttingDown = true;
   console.log(`[shutdown] ${signal} received — draining…`);
+  if (!server) process.exit(0); // signalled before listen (e.g. mid-migration)
   try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
   const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
@@ -301,3 +315,5 @@ function shutdown(signal) {
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+start();

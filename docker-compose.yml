@@ -81,9 +81,38 @@ services:
       COLLABORA_URL: ${COLLABORA_URL:-}
       COLLABORA_INTERNAL_URL: ${COLLABORA_INTERNAL_URL:-http://collabora:9980}
       WOPI_INTERNAL_URL: ${WOPI_INTERNAL_URL:-http://app:3000}
+      # The container sees ONLY what this block passes (.env is dockerignored and
+      # not bind-mounted), so every operator-set variable the server reads must be
+      # listed here. Everything below defaults to empty/off — local installs need
+      # none of it.
+      # Keycloak admin API credentials — the setup wizard's "require MFA" step
+      # calls the admin REST API with these (routes/setup.js).
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-}
+      # Offline licensing (lib/license.js). The verify key ships inside the image;
+      # the per-customer signed license.json lives in the secrets mount below.
+      LICENSE_PUBLIC_KEY: ${LICENSE_PUBLIC_KEY:-}
+      LICENSE_PUBLIC_KEY_PATH: ${LICENSE_PUBLIC_KEY_PATH:-/app/keys/ptech-license-public.pem}
+      LICENSE_FILE: ${LICENSE_FILE:-/secrets/license.json}
+      MEMEX_UPDATE_COMMAND: ${MEMEX_UPDATE_COMMAND:-}
+      # Escrows a wrapped copy of the at-rest encryption key inside every backup
+      # archive, so a lost .env no longer means a lost document corpus.
+      MEMEX_BACKUP_KEY_PASSPHRASE: ${MEMEX_BACKUP_KEY_PASSPHRASE:-}
+      # Extra hostnames the on-demand TLS gate may approve beyond app_url's.
+      TLS_DOMAINS: ${TLS_DOMAINS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # FIRST_BOOT=force re-opens the setup wizard on a configured install.
+      FIRST_BOOT: ${FIRST_BOOT:-}
+      # GitHub repo the signed-in update check polls for release tags.
+      MEMEX_REPO: ${MEMEX_REPO:-}
     volumes:
       - ${MEMEX_DOCS_DIR:-/srv/memex-documents}:/data/documents
       - backups_data:/data/backups
+      # Operator secrets (license.json, Graph certificate key). A directory mount,
+      # not a file mount: absent sources degrade to an empty dir and the license
+      # check fails closed, instead of Docker inventing a root-owned directory
+      # named license.json on every unlicensed install.
+      - ${MEMEX_SECRETS_DIR:-./secrets}:/secrets:ro
     ports:
       # APP_BIND is loopback in public mode (Caddy proxies over the internal network)
       # and blank → 0.0.0.0 in local mode for direct LAN access.
@@ -96,7 +125,9 @@ services:
   # accounts). Optional: the app falls back to read-only preview when COLLABORA_URL
   # is unset, so this service can be omitted on deployments that don't need editing.
   collabora:
-    image: collabora/code:latest
+    # Pinned so every fleet install runs the same editor build; bump deliberately
+    # (with a release), not whenever Docker Hub moves `latest`.
+    image: collabora/code:${COLLABORA_TAG:-26.04.3.1.1}
     restart: unless-stopped
     environment:
       # WOPI host Collabora accepts callbacks from — the Memex app container.

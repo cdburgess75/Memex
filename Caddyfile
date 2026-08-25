@@ -7,7 +7,7 @@
 #
 # Prerequisites for a cert to issue (per deployment):
 #   1. DNS A record: <your-domain> -> public IP
-#   2. Router port-forward: TCP 80 and 443 -> this host (192.168.1.32)
+#   2. Router port-forward: TCP 80 and 443 -> this host (<server-ip>)
 #   3. Settings → System → App URL = https://<your-domain>
 
 {
