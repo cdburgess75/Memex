@@ -103,7 +103,28 @@ router.post('/integrations', auth, requireRole('admin'), requireIncomplete, asyn
     } else if (provider === 'graph') {
       await set('graph_tenant_id', req.body.graphTenantId);
       await set('graph_client_id', req.body.graphClientId);
-      if (req.body.graphClientSecret) await set('graph_client_secret', req.body.graphClientSecret);
+      // Two mutually-exclusive credentials (see lib/email.js graphConfig): a client
+      // secret OR a certificate (thumbprint + private key). Whichever the admin picks,
+      // clear the other so email.js uses the chosen one — graphConfig prefers a secret
+      // when both are present, so a lingering secret would silently shadow a new cert.
+      if (String(req.body.graphCredType || 'secret') === 'cert') {
+        await set('graph_cert_thumbprint', req.body.graphCertThumbprint);
+        // The key comes as a pasted PEM OR a path the container can read (/secrets/*).
+        // Store one and clear the other; a pasted key wins, matching graphConfig.
+        if (req.body.graphCertKey) {
+          await set('graph_cert_key', req.body.graphCertKey);
+          await set('graph_cert_key_path', null);
+        } else if (req.body.graphCertKeyPath) {
+          await set('graph_cert_key_path', req.body.graphCertKeyPath);
+          await set('graph_cert_key', null);
+        }
+        await set('graph_client_secret', null);
+      } else {
+        if (req.body.graphClientSecret) await set('graph_client_secret', req.body.graphClientSecret);
+        await set('graph_cert_thumbprint', null);
+        await set('graph_cert_key', null);
+        await set('graph_cert_key_path', null);
+      }
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }

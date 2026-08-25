@@ -2549,6 +2549,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 .setup-field > label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--ink); }
 .setup-field input, .setup-field select, #setup-email-fields input { width: 100%; height: 36px; border: 1px solid var(--rule); border-radius: 8px; padding: 0 10px; background: var(--surface-2); color: var(--ink); }
 #setup-email-fields input { margin-bottom: 8px; }
+#setup-email-fields textarea { width: 100%; min-height: 84px; border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; background: var(--surface-2); color: var(--ink); font-size: 12px; line-height: 1.4; margin-bottom: 8px; resize: vertical; }
 .setup-inline { display: flex; gap: 8px; align-items: center; }
 .setup-inline input { flex: 1; min-width: 0; }
 .setup-inline .ghost-btn { white-space: nowrap; }
@@ -3199,13 +3200,39 @@ function setupRenderEmailFields() {
     <input id="setup-email-from" placeholder="From address (depot@example.com)">
     <label class="setup-check"><input type="checkbox" id="setup-smtp-secure"> Use TLS (SMTPS on port 465)</label>
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
-  else if (prov === 'graph') host.innerHTML = `
+  else if (prov === 'graph') {
+    host.innerHTML = `
     <input id="setup-graph-tenant" placeholder="Graph tenant ID">
     <input id="setup-graph-client" placeholder="Graph client ID">
-    <input id="setup-graph-secret" type="password" placeholder="Graph client secret" autocomplete="new-password">
+    <div class="setup-field"><label>Credential <span class="setup-hint">how the app authenticates to Microsoft 365</span></label>
+      <select id="setup-graph-credtype" onchange="setupRenderGraphCred()">
+        <option value="secret">Client secret</option>
+        <option value="cert-paste">Certificate — paste private key</option>
+        <option value="cert-path">Certificate — key file on server</option>
+      </select></div>
+    <div id="setup-graph-cred"></div>
     <input id="setup-email-from" placeholder="From address (depot@yourtenant.com)">
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
+    setupRenderGraphCred();
+  }
   else host.innerHTML = '';
+}
+
+// The Graph credential sub-form: a client secret, or a certificate whose private key
+// is pasted (graph_cert_key) or read from a path the container can see (graph_cert_key_path).
+function setupRenderGraphCred() {
+  const host = document.getElementById('setup-graph-cred');
+  if (!host) return;
+  const kind = document.getElementById('setup-graph-credtype')?.value || 'secret';
+  if (kind === 'cert-paste') host.innerHTML = `
+    <input id="setup-graph-thumb" placeholder="Certificate thumbprint (SHA-1 hex)">
+    <textarea id="setup-graph-key" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;…paste the PEM private key…&#10;-----END PRIVATE KEY-----"></textarea>`;
+  else if (kind === 'cert-path') host.innerHTML = `
+    <input id="setup-graph-thumb" placeholder="Certificate thumbprint (SHA-1 hex)">
+    <input id="setup-graph-keypath" placeholder="/secrets/graph.pem">
+    <span class="setup-hint" style="display:block;margin:-2px 0 8px">Path inside the container — it can only read files under /secrets/.</span>`;
+  else host.innerHTML = `
+    <input id="setup-graph-secret" type="password" placeholder="Graph client secret" autocomplete="new-password">`;
 }
 
 function setupBack() { if (setupState.step > 0) { setupState.step--; renderSetupWizard(); } }
@@ -3224,11 +3251,18 @@ function setupCollectIntegrations() {
     smtpPass: document.getElementById('setup-smtp-pass')?.value || '',
     smtpSecure: !!document.getElementById('setup-smtp-secure')?.checked,
   });
-  if (prov === 'graph') Object.assign(body, {
-    graphTenantId: document.getElementById('setup-graph-tenant')?.value || '',
-    graphClientId: document.getElementById('setup-graph-client')?.value || '',
-    graphClientSecret: document.getElementById('setup-graph-secret')?.value || '',
-  });
+  if (prov === 'graph') {
+    const kind = document.getElementById('setup-graph-credtype')?.value || 'secret';
+    Object.assign(body, {
+      graphTenantId: document.getElementById('setup-graph-tenant')?.value || '',
+      graphClientId: document.getElementById('setup-graph-client')?.value || '',
+      graphCredType: kind === 'secret' ? 'secret' : 'cert',
+      graphClientSecret: document.getElementById('setup-graph-secret')?.value || '',
+      graphCertThumbprint: document.getElementById('setup-graph-thumb')?.value || '',
+      graphCertKey: document.getElementById('setup-graph-key')?.value || '',
+      graphCertKeyPath: document.getElementById('setup-graph-keypath')?.value || '',
+    });
+  }
   return body;
 }
 
