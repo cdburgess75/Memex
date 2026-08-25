@@ -104,6 +104,10 @@ function entryFrom(item, parentPath) {
     type: item.folder ? 'dir' : 'file',
     size: item.size != null ? Number(item.size) : null,
     modified: item.lastModifiedDateTime || null,
+    // The item's SharePoint URL: opening it puts the user in their own
+    // Microsoft 365 (web or desktop hand-off) with their identity, co-authoring
+    // and versioning — the legitimate O365 editing path for connector files.
+    openUrl: item.webUrl || null,
   };
 }
 
@@ -139,7 +143,7 @@ module.exports = {
     const out = [];
     // Graph pages large folders; follow @odata.nextLink so a 5,000-file library
     // doesn't silently truncate at the first page.
-    let url = `/sites/${site}/drive/${itemRef(abs)}/children?$top=200&$select=name,size,folder,lastModifiedDateTime`;
+    let url = `/sites/${site}/drive/${itemRef(abs)}/children?$top=200&$select=name,size,folder,lastModifiedDateTime,webUrl`;
     while (url) {
       const r = await graph(cfg, url);
       const data = await r.json();
@@ -153,7 +157,7 @@ module.exports = {
   async stat(cfg, path) {
     const site = await siteId(cfg);
     const abs = resolveWithinRoot(cfg.rootPath, path);
-    const r = await graph(cfg, `/sites/${site}/drive/${itemRef(abs)}?$select=name,size,folder,lastModifiedDateTime`);
+    const r = await graph(cfg, `/sites/${site}/drive/${itemRef(abs)}?$select=name,size,folder,lastModifiedDateTime,webUrl`);
     const item = await r.json();
     return entryFrom(item, String(path || '').split('/').slice(0, -1).join('/'));
   },

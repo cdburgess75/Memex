@@ -104,6 +104,17 @@ describe('GET /api/connectors/:id/browse', () => {
     expect(res.body.entries[0].name).toBe('a.txt');
   });
 
+  test('passes an adapter openUrl through untouched (Open in Microsoft 365)', async () => {
+    SMB_ADAPTER.list.mockResolvedValue([
+      { name: 'plan.docx', path: 'plan.docx', type: 'file', size: 9, modified: null, openUrl: 'https://acme.sharepoint.com/sites/Ops/plan.docx' },
+      { name: 'a.txt', path: 'a.txt', type: 'file', size: 1, modified: null },
+    ]);
+    connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).get('/api/connectors/c1/browse?path=');
+    expect(res.body.entries[0].openUrl).toBe('https://acme.sharepoint.com/sites/Ops/plan.docx');
+    expect(res.body.entries[1].openUrl).toBeUndefined();
+  });
+
   test('a traversal attempt is refused before the adapter is reached', async () => {
     connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
     const res = await request(app()).get('/api/connectors/c1/browse?path=../../etc');
