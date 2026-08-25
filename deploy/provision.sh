@@ -50,8 +50,12 @@ esac
 info "Preflight: specs and DNS"
 MEM_GB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
 [ "$MEM_GB" -ge 7 ] || die "VM has ${MEM_GB}GB RAM; the minimum is 8GB."
-DISK_GB=$(( $(df -P --block-size=1G / | awk 'NR==2 {print $4}') ))
-[ "$DISK_GB" -ge 80 ] || die "Only ${DISK_GB}GB free on /; the minimum is 100GB provisioned."
+# The site spec is 100GB PROVISIONED (df total, with margin for fs overhead) —
+# plus enough actually free to install and grow.
+DISK_TOTAL_GB=$(( $(df -P --block-size=1G / | awk 'NR==2 {print $2}') ))
+DISK_FREE_GB=$(( $(df -P --block-size=1G / | awk 'NR==2 {print $4}') ))
+[ "$DISK_TOTAL_GB" -ge 90 ] || die "Root filesystem is ${DISK_TOTAL_GB}GB; the site spec is 100GB provisioned."
+[ "$DISK_FREE_GB" -ge 25 ] || die "Only ${DISK_FREE_GB}GB free on / — clear space before provisioning."
 
 command -v dig >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq dnsutils >/dev/null; }
 RESOLVED="$(dig +short A "$APP_DOMAIN" @1.1.1.1 | tail -1)"
