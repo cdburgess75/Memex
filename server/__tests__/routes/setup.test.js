@@ -144,10 +144,14 @@ describe('POST /integrations — Microsoft 365 (Graph) email credentials', () =>
     expect(settings.set).not.toHaveBeenCalledWith('graph_cert_thumbprint', expect.anything(), 'u1');
   });
 
-  test('a blank client secret keeps the current one (guarded), still clearing the cert', async () => {
+  test('a blank client secret is a credential no-op — nothing stored, nothing cleared', async () => {
+    // Deliberate contract: clearing the OTHER credential happens only when this one
+    // was actually supplied, so an empty wizard re-save can never wipe a certificate
+    // that provisioning seeded out-of-band.
     await post({ emailProvider: 'graph', graphCredType: 'secret', graphClientSecret: '' });
     expect(settings.set).not.toHaveBeenCalledWith('graph_client_secret', expect.anything(), 'u1');
-    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', null, 'u1');
+    expect(settings.set).not.toHaveBeenCalledWith('graph_cert_key', expect.anything(), 'u1');
+    expect(settings.set).not.toHaveBeenCalledWith('graph_cert_thumbprint', expect.anything(), 'u1');
   });
 
   test('certificate path — pasted PEM stores thumbprint + key, clears key-path and secret', async () => {
@@ -231,5 +235,29 @@ describe('POST /mfa — Keycloak required-action toggle', () => {
     expect(r.body.error).toMatch(/404/);
     expect(r.body.hint).toMatch(/Required Actions/);
     expect(settings.set).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /integrations — Graph credential no-clobber', () => {
+  // Provisioning seeds certificate settings out-of-band on fleet boxes; a wizard
+  // re-save with nothing entered must not delete them.
+  test('an empty secret-mode save leaves existing cert settings untouched', async () => {
+    const r = await request(app).post('/api/setup/integrations')
+      .send({ emailProvider: 'graph', graphTenantId: 't', graphClientId: 'c', graphCredType: 'secret', graphClientSecret: '' });
+    expect(r.body.ok).toBe(true);
+    const keysSet = settings.set.mock.calls.map(c => c[0]);
+    expect(keysSet).not.toContain('graph_cert_thumbprint');
+    expect(keysSet).not.toContain('graph_cert_key');
+    expect(keysSet).not.toContain('graph_cert_key_path');
+    expect(keysSet).not.toContain('graph_client_secret');
+  });
+
+  test('an empty cert-mode save changes no credential settings', async () => {
+    const r = await request(app).post('/api/setup/integrations')
+      .send({ emailProvider: 'graph', graphTenantId: 't', graphClientId: 'c', graphCredType: 'cert', graphCertThumbprint: '', graphCertKey: '', graphCertKeyPath: '' });
+    expect(r.body.ok).toBe(true);
+    const keysSet = settings.set.mock.calls.map(c => c[0]);
+    expect(keysSet).not.toContain('graph_cert_thumbprint');
+    expect(keysSet).not.toContain('graph_client_secret');
   });
 });
