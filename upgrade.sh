@@ -21,7 +21,11 @@ else die "Docker Compose not found."; fi
 
 TAG="${1:-latest}"
 COMPOSE="-f docker-compose.yml"
-grep -q '^TRUST_PROXY=1' .env && COMPOSE="$COMPOSE -f docker-compose.prod.yml"
+# Prefer the explicit MEMEX_MODE marker (install.sh writes it); fall back to the
+# TRUST_PROXY heuristic for .env files from older installers.
+MODE="$(sed -n 's/^MEMEX_MODE=//p' .env)"
+[ -n "$MODE" ] || MODE="$(grep -q '^TRUST_PROXY=1' .env && echo public || echo local)"
+[ "$MODE" = "public" ] && COMPOSE="$COMPOSE -f docker-compose.prod.yml"
 
 # Pin the tag in .env (add or replace MEMEX_TAG=…).
 if grep -q '^MEMEX_TAG=' .env; then

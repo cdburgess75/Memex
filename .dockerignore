@@ -7,3 +7,7 @@ server/node_modules
 *.md
 preview.html
 supabase
+license.json
+secrets
+.local-secrets
+.githooks

@@ -28,8 +28,10 @@ It inspects only what is staged, and blocks on:
 
 Placeholders are deliberately allowed (`sk-ant-...`, `changeme`, `${VAR}`, and a
 `-----BEGIN PRIVATE KEY-----` header with no base64 body — `index.html` has one as
-UI placeholder text). A hook that cries wolf gets bypassed, which is worse than no
-hook at all.
+UI placeholder text). So is a `.pem` whose staged content is a PUBLIC KEY block
+with no private material — the license *verification* key ships in the repo by
+design (`keys/ptech-license-public.pem`); it can check licenses but never mint
+one. A hook that cries wolf gets bypassed, which is worse than no hook at all.
 
 To commit anyway, when you are certain it is a false positive:
 
