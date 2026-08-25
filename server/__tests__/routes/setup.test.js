@@ -117,3 +117,45 @@ describe('setup route', () => {
     expect(r.status).toBe(403);
   });
 });
+
+describe('POST /mfa — Keycloak required-action toggle', () => {
+  // The admin REST route lives under /authentication/; the bare alias 404s.
+  // This URL shipped broken for months because the call was unreachable (the
+  // container never had admin creds) — pin it so it cannot silently rot again.
+  const realFetch = global.fetch;
+  beforeEach(() => {
+    process.env.KEYCLOAK_INTERNAL_URL = 'http://keycloak:8080';
+    process.env.KEYCLOAK_ADMIN_USER = 'admin';
+    process.env.KEYCLOAK_ADMIN_PASSWORD = 'test-admin-pass';
+  });
+  afterEach(() => {
+    global.fetch = realFetch;
+    delete process.env.KEYCLOAK_INTERNAL_URL;
+    delete process.env.KEYCLOAK_ADMIN_USER;
+    delete process.env.KEYCLOAK_ADMIN_PASSWORD;
+  });
+
+  test('PUTs the /authentication/ required-actions route and records mfa_required', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'tok' }) })
+      .mockResolvedValueOnce({ ok: true, status: 204 });
+    const r = await request(app).post('/api/setup/mfa').send({ enable: true });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    const putUrl = global.fetch.mock.calls[1][0];
+    expect(putUrl).toBe('http://keycloak:8080/admin/realms/memex/authentication/required-actions/CONFIGURE_TOTP');
+    expect(global.fetch.mock.calls[1][1].method).toBe('PUT');
+    expect(settings.set).toHaveBeenCalledWith('mfa_required', 'true', 'u1');
+  });
+
+  test('failure returns ok:false with the manual-console hint, and does not record the setting', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'tok' }) })
+      .mockResolvedValueOnce({ ok: false, status: 404 });
+    const r = await request(app).post('/api/setup/mfa').send({ enable: true });
+    expect(r.body.ok).toBe(false);
+    expect(r.body.error).toMatch(/404/);
+    expect(r.body.hint).toMatch(/Required Actions/);
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+});

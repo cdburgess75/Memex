@@ -172,7 +172,8 @@ router.post('/mfa', auth, requireRole('admin'), async (req, res) => {
     });
     if (!tokRes.ok) throw new Error(`Keycloak admin auth failed (${tokRes.status}).`);
     const accessToken = (await tokRes.json()).access_token;
-    const upd = await fetch(`${base}/admin/realms/${realm}/required-actions/CONFIGURE_TOTP`, {
+    // Keycloak's route lives under /authentication/ — the alias alone 404s.
+    const upd = await fetch(`${base}/admin/realms/${realm}/authentication/required-actions/CONFIGURE_TOTP`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ alias: 'CONFIGURE_TOTP', name: 'Configure OTP', providerId: 'CONFIGURE_TOTP', enabled: enable, defaultAction: enable, priority: 10 }),
