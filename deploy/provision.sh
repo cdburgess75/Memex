@@ -148,10 +148,16 @@ docker compose $COMPOSE run --rm --no-deps -u root app chown memex:memex /data/d
 
 # ── Stage 8: license + fleet env ─────────────────────────────────────────────
 info "Dropping license + fleet environment"
-install -d -m 700 "$MEMEX_ROOT/secrets" "$PARA_DIR"
+install -d -m 755 "$MEMEX_ROOT/secrets"
+install -d -m 700 "$PARA_DIR"
 umask 077
 printf '%s' "$LICENSE_JSON_B64" | base64 -d > "$MEMEX_ROOT/secrets/license.json"
 jq -e .signature "$MEMEX_ROOT/secrets/license.json" >/dev/null || die "Decoded license.json is not a signed license."
+# The app container runs as a non-root user, so a root-owned 700 dir is
+# unreadable through the bind mount. The license is a signed entitlement, not a
+# secret — 644 is correct. Genuinely private material dropped here later (the
+# Graph key) gets chowned to the container user instead, per M365-ONBOARDING.md.
+chmod 644 "$MEMEX_ROOT/secrets/license.json"
 envset() { # envset KEY VALUE — add or replace in .env
   if grep -q "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else printf '%s=%s\n' "$1" "$2" >> .env; fi
 }
