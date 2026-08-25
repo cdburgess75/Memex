@@ -13,3 +13,7 @@ memex-backup.json
 
 # Local tooling (preview launch config, plans)
 .claude/
+
+# Per-customer license + operator secrets (mounted into the container read-only)
+license.json
+secrets/
