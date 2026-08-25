@@ -9,6 +9,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
+    "//prepare": "Point git at the versioned hooks (see .githooks/README.md). Silently skipped where there is no .git — Docker builds, tarball installs.",
+    "prepare": "git -C .. config core.hooksPath .githooks 2>/dev/null || true",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -48,6 +50,9 @@
     "undici": "^6.0.0",
     "ws": "^8.21.0",
     "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "@marsaud/smb2": "^0.18.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

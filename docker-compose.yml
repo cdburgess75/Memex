@@ -82,7 +82,7 @@ services:
       COLLABORA_INTERNAL_URL: ${COLLABORA_INTERNAL_URL:-http://collabora:9980}
       WOPI_INTERNAL_URL: ${WOPI_INTERNAL_URL:-http://app:3000}
     volumes:
-      - /srv/memex-documents:/data/documents
+      - ${MEMEX_DOCS_DIR:-/srv/memex-documents}:/data/documents
       - backups_data:/data/backups
     ports:
       # APP_BIND is loopback in public mode (Caddy proxies over the internal network)

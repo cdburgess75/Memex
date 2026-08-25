@@ -33,7 +33,7 @@ describe('publicAppBase — share-link base URL', () => {
 
   test('uses the request host on a LAN address even with app_url set', async () => {
     settings.getOrEnv.mockResolvedValue('http://10.5.91.18:3000');
-    expect(await publicAppBase(req('192.168.1.32:3000', 'http'))).toBe('http://192.168.1.32:3000');
+    expect(await publicAppBase(req('192.0.2.10:3000', 'http'))).toBe('http://192.0.2.10:3000');
   });
 
   test('no regression: a correct app_url matches the request host', async () => {

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Refuse to commit credentials. This repository is PUBLIC — a secret that reaches a
+# commit is world-readable the moment it is pushed, and removing it afterwards means
+# a history rewrite that breaks every clone and still leaves GitHub's cached views
+# and any forks intact. Cheaper to never commit it.
+#
+# Install once per clone:   git config core.hooksPath .githooks
+#
+# Checks only what is STAGED, so it is fast and cannot be confused by files you have
+# edited but are not committing.
+set -uo pipefail
+
+if [ -t 1 ]; then B=$'\033[1m'; R=$'\033[31m'; Y=$'\033[33m'; N=$'\033[0m'; else B=; R=; Y=; N=; fi
+fail() { printf '%s%sBLOCKED:%s %s\n' "$R" "$B" "$N" "$*" >&2; }
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -n "$STAGED" ] || exit 0
+PROBLEMS=0
+
+# ---- 1. Filenames that should never be committed -----------------------------
+# .env.example is the documented template and is deliberately allowed.
+while IFS= read -r f; do
+  case "$f" in
+    .env.example|*/.env.example) continue ;;
+  esac
+  if printf '%s\n' "$f" | grep -qiE '(^|/)\.env($|\.)|(^|/)\.envrc$|\.pem$|\.p12$|\.pfx$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|\.ppk$|(^|/)\.netrc$|(^|/)\.htpasswd$|service[-_]?account.*\.json$|credentials?\.json$'; then
+    fail "$f looks like a credential file."
+    PROBLEMS=$((PROBLEMS+1))
+  fi
+done <<< "$STAGED"
+
+# ---- 2. Credential-shaped CONTENT in the staged diff --------------------------
+# Only added lines (^+), so pre-existing text in a touched file doesn't trip this.
+ADDED=$(git diff --cached --unified=0 | grep -a '^+' | grep -av '^+++')
+
+check() { # check <label> <regex>
+  local label="$1" re="$2" hits
+  hits=$(printf '%s\n' "$ADDED" | grep -aEc "$re" || true)
+  if [ "${hits:-0}" -gt 0 ]; then
+    fail "$label — $hits staged line(s)."
+    PROBLEMS=$((PROBLEMS+1))
+  fi
+}
+
+check "Anthropic API key"      'sk-ant-[A-Za-z0-9_-]{20,}'
+check "OpenAI API key"         'sk-(proj-)?[A-Za-z0-9_-]{32,}'
+check "AWS access key id"      'AKIA[0-9A-Z]{16}'
+check "GitHub token"           'gh[pousr]_[A-Za-z0-9]{30,}'
+check "Slack token"            'xox[baprs]-[A-Za-z0-9-]{10,}'
+check "Google API key"         'AIza[0-9A-Za-z_-]{35}'
+
+# A real private key is the BEGIN header followed by actual base64 body. Matching the
+# header alone produces false positives on UI placeholder text (index.html has one),
+# which trains people to bypass the hook — the worst outcome for a guardrail.
+if printf '%s\n' "$ADDED" | grep -aqE '^\+.*-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+   && printf '%s\n' "$ADDED" | grep -aqE '^\+[A-Za-z0-9+/]{40,}={0,2}$'; then
+  fail "Private key material (BEGIN header plus base64 body)."
+  PROBLEMS=$((PROBLEMS+1))
+fi
+
+# Assignments carrying a literal value, ignoring ${VAR} refs and obvious placeholders.
+LITERAL=$(printf '%s\n' "$ADDED" \
+  | grep -aE '^\+[[:space:]]*(export[[:space:]]+)?[A-Z_]*(PASSWORD|SECRET|TOKEN|API_?KEY)[A-Z_]*=[^$"'"'"'[:space:]]{8,}' \
+  | grep -avEi '=(changeme|change_me|password|secret|your|xxx+|placeholder|example|sample|test|dummy|redacted|<|\.\.\.|…)' || true)
+if [ -n "$LITERAL" ]; then
+  fail "Credential assignment with a literal value:"
+  printf '%s\n' "$LITERAL" | sed -E 's/=(.{2}).*/=\1…[redacted]/' | head -5 | sed 's/^/         /' >&2
+  PROBLEMS=$((PROBLEMS+1))
+fi
+
+if [ "$PROBLEMS" -gt 0 ]; then
+  printf '\n%sThis repo is public.%s Unstage the file(s), or move the secret into .env\n' "$B" "$N" >&2
+  printf 'which is git-ignored. If this is genuinely a false positive:\n\n' >&2
+  printf '    git commit --no-verify\n\n' >&2
+  exit 1
+fi
+exit 0
