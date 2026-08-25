@@ -118,6 +118,80 @@ describe('setup route', () => {
   });
 });
 
+describe('POST /integrations — Microsoft 365 (Graph) email credentials', () => {
+  const post = (body) => request(app).post('/api/setup/integrations').send(body);
+
+  test('client-secret path stores the secret and clears any certificate', async () => {
+    const r = await post({
+      emailProvider: 'graph', emailFrom: 'depot@acme.com',
+      graphTenantId: 't-guid', graphClientId: 'c-guid',
+      graphCredType: 'secret', graphClientSecret: 'shh',
+    });
+    expect(r.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('email_provider', 'graph', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_tenant_id', 't-guid', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_client_id', 'c-guid', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_client_secret', 'shh', 'u1');
+    // Certificate fields cleared so a stale cert can't shadow the secret.
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_thumbprint', null, 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', null, 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key_path', null, 'u1');
+  });
+
+  test('omitting graphCredType defaults to the client-secret path', async () => {
+    await post({ emailProvider: 'graph', emailFrom: 'depot@acme.com', graphClientSecret: 'shh' });
+    expect(settings.set).toHaveBeenCalledWith('graph_client_secret', 'shh', 'u1');
+    expect(settings.set).not.toHaveBeenCalledWith('graph_cert_thumbprint', expect.anything(), 'u1');
+  });
+
+  test('a blank client secret keeps the current one (guarded), still clearing the cert', async () => {
+    await post({ emailProvider: 'graph', graphCredType: 'secret', graphClientSecret: '' });
+    expect(settings.set).not.toHaveBeenCalledWith('graph_client_secret', expect.anything(), 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', null, 'u1');
+  });
+
+  test('certificate path — pasted PEM stores thumbprint + key, clears key-path and secret', async () => {
+    const pem = '-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----';
+    const r = await post({
+      emailProvider: 'graph', emailFrom: 'depot@acme.com',
+      graphTenantId: 't-guid', graphClientId: 'c-guid',
+      graphCredType: 'cert', graphCertThumbprint: 'AABBCC', graphCertKey: pem,
+    });
+    expect(r.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_thumbprint', 'AABBCC', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', pem, 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key_path', null, 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_client_secret', null, 'u1');
+    // No real secret was written — only the null-clear above.
+    expect(settings.set).not.toHaveBeenCalledWith('graph_client_secret', expect.anything(), 'u1');
+  });
+
+  test('certificate path — key file path stores thumbprint + path, clears pasted key and secret', async () => {
+    const r = await post({
+      emailProvider: 'graph', emailFrom: 'depot@acme.com',
+      graphTenantId: 't-guid', graphClientId: 'c-guid',
+      graphCredType: 'cert', graphCertThumbprint: 'AABBCC', graphCertKeyPath: '/secrets/graph.pem',
+    });
+    expect(r.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_thumbprint', 'AABBCC', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key_path', '/secrets/graph.pem', 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', null, 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_client_secret', null, 'u1');
+  });
+
+  test('a pasted PEM wins over a path when both are sent (matches graphConfig precedence)', async () => {
+    await post({
+      emailProvider: 'graph', graphCredType: 'cert', graphCertThumbprint: 'AABBCC',
+      graphCertKey: '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----',
+      graphCertKeyPath: '/secrets/graph.pem',
+    });
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key', expect.stringContaining('PRIVATE KEY'), 'u1');
+    expect(settings.set).toHaveBeenCalledWith('graph_cert_key_path', null, 'u1');
+    // The path was not stored as a value.
+    expect(settings.set).not.toHaveBeenCalledWith('graph_cert_key_path', '/secrets/graph.pem', 'u1');
+  });
+});
+
 describe('POST /mfa — Keycloak required-action toggle', () => {
   // The admin REST route lives under /authentication/; the bare alias 404s.
   // This URL shipped broken for months because the call was unreachable (the
