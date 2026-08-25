@@ -119,6 +119,15 @@ app.get('/api/config', async (req, res) => {
   let maxUploadMb = 8192, maxUploadFiles = 4096;
   try { const v = parseInt((await settings.getOrEnv('max_upload_mb')) || '8192', 10); if (Number.isFinite(v) && v > 0) maxUploadMb = v; } catch { /* default */ }
   try { const v = parseInt((await settings.getOrEnv('max_upload_files')) || '4096', 10); if (Number.isFinite(v) && v > 0) maxUploadFiles = v; } catch { /* default */ }
+  // Workspace default for how Office files open in the client: preview (modal),
+  // collabora (straight into the in-browser editor), or desktop (hand off to the
+  // installed Word/Excel via the ms-word:/ms-excel: scheme). Admin-set; the
+  // per-file "Open in" menu always offers the alternatives.
+  let defaultOfficeOpen = 'preview';
+  try {
+    const v = String((await settings.getOrEnv('default_office_open')) || '').toLowerCase();
+    if (v === 'collabora' || v === 'desktop') defaultOfficeOpen = v;
+  } catch { /* default */ }
   // First-boot gate: the client routes the admin to the Setup Wizard until the durable
   // setup_completed flag is set. FIRST_BOOT=force re-opens setup on a configured box.
   let setupRequired = false;
@@ -130,6 +139,7 @@ app.get('/api/config', async (req, res) => {
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
     version: VERSION,
     editingEnabled,
+    defaultOfficeOpen,
     brand,
     maxUploadMb,
     maxUploadFiles,

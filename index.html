@@ -4732,7 +4732,7 @@ async function saveIntegrationSettings() {
   const appUrl = document.getElementById('cfg-app-url').value;
   const folder = document.getElementById('cfg-google-folder').value;
   const gKey = document.getElementById('cfg-google-key').value;
-  const body = { app_url: appUrl, google_drive_folder_id: folder, screenconnect_url: document.getElementById('cfg-screenconnect-url').value };
+  const body = { app_url: appUrl, google_drive_folder_id: folder, screenconnect_url: document.getElementById('cfg-screenconnect-url').value, default_office_open: document.getElementById('cfg-office-open')?.value || 'preview' };
   if (gKey.trim()) body.google_service_account_key = gKey;
   try {
     await apiPut('/admin/settings', body);
@@ -5159,7 +5159,7 @@ function renderConnectorBrowser(el) {
       <div class="conn-main">
         <div class="conn-name">${e.type === 'dir'
           ? `📁 <a href="#" onclick="connBrowse('${escAttr(b.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
-          : esc(e.name)}</div>
+          : e.openUrl ? `<a href="#" title="Open in Microsoft 365" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener'); return false">${esc(e.name)}</a>` : esc(e.name)}</div>
         <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
       </div>
       <div class="conn-actions">
@@ -5553,6 +5553,12 @@ function systemSettingsHtml() {
       <div class="settings-grid">
         <label>App URL</label>
         <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
+        <label>Office files open in</label>
+        <select id="cfg-office-open">
+          <option value="preview"${(s.default_office_open||'preview')==='preview'?' selected':''}>Preview window (default)</option>
+          <option value="collabora"${s.default_office_open==='collabora'?' selected':''}>Browser editor (Collabora)</option>
+          <option value="desktop"${s.default_office_open==='desktop'?' selected':''}>Desktop Word / Excel (this computer)</option>
+        </select>
         <label>Google Drive Folder ID</label>
         <input type="text" id="cfg-google-folder" value="${esc(s.google_drive_folder_id||'')}" placeholder="optional — default Drive root">
         <label>Google Service Account Key</label>
@@ -7034,7 +7040,7 @@ function renderMountView() {
       <div class="conn-main">
         <div class="conn-name">${e.type === 'dir'
           ? `📁 <a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
-          : esc(e.name)}</div>
+          : e.openUrl ? `<a href="#" title="Open in Microsoft 365" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener'); return false">${esc(e.name)}</a>` : esc(e.name)}</div>
         <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
       </div>
       <div class="conn-actions">
@@ -8210,10 +8216,16 @@ async function loadRecentOpens() { try { recentOpensList = await apiGet('/files/
 function openFileDefault(fileId) {
   const f = filesList.find(x => String(x.id) === String(fileId));
   const ext = f ? fileExt(f.name) : '';
-  // Office files have no in-browser preview unless a public Office-Online URL is
-  // reachable, so open the preview modal (Download + optional Office Online)
-  // rather than a blank viewer tab.
-  if (PREVIEW_EXTS.includes(ext) || OFFICE_EXTS.includes(ext)) return previewFile(fileId);
+  // Office files follow the workspace's default open action (Settings → System):
+  // straight into the browser editor, hand off to desktop Word/Excel, or the
+  // preview modal. The per-file "Open in" menu always offers the alternatives.
+  if (OFFICE_EXTS.includes(ext)) {
+    const mode = appConfig?.defaultOfficeOpen || 'preview';
+    if (mode === 'collabora' && appConfig?.editingEnabled) return editInBrowser(fileId);
+    if (mode === 'desktop') return openInDesktopOffice(fileId);
+    return previewFile(fileId);
+  }
+  if (PREVIEW_EXTS.includes(ext)) return previewFile(fileId);
   return downloadFile(fileId);
 }
 function closeFileMenu() { document.getElementById('file-row-menu')?.remove(); }
