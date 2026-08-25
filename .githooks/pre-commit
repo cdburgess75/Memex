@@ -23,6 +23,16 @@ while IFS= read -r f; do
   case "$f" in
     .env.example|*/.env.example) continue ;;
   esac
+  # A .pem that is verifiably public-only material may ship in the repo (the
+  # license VERIFY key does, by design). Judge the STAGED content, not the name:
+  # it must contain a PUBLIC KEY block and no trace of anything private.
+  if printf '%s\n' "$f" | grep -qiE '\.pem$'; then
+    staged=$(git show :"$f" 2>/dev/null || true)
+    if printf '%s' "$staged" | grep -q -- '-----BEGIN PUBLIC KEY-----' \
+       && ! printf '%s' "$staged" | grep -qi 'PRIVATE'; then
+      continue
+    fi
+  fi
   if printf '%s\n' "$f" | grep -qiE '(^|/)\.env($|\.)|(^|/)\.envrc$|\.pem$|\.p12$|\.pfx$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|\.ppk$|(^|/)\.netrc$|(^|/)\.htpasswd$|service[-_]?account.*\.json$|credentials?\.json$'; then
     fail "$f looks like a credential file."
     PROBLEMS=$((PROBLEMS+1))
