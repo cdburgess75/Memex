@@ -5068,6 +5068,11 @@ let connKinds = [];
 let connList = [];
 let connEditing = null; // null = list view; {} = new; {id,…} = editing
 let connBrowsing = null; // null = list view; { id, name, path, entries } = browsing a mount
+// Files-sidebar surface of the same connections (Settings manages them; the
+// sidebar is where people use them daily).
+let connMounts = [];
+let connMountsLoaded = false;
+let mountView = null;   // { id, name, kind, path, entries } when browsing in the Files area
 
 function connectionsSettingsHtml() {
   return `<div class="settings-sub">Connections</div>
@@ -5082,6 +5087,7 @@ async function loadConnections() {
     connList = list.connectors || [];
     connEditing = null;
     connBrowsing = null;
+    connMountsLoaded = false; // the Files sidebar re-reads connections next render
     renderConnections();
   } catch (e) {
     document.getElementById('conn-body').innerHTML = `<p class="settings-notice">Couldn't load connections: ${esc(e.message)}</p>`;
@@ -6968,10 +6974,82 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${fileNavButton('Links', '↗', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${fileNavButton('Trash', 'T', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
+      ${connMountsNavHtml()}
       <div class="file-nav-section">Quick access</div>
       <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>
     </div>
   </section>`;
+}
+
+/* ---- External connections in the Files sidebar ------------------------------
+   One entry per enabled connection (Settings → Connections). Clicking one
+   browses the mount in the main file area — live pass-through, nothing copied. */
+function connMountsNavHtml() {
+  if (!connMountsLoaded) { setTimeout(loadConnMounts, 0); return '<div id="conn-mounts-nav"></div>'; }
+  if (!connMounts.length) return '<div id="conn-mounts-nav"></div>';
+  const items = connMounts.map(c =>
+    fileNavButton(esc(c.name), '⇄', `openMount('${escAttr(c.id)}')`, fileView === 'mount' && mountView?.id === c.id)
+  ).join('');
+  return `<div id="conn-mounts-nav"><div class="file-nav-section">Connections</div><div class="file-nav-main">${items}</div></div>`;
+}
+
+async function loadConnMounts() {
+  try {
+    const r = await apiGet('/connectors');
+    connMounts = (r.connectors || []).filter(c => c.enabled !== false);
+  } catch { connMounts = []; /* signed-out or unreachable — the section just stays empty */ }
+  connMountsLoaded = true;
+  const host = document.getElementById('conn-mounts-nav');
+  if (host) host.outerHTML = connMountsNavHtml();
+}
+
+async function openMount(id, path = '') {
+  const c = connMounts.find(x => x.id === id);
+  try {
+    const r = await apiGet(`/connectors/${encodeURIComponent(id)}/browse?path=${encodeURIComponent(path || '')}`);
+    mountView = { id, name: c ? c.name : 'Connection', kind: c ? (c.label || c.kind) : '', path: r.path || '', entries: r.entries || [] };
+    renderMountView();
+  } catch (e) { toast('Could not open that connection: ' + e.message); }
+}
+
+function mountCrumbsHtml() {
+  const m = mountView;
+  const segs = (m.path || '').split('/').filter(Boolean);
+  const parts = [`<a href="#" onclick="openMount('${escAttr(m.id)}', ''); return false">${esc(m.name)}</a>`];
+  let acc = '';
+  for (const s of segs) {
+    acc = acc ? acc + '/' + s : s;
+    parts.push(`<a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(acc)}'); return false">${esc(s)}</a>`);
+  }
+  return parts.join(' / ');
+}
+
+function renderMountView() {
+  const m = mountView;
+  fileView = 'mount';
+  const dirs = m.entries.filter(e => e.type === 'dir');
+  const files = m.entries.filter(e => e.type !== 'dir');
+  const row = (e) => `
+    <div class="conn-row">
+      <div class="conn-main">
+        <div class="conn-name">${e.type === 'dir'
+          ? `📁 <a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
+          : esc(e.name)}</div>
+        <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
+      </div>
+      <div class="conn-actions">
+        ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
+        ${e.type !== 'dir' ? `<button class="ghost-btn" onclick="connDownload('${escAttr(m.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button>` : ''}
+      </div>
+    </div>`;
+  const main = `<div class="file-library" id="mount-view">
+    <div class="file-library-breadcrumb-row" style="padding:10px 0">${mountCrumbsHtml()}</div>
+    <p class="note" style="margin:0 0 12px;font-size:12px">Live view of ${esc(m.kind || 'the connected system')} — files stay at the source; nothing is copied into Depot.</p>
+    ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
+  </div>`;
+  document.getElementById('panel').innerHTML = fileHomeShell(main, 'files', 'mount');
+  const quick = document.getElementById('file-quick-list');
+  if (quick) quick.innerHTML = quickAccessHtml();
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
