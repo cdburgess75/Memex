@@ -179,6 +179,7 @@ app.use('/api/license', require('./routes/license'));
 app.use('/api/setup', require('./routes/setup'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/backup', require('./routes/backup'));
+app.use('/api/connectors', require('./routes/connectors'));
 app.use('/wopi', require('./routes/wopi'));
 
 // Liveness/readiness probe. Unlike the SPA catch-all (which returns 200 with

@@ -988,13 +988,6 @@ html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rota
   line-height: 1.45;
 }
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
-.login-form { display: flex; flex-direction: column; gap: 10px; }
-.login-form input {
-  min-height: 48px;
-  border-radius: 6px;
-  padding: 11px 13px;
-  font-size: 15px;
-}
 .login-divider {
   color: var(--ink-faint);
   font-family: var(--body);
@@ -1275,6 +1268,23 @@ html.office .provider-btn:hover {
   margin-bottom: 12px;
 }
 .settings-sub { margin-top: 20px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+
+/* external storage connections (Settings → Connections) */
+.conn-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--rule);
+}
+.conn-row:last-of-type { border-bottom: 0; }
+.conn-main { flex: 1 1 auto; min-width: 0; }
+.conn-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--ink); }
+.conn-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; overflow-wrap: anywhere; }
+.conn-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.pill {
+  font: 500 11px var(--ui); padding: 1px 7px; border-radius: 999px;
+  color: var(--ink-soft); background: var(--surface); border: 1px solid var(--rule);
+}
+.pill.ok   { color: #1a7f5a; background: color-mix(in srgb, #1a7f5a 10%, var(--paper)); border-color: color-mix(in srgb, #1a7f5a 30%, var(--rule)); }
+.pill.warn { color: #a4441b; background: color-mix(in srgb, #a4441b 10%, var(--paper)); border-color: color-mix(in srgb, #a4441b 30%, var(--rule)); }
 
 /* usage / admin data tables */
 .usage-section { margin-bottom: 32px; }
@@ -2573,15 +2583,15 @@ html.dark .file-action-btn.danger { color: #E57373; }
         Sign in with Microsoft 365
       </button>
       <div class="login-divider">or</div>
-      <form class="login-form" onsubmit="return signInPassword(event)">
-        <input id="login-email" type="email" autocomplete="username" placeholder="Email"
-               aria-label="Email">
-        <input id="login-password" type="password" autocomplete="current-password" placeholder="Password"
-               aria-label="Password">
-        <button class="provider-btn" type="submit">
-          Sign in with email &amp; password
-        </button>
-      </form>
+      <!-- Email/password is handled by Keycloak's own hosted login page via the
+           standard Authorization Code + PKCE redirect (signIn() with no provider
+           omits kc_idp_hint). Depot never sees the password, which is what lets
+           Keycloak enforce MFA, brute-force protection, and password policy. The
+           old in-page form used the direct-grant (ROPC) flow, deprecated in OAuth
+           2.1 and disabled on the shipped realm client — so it could never work. -->
+      <button class="provider-btn" onclick="signIn()">
+        Sign in with email &amp; password
+      </button>
       <div class="login-note">Theme choices are saved on this device. Your files stay permission-scoped after sign-in.</div>
     </div>
     <div class="login-version" id="login-version"></div>
@@ -3360,27 +3370,6 @@ async function signIn(provider) {
     ...(idpHint ? { kc_idp_hint: idpHint } : {}),
   });
   window.location.href = `${_kcAuthUrl()}/auth?${params}`;
-}
-
-async function signInPassword(ev) {
-  if (ev) ev.preventDefault();
-  const email = (document.getElementById("login-email").value || "").trim();
-  const password = document.getElementById("login-password").value || "";
-  if (!email || !password) { toast("Enter email and password"); return false; }
-  try {
-    const res = await fetch(`${_kcAuthUrl()}/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: _kc.clientId, grant_type: "password",
-        scope: "openid email profile", username: email, password,
-      }),
-    });
-    if (!res.ok) { toast("Sign-in failed — check your email and password"); return false; }
-    _storeTokens(await res.json());
-    await _afterLogin();
-  } catch (e) { toast("Sign-in error: " + e.message); }
-  return false;
 }
 
 async function signOut() {
@@ -5011,6 +5000,7 @@ function settingsTabsList() {
   const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }];
   if (currentUser?.role === 'admin') tabs.push(
     { id: 'ai', label: 'AI' },
+    { id: 'connections', label: 'Connections' },
     { id: 'activity', label: 'Activity' },
     { id: 'system', label: 'System' }
   );
@@ -5028,8 +5018,165 @@ function switchSettingsTab(tab) {
   if (tab === 'profile') body.innerHTML = profileSettingsHtml() + appearanceSettingsHtml();
   else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml() + (admin ? emailSettingsHtml() : ''); loadNotifications(); }
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
+  else if (tab === 'connections') { body.innerHTML = connectionsSettingsHtml(); loadConnections(); }
   else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
   else if (tab === 'system') { body.innerHTML = workspaceSettingsHtml() + systemSettingsHtml(); loadBackupConfig(); seafileResume(); }
+}
+
+// ---- External storage connections ----
+// Live pass-through mounts into systems Depot does not own (SMB shares, SharePoint
+// libraries, and whatever adapters follow). Distinct from the Seafile importer in
+// System, which copies files in once; a connection leaves the data where it lives.
+//
+// Every form here is generated from the server's adapter catalog (`/api/connectors/kinds`),
+// so adding a provider server-side makes it configurable here with no UI change.
+let connKinds = [];
+let connList = [];
+let connEditing = null; // null = list view; {} = new; {id,…} = editing
+
+function connectionsSettingsHtml() {
+  return `<div class="settings-sub">Connections</div>
+    <p class="settings-notice">Connect Depot to storage it doesn't own — a Windows/Samba file share, a SharePoint library, and more as they're added. Files stay where they are; Depot browses and streams them live, so the other system remains the source of truth.</p>
+    <div id="conn-body"><p class="settings-notice">Loading…</p></div>`;
+}
+
+async function loadConnections() {
+  try {
+    const [kinds, list] = await Promise.all([apiGet('/api/connectors/kinds'), apiGet('/api/connectors')]);
+    connKinds = kinds.kinds || [];
+    connList = list.connectors || [];
+    connEditing = null;
+    renderConnections();
+  } catch (e) {
+    document.getElementById('conn-body').innerHTML = `<p class="settings-notice">Couldn't load connections: ${esc(e.message)}</p>`;
+  }
+}
+
+function connStatusPill(c) {
+  if (!c.lastCheckedAt) return `<span class="pill">Never tested</span>`;
+  return c.lastStatus === 'ok'
+    ? `<span class="pill ok">Connected</span>`
+    : `<span class="pill warn" title="${escAttr(c.lastError || '')}">Error</span>`;
+}
+
+function renderConnections() {
+  const el = document.getElementById('conn-body');
+  if (!el) return;
+  if (connEditing) return renderConnectionForm(el);
+
+  const rows = connList.length ? connList.map(c => `
+    <div class="conn-row">
+      <div class="conn-main">
+        <div class="conn-name">${esc(c.name)} ${connStatusPill(c)}${c.readOnly ? '<span class="pill">Read-only</span>' : ''}${c.enabled ? '' : '<span class="pill">Disabled</span>'}</div>
+        <div class="conn-meta">${esc(c.label || c.kind)}${c.lastError ? ' — ' + esc(c.lastError) : ''}</div>
+      </div>
+      <div class="conn-actions">
+        <button class="ghost-btn" onclick="connTest('${escAttr(c.id)}')">Test</button>
+        <button class="ghost-btn" onclick="connEdit('${escAttr(c.id)}')">Edit</button>
+        <button class="ghost-btn" onclick="connDelete('${escAttr(c.id)}')">Remove</button>
+      </div>
+    </div>`).join('')
+    : `<p class="settings-notice">No connections yet.</p>`;
+
+  const addable = connKinds.map(k =>
+    `<button class="ghost-btn" onclick="connNew('${escAttr(k.kind)}')" title="${escAttr(k.blurb || '')}">Add ${esc(k.label)}</button>`
+  ).join(' ');
+
+  el.innerHTML = `${rows}<div class="btn-row" style="margin-top:14px">${addable}</div>`;
+}
+
+function connNew(kind) { connEditing = { kind, readOnly: true, enabled: true, config: {} }; renderConnections(); }
+function connEdit(id) {
+  const c = connList.find(x => x.id === id);
+  if (!c) return;
+  connEditing = { ...c };
+  renderConnections();
+}
+
+function connFieldHtml(f, cfg, hasSecrets) {
+  const type = f.type === 'password' ? 'password' : f.type === 'number' ? 'number' : 'text';
+  if (f.type === 'bool') {
+    return `<label>${esc(f.label)}</label><input type="checkbox" id="conn-f-${escAttr(f.key)}" ${cfg[f.key] ? 'checked' : ''}>`;
+  }
+  // A stored secret is never sent to the client; blank means "keep what's saved".
+  const placeholder = f.secret && hasSecrets ? 'Saved — leave blank to keep it' : (f.placeholder || f.help || '');
+  const value = f.secret ? '' : (cfg[f.key] ?? f.default ?? '');
+  return `<label>${esc(f.label)}${f.required ? ' *' : ''}</label>
+    <input type="${type}" class="sans" id="conn-f-${escAttr(f.key)}" autocomplete="off"
+           value="${escAttr(String(value))}" placeholder="${escAttr(placeholder)}" title="${escAttr(f.help || '')}">`;
+}
+
+function renderConnectionForm(el) {
+  const c = connEditing;
+  const kind = connKinds.find(k => k.kind === c.kind);
+  if (!kind) { el.innerHTML = `<p class="settings-notice">Unknown connection type.</p>`; return; }
+  const cfg = c.config || {};
+  const fields = kind.fields.map(f => connFieldHtml(f, cfg, c.hasSecrets)).join('');
+  el.innerHTML = `
+    <div class="settings-sub">${c.id ? 'Edit' : 'New'} — ${esc(kind.label)}</div>
+    <p class="settings-notice">${esc(kind.blurb || '')}</p>
+    <div class="settings-grid">
+      <label>Name *</label>
+      <input type="text" class="sans" id="conn-f-name" value="${escAttr(c.name || '')}" placeholder="Engineering file server" autocomplete="off">
+      ${fields}
+      <label>Allow writing</label>
+      <input type="checkbox" id="conn-f-writable" ${c.readOnly === false ? 'checked' : ''}>
+      <label>Enabled</label>
+      <input type="checkbox" id="conn-f-enabled" ${c.enabled !== false ? 'checked' : ''}>
+    </div>
+    <p class="settings-notice">Connections are read-only unless you tick “Allow writing”. Credentials are encrypted with this deployment's storage key before they're stored.</p>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="run-btn" onclick="connSave()">Save</button>
+      <button class="ghost-btn" onclick="loadConnections()">Cancel</button>
+    </div>`;
+}
+
+function connFormValues() {
+  const c = connEditing;
+  const kind = connKinds.find(k => k.kind === c.kind);
+  const out = {
+    kind: c.kind,
+    name: document.getElementById('conn-f-name').value.trim(),
+    readOnly: !document.getElementById('conn-f-writable').checked,
+    enabled: document.getElementById('conn-f-enabled').checked,
+  };
+  for (const f of kind.fields) {
+    const el = document.getElementById('conn-f-' + f.key);
+    if (!el) continue;
+    if (f.type === 'bool') out[f.key] = el.checked;
+    else if (el.value.trim() || !f.secret) out[f.key] = el.value.trim();
+  }
+  return out;
+}
+
+async function connSave() {
+  const values = connFormValues();
+  if (!values.name) { toast('Give the connection a name'); return; }
+  try {
+    if (connEditing.id) await apiPut(`/api/connectors/${connEditing.id}`, values);
+    else await apiPost('/api/connectors', values);
+    toast('Connection saved');
+    await loadConnections();
+  } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function connTest(id) {
+  toast('Testing…');
+  try {
+    const r = await apiPost(`/api/connectors/${id}/test`, {});
+    toast(r.ok ? r.message : 'Test failed: ' + r.message);
+    await loadConnections();
+  } catch (e) { toast('Test failed: ' + e.message); }
+}
+
+async function connDelete(id) {
+  const c = connList.find(x => x.id === id);
+  if (!confirm(`Remove the connection “${c ? c.name : id}”? Files on the remote system are not touched.`)) return;
+  try {
+    await apiDelete(`/api/connectors/${id}`);
+    toast('Connection removed');
+    await loadConnections();
+  } catch (e) { toast('Remove failed: ' + e.message); }
 }
 
 // ---- Admin activity / audit feed ----
