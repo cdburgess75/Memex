@@ -10,6 +10,7 @@
 // either is largely this file with a different site/drive resolution step.
 const crypto = require('crypto');
 const { resolveWithinRoot } = require('./base');
+const { certAssertion } = require('../graphClientAssertion');
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
@@ -20,19 +21,38 @@ const _tokens = new Map();
 async function token(cfg) {
   const tenant = String(cfg.tenantId || '').trim();
   const clientId = String(cfg.clientId || '').trim();
+  // Two credential shapes, mirroring lib/email.js: a client secret, or a
+  // certificate (thumbprint + PEM private key, pasted or read from a path such
+  // as the fleet's /secrets/graph.key.pem). A secret wins when both exist.
   const secret = String(cfg.clientSecret || '');
-  if (!tenant || !clientId || !secret) throw new Error('SharePoint connector needs tenant, client id, and secret');
+  const thumbprint = String(cfg.certThumbprint || '').replace(/[^a-fA-F0-9]/g, '');
+  let privateKey = cfg.certKey || null;
+  if (!privateKey && cfg.certKeyPath) {
+    try { privateKey = require('fs').readFileSync(String(cfg.certKeyPath).trim(), 'utf8'); }
+    catch { /* unreadable → no cert credential */ }
+  }
+  const hasSecret = !!secret;
+  const hasCert = !!(thumbprint && privateKey);
+  if (!tenant || !clientId || (!hasSecret && !hasCert)) {
+    throw new Error('SharePoint connector needs tenant, client id, and a client secret or certificate (thumbprint + key)');
+  }
 
-  const key = `${tenant}|${clientId}|${crypto.createHash('sha256').update(secret).digest('hex')}`;
+  const cred = hasSecret ? 's:' + crypto.createHash('sha256').update(secret).digest('hex') : 'c:' + thumbprint;
+  const key = `${tenant}|${clientId}|${cred}`;
   const hit = _tokens.get(key);
   if (hit && Date.now() < hit.exp - 120000) return hit.token;
 
   const body = new URLSearchParams({
     client_id: clientId,
-    client_secret: secret,
     scope: 'https://graph.microsoft.com/.default',
     grant_type: 'client_credentials',
   });
+  if (hasSecret) {
+    body.set('client_secret', secret);
+  } else {
+    body.set('client_assertion_type', 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer');
+    body.set('client_assertion', certAssertion({ tenant, clientId, thumbprint, privateKey }));
+  }
   const r = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -125,8 +145,14 @@ module.exports = {
       help: 'Optional. Scopes the connection to a subfolder.' },
     { key: 'tenantId', label: 'Directory (tenant) ID', type: 'text', required: true },
     { key: 'clientId', label: 'Application (client) ID', type: 'text', required: true },
-    { key: 'clientSecret', label: 'Client secret', type: 'password', required: true, secret: true,
-      help: 'From the app registration. Needs Sites.Read.All (or Sites.ReadWrite.All to write) with admin consent.' },
+    { key: 'clientSecret', label: 'Client secret', type: 'password', secret: true,
+      help: 'One credential is required: this secret, OR the certificate fields below (the fleet standard — the app registration then needs no secret at all). Consent the app Sites.Selected (grant per site) or Sites.Read.All / Sites.ReadWrite.All.' },
+    { key: 'certThumbprint', label: 'Certificate thumbprint', type: 'text',
+      help: 'SHA-1 thumbprint (hex) of the certificate uploaded to the app registration.' },
+    { key: 'certKeyPath', label: 'Certificate key path', type: 'text', placeholder: '/secrets/graph.key.pem',
+      help: 'Path inside the container to the PEM private key — fleet boxes mount it at /secrets/graph.key.pem. Keeps the key out of the database and backups.' },
+    { key: 'certKey', label: 'Certificate private key (paste)', type: 'password', secret: true,
+      help: 'Alternative to the path: paste the PEM private key; it is stored encrypted. A pasted key wins over the path.' },
   ],
 
   async test(cfg) {
