@@ -5033,6 +5033,7 @@ function switchSettingsTab(tab) {
 let connKinds = [];
 let connList = [];
 let connEditing = null; // null = list view; {} = new; {id,…} = editing
+let connBrowsing = null; // null = list view; { id, name, path, entries } = browsing a mount
 
 function connectionsSettingsHtml() {
   return `<div class="settings-sub">Connections</div>
@@ -5042,10 +5043,11 @@ function connectionsSettingsHtml() {
 
 async function loadConnections() {
   try {
-    const [kinds, list] = await Promise.all([apiGet('/api/connectors/kinds'), apiGet('/api/connectors')]);
+    const [kinds, list] = await Promise.all([apiGet('/connectors/kinds'), apiGet('/connectors')]);
     connKinds = kinds.kinds || [];
     connList = list.connectors || [];
     connEditing = null;
+    connBrowsing = null;
     renderConnections();
   } catch (e) {
     document.getElementById('conn-body').innerHTML = `<p class="settings-notice">Couldn't load connections: ${esc(e.message)}</p>`;
@@ -5063,6 +5065,7 @@ function renderConnections() {
   const el = document.getElementById('conn-body');
   if (!el) return;
   if (connEditing) return renderConnectionForm(el);
+  if (connBrowsing) return renderConnectorBrowser(el);
 
   const rows = connList.length ? connList.map(c => `
     <div class="conn-row">
@@ -5071,6 +5074,7 @@ function renderConnections() {
         <div class="conn-meta">${esc(c.label || c.kind)}${c.lastError ? ' — ' + esc(c.lastError) : ''}</div>
       </div>
       <div class="conn-actions">
+        ${c.enabled ? `<button class="ghost-btn" onclick="connBrowse('${escAttr(c.id)}', '')">Browse</button>` : ''}
         <button class="ghost-btn" onclick="connTest('${escAttr(c.id)}')">Test</button>
         <button class="ghost-btn" onclick="connEdit('${escAttr(c.id)}')">Edit</button>
         <button class="ghost-btn" onclick="connDelete('${escAttr(c.id)}')">Remove</button>
@@ -5083,6 +5087,64 @@ function renderConnections() {
   ).join(' ');
 
   el.innerHTML = `${rows}<div class="btn-row" style="margin-top:14px">${addable}</div>`;
+}
+
+/* ---- Browse a mount: navigate folders, download, open in Microsoft 365 ---- */
+async function connBrowse(id, path) {
+  const c = connList.find(x => x.id === id);
+  try {
+    const r = await apiGet(`/connectors/${encodeURIComponent(id)}/browse?path=${encodeURIComponent(path || '')}`);
+    connBrowsing = { id, name: c ? c.name : '', path: r.path || '', entries: r.entries || [] };
+    renderConnections();
+  } catch (e) { toast('Browse failed: ' + e.message); }
+}
+
+function connCrumbs(b) {
+  const segs = (b.path || '').split('/').filter(Boolean);
+  const links = [`<a href="#" onclick="connBrowse('${escAttr(b.id)}', ''); return false">${esc(b.name || 'root')}</a>`];
+  let acc = '';
+  for (const s of segs) {
+    acc = acc ? acc + '/' + s : s;
+    links.push(`<a href="#" onclick="connBrowse('${escAttr(b.id)}', '${escAttr(acc)}'); return false">${esc(s)}</a>`);
+  }
+  return links.join(' / ');
+}
+
+function renderConnectorBrowser(el) {
+  const b = connBrowsing;
+  const dirs = b.entries.filter(e => e.type === 'dir');
+  const files = b.entries.filter(e => e.type !== 'dir');
+  const row = (e) => `
+    <div class="conn-row">
+      <div class="conn-main">
+        <div class="conn-name">${e.type === 'dir'
+          ? `📁 <a href="#" onclick="connBrowse('${escAttr(b.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
+          : esc(e.name)}</div>
+        <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
+      </div>
+      <div class="conn-actions">
+        ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
+        ${e.type !== 'dir' ? `<button class="ghost-btn" onclick="connDownload('${escAttr(b.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button>` : ''}
+      </div>
+    </div>`;
+  el.innerHTML = `
+    <div class="conn-meta" style="margin-bottom:10px">${connCrumbs(b)}</div>
+    ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
+    <div class="btn-row" style="margin-top:14px">
+      <button class="ghost-btn" onclick="connBrowsing = null; renderConnections()">Back to connections</button>
+    </div>`;
+}
+
+async function connDownload(id, path, name) {
+  try {
+    const res = await fetch(`/api/connectors/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
+      { headers: { Authorization: `Bearer ${await getToken()}` } });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name || 'file';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  } catch (e) { toast('Download failed: ' + e.message); }
 }
 
 function connNew(kind) { connEditing = { kind, readOnly: true, enabled: true, config: {} }; renderConnections(); }
@@ -5153,8 +5215,8 @@ async function connSave() {
   const values = connFormValues();
   if (!values.name) { toast('Give the connection a name'); return; }
   try {
-    if (connEditing.id) await apiPut(`/api/connectors/${connEditing.id}`, values);
-    else await apiPost('/api/connectors', values);
+    if (connEditing.id) await apiPut(`/connectors/${connEditing.id}`, values);
+    else await apiPost('/connectors', values);
     toast('Connection saved');
     await loadConnections();
   } catch (e) { toast('Save failed: ' + e.message); }
@@ -5163,7 +5225,7 @@ async function connSave() {
 async function connTest(id) {
   toast('Testing…');
   try {
-    const r = await apiPost(`/api/connectors/${id}/test`, {});
+    const r = await apiPost(`/connectors/${id}/test`, {});
     toast(r.ok ? r.message : 'Test failed: ' + r.message);
     await loadConnections();
   } catch (e) { toast('Test failed: ' + e.message); }
@@ -5173,7 +5235,7 @@ async function connDelete(id) {
   const c = connList.find(x => x.id === id);
   if (!confirm(`Remove the connection “${c ? c.name : id}”? Files on the remote system are not touched.`)) return;
   try {
-    await apiDelete(`/api/connectors/${id}`);
+    await apiDelete(`/connectors/${id}`);
     toast('Connection removed');
     await loadConnections();
   } catch (e) { toast('Remove failed: ' + e.message); }
