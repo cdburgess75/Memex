@@ -87,23 +87,9 @@ async function graphConfig() {
   return { tenant, clientId, from, secret, thumbprint, privateKey, hasSecret, hasCert };
 }
 
-// Build a signed JWT client-assertion for certificate-based client credentials.
-function certAssertion(cfg) {
-  const jwt = require('jsonwebtoken');
-  // x5t = base64url of the raw SHA-1 cert thumbprint bytes.
-  const x5t = Buffer.from(cfg.thumbprint, 'hex').toString('base64url');
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    aud: `https://login.microsoftonline.com/${cfg.tenant}/oauth2/v2.0/token`,
-    iss: cfg.clientId,
-    sub: cfg.clientId,
-    jti: crypto.randomUUID(),
-    nbf: now,
-    iat: now,
-    exp: now + 600, // 10 minutes
-  };
-  return jwt.sign(payload, cfg.privateKey, { algorithm: 'RS256', header: { alg: 'RS256', typ: 'JWT', x5t } });
-}
+// Signed JWT client-assertion for certificate-based client credentials — shared
+// with the SharePoint connector (single implementation of the x5t header).
+const { certAssertion } = require('./graphClientAssertion');
 
 function graphCredKey(cfg) {
   return cfg.hasSecret
