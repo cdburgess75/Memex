@@ -23,6 +23,8 @@ const ENV_MAP = {
   supabase_service_role_key:      'SUPABASE_SERVICE_ROLE_KEY',
   storage_encryption_key:         'STORAGE_ENCRYPTION_KEY',
   app_url:                        'APP_URL',
+  // Workspace default for opening Office files: preview | collabora | desktop.
+  default_office_open:            'DEFAULT_OFFICE_OPEN',
   collabora_enabled:              'COLLABORA_ENABLED',
   collabora_url:                  'COLLABORA_URL',
   collabora_internal_url:         'COLLABORA_INTERNAL_URL',
