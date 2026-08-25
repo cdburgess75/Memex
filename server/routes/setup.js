@@ -107,20 +107,26 @@ router.post('/integrations', auth, requireRole('admin'), requireIncomplete, asyn
       // secret OR a certificate (thumbprint + private key). Whichever the admin picks,
       // clear the other so email.js uses the chosen one — graphConfig prefers a secret
       // when both are present, so a lingering secret would silently shadow a new cert.
+      // Either credential branch acts only when the admin actually supplied that
+      // credential: an empty save (e.g. a FIRST_BOOT=force wizard re-run clicked
+      // through on defaults) must never wipe a working configuration that was
+      // seeded out-of-band (provisioning does exactly that on fleet boxes).
       if (String(req.body.graphCredType || 'secret') === 'cert') {
-        await set('graph_cert_thumbprint', req.body.graphCertThumbprint);
-        // The key comes as a pasted PEM OR a path the container can read (/secrets/*).
-        // Store one and clear the other; a pasted key wins, matching graphConfig.
-        if (req.body.graphCertKey) {
-          await set('graph_cert_key', req.body.graphCertKey);
-          await set('graph_cert_key_path', null);
-        } else if (req.body.graphCertKeyPath) {
-          await set('graph_cert_key_path', req.body.graphCertKeyPath);
-          await set('graph_cert_key', null);
+        if (req.body.graphCertThumbprint || req.body.graphCertKey || req.body.graphCertKeyPath) {
+          await set('graph_cert_thumbprint', req.body.graphCertThumbprint);
+          // The key comes as a pasted PEM OR a path the container can read (/secrets/*).
+          // Store one and clear the other; a pasted key wins, matching graphConfig.
+          if (req.body.graphCertKey) {
+            await set('graph_cert_key', req.body.graphCertKey);
+            await set('graph_cert_key_path', null);
+          } else if (req.body.graphCertKeyPath) {
+            await set('graph_cert_key_path', req.body.graphCertKeyPath);
+            await set('graph_cert_key', null);
+          }
+          await set('graph_client_secret', null);
         }
-        await set('graph_client_secret', null);
-      } else {
-        if (req.body.graphClientSecret) await set('graph_client_secret', req.body.graphClientSecret);
+      } else if (req.body.graphClientSecret) {
+        await set('graph_client_secret', req.body.graphClientSecret);
         await set('graph_cert_thumbprint', null);
         await set('graph_cert_key', null);
         await set('graph_cert_key_path', null);
