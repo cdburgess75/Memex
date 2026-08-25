@@ -73,7 +73,7 @@ Settings (Setup Wizard step 3 during handoff, or seeded via provisioning psql):
 
 | setting | value |
 |---|---|
-| `email_provider` | `graph365` |
+| `email_provider` | `graph` |
 | `email_from` | `depot@customer.com` (the policy-scoped mailbox) |
 | `graph_tenant_id` | tenant ID from step 1 |
 | `graph_client_id` | app ID from step 1 |
