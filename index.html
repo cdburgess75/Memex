@@ -1279,6 +1279,14 @@ html.office .provider-btn:hover {
 .conn-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--ink); }
 .conn-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; overflow-wrap: anywhere; }
 .conn-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.file-info-card { display: flex; align-items: center; gap: 12px; justify-content: center; }
+.file-info-meta { text-align: left; min-width: 0; }
+.eml-view { max-width: 760px; margin: 0 auto; text-align: left; }
+.eml-headers { border-bottom: 1px solid var(--rule); padding-bottom: 10px; margin-bottom: 10px; }
+.eml-h { font-size: 13px; margin: 2px 0; overflow-wrap: anywhere; }
+.eml-h span { display: inline-block; width: 64px; color: var(--ink-soft, #888); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.eml-atts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.eml-body { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.5; margin: 0; }
 .pill {
   font: 500 11px var(--ui); padding: 1px 7px; border-radius: 999px;
   color: var(--ink-soft); background: var(--surface); border: 1px solid var(--rule);
@@ -5553,10 +5561,9 @@ function systemSettingsHtml() {
       <div class="settings-grid">
         <label>App URL</label>
         <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
-        <label>Office files open in</label>
+        <label>Office files' main action</label>
         <select id="cfg-office-open">
-          <option value="preview"${(s.default_office_open||'preview')==='preview'?' selected':''}>Preview window (default)</option>
-          <option value="collabora"${s.default_office_open==='collabora'?' selected':''}>Browser editor (Collabora)</option>
+          <option value="preview"${s.default_office_open!=='desktop'?' selected':''}>Edit in browser (default)</option>
           <option value="desktop"${s.default_office_open==='desktop'?' selected':''}>Desktop Word / Excel (this computer)</option>
         </select>
         <label>Google Drive Folder ID</label>
@@ -6358,11 +6365,7 @@ function filterFilesForHome(filter, list = filesList, applyTextQuery = true) {
   });
 }
 function openRecommendedFile(fileId) {
-  const f = filesList.find(x => String(x.id) === String(fileId));
-  if (!f) return;
-  const ext = fileExt(f.name);
-  if (['docx','doc','xlsx','xls','pptx','ppt'].includes(ext)) previewFile(fileId);
-  else downloadFile(fileId);
+  if (filesList.find(x => String(x.id) === String(fileId))) openFileDefault(fileId);
 }
 let fileFilter = 'all';
 let fileSearchTimer = null;
@@ -7035,17 +7038,13 @@ function renderMountView() {
   fileView = 'mount';
   const dirs = m.entries.filter(e => e.type === 'dir');
   const files = m.entries.filter(e => e.type !== 'dir');
-  const row = (e) => `
+  const row = (e, i) => `
     <div class="conn-row">
       <div class="conn-main">
         <div class="conn-name">${e.type === 'dir'
           ? `📁 <a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
-          : e.openUrl ? `<a href="#" title="Open in Microsoft 365" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener'); return false">${esc(e.name)}</a>` : esc(e.name)}</div>
+          : `<a href="#" onclick="previewMountEntry(${i}); return false">${esc(e.name)}</a>`}</div>
         <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
-      </div>
-      <div class="conn-actions">
-        ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
-        ${e.type !== 'dir' ? `<button class="ghost-btn" onclick="connDownload('${escAttr(m.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button>` : ''}
       </div>
     </div>`;
   const main = `<div class="file-library" id="mount-view">
@@ -7053,9 +7052,23 @@ function renderMountView() {
     <p class="note" style="margin:0 0 12px;font-size:12px">Live view of ${esc(m.kind || 'the connected system')} — files stay at the source; nothing is copied into Depot.</p>
     ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
   </div>`;
+  mountView.ordered = [...dirs, ...files];
   document.getElementById('panel').innerHTML = fileHomeShell(main, 'files', 'mount');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml();
+}
+
+// The uniform preview pane for a connected-system file: info card + the fixed
+// action bar (365 primary when available, Download, Close). Inline rendering of
+// mount files needs signed URLs server-side — roadmap, not this build.
+function previewMountEntry(i) {
+  const m = mountView;
+  const e = m?.ordered?.[i];
+  if (!e) return;
+  closeFilePreview();
+  const primary = e.openUrl ? `<button class="run-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
+  const body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(fileExt(e.name))}<div class="file-info-meta"><div class="file-row-title">${esc(e.name)}</div><div class="file-row-sub">${fmtBytes(e.size || 0)}${e.modified ? ' · ' + new Date(e.modified).toLocaleString() : ''} · via ${esc(m.name)}</div></div></div><p class="settings-notice" style="margin-top:10px">This file lives in ${esc(m.kind || 'the connected system')} — Depot streams it on demand; nothing is copied.</p></div>`;
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" onclick="connDownload('${escAttr(m.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -8214,19 +8227,11 @@ let recentOpensList = [];
 function recordOpen(fileId) { apiPost('/files/' + fileId + '/open', {}).catch(() => {}); }
 async function loadRecentOpens() { try { recentOpensList = await apiGet('/files/recent'); } catch { recentOpensList = []; } }
 function openFileDefault(fileId) {
-  const f = filesList.find(x => String(x.id) === String(fileId));
-  const ext = f ? fileExt(f.name) : '';
-  // Office files follow the workspace's default open action (Settings → System):
-  // straight into the browser editor, hand off to desktop Word/Excel, or the
-  // preview modal. The per-file "Open in" menu always offers the alternatives.
-  if (OFFICE_EXTS.includes(ext)) {
-    const mode = appConfig?.defaultOfficeOpen || 'preview';
-    if (mode === 'collabora' && appConfig?.editingEnabled) return editInBrowser(fileId);
-    if (mode === 'desktop') return openInDesktopOffice(fileId);
-    return previewFile(fileId);
-  }
-  if (PREVIEW_EXTS.includes(ext)) return previewFile(fileId);
-  return downloadFile(fileId);
+  // One rule for every extension: click opens the preview pane. The pane's
+  // uniform action bar owns editing, hand-offs, and downloads — nothing ever
+  // silently downloads on click. (Office files' workspace preference now picks
+  // the pane's highlighted button, not the click behavior.)
+  return previewFile(fileId);
 }
 function closeFileMenu() { document.getElementById('file-row-menu')?.remove(); }
 function openFileMenu(fileId, event) {
@@ -8240,7 +8245,7 @@ function openFileMenu(fileId, event) {
   const items = [
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDefault('${fileId}')">Open</button>`,
     `<div class="file-menu-label">Open with</div>`,
-    (canPreview || isOffice) ? `<button class="file-menu-item" onclick="closeFileMenu();previewFile('${fileId}')">In-app preview</button>` : '',
+    `<button class="file-menu-item" onclick="closeFileMenu();previewFile('${fileId}')">In-app preview</button>`,
     (isOffice && appConfig?.editingEnabled) ? `<button class="file-menu-item" onclick="closeFileMenu();editInBrowser('${fileId}')">Edit in browser</button>` : '',
     isOffice ? `<button class="file-menu-item" onclick="closeFileMenu();openInDesktopOffice('${fileId}')">Open in desktop app</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFile('${fileId}')">Download</button>`,
@@ -8511,6 +8516,7 @@ async function previewFile(fileId, opts = {}) {
   const isText = ['txt', 'md', 'csv', 'log', 'json'].includes(ext);
   const isSheet = ['xlsx', 'xls'].includes(ext);
   const isDoc = ext === 'docx';
+  const isEml = ext === 'eml';
   const canEdit = isText && currentUser?.role !== 'viewer';
   let data;
   try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
@@ -8524,15 +8530,21 @@ async function previewFile(fileId, opts = {}) {
   else if (AUDIO_EXTS.includes(ext)) body = `<audio src="${esc(inlineUrl)}" class="file-preview-audio" controls preload="metadata"></audio>`;
   else if (isText) body = `<textarea class="file-preview-edit" id="file-edit-text" spellcheck="false" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea>`;
   else if (isSheet || isDoc) body = `<div class="file-preview-office" id="file-office-body"><div class="file-office-loading">Rendering preview…</div></div>`;
-  else body = `<div class="file-preview-fallback"><p class="settings-notice">No inline preview for this file type yet — download to open it.</p><div style="display:flex;gap:8px;justify-content:center"><button class="run-btn" onclick="downloadFile('${fileId}')">Download</button></div></div>`;
-  const saveBtn = canEdit ? `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>` : '';
+  else if (isEml) body = `<div class="file-preview-office" id="file-eml-body"><div class="file-office-loading">Reading email…</div></div>`;
+  else body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(ext)}<div class="file-info-meta"><div class="file-row-title">${esc(name)}</div><div class="file-row-sub">${esc(fileKind(ext))} · ${fileSizeLabel(f?.size || 0)}${f?.created_at ? ' · added ' + fileDate(f.created_at) : ''}${f ? ' · ' + esc(fileOwner(f)) : ''}</div></div></div><p class="settings-notice" style="margin-top:10px">No inline view for this type yet — use the actions above.</p></div>`;
   const isOfficeFile = OFFICE_EXTS.includes(ext);
   const appName = { xlsx: 'Excel', xls: 'Excel', docx: 'Word', doc: 'Word', pptx: 'PowerPoint', ppt: 'PowerPoint' }[ext] || 'app';
+  // Fixed action-bar slots on every file: [Primary] [Open in ⌄] [Share] [Download] [Close].
+  // A slot with nothing real to offer is hidden, never faked. The Office primary
+  // follows the workspace preference (Settings → System); text files' primary is Save.
+  let primaryBtn = '';
+  if (canEdit) primaryBtn = `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>`;
+  else if (isOfficeFile && (appConfig?.defaultOfficeOpen === 'desktop')) primaryBtn = `<button class="run-btn" onclick="openInDesktopOffice('${fileId}')">${appName} (this computer)</button>`;
+  else if (isOfficeFile && appConfig?.editingEnabled) primaryBtn = `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>`;
   const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button><button onclick="closePreviewOpenMenu();openInGoogle('${fileId}')">Google Drive</button></div></div>` : '';
-  const editBtn = (isOfficeFile && appConfig?.editingEnabled) ? `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>` : '';
   const shareBtn = (currentUser?.role !== 'viewer') ? `<button class="ghost-btn" onclick="closeFilePreview();openShareFile('${fileId}')">Share</button>` : '';
   closeFilePreview();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${saveBtn}${editBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
   if (isText) {
     const el = document.getElementById('file-edit-text');
     try { const r = await fetch(inlineUrl); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
@@ -8540,6 +8552,102 @@ async function previewFile(fileId, opts = {}) {
     if (el && canEdit && opts.edit) el.focus();
   } else if (isSheet) { renderSheetPreview(inlineUrl, fileId); }
   else if (isDoc) { renderDocxPreview(inlineUrl, fileId); }
+  else if (isEml) { renderEmlPreview(inlineUrl); }
+}
+
+/* ---- .eml preview: headers, plain-text body, attachment list ---------------
+   Deliberately never renders the HTML body — no email-HTML sanitization surface.
+   Handles the common shapes: single-part text, multipart/alternative,
+   multipart/mixed with base64/quoted-printable parts. */
+let _emlAttachments = [];
+function _emlHeaderBlock(raw) {
+  const cut = raw.search(/\r?\n\r?\n/);
+  return { head: cut === -1 ? raw : raw.slice(0, cut), rest: cut === -1 ? '' : raw.slice(cut).replace(/^\r?\n\r?\n/, '') };
+}
+function _emlHeaders(head) {
+  const out = {};
+  for (const line of head.replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/)) {
+    const i = line.indexOf(':');
+    if (i > 0) { const k = line.slice(0, i).trim().toLowerCase(); if (!(k in out)) out[k] = line.slice(i + 1).trim(); }
+  }
+  return out;
+}
+function _emlDecodeWord(v) { // RFC 2047 encoded-words in headers (=?utf-8?B?…?=)
+  return String(v || '').replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_, cs, enc, data) => {
+    try {
+      const bytes = enc.toLowerCase() === 'b' ? _b64Bytes(data) : _qpBytes(data.replace(/_/g, ' '));
+      return new TextDecoder(cs.toLowerCase() === 'utf-8' ? 'utf-8' : cs).decode(bytes);
+    } catch { return data; }
+  });
+}
+function _b64Bytes(s) { const bin = atob(String(s).replace(/\s+/g, '')); const b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; }
+function _qpBytes(s) {
+  const src = String(s).replace(/=\r?\n/g, ''); const out = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '=' && /[0-9A-Fa-f]{2}/.test(src.slice(i + 1, i + 3))) { out.push(parseInt(src.slice(i + 1, i + 3), 16)); i += 2; }
+    else out.push(src.charCodeAt(i) & 0xff);
+  }
+  return new Uint8Array(out);
+}
+function _emlPartBytes(headers, bodyText) {
+  const cte = String(headers['content-transfer-encoding'] || '').toLowerCase();
+  if (cte.includes('base64')) return _b64Bytes(bodyText);
+  if (cte.includes('quoted-printable')) return _qpBytes(bodyText);
+  return new TextEncoder().encode(bodyText);
+}
+function _emlWalk(raw, out) {
+  const { head, rest } = _emlHeaderBlock(raw);
+  const h = _emlHeaders(head);
+  // The boundary (and filenames) are case-sensitive — lowercase only the type.
+  const ctRaw = String(h['content-type'] || 'text/plain');
+  const ct = ctRaw.toLowerCase();
+  const bm = ctRaw.match(/boundary="?([^";]+)"?/i);
+  if (ct.startsWith('multipart/') && bm) {
+    for (const part of rest.split(new RegExp('--' + bm[1].replace(/[.*+?^$()|[\]\\{}]/g, '\\$&') + '(?:--)?\r?\n?'))) {
+      if (part.trim()) _emlWalk(part, out);
+    }
+    return;
+  }
+  const disp = String(h['content-disposition'] || '');
+  const fn = (disp.match(/filename="?([^";]+)"?/i) || ctRaw.match(/name="?([^";]+)"?/i) || [])[1];
+  if (fn || disp.toLowerCase().startsWith('attachment')) {
+    const bytes = _emlPartBytes(h, rest);
+    out.attachments.push({ filename: _emlDecodeWord(fn || 'attachment'), size: bytes.length, bytes, type: ct.split(';')[0] });
+  } else if (ct.startsWith('text/plain') && !out.text) {
+    const cs = (ct.match(/charset="?([^";]+)"?/) || [])[1] || 'utf-8';
+    try { out.text = new TextDecoder(cs).decode(_emlPartBytes(h, rest)); } catch { out.text = rest; }
+  }
+}
+function parseEml(raw) {
+  const { head, rest } = _emlHeaderBlock(raw);
+  const headers = _emlHeaders(head);
+  for (const k of ['from', 'to', 'cc', 'subject']) if (headers[k]) headers[k] = _emlDecodeWord(headers[k]);
+  const out = { headers, text: '', attachments: [] };
+  _emlWalk(raw, out);
+  if (!out.text && !out.attachments.length) out.text = rest;
+  return out;
+}
+async function renderEmlPreview(inlineUrl) {
+  const host = document.getElementById('file-eml-body');
+  if (!host) return;
+  try {
+    const raw = await (await fetch(inlineUrl)).text();
+    const m = parseEml(raw);
+    _emlAttachments = m.attachments;
+    const hrows = ['From', 'To', 'Cc', 'Date', 'Subject']
+      .map(k => m.headers[k.toLowerCase()] ? `<div class="eml-h"><span>${k}</span>${esc(m.headers[k.toLowerCase()])}</div>` : '').join('');
+    const atts = m.attachments.length
+      ? `<div class="eml-atts">${m.attachments.map((a, i) => `<button class="ghost-btn" onclick="downloadEmlAttachment(${i})">📎 ${esc(a.filename)} (${fmtBytes(a.size)})</button>`).join(' ')}</div>` : '';
+    host.innerHTML = `<div class="eml-view"><div class="eml-headers">${hrows}</div>${atts}<pre class="eml-body">${esc((m.text || '(no plain-text body — the message may be HTML-only; download to view in a mail client)').slice(0, 500000))}</pre></div>`;
+  } catch (e) { host.innerHTML = `<p class="settings-notice">Could not read this email: ${esc(e.message)}</p>`; }
+}
+function downloadEmlAttachment(i) {
+  const a = _emlAttachments[i];
+  if (!a) return;
+  const el = document.createElement('a');
+  el.href = URL.createObjectURL(new Blob([a.bytes], { type: a.type || 'application/octet-stream' }));
+  el.download = a.filename;
+  document.body.appendChild(el); el.click(); el.remove(); URL.revokeObjectURL(el.href);
 }
 
 // Lazy-load a self-hosted vendor script once (no external CDN / account).
