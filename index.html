@@ -981,12 +981,6 @@ html.dark .chip { color: var(--accent-soft); }
 html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rotate(180deg); }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
-.login-note {
-  margin-top: 16px;
-  color: var(--ink-faint);
-  font-size: 12px;
-  line-height: 1.45;
-}
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
 .login-divider {
   color: var(--ink-faint);
@@ -2581,7 +2575,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
   <div class="modal login-modal">
     <div class="login-mark" aria-hidden="true">D</div>
     <h2>Depot</h2>
-    <p class="sub">Your team's files, notes, and AI answers in one private workspace.</p>
+    <p class="sub">Share everything. Risk nothing. Intelligence built into every file.</p>
     <div class="login-providers">
       <!-- Rendered only when the Microsoft 365 identity provider is actually
            configured in Keycloak (Settings → Sign-in methods) — an unbacked
@@ -2600,7 +2594,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="provider-btn" onclick="signIn()">
         Sign in with email &amp; password
       </button>
-      <div class="login-note">Theme choices are saved on this device. Your files stay permission-scoped after sign-in.</div>
     </div>
     <div class="login-version" id="login-version"></div>
   </div>
