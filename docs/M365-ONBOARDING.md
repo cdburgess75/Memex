@@ -5,7 +5,7 @@ credential. Never a shared multi-tenant app: a shared credential on every
 deployment means one compromised box endangers every tenant that consented.
 ~30–45 minutes with the customer's Global Administrator on a screen-share.
 
-> Validated 2026-08-25 against a real tenant (ring-0 dogfood). That run is also
+> Validated 2026-08-25 against a real tenant (ring 0). That run is also
 > where the RBAC-for-Applications step below was discovered the hard way — do
 > not skip it.
 
