@@ -1250,7 +1250,8 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
       emailEvents.send('share_granted', {
         to: grant.subject_email,
         subject: `${req.user.email} shared a file with you`,
-        text: `${req.user.email} gave you ${grant.permission} access to "${doc.name}" in Memex.\n\nSign in to Memex to open it.`,
+        text: `${req.user.email} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
+        actorEmail: req.user.email,
       }).catch(() => {});
     }
     res.json({ grant });
@@ -2036,7 +2037,7 @@ router.get('/folder/share/:token', async (req, res) => {
       emailEvents.send('share_downloaded', {
         to: share.created_by_email,
         subject: `Your shared folder was downloaded: ${share.folder_path.split('/').pop()}`,
-        text: `The folder "${share.folder_path}" was just downloaded via a Memex share link you created.`,
+        text: `The folder "${share.folder_path}" was just downloaded via a Depot share link you created.`,
       }).catch(() => {});
     }
     const base = share.folder_path.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -2117,7 +2118,8 @@ router.post('/folder/members', auth, requireRole('admin', 'contributor'), async 
       emailEvents.send('share_granted', {
         to: email,
         subject: `${req.user.email} shared a folder with you`,
-        text: `${req.user.email} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Memex.\n\nSign in to Memex to open it.`,
+        text: `${req.user.email} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Depot.\n\nSign in to Depot to open it.`,
+        actorEmail: req.user.email,
       }).catch(() => {});
     }
     res.json({ ok: true, count: rows.length, permission });
@@ -2490,7 +2492,7 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
       emailEvents.send('upload_received', {
         to: row.created_by_email,
         subject: `New upload${row.label ? ` · ${row.label}` : ''}: ${base}`,
-        text: `${who} uploaded "${base}" via your Memex upload link${row.label ? ` (${row.label})` : ''}.\n\nSign in to Memex to view it.`,
+        text: `${who} uploaded "${base}" via your Depot upload link${row.label ? ` (${row.label})` : ''}.\n\nSign in to Depot to view it.`,
       }).catch(() => {});
     }
     res.json({ ok: true, name: base });

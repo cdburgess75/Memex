@@ -72,7 +72,7 @@ describe('graphSend (secret)', () => {
   test('acquires a token then POSTs sendMail; returns sent+via', async () => {
     cfg(base); mockGraphOk();
     const r = await email.sendMail({ to: 'x@y.com', subject: 'Hi', html: '<b>hi</b>' });
-    expect(r).toEqual({ sent: true, via: 'graph' });
+    expect(r).toMatchObject({ sent: true, via: 'graph' });
     const tokenCall = global.fetch.mock.calls.find(c => String(c[0]).includes('/token'));
     expect(tokenCall[0]).toBe('https://login.microsoftonline.com/tenant-1/oauth2/v2.0/token');
     expect(tokenCall[1].body).toContain('grant_type=client_credentials');
@@ -133,7 +133,7 @@ describe('graphSend (certificate)', () => {
     cfg({ graph_tenant_id: 'tenant-2', graph_client_id: 'client-2', email_from: 'memex@ptechllc.com', graph_cert_thumbprint: 'BBE7DE8E4DFFDF69', graph_cert_key: TEST_PEM });
     mockGraphOk();
     const r = await email.sendMail({ to: 'x@y.com', subject: 's', text: 't' });
-    expect(r).toEqual({ sent: true, via: 'graph' });
+    expect(r).toMatchObject({ sent: true, via: 'graph' });
     const tokenCall = global.fetch.mock.calls.find(c => String(c[0]).includes('/token'));
     expect(tokenCall[1].body).toContain('client_assertion_type=urn%3Aietf%3Aparams%3Aoauth%3Aclient-assertion-type%3Ajwt-bearer');
     expect(tokenCall[1].body).toContain('client_assertion=');

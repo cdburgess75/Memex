@@ -182,6 +182,7 @@ router.post('/test/email', auth, requireRole('admin'), async (req, res) => {
       to,
       subject: 'Depot setup: test email',
       text: 'This is a test email from your Depot setup wizard. Receiving it confirms outbound email works.',
+      actorEmail: req.user.email,
     });
     if (r?.sent) return res.json({ ok: true, to, via: r.via });
     res.json({ ok: false, error: r?.reason === 'not_configured' ? 'Email is not configured yet — save the integration first.' : (r?.reason || 'send failed') });
