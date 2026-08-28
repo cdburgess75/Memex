@@ -121,6 +121,9 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
         subject: `Invitation: ${title}`,
         text: bodyText,
         icalEvent: { method: 'REQUEST', filename: 'invite.ics', content: icsContent },
+        // The ICS already names this member as ORGANIZER; send from them too, so
+        // Outlook's accept/decline replies route to the person who scheduled it.
+        actorEmail: organizer.email,
       });
       return { to, ...r };
     }));

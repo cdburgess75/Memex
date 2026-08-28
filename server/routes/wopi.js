@@ -139,7 +139,10 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
       emailEvents.send('document_edited', {
         to: doc.uploaded_by_email,
         subject: `${entry.userEmail} edited your file: ${doc.name}`,
-        text: `${entry.userEmail} edited "${doc.name}" in Memex.\n\nSign in to Memex to review the changes.`,
+        text: `${entry.userEmail} edited "${doc.name}" in Depot.\n\nSign in to Depot to review the changes.`,
+        // Collabora calls this endpoint, not the browser — the editing member's
+        // identity comes from the WOPI token, not req.user.
+        actorEmail: entry.userEmail,
       }).catch(() => {});
     }
     res.status(200).end();

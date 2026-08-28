@@ -57,9 +57,18 @@ function transportFor(cfg) {
   return _transport;
 }
 
-async function smtpSend(cfg, { to, subject, text, html, attachments, icalEvent }) {
-  const from = cfg.from || cfg.user || 'memex@localhost';
+async function smtpSend(cfg, { to, subject, text, html, attachments, icalEvent, sendAs }) {
+  const account = cfg.from || cfg.user || 'depot@localhost';
+  const from = sendAs || account;
   const mail = { from, to, subject, text, html };
+  // When sending on a member's behalf, keep the SMTP envelope on the account the
+  // relay authenticated as — SPF/DMARC align on the envelope, so a per-user From
+  // header would otherwise fail authentication at the recipient. Replies still
+  // reach the person.
+  if (sendAs && sendAs !== account) {
+    mail.envelope = { from: account, to };
+    mail.replyTo = sendAs;
+  }
   if (Array.isArray(attachments) && attachments.length) mail.attachments = attachments;
   // nodemailer's icalEvent makes the message a real calendar invite (multipart with
   // a text/calendar part carrying the method), so clients show accept/decline.
@@ -138,7 +147,20 @@ function graphAttachment(name, contentType, content) {
   };
 }
 
-async function graphSend(cfg, { to, subject, text, html, attachments, icalEvent }) {
+// Graph failures that mean "this mailbox cannot be sent from" — as opposed to a
+// transient or global fault. Each maps to a real tenant condition: no such user,
+// no Exchange licence, an on-prem/unsupported mailbox, or the app not being
+// authorised for that mailbox. On any of these we fall back to the workspace
+// mailbox rather than silently dropping a notification.
+function senderIneligible(status, detail) {
+  const d = String(detail || '');
+  if (status === 404) return true;                                   // ResourceNotFound / MailboxNotEnabledForRESTAPI
+  if (status === 401) return /mailbox|not.*found|licen/i.test(d);    // unlicensed reports as 401 or 403
+  if (status === 403) return /ErrorAccessDenied|Access to OData is disabled|RAOP|MailboxNotEnabled|SendAsDenied/i.test(d);
+  return false;
+}
+
+async function graphSend(cfg, { to, subject, text, html, attachments, icalEvent, sendAs }) {
   const token = await graphToken(cfg);
   const recipients = String(to).split(',').map(s => s.trim()).filter(Boolean)
     .map(addr => ({ emailAddress: { address: addr } }));
@@ -153,15 +175,39 @@ async function graphSend(cfg, { to, subject, text, html, attachments, icalEvent 
   if (icalEvent) atts.push(graphAttachment(icalEvent.filename || 'invite.ics', `text/calendar; method=${icalEvent.method || 'REQUEST'}; charset=UTF-8`, icalEvent.content));
   for (const a of attachments || []) atts.push(graphAttachment(a.filename, a.contentType, a.content));
   if (atts.length) message.attachments = atts;
-  const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(cfg.from)}/sendMail`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, saveToSentItems: false }),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (r.status === 202) return { sent: true, via: 'graph' };
-  let detail = '';
-  try { detail = (await r.json())?.error?.message || ''; } catch { /* non-JSON */ }
+
+  // Under app-only auth the mailbox in the URL *is* the From address — there is
+  // no header to set. Sending as a member therefore means POSTing to their
+  // mailbox, and the message lands in their Sent Items so the trail is theirs.
+  const post = async (mailbox, saveToSentItems) => fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/sendMail`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, saveToSentItems }),
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  const readDetail = async (r) => { try { return (await r.json())?.error?.message || ''; } catch { return ''; } };
+
+  const asUser = sendAs && sendAs.toLowerCase() !== cfg.from.toLowerCase();
+  if (asUser) {
+    const r = await post(sendAs, true);
+    if (r.status === 202) return { sent: true, via: 'graph', from: sendAs };
+    const detail = await readDetail(r);
+    // Not every Depot member has a mailbox in this tenant (local and AD accounts
+    // often do not), and a customer may keep the app scoped to one mailbox. A
+    // notification that never arrives is worse than one from the workspace
+    // address, so fall back instead of failing.
+    if (!senderIneligible(r.status, detail)) {
+      throw new Error(`graph sendMail ${r.status}${detail ? ': ' + detail : ''}`);
+    }
+    console.warn(`email: cannot send as ${sendAs} (${r.status}${detail ? ': ' + detail : ''}) — falling back to ${cfg.from}`);
+  }
+
+  const r = await post(cfg.from, false);
+  if (r.status === 202) return { sent: true, via: 'graph', from: cfg.from, ...(asUser ? { fellBack: true } : {}) };
+  const detail = await readDetail(r);
   throw new Error(`graph sendMail ${r.status}${detail ? ': ' + detail : ''}`);
 }
 
@@ -182,17 +228,36 @@ async function isConfigured() {
   return !!(await resolveProvider());
 }
 
+// A member's address is only usable as a sender if it is a real, routable
+// mailbox. Depot identities come from three places (local accounts, AD/LDAP,
+// M365) and only the M365 ones are guaranteed to have one, so this is a shape
+// check — the authoritative answer comes from the provider, which falls back.
+function usableSender(addr) {
+  const a = String(addr || '').trim();
+  // One address only: a newline or comma here would be header injection.
+  return /^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(a) ? a.toLowerCase() : null;
+}
+
 // Send an email. Returns { sent: true, via } or { sent: false, reason }. Never throws.
 // `attachments`: [{ filename, contentType, content:Buffer|string }]. `icalEvent`:
-// { method, filename, content } for calendar invites.
-async function sendMail({ to, subject, text, html, attachments, icalEvent }) {
+// { method, filename, content } for calendar invites. `actorEmail`: the member
+// this message is being sent on behalf of — when the workspace has send-as-user
+// enabled and their mailbox accepts it, the mail comes from them rather than
+// from the shared workspace address.
+async function sendMail({ to, subject, text, html, attachments, icalEvent, actorEmail }) {
   try {
     if (!to) return { sent: false, reason: 'no_recipient' };
     const provider = await resolveProvider();
     if (!provider) return { sent: false, reason: 'not_configured' };
+    let sendAs = null;
+    if (actorEmail) {
+      const on = String((await settings.getOrEnv('email_send_as_user')) || 'true').toLowerCase() !== 'false';
+      if (on) sendAs = usableSender(actorEmail);
+    }
+    const payload = { to, subject, text, html, attachments, icalEvent, sendAs };
     return provider.kind === 'graph'
-      ? await graphSend(provider.cfg, { to, subject, text, html, attachments, icalEvent })
-      : await smtpSend(provider.cfg, { to, subject, text, html, attachments, icalEvent });
+      ? await graphSend(provider.cfg, payload)
+      : await smtpSend(provider.cfg, payload);
   } catch (e) {
     console.error('email send failed:', e.message);
     return { sent: false, reason: e.message };

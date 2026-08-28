@@ -81,6 +81,10 @@ const ENV_MAP = {
   login_ldap_url:                 'LOGIN_LDAP_URL',
   login_ldap_users_dn:            'LOGIN_LDAP_USERS_DN',
   login_ldap_bind_dn:             'LOGIN_LDAP_BIND_DN',
+  // Send notifications from the member who caused them (Graph: from their own
+  // mailbox) instead of the single workspace address. Falls back automatically
+  // when a member has no usable mailbox. 'false' disables.
+  email_send_as_user:             'EMAIL_SEND_AS_USER',
   email_ev_share_granted:         'EMAIL_EV_SHARE_GRANTED',
   email_ev_share_downloaded:      'EMAIL_EV_SHARE_DOWNLOADED',
   email_ev_upload_received:       'EMAIL_EV_UPLOAD_RECEIVED',
