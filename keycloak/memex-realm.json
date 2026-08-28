@@ -1,7 +1,7 @@
 {
   "realm": "memex",
   "enabled": true,
-  "displayName": "Memex",
+  "displayName": "Depot",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "sslRequired": "external",
