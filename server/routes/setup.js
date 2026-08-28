@@ -15,6 +15,7 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const settings = require('../lib/settings');
 const email = require('../lib/email');
+const kcAdmin = require('../lib/keycloakAdmin');
 
 // Secret keys blanked in the config export (mirrors routes/settings.js SENSITIVE).
 const SENSITIVE = new Set([
@@ -57,6 +58,7 @@ router.get('/status', auth, async (req, res) => {
       integrations: {
         aiConfigured: !!(await g('anthropic_api_key')),
         emailProvider: (await g('email_provider')) || 'none',
+        emailFrom: (await g('email_from')) || '',
       },
       performance: {
         maxUploadMb: parseInt((await g('max_upload_mb')) || '8192', 10),
@@ -66,6 +68,12 @@ router.get('/status', auth, async (req, res) => {
         backupIntervalHours: parseInt((await g('backup_interval_hours')) || '24', 10),
       },
       mfaRequired: String((await settings.get('mfa_required')) || '').toLowerCase() === 'true',
+      loginMethods: {
+        ms365: String((await settings.get('login_ms365_enabled')) || '').toLowerCase() === 'true',
+        ms365TenantId: (await settings.get('login_ms365_tenant_id')) || '',
+        ms365ClientId: (await settings.get('login_ms365_client_id')) || '',
+        ldap: String((await settings.get('login_ldap_enabled')) || '').toLowerCase() === 'true',
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -93,16 +101,26 @@ router.post('/integrations', auth, requireRole('admin'), requireIncomplete, asyn
 
     const provider = String(req.body.emailProvider || 'none');
     await set('email_provider', provider === 'none' ? null : provider);
-    if (req.body.emailFrom !== undefined) await set('email_from', req.body.emailFrom);
+    // Truthy-guarded like the fields below: the wizard always posts emailFrom
+    // (blank on Back-navigation since the input has no prefill), and Graph email
+    // dies entirely without a from address — never let '' delete it.
+    if (req.body.emailFrom) await set('email_from', req.body.emailFrom);
     if (provider === 'smtp') {
-      await set('smtp_host', req.body.smtpHost);
-      await set('smtp_port', req.body.smtpPort);
-      await set('smtp_secure', String(!!req.body.smtpSecure));
-      await set('smtp_user', req.body.smtpUser);
+      // The host is the sentinel for "the form was actually filled in": a blank
+      // re-save (Back-navigation renders empty fields) must not null-clear a
+      // working relay config or flip smtp_secure off underneath it.
+      if (req.body.smtpHost) {
+        await set('smtp_host', req.body.smtpHost);
+        await set('smtp_port', req.body.smtpPort);
+        await set('smtp_secure', String(!!req.body.smtpSecure));
+        await set('smtp_user', req.body.smtpUser);
+      }
       if (req.body.smtpPass) await set('smtp_pass', req.body.smtpPass);
     } else if (provider === 'graph') {
-      await set('graph_tenant_id', req.body.graphTenantId);
-      await set('graph_client_id', req.body.graphClientId);
+      // Same protection as the credentials below: only write what was supplied,
+      // so an empty re-save can't null-clear provisioning-seeded IDs.
+      if (req.body.graphTenantId) await set('graph_tenant_id', req.body.graphTenantId);
+      if (req.body.graphClientId) await set('graph_client_id', req.body.graphClientId);
       // Two mutually-exclusive credentials (see lib/email.js graphConfig): a client
       // secret OR a certificate (thumbprint + private key). Whichever the admin picks,
       // clear the other so email.js uses the chosen one — graphConfig prefers a secret
@@ -113,7 +131,7 @@ router.post('/integrations', auth, requireRole('admin'), requireIncomplete, asyn
       // seeded out-of-band (provisioning does exactly that on fleet boxes).
       if (String(req.body.graphCredType || 'secret') === 'cert') {
         if (req.body.graphCertThumbprint || req.body.graphCertKey || req.body.graphCertKeyPath) {
-          await set('graph_cert_thumbprint', req.body.graphCertThumbprint);
+          if (req.body.graphCertThumbprint) await set('graph_cert_thumbprint', req.body.graphCertThumbprint);
           // The key comes as a pasted PEM OR a path the container can read (/secrets/*).
           // Store one and clear the other; a pasted key wins, matching graphConfig.
           if (req.body.graphCertKey) {
@@ -210,6 +228,83 @@ router.post('/mfa', auth, requireRole('admin'), async (req, res) => {
     res.json({ ok: true, enabled: enable });
   } catch (e) {
     res.json({ ok: false, error: e.message, hint: 'Enable it manually: Keycloak admin console → Authentication → Required Actions → Configure OTP → set as Default.' });
+  }
+});
+
+// POST /api/setup/login-ms365 — enable/update/disable "Sign in with Microsoft 365".
+// Depot provisions the Keycloak OIDC identity provider itself over the admin API;
+// the Entra client secret goes straight to Keycloak and is never stored in Depot's
+// settings. Like /mfa, this stays callable after setup (Settings → Sign-in methods).
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.post('/login-ms365', auth, requireRole('admin'), async (req, res) => {
+  const enable = req.body.enable !== false;
+  try {
+    if (!enable) {
+      await kcAdmin.removeMicrosoftIdp();
+      // 'false' (not a row delete): these flags are env-seedable via ENV_MAP, and
+      // a deleted row would fall back to LOGIN_MS365_ENABLED=true — resurrecting
+      // the login button with no IdP behind it.
+      await settings.set('login_ms365_enabled', 'false', req.user.id);
+      return res.json({
+        ok: true, enabled: false,
+        note: 'New Microsoft 365 sign-ins are blocked. Users who already signed in keep their imported account (and any active session until it expires) — remove them in Keycloak to fully revoke access.',
+      });
+    }
+    const tenantId = trimmedOrNull(req.body.tenantId) || (await settings.get('login_ms365_tenant_id'));
+    const clientId = trimmedOrNull(req.body.clientId) || (await settings.get('login_ms365_client_id'));
+    const clientSecret = trimmedOrNull(req.body.clientSecret);   // blank = keep the one Keycloak holds
+    if (!GUID.test(tenantId || '')) return res.json({ ok: false, error: 'Entra tenant ID must be a GUID.' });
+    if (!GUID.test(clientId || '')) return res.json({ ok: false, error: 'Application (client) ID must be a GUID.' });
+    const r = await kcAdmin.ensureMicrosoftIdp({ tenantId, clientId, clientSecret });
+    await settings.set('login_ms365_enabled', 'true', req.user.id);
+    await settings.set('login_ms365_tenant_id', tenantId, req.user.id);
+    await settings.set('login_ms365_client_id', clientId, req.user.id);
+    res.json({ ok: true, enabled: true, created: r.created });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, hint: 'Run setup-graph.ps1 -EnableLogin first, and check the redirect URI …/realms/<realm>/broker/microsoft/endpoint is on the app registration.' });
+  }
+});
+
+// POST /api/setup/login-ldap — enable/update/disable/test Active Directory sign-in
+// (Keycloak LDAP user federation, AD vendor defaults, read-only binds). The bind
+// credential also lives only in Keycloak.
+router.post('/login-ldap', auth, requireRole('admin'), async (req, res) => {
+  const action = String(req.body.action || 'enable');
+  const p = {
+    connectionUrl: trimmedOrNull(req.body.connectionUrl),
+    bindDn: trimmedOrNull(req.body.bindDn),
+    bindCredential: trimmedOrNull(req.body.bindCredential),
+    usersDn: trimmedOrNull(req.body.usersDn),
+  };
+  // ldaps:// only: a simple bind over plain ldap:// would put the service
+  // account's password — and every user's password at login time — on the wire
+  // in cleartext between Keycloak and the domain controller.
+  const ldapsOnly = (url) => /^ldaps:\/\//i.test(url || '');
+  try {
+    if (action === 'disable') {
+      await kcAdmin.removeLdapFederation();
+      await settings.set('login_ldap_enabled', 'false', req.user.id);   // 'false', not delete — see login-ms365
+      return res.json({ ok: true, enabled: false });
+    }
+    if (!p.connectionUrl) return res.json({ ok: false, error: 'Connection URL is required.' });
+    if (!ldapsOnly(p.connectionUrl)) {
+      return res.json({ ok: false, error: 'Use ldaps:// (LDAP over TLS, usually port 636). Plain ldap:// sends passwords in cleartext and is not supported.' });
+    }
+    if (action === 'test') {
+      const t = await kcAdmin.testLdap(p);
+      return res.json({ ok: t.connection.ok && t.authentication.ok, ...t });
+    }
+    if (!p.usersDn || !p.bindDn) {
+      return res.json({ ok: false, error: 'Connection URL, users DN, and bind DN are required.' });
+    }
+    const r = await kcAdmin.ensureLdapFederation(p);
+    await settings.set('login_ldap_enabled', 'true', req.user.id);
+    await settings.set('login_ldap_url', p.connectionUrl, req.user.id);
+    await settings.set('login_ldap_users_dn', p.usersDn, req.user.id);
+    await settings.set('login_ldap_bind_dn', p.bindDn, req.user.id);
+    res.json({ ok: true, enabled: true, created: r.created });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, hint: 'Use ldaps:// with the DC\'s FQDN where possible; the bind account needs read access to the users OU.' });
   }
 });
 

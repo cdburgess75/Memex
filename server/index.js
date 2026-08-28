@@ -128,6 +128,13 @@ app.get('/api/config', async (req, res) => {
     const v = String((await settings.getOrEnv('default_office_open')) || '').toLowerCase();
     if (v === 'collabora' || v === 'desktop') defaultOfficeOpen = v;
   } catch { /* default */ }
+  // Sign-in providers actually configured in Keycloak (flag written when the
+  // admin enables one) — the login card only renders buttons for these, so a
+  // "Sign in with Microsoft 365" button never appears unbacked.
+  const loginIdps = [];
+  try {
+    if (String((await settings.getOrEnv('login_ms365_enabled')) || '').toLowerCase() === 'true') loginIdps.push('microsoft');
+  } catch { /* default: none */ }
   // First-boot gate: the client routes the admin to the Setup Wizard until the durable
   // setup_completed flag is set. FIRST_BOOT=force re-opens setup on a configured box.
   let setupRequired = false;
@@ -140,6 +147,7 @@ app.get('/api/config', async (req, res) => {
     version: VERSION,
     editingEnabled,
     defaultOfficeOpen,
+    loginIdps,
     brand,
     maxUploadMb,
     maxUploadFiles,

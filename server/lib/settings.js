@@ -71,6 +71,16 @@ const ENV_MAP = {
   graph_cert_thumbprint:          'GRAPH_CERT_THUMBPRINT',
   graph_cert_key:                 'GRAPH_CERT_KEY',
   graph_cert_key_path:            'GRAPH_CERT_KEY_PATH',
+  // Sign-in methods (Keycloak-managed; see lib/keycloakAdmin.js). Only flags and
+  // display fields live here — the IdP client secret and LDAP bind credential are
+  // handed straight to Keycloak and never stored in Depot's settings.
+  login_ms365_enabled:            'LOGIN_MS365_ENABLED',
+  login_ms365_tenant_id:          'LOGIN_MS365_TENANT_ID',
+  login_ms365_client_id:          'LOGIN_MS365_CLIENT_ID',
+  login_ldap_enabled:             'LOGIN_LDAP_ENABLED',
+  login_ldap_url:                 'LOGIN_LDAP_URL',
+  login_ldap_users_dn:            'LOGIN_LDAP_USERS_DN',
+  login_ldap_bind_dn:             'LOGIN_LDAP_BIND_DN',
   email_ev_share_granted:         'EMAIL_EV_SHARE_GRANTED',
   email_ev_share_downloaded:      'EMAIL_EV_SHARE_DOWNLOADED',
   email_ev_upload_received:       'EMAIL_EV_UPLOAD_RECEIVED',

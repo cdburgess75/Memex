@@ -2583,15 +2583,14 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <h2>Depot</h2>
     <p class="sub">Your team's files, notes, and AI answers in one private workspace.</p>
     <div class="login-providers">
-      <button class="provider-btn" onclick="signIn('google')">
-        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.5 30.3 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.8 6.1C12.5 13.2 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.8-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.3 0 11.6-2.1 15.5-5.7l-7.5-5.8c-2.1 1.4-4.8 2.3-8 2.3-6.2 0-11.5-3.7-13.4-9l-7.8 6.1C6.7 42.6 14.7 48 24 48z"/></svg>
-        Sign in with Google
-      </button>
-      <button class="provider-btn" onclick="signIn('microsoft')">
+      <!-- Rendered only when the Microsoft 365 identity provider is actually
+           configured in Keycloak (Settings → Sign-in methods) — an unbacked
+           button would dead-end on the generic Keycloak form. -->
+      <button class="provider-btn" id="login-ms-btn" style="display:none" onclick="signIn('microsoft')">
         <svg width="18" height="18" viewBox="0 0 23 23"><path fill="#f3f3f3" d="M0 0h23v23H0z"/><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
         Sign in with Microsoft 365
       </button>
-      <div class="login-divider">or</div>
+      <div class="login-divider" id="login-provider-divider" style="display:none">or</div>
       <!-- Email/password is handled by Keycloak's own hosted login page via the
            standard Authorization Code + PKCE redirect (signIn() with no provider
            omits kc_idp_hint). Depot never sees the password, which is what lets
@@ -2992,6 +2991,12 @@ async function initApp() {
     if (upEl && upEl.textContent === 'Version') upEl.textContent = config.version;
   }
 
+  // Sign-in buttons appear only for providers actually configured in Keycloak.
+  if ((config.loginIdps || []).includes('microsoft')) {
+    document.getElementById('login-ms-btn').style.display = '';
+    document.getElementById('login-provider-divider').style.display = '';
+  }
+
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code')) {
     await handleOAuthCallback(urlParams.get('code'), urlParams.get('state'));
@@ -3205,7 +3210,7 @@ function setupRenderEmailFields() {
   if (prov === 'smtp') host.innerHTML = `
     <div class="setup-grid2"><input id="setup-smtp-host" placeholder="SMTP host (smtp.example.com)"><input id="setup-smtp-port" type="number" placeholder="Port (587)"></div>
     <div class="setup-grid2"><input id="setup-smtp-user" placeholder="Username" autocomplete="off"><input id="setup-smtp-pass" type="password" placeholder="Password" autocomplete="new-password"></div>
-    <input id="setup-email-from" placeholder="From address (depot@example.com)">
+    <input id="setup-email-from" value="${esc(setupState.status?.integrations?.emailFrom || '')}" placeholder="From address (depot@example.com)">
     <label class="setup-check"><input type="checkbox" id="setup-smtp-secure"> Use TLS (SMTPS on port 465)</label>
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
   else if (prov === 'graph') {
@@ -3219,7 +3224,7 @@ function setupRenderEmailFields() {
         <option value="cert-path">Certificate — key file on server</option>
       </select></div>
     <div id="setup-graph-cred"></div>
-    <input id="setup-email-from" placeholder="From address (depot@yourtenant.com)">
+    <input id="setup-email-from" value="${esc(setupState.status?.integrations?.emailFrom || '')}" placeholder="From address (depot@yourtenant.com)">
     <button class="ghost-btn" type="button" onclick="setupTestEmail()">Save & send test email</button>`;
     setupRenderGraphCred();
   }
@@ -3274,6 +3279,18 @@ function setupCollectIntegrations() {
   return body;
 }
 
+// Keep the wizard's status snapshot current after an integrations save, so
+// Back-navigation re-renders what was just saved instead of the state at
+// wizard-open (a stale provider select used to re-post 'none' and disable a
+// just-configured email path).
+function _setupSyncEmailSnapshot(body) {
+  const st = setupState.status;
+  if (!st) return;
+  st.integrations = st.integrations || {};
+  st.integrations.emailProvider = body.emailProvider || 'none';
+  if (body.emailFrom) st.integrations.emailFrom = body.emailFrom;
+}
+
 async function setupSaveStep(step) {
   if (step === 1) {
     const body = {
@@ -3285,7 +3302,12 @@ async function setupSaveStep(step) {
     if (brandLogoDraft !== null) body.logo = brandLogoDraft; // only send when changed
     return apiPost('/setup/tenant', body);
   }
-  if (step === 2) return apiPost('/setup/integrations', setupCollectIntegrations());
+  if (step === 2) {
+    const body = setupCollectIntegrations();
+    const r = await apiPost('/setup/integrations', body);
+    _setupSyncEmailSnapshot(body);
+    return r;
+  }
   if (step === 3) return apiPost('/setup/performance', {
     maxUploadMb: document.getElementById('setup-max-mb')?.value,
     maxUploadFiles: document.getElementById('setup-max-files')?.value,
@@ -3343,7 +3365,9 @@ async function setupTestEmail() {
   const out = document.getElementById('setup-email-result');
   if (out) out.innerHTML = '<span class="setup-muted">Saving & sending…</span>';
   try {
-    await apiPost('/setup/integrations', setupCollectIntegrations());
+    const intBody = setupCollectIntegrations();
+    await apiPost('/setup/integrations', intBody);
+    _setupSyncEmailSnapshot(intBody);
     const r = await apiPost('/setup/test/email', {});
     if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ Test email sent to ${esc(r.to)} via ${esc(r.via || 'email')}.</span>` : `<span class="setup-err">✗ ${esc(r.error || 'Failed')}</span>`;
   } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
@@ -3404,7 +3428,7 @@ async function signIn(provider) {
   // strips the hash), so a shared #/… link lands where it points after login.
   try { if (hashToNav(location.hash)) sessionStorage.setItem('memex_return_hash', location.hash); } catch (e) {}
   try { const mp = new URLSearchParams(location.search).get('meet'); if (mp) sessionStorage.setItem('memex_meet_room', mp); } catch (e) {}
-  const idpHint = { google: 'google', microsoft: 'microsoft' }[provider];
+  const idpHint = provider === 'microsoft' ? 'microsoft' : undefined;
   const params = new URLSearchParams({
     client_id: _kc.clientId, redirect_uri: window.location.origin,
     response_type: 'code', scope: 'openid email profile',
@@ -4749,6 +4773,65 @@ async function saveIntegrationSettings() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+/* Sign-in methods (Settings) — thin wrappers over /setup/login-*; those routes
+   push the real config into Keycloak, so secrets pass through and are cleared
+   from the form on success. */
+function _signinResult(id, ok, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'setup-result ' + (ok ? 'setup-ok' : 'setup-err');
+}
+async function saveMs365Login(enable) {
+  _signinResult('cfg-ms365-result', true, '…');
+  try {
+    const r = await apiPost('/setup/login-ms365', {
+      enable,
+      tenantId: document.getElementById('cfg-ms365-tenant').value.trim(),
+      clientId: document.getElementById('cfg-ms365-client').value.trim(),
+      clientSecret: document.getElementById('cfg-ms365-secret').value,
+    });
+    if (r.ok) {
+      document.getElementById('cfg-ms365-secret').value = '';
+      const badge = document.getElementById('cfg-ms365-status');
+      if (badge) badge.textContent = enable ? 'Enabled — button shown on the login card' : 'Disabled';
+      _signinResult('cfg-ms365-result', true, enable ? 'Enabled — sign out to see the Microsoft 365 button' : 'Disabled');
+    } else _signinResult('cfg-ms365-result', false, (r.error || 'Failed') + (r.hint ? ' — ' + r.hint : ''));
+  } catch (e) { _signinResult('cfg-ms365-result', false, e.message); }
+}
+function _ldapBody(action) {
+  return {
+    action,
+    connectionUrl: document.getElementById('cfg-ldap-url').value.trim(),
+    bindDn: document.getElementById('cfg-ldap-bind').value.trim(),
+    bindCredential: document.getElementById('cfg-ldap-cred').value,
+    usersDn: document.getElementById('cfg-ldap-users').value.trim(),
+  };
+}
+async function testLdapLogin() {
+  _signinResult('cfg-ldap-result', true, '…');
+  try {
+    const r = await apiPost('/setup/login-ldap', _ldapBody('test'));
+    if (r.connection) {
+      const c = r.connection.ok ? 'connection ok' : 'connection: ' + r.connection.error;
+      const a = r.authentication.ok ? 'bind ok' : 'bind: ' + r.authentication.error;
+      _signinResult('cfg-ldap-result', r.ok, c + ' · ' + a);
+    } else _signinResult('cfg-ldap-result', false, r.error || 'Test failed');
+  } catch (e) { _signinResult('cfg-ldap-result', false, e.message); }
+}
+async function saveLdapLogin(action) {
+  _signinResult('cfg-ldap-result', true, '…');
+  try {
+    const r = await apiPost('/setup/login-ldap', _ldapBody(action));
+    if (r.ok) {
+      document.getElementById('cfg-ldap-cred').value = '';
+      const badge = document.getElementById('cfg-ldap-status');
+      if (badge) badge.textContent = action === 'disable' ? 'Disabled' : 'Enabled — domain logins work in the password form';
+      _signinResult('cfg-ldap-result', true, action === 'disable' ? 'Disabled' : 'Active Directory sign-in enabled');
+    } else _signinResult('cfg-ldap-result', false, (r.error || 'Failed') + (r.hint ? ' — ' + r.hint : ''));
+  } catch (e) { _signinResult('cfg-ldap-result', false, e.message); }
+}
+
 async function saveCallSettings() {
   const body = {
     stun_url: document.getElementById('cfg-stun-url').value.trim(),
@@ -5574,6 +5657,42 @@ function systemSettingsHtml() {
         <input type="url" id="cfg-screenconnect-url" value="${esc(s.screenconnect_url||'')}" placeholder="https://yourco.screenconnect.com — Remote button in calls">
       </div>
       <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Sign-in methods</div>
+      <p class="settings-notice">Local accounts always work. Add <strong>Microsoft 365</strong> so users sign in with their work account (run <code>setup-graph.ps1 -EnableLogin</code> first to prepare the Entra app), and/or <strong>Active Directory</strong> for on-prem domain usernames &amp; passwords (LDAP over TLS — <code>ldaps://</code> is required, plain <code>ldap://</code> is refused; read-only binds, nothing is written to the directory). Secrets are stored in the identity server, never in Depot's database.</p>
+      <div class="settings-grid">
+        <label>Microsoft 365</label>
+        <div id="cfg-ms365-status">${s.login_ms365_enabled==='true'?'Enabled — button shown on the login card':'Disabled'}</div>
+        <label>Entra tenant ID</label>
+        <input type="text" id="cfg-ms365-tenant" value="${esc(s.login_ms365_tenant_id||'')}" placeholder="00000000-0000-0000-0000-000000000000">
+        <label>Application (client) ID</label>
+        <input type="text" id="cfg-ms365-client" value="${esc(s.login_ms365_client_id||'')}" placeholder="the Depot app registration in the customer tenant">
+        <label>Login client secret</label>
+        <input type="password" id="cfg-ms365-secret" autocomplete="new-password" placeholder="printed by setup-graph.ps1 -EnableLogin — blank = keep current">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <button class="ghost-btn" onclick="saveMs365Login(true)">Enable / update</button>
+        <button class="ghost-btn" onclick="saveMs365Login(false)">Disable</button>
+        <span class="setup-result" id="cfg-ms365-result"></span>
+      </div>
+      <div class="settings-grid" style="margin-top:12px">
+        <label>Active Directory</label>
+        <div id="cfg-ldap-status">${s.login_ldap_enabled==='true'?'Enabled — domain logins work in the password form':'Disabled'}</div>
+        <label>LDAP connection URL</label>
+        <input type="text" id="cfg-ldap-url" value="${esc(s.login_ldap_url||'')}" placeholder="ldaps://dc1.corp.local:636">
+        <label>Bind DN</label>
+        <input type="text" id="cfg-ldap-bind" value="${esc(s.login_ldap_bind_dn||'')}" placeholder="CN=svc-depot,OU=Service Accounts,DC=corp,DC=local">
+        <label>Bind credential</label>
+        <input type="password" id="cfg-ldap-cred" autocomplete="new-password" placeholder="service-account password — blank = keep current">
+        <label>Users DN</label>
+        <input type="text" id="cfg-ldap-users" value="${esc(s.login_ldap_users_dn||'')}" placeholder="OU=Staff,DC=corp,DC=local">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <button class="ghost-btn" onclick="testLdapLogin()">Test</button>
+        <button class="ghost-btn" onclick="saveLdapLogin('enable')">Enable / update</button>
+        <button class="ghost-btn" onclick="saveLdapLogin('disable')">Disable</button>
+        <span class="setup-result" id="cfg-ldap-result"></span>
+      </div>
 
       <div class="settings-sub" style="margin-top:20px">Calls (video / audio)</div>
       <p class="settings-notice">STUN is free and covers most networks; add a TURN relay for members behind strict/corporate NATs. Leave STUN blank to use a public default. Comma-separate multiple URLs.</p>

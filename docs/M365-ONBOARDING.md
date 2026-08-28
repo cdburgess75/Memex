@@ -9,9 +9,13 @@ deployment means one compromised box endangers every tenant that consented.
 > where the RBAC-for-Applications step below was discovered the hard way — do
 > not skip it.
 
-What this enables, both optional:
+What this enables, each optional:
 - **Outbound mail** (share notifications, meeting invites) via `Mail.Send`.
 - **The SharePoint connector** (Settings → Connections) via `Sites.Selected`.
+- **Microsoft 365 sign-in** (users log into Depot with their work account) via
+  Keycloak OIDC brokering — see step 4. The other sign-in methods are local
+  accounts (always on) and on-prem **Active Directory** (LDAP federation,
+  configured in Depot → Settings → Sign-in methods; no Entra work needed).
 
 ## 0. Before the session (ParaTech side)
 
@@ -112,7 +116,38 @@ private key out of the database — and therefore out of every backup dump.
 For the SharePoint connector: Settings → Connections → New → SharePoint, same
 tenant/client/cert values, site URL = a granted site.
 
-## 4. Verify
+## 4. Microsoft 365 sign-in (optional)
+
+One flag on the fleet script prepares the same app registration for user login
+(broker redirect URI, delegated `openid profile email` scopes with admin
+consent, and a `depot-login` client secret — the certificate stays app-only):
+
+```powershell
+pwsh bin/setup-graph.ps1 -DisplayName "Depot (<Customer>)" -CertPath <cert.cer> `
+  -EnableLogin -AppUrl https://depot.customer.com
+```
+
+It prints the login client secret **once** plus its expiry. Then in Depot →
+**Settings → Sign-in methods → Microsoft 365**: paste tenant ID, client ID, and
+the secret → **Enable**. Depot provisions the Keycloak identity provider itself;
+no Keycloak console work. Record `m365.login.secret_expires` in the customer
+manifest — the quarterly review checks it, and `-RotateLoginSecret` mints a
+replacement.
+
+The "Sign in with Microsoft 365" button only appears on the login card once
+this is enabled, so an unconfigured deployment never shows a dead button.
+
+Two operational notes:
+- **Disable is forward-looking only**: turning M365 sign-in off blocks new
+  sign-ins, but users who already signed in keep their imported Keycloak
+  account (and any live session until it expires) plus their Depot role. To
+  fully revoke someone, remove the user in the Keycloak admin console.
+- **Active Directory** (the third sign-in method) is configured entirely in
+  Depot → Settings → Sign-in methods — no Entra work. It requires `ldaps://`
+  (LDAP over TLS); plain `ldap://` is refused because simple binds would carry
+  user passwords in cleartext between the box and the domain controller.
+
+## 5. Verify
 
 - Setup Wizard → Integrations → **Send test email** (or `POST /api/setup/test/email`).
   - `403 … [RAOP] : Blocked by tenant configured AppOnly AccessPolicy settings`
@@ -122,7 +157,10 @@ tenant/client/cert values, site URL = a granted site.
 - Fleet manifest updated: `m365.tenant_id`, `app_id`, `cert_thumbprint`,
   `cert_expires`, `sites_selected`, `mail_sender`.
 
-## 5. Lifecycle
+- Sign-in: log out → the **Sign in with Microsoft 365** button appears → a work
+  account signs in and lands as a new (or linked) Depot user.
+
+## 6. Lifecycle
 
 - Certificates last 730 days; `cert_expires` in each manifest is checked at the
   quarterly fleet review. Renewal = new `make-graph-cert.sh` run, upload the new
