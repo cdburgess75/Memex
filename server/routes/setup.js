@@ -82,6 +82,9 @@ router.get('/status', auth, async (req, res) => {
 router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req, res) => {
   try {
     await settings.set('brand_name', trimmedOrNull(req.body.orgName), req.user.id);
+    // Keycloak hosts the sign-in page — keep its heading on the workspace brand.
+    // Best-effort: branding must save even if the identity server is unreachable.
+    try { await kcAdmin.setRealmDisplayName(req.body.orgName); } catch { /* non-fatal */ }
     await settings.set('tenant_id', trimmedOrNull(req.body.tenantId), req.user.id);
     await settings.set('tenant_contact_email', trimmedOrNull(req.body.contactEmail), req.user.id);
     // Branding: accent set when provided; logo set on a data URI, removed on '' (empty),

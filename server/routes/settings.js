@@ -125,6 +125,11 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
         continue;
       }
       await settings.set(key, value === '' ? null : value, req.user.id);
+      // The sign-in page is served by Keycloak; mirror the brand there so it
+      // never shows an internal name. Best-effort — see routes/setup.js.
+      if (key === 'brand_name') {
+        try { await require('../lib/keycloakAdmin').setRealmDisplayName(value); } catch { /* non-fatal */ }
+      }
       changed.push(key);
     }
     await settings.refresh();

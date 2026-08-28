@@ -44,6 +44,21 @@ async function kc(token, method, path, body) {
   });
 }
 
+/* ---------- Realm branding ---------- */
+
+// Keycloak hosts the sign-in page, so its realm display name is the heading a
+// customer's staff read while authenticating. Keep it equal to the workspace
+// brand so that page never shows an internal name. The realm's *identifier*
+// stays fixed — it appears in the broker redirect URI registered with Entra
+// and in every token issuer, so renaming it would break live logins.
+async function setRealmDisplayName(name) {
+  const display = String(name || '').trim() || 'Depot';
+  const token = await adminToken();
+  const r = await kc(token, 'PUT', '', { realm: realmName(), displayName: display });
+  if (!r.ok) throw new Error(`Keycloak realm display-name update failed (${r.status}).`);
+  return { displayName: display };
+}
+
 /* ---------- Microsoft 365 sign-in (OIDC identity provider) ---------- */
 
 function msIdpRepresentation({ tenantId, clientId, clientSecret }) {
@@ -198,6 +213,7 @@ async function testLdap({ connectionUrl, bindDn, bindCredential }) {
 
 module.exports = {
   adminToken,
+  setRealmDisplayName,
   ensureMicrosoftIdp,
   removeMicrosoftIdp,
   ensureLdapFederation,

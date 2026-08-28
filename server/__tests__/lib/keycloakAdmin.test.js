@@ -47,6 +47,26 @@ describe('adminToken', () => {
   });
 });
 
+describe('setRealmDisplayName', () => {
+  test('updates the realm heading shown on the hosted sign-in page', async () => {
+    mockFetch([tokenResponse, { status: 204 }]);
+    const r = await kcAdmin.setRealmDisplayName('Acme Legal');
+    expect(r.displayName).toBe('Acme Legal');
+    expect(calls[1].method).toBe('PUT');
+    expect(calls[1].url).toBe('http://keycloak:8080/admin/realms/memex');
+    const body = JSON.parse(calls[1].body);
+    expect(body.displayName).toBe('Acme Legal');
+    expect(body.realm).toBe('memex');   // identifier unchanged — it is in the token issuer
+  });
+
+  test('a blank brand falls back to the product name, never an internal one', async () => {
+    mockFetch([tokenResponse, { status: 204 }]);
+    const r = await kcAdmin.setRealmDisplayName('   ');
+    expect(r.displayName).toBe('Depot');
+    expect(JSON.parse(calls[1].body).displayName).toBe('Depot');
+  });
+});
+
 describe('ensureMicrosoftIdp', () => {
   test('creates a single-tenant OIDC provider with alias "microsoft"', async () => {
     mockFetch([tokenResponse, { status: 404 }, { status: 201 }]);
