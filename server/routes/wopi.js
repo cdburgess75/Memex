@@ -8,6 +8,7 @@ const { extractText } = require('../lib/textExtraction');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const auditLog = require('../lib/auditLog');
+const docFollows = require('../lib/docFollows');
 const { pruneOldVersions } = require('../lib/documentVersions');
 
 function validateFileToken(req, res) {
@@ -145,6 +146,15 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
         actorEmail: entry.userEmail,
       }).catch(() => {});
     }
+    // Also notify anyone FOLLOWING this file (the file bell), minus the editor.
+    // Same 30-min dedupe so autosave storms don't spam followers.
+    docFollows.followersOf(doc.id, entry.userEmail).then((followers) => {
+      for (const to of followers) {
+        if (doc.uploaded_by_email && to.toLowerCase() === doc.uploaded_by_email.toLowerCase()) continue; // owner already notified
+        notifications.create({ userEmail: to, type: 'document_edited', title: `A file you follow was edited: ${doc.name}`, body: `"${doc.name}"`, refType: 'document', refId: doc.id, dedupeMinutes: 30 }).catch(() => {});
+        emailEvents.send('document_edited', { to, subject: `A file you follow was edited: ${doc.name}`, text: `${entry.userEmail} edited "${doc.name}" in Depot.` }).catch(() => {});
+      }
+    }).catch(() => {});
     res.status(200).end();
   } catch (e) {
     res.status(500).json({ error: e.message });

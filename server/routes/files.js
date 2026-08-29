@@ -23,7 +23,8 @@ const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const { zipStream } = require('../lib/zip');
 const externalUpload = require('../lib/externalUpload');
-const folderWatchers = require('../lib/folderWatchers');
+const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
+const docFollows = require('../lib/docFollows');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -980,6 +981,14 @@ router.get('/share/:token', async (req, res) => {
         text: `"${share.name}" was just downloaded via ${via}.`,
       }).catch(() => {});
     }
+    // Also notify anyone FOLLOWING this file (the file bell) — minus the owner,
+    // who was just notified above. Best-effort.
+    docFollows.followersOf(share.document_id, share.created_by_email).then((followers) => {
+      for (const to of followers) {
+        notifications.create({ userEmail: to, type: 'share_downloaded', title: `A file you follow was downloaded: ${share.name}`, body: `"${share.name}"`, refType: 'document', refId: share.document_id, dedupeMinutes: 2 }).catch(() => {});
+        emailEvents.send('share_downloaded', { to, subject: `A file you follow was downloaded: ${share.name}`, text: `"${share.name}" was just downloaded.` }).catch(() => {});
+      }
+    }).catch(() => {});
     // Stream the file to the client instead of buffering it in memory (this is a
     // public endpoint, so buffering a large shared file would be a remote OOM vector).
     const { stream, length } = await storage.downloadStream(share.storage_path);
@@ -1108,22 +1117,57 @@ router.get('/search', auth, async (req, res) => {
   }
 });
 
-// GET /api/files/watch?library_id=&folder_path= — is the current user following
-// uploads into this place? Literal path, defined before any '/:id' route.
+// Is the current user the owner of this library? (Owner is notified by default.)
+async function isLibraryOwner(libraryId, email) {
+  try { const lib = await libraries.info(libraryId); return !!(lib && lib.created_by_email && lib.created_by_email.toLowerCase() === String(email || '').toLowerCase()); }
+  catch { return false; }
+}
+
+// GET /api/files/watch?library_id=&folder_path= — am I notified of new files
+// here? Default: owner ON, member OFF; an explicit pref overrides. Literal path,
+// before any '/:id' route.
 router.get('/watch', auth, async (req, res) => {
   try {
-    const on = await folderWatchers.isWatching(req.query.library_id || null, req.query.folder_path || '', req.user.email);
-    res.json({ watching: on });
+    const library = req.query.library_id || null;
+    const pref = await folderNotifyPrefs.prefForUser(library, req.query.folder_path || '', req.user.email);
+    const notify = pref !== null ? pref : await isLibraryOwner(library, req.user.email);
+    res.json({ notify });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// POST /api/files/watch { library_id, folder_path, watch } — follow/unfollow so
-// this user is notified (in-app + email) when files land here or in a subfolder.
+// POST /api/files/watch { library_id, folder_path, notify } — set my explicit
+// choice for this folder (and its subfolders), either direction.
 router.post('/watch', auth, async (req, res) => {
   try {
-    const on = req.body.watch !== false;
-    if (on) await folderWatchers.watch(req.body.library_id || null, req.body.folder_path || '', req.user.email);
-    else await folderWatchers.unwatch(req.body.library_id || null, req.body.folder_path || '', req.user.email);
-    res.json({ watching: on });
+    const notify = req.body.notify !== false;
+    await folderNotifyPrefs.setPref(req.body.library_id || null, req.body.folder_path || '', req.user.email, notify);
+    res.json({ notify });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// GET /api/files/follows — doc ids the current user follows (for the file bells).
+router.get('/follows', auth, async (req, res) => {
+  try { res.json({ ids: await docFollows.followedIds(req.user.email) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/files/watch/state?library_id= — everything the inline bells need for
+// one library in a single call: whether I'm the owner (the folder default) and
+// my explicit folder prefs.
+router.get('/watch/state', auth, async (req, res) => {
+  try {
+    const library = req.query.library_id || null;
+    const isOwner = await isLibraryOwner(library, req.user.email);
+    const prefs = await folderNotifyPrefs.listUserPrefs(library, req.user.email);
+    res.json({ isOwner, prefs });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/:id/follow { follow } — follow/unfollow this file for activity.
+router.post('/:id/follow', auth, async (req, res) => {
+  try {
+    const on = req.body.follow !== false;
+    if (on) await docFollows.follow(req.params.id, req.user.email);
+    else await docFollows.unfollow(req.params.id, req.user.email);
+    res.json({ following: on });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
