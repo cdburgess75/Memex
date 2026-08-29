@@ -37,12 +37,30 @@ const DOCUMENT_COLUMNS = `
   restored_at, restored_by, restored_by_email
 `;
 
-// Uploads accept any file type. Downloads are always served as attachments
-// (Content-Disposition: attachment), so arbitrary content can't execute in our
-// origin. Add extensions here to block specific types if a deployment needs to.
-// Text extraction (for AI indexing) runs best-effort on known formats and is a
-// no-op for others — binary/unknown types are simply stored without indexing.
-const BLOCKED_FILE_EXTS = [];
+// Uploads are gated by an extension blocklist so the workspace can't become a
+// malware-distribution vector. The default refuses common executables; an admin
+// can override the list in Settings (system_settings.blocked_file_exts, empty =
+// restore this default). Downloads are always served as attachments, so stored
+// content still can't execute in our origin. Text extraction (for AI indexing)
+// is best-effort and a no-op for unknown types.
+const DEFAULT_BLOCKED_EXTS = [
+  '.exe', '.dll', '.com', '.scr', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.js',
+  '.jar', '.jse', '.wsf', '.wsh', '.hta', '.cpl', '.msc', '.pif', '.reg', '.sh',
+];
+// Normalize a raw "exe, .bat  vbs" list into ['.exe', '.bat', '.vbs'].
+function normalizeExtList(raw) {
+  return String(raw || '')
+    .split(/[\s,]+/).map(s => s.trim().toLowerCase()).filter(Boolean)
+    .map(s => (s.startsWith('.') ? s : `.${s}`));
+}
+// The effective blocklist: the admin override if set, else the built-in default.
+async function blockedExts() {
+  const raw = await settings.getOrEnv('blocked_file_exts');
+  return raw ? normalizeExtList(raw) : DEFAULT_BLOCKED_EXTS;
+}
+async function isFileTypeAllowed(name) {
+  return !(await blockedExts()).includes(fileExt(name));
+}
 const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
 let uploadSessionsEnsured = false;
@@ -62,9 +80,6 @@ function fileExt(name) {
   return ext;
 }
 
-function isAllowedFile(name) {
-  return !BLOCKED_FILE_EXTS.includes(fileExt(name));
-}
 
 function fileSizeLabelForEvent(size) {
   const n = Number(size || 0);
@@ -94,16 +109,23 @@ const MULTER_MEMORY_MB = 256;
 const TEXT_EXTRACTION_MAX_BYTES = 25 * 1024 * 1024;
 
 let _uploadMb = 0;
+let _uploadBlockedKey = null;
 let _uploadMw = null;
 async function getUpload() {
   const mb = Math.min(await maxUploadMb(), MULTER_MEMORY_MB);
-  if (mb !== _uploadMb || !_uploadMw) {
+  // multer's fileFilter is synchronous, so resolve the (async, settings-backed)
+  // blocklist here and close over it; rebuild the middleware when either the size
+  // limit or the blocklist changes.
+  const blocked = await blockedExts();
+  const blockedKey = blocked.join(',');
+  if (mb !== _uploadMb || blockedKey !== _uploadBlockedKey || !_uploadMw) {
     _uploadMb = mb;
+    _uploadBlockedKey = blockedKey;
     _uploadMw = multer({
       storage: multer.memoryStorage(),
       limits: { fileSize: mb * 1024 * 1024 },
       fileFilter(_req, file, cb) {
-        cb(null, isAllowedFile(file.originalname));
+        cb(null, !blocked.includes(fileExt(file.originalname)));
       }
     }).single('file');
   }
@@ -1287,7 +1309,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   const path = require('path');
   const rawName = req.query.displayName || req.headers['x-file-name'];
   const displayName = cleanDisplayName(rawName) || 'upload';
-  if (!isAllowedFile(displayName)) return res.status(415).json({ error: 'File type not allowed' });
+  if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
 
   const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `documents/${Date.now()}-${sanitizedName}`;
@@ -1354,7 +1376,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
 router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, res) => {
   await ensureUploadSessionsTable();
   const displayName = cleanDisplayName(req.body.displayName || req.body.name) || 'upload';
-  if (!isAllowedFile(displayName)) return res.status(415).json({ error: 'File type not allowed' });
+  if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
 
   const size = Number.parseInt(req.body.size || '0', 10);
   // Require a real (>0) size: it caps total_chunks and keeps the per-chunk size check

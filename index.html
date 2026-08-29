@@ -2734,7 +2734,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
-    <div class="mast-icon-wrap"><button class="mast-icon-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button><div class="meet-panel" id="meet-panel"></div></div>
+    <div class="mast-icon-wrap"><button class="mast-icon-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button><div class="meet-panel" id="meet-panel" onclick="event.stopPropagation()"></div></div>
     <div class="mast-icon-wrap"><button class="mast-icon-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button><div class="notif-panel" id="notif-panel"></div></div>
     <button class="mast-icon-btn" type="button" onclick="openSettings()" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <button class="mast-icon-btn" id="theme-btn" type="button" onclick="event.stopPropagation();toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme"><span id="theme-btn-icon"></span></button>
@@ -4977,6 +4977,7 @@ async function saveNetworkSettings() {
     max_upload_mb: document.getElementById('cfg-max-upload-mb').value,
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
+    blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
   };
   try {
     await apiPut('/admin/settings', body);
@@ -5861,6 +5862,8 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-max-upload-files" value="${esc(s.max_upload_files||'4096')}" min="1" max="1000000" step="1">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
+        <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; leave empty for the default executable blocklist)</span></label>
+        <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder=".exe .dll .com .scr .msi .bat .cmd .ps1 .vbs .js .jar … (default)">
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
