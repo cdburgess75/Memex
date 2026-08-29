@@ -1860,6 +1860,17 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
 .file-library-icon-btn.file-bell-btn.on { color: var(--accent); }
+/* Card grid view */
+.file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 6px 2px 12px; }
+.file-card { position: relative; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 15px 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; transition: border-color .12s, box-shadow .12s, transform .12s; }
+.file-card:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(0,0,0,.07); transform: translateY(-2px); }
+.file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.file-card-icon { height: 58px; display: grid; place-items: center; }
+.file-card-icon svg { height: 100%; width: auto; display: block; }
+.file-card-name { font-weight: 600; font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-card-sub { font-size: 11px; color: var(--ink-faint); }
+.file-card-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 1px; }
+.file-card-actions .file-library-icon-btn { min-width: 26px; height: 26px; color: var(--ink-faint); }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -6311,7 +6322,7 @@ function fileBreadcrumbHtml() {
   return `<div class="file-library-breadcrumb">${crumbs.join('')}<button class="file-breadcrumb-toggle" type="button" title="Hide path" aria-label="Hide path" onclick="toggleBreadcrumbPath()">${EYE_OFF_SVG}</button></div>`;
 }
 function fileLayoutToggleHtml() {
-  return `<span class="file-layout-toggle" role="group" aria-label="File layout"><button class="${fileLayoutMode === 'list' ? 'active' : ''}" onclick="setFileLayoutMode('list')">List</button><button class="${fileLayoutMode === 'commander' ? 'active' : ''}" onclick="setFileLayoutMode('commander')">Commander</button></span>`;
+  return `<span class="file-layout-toggle" role="group" aria-label="File layout"><button class="${fileLayoutMode === 'list' ? 'active' : ''}" onclick="setFileLayoutMode('list')">List</button><button class="${fileLayoutMode === 'grid' ? 'active' : ''}" onclick="setFileLayoutMode('grid')">Grid</button><button class="${fileLayoutMode === 'commander' ? 'active' : ''}" onclick="setFileLayoutMode('commander')">Commander</button></span>`;
 }
 function fileDensityToggleHtml() {
   const compact = fileDensity === 'compact';
@@ -6328,7 +6339,7 @@ function setFileDensity(mode) {
   renderDocumentLibraryList(); // refresh the toggle's own label/state
 }
 function setFileLayoutMode(mode) {
-  fileLayoutMode = mode === 'commander' ? 'commander' : 'list';
+  fileLayoutMode = ['commander', 'grid', 'list'].includes(mode) ? mode : 'list';
   localStorage.setItem('memex_file_layout_v2', fileLayoutMode);
   renderDocumentLibraryList();
 }
@@ -7355,6 +7366,38 @@ async function loadFiles() {
 // breadcrumb, rail folder tree, and command bar — none of which change when the
 // user types in the search box. Search uses it so each keystroke does O(rows) work
 // instead of rebuilding the entire file-home chrome + folder tree every time.
+// A colorful folder icon for the card grid (matches the file-icon family).
+function folderIconSvg(px) {
+  px = px || 46; const h = Math.round(px * 40 / 32);
+  return `<svg width="${px}" height="${h}" viewBox="0 0 32 40" aria-hidden="true">`
+    + `<path d="M4 11.5a2 2 0 0 1 2-2h6.3a2 2 0 0 1 1.4.6l1.7 1.7a2 2 0 0 0 1.4.6H26a2 2 0 0 1 2 2v1.2H4z" fill="#C79A22"/>`
+    + `<path d="M4.4 14.5h23.2a1.6 1.6 0 0 1 1.6 1.8l-1 10.4a2 2 0 0 1-2 1.8H5.8a2 2 0 0 1-2-1.8l-1-10.4a1.6 1.6 0 0 1 1.6-1.8z" fill="#E3B341"/></svg>`;
+}
+function fileCardHtml(f) {
+  const fid = esc(String(f.id));
+  const sel = selectedFileIds.has(String(f.id));
+  const name = fileDisplayName(f);
+  const following = followedFileIds.has(String(f.id));
+  return `<div class="file-card${sel ? ' selected' : ''}" data-fid="${fid}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">`
+    + `<div class="file-card-actions">`
+    + `<button class="file-library-icon-btn file-bell-btn${following ? ' on' : ''}" title="${following ? 'Following — click to stop' : 'Follow this file'}" data-fid="${fid}" onclick="event.stopPropagation();toggleFileFollow(this.dataset.fid, this)">${following ? ICON_BELL : ICON_BELL_OFF}</button>`
+    + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div>`
+    + `<div class="file-card-icon">${fileIconSvg(fileExt(name), 46)}</div>`
+    + `<div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
+    + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)}</div></div>`;
+}
+function folderCardHtml(folder) {
+  const on = folderBellOn(folder.path);
+  const p = esc(folder.path);
+  return `<div class="file-card file-card--folder" data-folder="${p}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)">`
+    + `<div class="file-card-actions">`
+    + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+    + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div>`
+    + `<div class="file-card-icon">${folderIconSvg(46)}</div>`
+    + `<div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
+    + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div>`;
+}
+
 function renderDocumentLibraryList(opts = {}) {
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
@@ -7387,7 +7430,9 @@ function renderDocumentLibraryList(opts = {}) {
     ? (q
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
         : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.'))
-    : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
+    : fileLayoutMode === 'grid'
+      ? `<div class="file-card-grid">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`
+      : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
   // The folder tree now lives in the rail, so the main pane is always the flat
   // list (folders + files) for the current folder.
   el.innerHTML = inner;
