@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: memex
       POSTGRES_USER: memex
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -24,9 +24,9 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: memex
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
     volumes:
@@ -46,7 +46,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://memex:${POSTGRES_PASSWORD:-changeme}@postgres:5432/memex
+      DATABASE_URL: postgres://memex:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/memex
       # KEYCLOAK_URL is the browser-visible URL (used in /api/config for the frontend PKCE flow)
       KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
       KEYCLOAK_PUBLIC_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
@@ -139,7 +139,7 @@ services:
       # set COLLABORA_SSL_TERMINATION=true when Memex is behind HTTPS (go-live).
       extra_params: "--o:ssl.enable=false --o:ssl.termination=${COLLABORA_SSL_TERMINATION:-false}"
       username: ${COLLABORA_ADMIN_USER:-admin}
-      password: ${COLLABORA_ADMIN_PASSWORD:-changeme}
+      password: ${COLLABORA_ADMIN_PASSWORD:?set COLLABORA_ADMIN_PASSWORD in .env}
     ports:
       # The app reaches Collabora over the internal network (COLLABORA_INTERNAL_URL)
       # and proxies the editor same-origin, so the host port is only for optional
