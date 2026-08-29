@@ -1,157 +1,109 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
+
+**Depot** (package name `memex`) is a self-hosted document workspace sold commercially to small businesses: a file library with folders, sharing, in-browser Office editing, external storage connectors, A/V meetings, notifications, an AI assistant, and a compliance/admin surface. It is deployed as a Docker stack (app + Postgres + Keycloak + Collabora, fronted by Caddy) onto customer boxes.
 
 ## Commands
 
 ```bash
-# Install dependencies
-cd server && npm install
-
-# Run the server (requires .env — copy from .env.example)
-node server/index.js
-
-# Run with auto-restart on file changes
-cd server && npm run dev
+cd server && npm install     # install backend deps
+cd server && npm start       # run the server (node index.js) — needs ../. env
+cd server && npm run dev      # run with --watch auto-restart
+cd server && npm test         # jest + supertest (55 suites under server/__tests__/)
+node --check server/routes/<file>.js   # syntax-check a route after editing
 ```
 
-There are no tests yet (tracked in GitHub issue #1 and related). There is no build step — the frontend is a single static HTML file served directly by Express.
+There **is** a test suite — `server/__tests__/` (lib / middleware / routes / integration), run with `npm test`. Don't assume "no tests."
+
+## Hard constraints (read before editing)
+
+- **No build step.** `index.html` is a single ~9,500-line static file served directly by Express — one `<style>` and one ~6,700-line `<script>`, plain globals + functions, no framework, no bundler. This is a deliberate, locked decision. After editing the script, parse-check it: extract the largest `<script>` block and run `new Function(block)`.
+- **Releasing bumps `VERSION`.** Cut releases with `./release.sh` (writes `VERSION`, commits, tags `vYYYY.MM.DD.NNN`, pushes → GitHub Actions publishes a pinned GHCR image). The deploy path (`upgrade.sh` / the box's `ring-update.sh`) is version-gated, so the tag and `VERSION` must match.
+- **Escaping.** User-controlled strings go through `esc()` (text/attribute) in `index.html`. `esc()`/`escAttr()` are correct for HTML text and attribute contexts, but **do NOT** protect a value interpolated into an inline `onclick="fn('...')"` JS-string — use `data-*` attributes read via `this.dataset.*` for dynamic handler args.
+- **Secrets never enter the public repo.** `.env`, `secrets/`, `keys/` (except the public license key), and the license signing key stay out of git.
 
 ## Architecture
 
 ```
-Browser (index.html)          — single-file SPA, no framework, no build tool
-    │  Supabase JS SDK        — handles Google / Microsoft SSO and JWT issuance
-    │  Fetch API              — all data calls go through the Node server
-    ▼
-Node.js / Express  (server/)
-    ├─ /api/config            — public: returns SUPABASE_URL + SUPABASE_ANON_KEY
-    ├─ /api/auth/me           — returns current user id, email, role, name
-    ├─ /api/pages             — page CRUD + full-text search + version history
-    ├─ /api/ai                — Anthropic API proxy (ingest · query · lint · extract)
-    ├─ /api/files             — document upload, signed URLs, Office Online, Google Drive
-    ├─ /api/log               — activity log reads
-    ├─ /api/admin             — stats, user list, role management, usage/cost dashboard
-    └─ /wopi                  — WOPI protocol for Office Online in-browser editing
-    │
-    └─ Supabase (Postgres + Auth + Storage)
-           pages, activity_log, user_roles, page_versions, api_usage, documents
+Browser — index.html (single-file SPA, OIDC Code+PKCE against Keycloak, all data via fetch)
+   │  access/refresh tokens in localStorage; getToken() silently refreshes
+   ▼
+Node/Express — server/
+   ├─ index.js            composition root (~350 lines): CORS, rate limits, security
+   │                      headers, Collabora proxy, migrations-before-listen, /healthz
+   ├─ routes/  (18 routers) auth, files (+ share/folder-share/upload/upload-stream/
+   │                      uploads sub-routers), ai, log, security, admin, admin/settings,
+   │                      notifications, preferences, libraries, version, license, setup,
+   │                      meetings, backup, connectors, csp-report
+   ├─ lib/     (~44 modules) db, settings, storage, migrations, auditLog, wopiTokens,
+   │                      documentAccess, connectors/, aiProviders, emailEvents, …
+   └─ middleware/         auth.js (JWKS verify + role auto-provision), requireRole.js
+        │
+        ├─ Postgres (via pg)   documents, folders, shares, libraries, user_roles,
+        │                      system_settings, notifications, audit log, …
+        ├─ Keycloak (OIDC)     identity + SSO (Google / Microsoft / LDAP via Keycloak)
+        └─ Collabora (WOPI)    in-browser Office editing, same-origin proxied
 ```
+
+`routes/files.js` is the large one (~3,000 lines, 64 routes) spanning documents, shares, chunked/encrypted uploads, folders, Collabora discovery, and the AI "ask." Treat it as the highest-churn file.
 
 ### Auth flow
 
-The app uses Keycloak for identity. The browser performs a standard OIDC Authorization Code + PKCE flow entirely client-side — no server-side callback needed.
+Standard OIDC **Authorization Code + PKCE**, entirely client-side — no server callback.
 
-**Browser login flow:**
-1. `signIn(provider)` generates a PKCE code verifier + challenge, stores them in `sessionStorage`, and redirects to Keycloak with `kc_idp_hint=google|microsoft`
-2. Keycloak handles the IdP login and redirects back to `window.location.origin?code=...`
-3. `handleOAuthCallback()` exchanges the code for tokens at Keycloak's `/token` endpoint
-4. Access token + refresh token are stored in `localStorage`; token expiry is tracked in `memex_token_exp`
-5. `getToken()` returns the current access token, silently refreshing via the refresh token when near expiry
+1. `signIn(provider)` builds a PKCE verifier/challenge, stores them in `sessionStorage`, redirects to Keycloak (`kc_idp_hint=…` for a specific IdP).
+2. Keycloak authenticates and redirects back to `origin?code=…`.
+3. `handleOAuthCallback()` exchanges the code at Keycloak's `/token`; access + refresh tokens go to `localStorage` (`memex_access_token`, `memex_refresh_token`, expiry in `memex_token_exp`).
+4. `getToken()` returns the access token, silently refreshing near expiry.
 
-**Server auth middleware** (`server/middleware/auth.js`):
-1. Extracts the Bearer JWT from `Authorization` header
-2. Fetches Keycloak's public key from the JWKS endpoint (cached 10 min), verifies JWT signature
-3. Extracts `sub` (user ID) and `email` from JWT claims
-4. Looks up `user_roles`; if absent, auto-assigns `admin` (if email is in `ADMIN_EMAILS`) or `contributor` via upsert
-5. Attaches `{ id, email, role, user_metadata }` to `req.user`
+Server side (`server/middleware/auth.js`): extract the Bearer JWT, verify RS256 against Keycloak's JWKS (public keys cached ~10 min), read `sub`/`email`, look up `user_roles` (auto-provisioning a role on first login with an audit entry), attach `{ id, email, role, … }` to `req.user`. Role gates use `requireRole('admin', 'contributor')`.
 
-Role enforcement uses `server/middleware/requireRole.js`, e.g. `requireRole('admin', 'contributor')`.
+`KEYCLOAK_URL` is the browser-visible URL (returned in `/api/config`); `KEYCLOAK_INTERNAL_URL` is the server→Keycloak URL for JWKS (defaults to `KEYCLOAK_URL`).
 
-**Key config**: `KEYCLOAK_URL` is the browser-visible URL (returned by `/api/config`). `KEYCLOAK_INTERNAL_URL` is the server-to-server URL for JWKS (defaults to `KEYCLOAK_URL` if not set — set separately in Docker so the container can reach Keycloak by service name).
+### Config & settings
 
-### AI operations
+`/api/config` (public, pre-auth) returns branding (`name`, `logo`, `accent`), Keycloak coords (`keycloakUrl`, `keycloakRealm`, `keycloakClientId`), and `version` — consumed by `initApp()` in `index.html`.
 
-All three AI operations live in `server/routes/ai.js`:
+`server/lib/settings.js` is the config source of truth: **DB-first** (the `system_settings` table: `key, value, updated_at, updated_by`) with an **env-var fallback** via `ENV_MAP`, behind a **30-second in-memory cache**. Use `settings.getOrEnv(key)`. A raw `UPDATE system_settings …` takes effect within the cache TTL, no restart. To make a setting admin-editable, add it to `ENV_MAP` — `routes/settings.js` exposes every `ENV_MAP` key through the admin GET/PUT (license-trust and updater keys are deliberately excluded so a customer admin can't forge entitlements or turn the updater into an RCE).
 
-- **Ingest** (`POST /api/ai/ingest`) — accepts `{ source?, url?, focus? }`. If `url` is provided, `fetchUrl()` strips HTML with cheerio and extracts the main text. Sends to Claude with a strict JSON-response prompt; the response is parsed and upserted into `pages`. Returns `{ summary, pages[] }`.
-- **Query** (`POST /api/ai/query`) — SSE streaming via `anthropic().messages.stream()`. Detects a `SAVE_AS: Title | category` sentinel at the end of the stream and auto-creates a page if present.
-- **Lint** (`POST /api/ai/lint`) — same SSE pattern, audits the full page context for contradictions, orphans, and gaps.
+### Frontend state (index.html)
 
-The model is set via `ANTHROPIC_MODEL` env var (default `claude-sonnet-4-6`). Token usage is recorded to `api_usage` after every non-streaming call.
+Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appConfig`, `filesList`, `librariesList`, `fileView`, `currentFolderPath`, `selectedFileIds` / `selectedFolderPaths` (Sets), `fileFilter`, plus localStorage-backed prefs (`memex_accent`, layout, pinned libraries). Views render by assigning `innerHTML` from template-literal builders; mutations call the matching `render*` function. The accent theme is computed at runtime by `applyAccent(hex)` (derives `--accent`/`--accent-soft`/`--accent-wash`/`--accent-ink` from the brand or device-override color).
 
-### Pages data model
+### Storage
 
-`pages.id` is a user-readable kebab-slug (e.g. `machine-learning-ops`), not a UUID. The AI generates these slugs. `PUT /api/pages/:id` is an upsert — it creates or updates by slug. Before updating, the old content is snapshotted to `page_versions`.
+`server/lib/storage.js` is a provider-agnostic layer selected by the `storage_provider` setting: **`local`** (default; `STORAGE_LOCAL_PATH`, works over NAS/NFS/iSCSI mounts) or **`s3`** (AWS/R2/B2/MinIO/Spaces via `@aws-sdk/client-s3`; `STORAGE_S3_ENDPOINT` + `STORAGE_S3_FORCE_PATH_STYLE` for non-AWS). Local files are encrypted at rest (GCM); changing `storage_encryption_key` is guarded server-side because it would orphan existing files. All file routes go through this layer.
 
-`[[Page Title]]` cross-links in markdown are rendered client-side by `renderMarkdown()` in `index.html` into `<a class="cross-link" data-page="...">` elements. Clicking calls `gotoTitle()`, which looks up the matching page by title in the local `state.pages` array.
+### Editing (Collabora, via WOPI)
 
-### Frontend state
+In-browser Office editing is **Collabora Online**, reached through a **same-origin proxy** (see `index.js` and the WOPI routes). `server/lib/wopiTokens.js` mints short-lived per-file access tokens + locks. The server refuses to derive the WOPI/Collabora host from the client `Host` header (SSRF guard).
 
-`index.html` is ~2600 lines of vanilla JS. Key globals:
-- `state.pages` — in-memory array of all pages, loaded once on login and updated on mutations
-- `state.activePage` — currently viewed page id
-- `currentUser` — `{ id, email, role, name }` from `/api/auth/me`
-- `_kc` — Keycloak config `{ url, realm, clientId }` fetched from `/api/config`
-- `ingestMode` — `'paste' | 'url' | 'file'`
-- `filesList` — documents loaded on Files tab open
-- `_streamController` — AbortController for cancelling SSE streams (Query / Lint)
-- `_ingestController` — AbortController for cancelling in-flight ingest fetches
+### AI
 
-Auth tokens are stored in `localStorage` under keys `memex_access_token`, `memex_refresh_token`, `memex_token_exp`. The `_hasValidToken()` helper checks expiry; `_refreshToken()` silently refreshes using the refresh token.
+`server/routes/ai.js`: `POST /query` (SSE streaming), `POST /extract`, `GET /models`, `POST /detect-models` (admin), `PUT /active` (admin — switches the workspace-wide model). Multi-provider via `server/lib/aiProviders.js` (Anthropic + OpenAI-compatible endpoints configured in `ai_endpoints`). Default model `claude-sonnet-4-6`; default catalog `claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5`.
 
-### File handling
+### Database & migrations
 
-`server/routes/files.js` handles two separate pipelines:
-1. **Direct upload** — multer stores file in memory → uploads via storage abstraction → inserts metadata row in `documents`
-2. **File ingest** — downloads file from storage → `extractText()` → runs the same Claude ingest prompt as `ai.js`
+Postgres via `pg`; all queries go through `server/lib/db.js` (`query`, `queryOne`, `withTransaction`) — **every query is parameterized**. Schema migrations are forward-only ordered `.sql` files in `server/migrations/`, applied once at startup and recorded in `schema_migrations` (`server/lib/migrations.js`); startup aborts if a migration fails. NOTE: several tables are still created by runtime `CREATE TABLE IF NOT EXISTS` (`ensure*Table`) helpers rather than migrations — prefer adding new schema as a migration.
 
-`extractText()` caps output at 100 KB to prevent memory issues on large files. Supported formats: `.docx` (mammoth), `.xlsx/.xls/.csv` (SheetJS), `.pdf` (pdf-parse), `.txt/.md` (raw buffer).
+## Deployment
 
-### Storage abstraction
+- `./release.sh [vYYYY.MM.DD.NNN]` — bump `VERSION`, commit, tag, push; the tag triggers the GHCR image build (main also gets `:latest`).
+- `./upgrade.sh <tag>` on a host, or the box's healthz-gated `ring-update.sh <tag>` (pre-flight → backup → pull → recreate → migrate → smoke → finalize).
+- `docker compose up` brings the full stack up locally (`install.sh` provisions a real deployment and generates strong secrets).
 
-`server/lib/storage.js` is a provider-agnostic layer selected by `STORAGE_PROVIDER` env var. All file routes use it — no direct Supabase storage calls anywhere in the codebase.
+## Environment variables (common)
 
-| Provider | `STORAGE_PROVIDER` value | Notes |
-|----------|--------------------------|-------|
-| Supabase Storage | `supabase` (default) | Uses existing bucket; best for small deployments |
-| Local filesystem | `local` | Set `STORAGE_LOCAL_PATH`; iSCSI/NAS/NFS mounts work transparently |
-| S3-compatible | `s3` | AWS S3, Cloudflare R2, Backblaze B2, MinIO, DigitalOcean Spaces |
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Postgres connection string |
+| `KEYCLOAK_URL` / `KEYCLOAK_INTERNAL_URL` | Browser-visible / server→JWKS Keycloak URLs |
+| `KEYCLOAK_REALM` / `KEYCLOAK_CLIENT_ID` | Default `memex` / `memex-app` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Shared key; model defaults to `claude-sonnet-4-6` |
+| `STORAGE_PROVIDER` | `local` (default) or `s3` (+ its `STORAGE_S3_*` / `STORAGE_LOCAL_PATH`) |
+| `STORAGE_ENCRYPTION_KEY` | At-rest encryption for local files (do not rotate casually) |
+| `APP_URL` | Public HTTPS origin |
+| `MAX_UPLOAD_MB` / `MAX_UPLOAD_FILES` / `BLOCKED_FILE_EXTS` | Upload limits + refused extensions (all admin-settable) |
 
-**Local provider**: Instead of signed URLs, generates short-lived tokens stored in-memory and serves files via `GET /api/files/local-download?token=...` (no auth middleware — the token is the credential, same model as signed URLs).
-
-**S3 provider**: Uses `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` (lazy-required). Set `STORAGE_S3_ENDPOINT` for non-AWS providers; set `STORAGE_S3_FORCE_PATH_STYLE=true` for MinIO.
-
-### WOPI (Office Online editing)
-
-`server/lib/wopiTokens.js` maintains two in-memory Maps: short-lived access tokens (1 hr) and file locks (30 min). Tokens are generated when the browser requests `/api/files/:id/office`, then passed to Microsoft's Office Online iframe as `access_token`. A `setInterval` cleans up expired entries every 15 minutes.
-
-This only works in production when `APP_URL` is set to a public HTTPS URL that Microsoft's servers can reach.
-
-### Database
-
-The app uses Postgres directly via `pg` (node-postgres). All queries go through `server/lib/db.js` which exposes `query(sql, params)` and `queryOne(sql, params)` helpers over a connection pool.
-
-**Standalone deployment** (recommended): Run `docker compose up` — Postgres + Keycloak + the app start together. The schema is auto-applied from `postgres/init/01_schema.sql` on first boot.
-
-**Manual setup**: Run `postgres/init/01_schema.sql` against any Postgres 14+ instance.
-
-**Schema migrations**: forward-only, ordered `.sql` files in `server/migrations/`, applied
-once at startup and recorded in `schema_migrations` (see `server/lib/migrations.js`). Add new
-schema changes there. (The dead Supabase-era `supabase/migrations/` directory — which described
-a different, wrong schema — was removed.)
-
-### Environment variables
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `DATABASE_URL` | Yes | Postgres connection string |
-| `KEYCLOAK_URL` | Yes | Browser-visible Keycloak URL (returned in `/api/config`) |
-| `KEYCLOAK_INTERNAL_URL` | No | Server-to-server JWKS URL; defaults to `KEYCLOAK_URL` |
-| `KEYCLOAK_REALM` | No | Defaults to `memex` |
-| `KEYCLOAK_CLIENT_ID` | No | Defaults to `memex-app` |
-| `ANTHROPIC_API_KEY` | Yes | Shared across all users |
-| `ANTHROPIC_MODEL` | No | Defaults to `claude-sonnet-4-6` |
-| `ADMIN_EMAILS` | No | Comma-separated; first-login auto-assignment |
-| `PORT` | No | Defaults to `3000` |
-| `APP_URL` | No | Public HTTPS URL; required for WOPI editing |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | No | Full JSON blob; required for Google Drive editing |
-| `GOOGLE_DRIVE_FOLDER_ID` | No | Target folder for Drive uploads |
-| `STORAGE_PROVIDER` | No | `supabase` (default), `local`, or `s3` |
-| `STORAGE_LOCAL_PATH` | If local | Absolute path on the host filesystem |
-| `STORAGE_S3_BUCKET` | If s3 | Bucket name |
-| `STORAGE_S3_REGION` | If s3 | Defaults to `us-east-1` |
-| `STORAGE_S3_ACCESS_KEY_ID` | If s3 | Access key |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | If s3 | Secret key |
-| `STORAGE_S3_ENDPOINT` | If s3 (non-AWS) | Custom endpoint URL |
-| `STORAGE_S3_FORCE_PATH_STYLE` | If s3 (MinIO) | Set `true` for path-style addressing |
+Most of these are also settable at runtime in Admin → Settings (they live in `ENV_MAP`); the env var is the fallback when no `system_settings` row exists.

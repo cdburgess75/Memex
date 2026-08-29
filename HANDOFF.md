@@ -1,5 +1,8 @@
 # Memex Complete Handoff
 
+> **Historical (as of 2026-06-17).** This snapshot predates the Caddy/TLS deployment and much of
+> the current stack. For current architecture, deployment, and conventions see **`CLAUDE.md`**.
+
 Last updated: 2026-06-17  
 Current deployed commit: `4c8f4c6 Profiles + tabbed settings hub + scoped search + AI-off`  
 Current branch: `claude/url-request-GwwHe` (pushed to origin)  
