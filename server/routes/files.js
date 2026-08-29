@@ -23,6 +23,7 @@ const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const { zipStream } = require('../lib/zip');
 const externalUpload = require('../lib/externalUpload');
+const folderWatchers = require('../lib/folderWatchers');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -628,7 +629,26 @@ async function ensureDocumentColumns() {
   _docColsEnsured = true;
 }
 
-async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId }) {
+// Fire an upload notification (owner + folder followers, summary-batched) for a
+// real member upload. Best-effort and never throws into the upload path.
+function recordUploadNotify(user, displayName, libraryId) {
+  try {
+    const full = String(displayName || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    const parts = full.split('/').filter(Boolean);
+    const base = parts.pop() || 'file';
+    // Bucket by the TOP folder (or the library root), so dropping one folder —
+    // however deep — collapses to a single "uploaded a folder (N files)" summary
+    // rather than one per subfolder.
+    const topFolder = parts.length ? parts[0] : null;
+    require('../lib/uploadNotify').record({
+      libraryId: libraryId || null, folderPath: topFolder || '',
+      uploaderEmail: user.email, uploaderName: user.name,
+      fileName: base, folderName: topFolder,
+    });
+  } catch (e) { console.error('uploadNotify record:', e.message); }
+}
+
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false }) {
   await ensureDocumentColumns();
   let canIngest = false;
   let documentText = null;
@@ -673,6 +693,9 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   await documentAccess.grantOwnerAdmin(doc.id, user);
   await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
   await logEvent(`upload · ${displayName}`, user.id, user.email);
+  // Notify the library owner + folder followers (summary-batched), on real user
+  // uploads only — not copies/migrations, which pass notifyUpload:false.
+  if (notifyUpload) recordUploadNotify(user, displayName, lib);
   return { doc, canIngest };
 }
 
@@ -1085,6 +1108,25 @@ router.get('/search', auth, async (req, res) => {
   }
 });
 
+// GET /api/files/watch?library_id=&folder_path= — is the current user following
+// uploads into this place? Literal path, defined before any '/:id' route.
+router.get('/watch', auth, async (req, res) => {
+  try {
+    const on = await folderWatchers.isWatching(req.query.library_id || null, req.query.folder_path || '', req.user.email);
+    res.json({ watching: on });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// POST /api/files/watch { library_id, folder_path, watch } — follow/unfollow so
+// this user is notified (in-app + email) when files land here or in a subfolder.
+router.post('/watch', auth, async (req, res) => {
+  try {
+    const on = req.body.watch !== false;
+    if (on) await folderWatchers.watch(req.body.library_id || null, req.body.folder_path || '', req.user.email);
+    else await folderWatchers.unwatch(req.body.library_id || null, req.body.folder_path || '', req.user.email);
+    res.json({ watching: on });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/files/upload
 router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, next) => getUpload().then(mw => mw(req, res, next)).catch(next), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file required' });
@@ -1117,13 +1159,15 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
       console.error('Text extraction failed (non-fatal):', e.message);
     }
 
+    const uploadLibraryId = await libraries.resolveLibraryId(req);
     const doc = await db.queryOne(
       `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, await libraries.resolveLibraryId(req)]
+      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
+    recordUploadNotify(req.user, displayName, uploadLibraryId);
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -1188,13 +1232,15 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
       }
     }
 
+    const uploadLibraryId = await libraries.resolveLibraryId(req);
     const doc = await db.queryOne(
       `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, await libraries.resolveLibraryId(req)]
+      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
+    recordUploadNotify(req.user, displayName, uploadLibraryId);
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
@@ -1352,7 +1398,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       storedSize,
       user: req.user,
       sourceDetail: 'resumable upload',
-      libraryId: await libraries.resolveLibraryId(req)
+      libraryId: await libraries.resolveLibraryId(req),
+      notifyUpload: true,
     });
 
     const updated = await db.queryOne(

@@ -116,4 +116,11 @@ async function resolveLibraryId(req) {
   return id || (await defaultLibraryId());
 }
 
-module.exports = { ensureLibraries, defaultLibraryId, listLibraries, createLibrary, resolveLibraryId, canAccessLibrary, listMembers, addMember, removeMember };
+// Owner + name for a library id (null id → no row). Used by upload notifications.
+async function info(libraryId) {
+  if (!libraryId) return null;
+  try { return await db.queryOne('SELECT id, name, created_by_email FROM libraries WHERE id = $1', [libraryId]); }
+  catch { return null; }
+}
+
+module.exports = { ensureLibraries, defaultLibraryId, listLibraries, createLibrary, resolveLibraryId, canAccessLibrary, listMembers, addMember, removeMember, info };
