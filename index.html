@@ -1876,9 +1876,12 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .home-h1 { font-size: 22px; font-weight: 800; margin: 4px 0 2px; letter-spacing: -.01em; }
 .home-lede { color: var(--ink-faint); font-size: 13px; margin: 0 0 20px; }
 .home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
-.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px; }
+.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .home-kpi-label { font-size: 12px; color: var(--ink-faint); font-weight: 600; }
-.home-kpi-value { font-size: 25px; font-weight: 800; margin-top: 8px; letter-spacing: -.01em; }
+.home-kpi-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 12px; color: var(--accent); }
+.home-kpi-value { font-size: 25px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
+.home-kpi-sub { font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+.home-act-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-size: 10px; font-weight: 700; flex: none; }
 .home-grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
 .home-grid2.single { grid-template-columns: 1fr; }
 .home-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 14px 16px; }
@@ -3929,7 +3932,7 @@ async function checkForUpdate(manual) {
   updateCtaRefresh(r);
   if (r.behind === 0) {
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
-    setUpdateNote(`Up to date — ${v}`, 'ok');
+    setUpdateNote('Up to date', 'ok'); // the pill already shows the version — don't repeat it
   } else if (r.behind != null && r.behind <= 10) {
     const msg = `${r.behind} release${r.behind === 1 ? '' : 's'} behind — latest ${r.latest}. Run ./upgrade.sh to update.`;
     el.className = 'security-indicator warning'; el.title = msg;
@@ -7370,11 +7373,20 @@ async function renderHome() {
   if (quick) quick.innerHTML = quickAccessHtml();
   try {
     const isAdmin = currentUser?.role === 'admin';
-    const [all, recentOpens] = await Promise.all([apiGet('/files').catch(() => []), apiGet('/files/recent').catch(() => [])]);
+    const [all, stats] = await Promise.all([
+      apiGet('/files').catch(() => []),
+      apiGet('/files/home-stats').catch(() => ({})),
+    ]);
     const files = (all || []).filter(f => !isFolderMarker(f));
     const totalSize = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
     const shared = files.filter(isSharedFile).length;
     const libs = (librariesList || []).length || 1;
+    const totalBytes = Number(stats.totalBytes) || 0;
+    // In quota mode the server sends no usedBytes (client fills workspace bytes);
+    // in disk mode it sends real disk-used.
+    const usedBytes = stats.usedBytes != null ? Number(stats.usedBytes) : totalSize;
+    const pct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
+    const uploads14 = stats.uploads14 || [];
     let activity = [];
     if (isAdmin) { try { activity = (await apiGet('/admin/activity?limit=8')).events || []; } catch { activity = []; } }
     const recentFiles = [...files].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
@@ -7382,18 +7394,24 @@ async function renderHome() {
     const name = String(currentUser?.name || currentUser?.email || 'there').split(/[\s@]/)[0];
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-    const kpi = (label, value) => `<div class="home-kpi"><div class="home-kpi-label">${label}</div><div class="home-kpi-value tnum">${value}</div></div>`;
+    const initialsOf = (s) => (s || '?').split(/[\s@._]+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?';
+    const kpi = (label, value, sub, viz) => `<div class="home-kpi"><div class="home-kpi-label">${label}</div><div class="home-kpi-row"><div><div class="home-kpi-value tnum">${value}</div>${sub ? `<div class="home-kpi-sub">${sub}</div>` : ''}</div>${viz || ''}</div></div>`;
     const recentHtml = recentFiles.length
       ? recentFiles.map(f => `<div class="home-file" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><span class="home-file-icon">${fileIconHtml(fileExt(fileDisplayName(f)))}</span><div class="home-file-meta"><div class="home-file-name">${esc(fileDisplayName(f))}</div><div class="home-file-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`).join('')
       : emptyState('No files yet', 'Upload files to see them here.');
     const activityCard = isAdmin
-      ? `<div class="home-card"><div class="home-card-h"><h3>Activity</h3></div>${activity.length ? activity.map(a => `<div class="home-act"><span class="home-act-dot"></span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${a.document_name ? ` <b style="font-weight:600">${esc(a.document_name)}</b>` : ''}</div><div class="home-act-time">${fileDate(a.created_at)}</div></div></div>`).join('') : emptyState('No recent activity', '')}</div>`
+      ? `<div class="home-card"><div class="home-card-h"><h3>Activity</h3></div>${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div><div class="home-act-time">${fileDate(a.created_at)}</div></div></div>`; }).join('') : emptyState('No recent activity', '')}</div>`
       : '';
 
     document.getElementById('home-view').innerHTML = `
       <h1 class="home-h1">${greet}, ${esc(name)}</h1>
       <p class="home-lede">Your workspace at a glance.</p>
-      <div class="home-kpis">${kpi('Files', files.length.toLocaleString())}${kpi('Storage used', fileSizeLabel(totalSize))}${kpi('Shared', shared.toLocaleString())}${kpi('Libraries', libs.toLocaleString())}</div>
+      <div class="home-kpis">
+        ${kpi('Storage used', fileSizeLabel(usedBytes), totalBytes ? `of ${fileSizeLabel(totalBytes)}` : '', homeDonut(pct))}
+        ${kpi('Files', files.length.toLocaleString(), 'uploads · 14 days', homeSpark(uploads14))}
+        ${kpi('Shared', shared.toLocaleString(), 'via links or grants', '')}
+        ${isAdmin ? kpi('Active users', String(stats.activeUsers ?? '—'), 'last 7 days', '') : kpi('Libraries', libs.toLocaleString(), '', '')}
+      </div>
       <div class="home-grid2${isAdmin ? '' : ' single'}">
         <div class="home-card"><div class="home-card-h"><h3>Recent files</h3><button class="home-link" onclick="setFileView('active')">Open library</button></div>${recentHtml}</div>
         ${activityCard}
@@ -7473,6 +7491,28 @@ function folderCardHtml(folder) {
     + `<div class="file-card-icon">${folderIconSvg(46)}</div>`
     + `<div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
     + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div>`;
+}
+
+// Small inline-SVG viz for the Dashboard Home, colored with the workspace accent.
+function homeDonut(pct, size) {
+  size = size || 56; const p = Math.max(0, Math.min(100, pct || 0));
+  const r = size / 2 - 5, c = 2 * Math.PI * r, off = c * (1 - p / 100);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">`
+    + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--rule)" stroke-width="7"/>`
+    + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`
+    + `<text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" font-weight="800" font-size="${(size * 0.24).toFixed(0)}" fill="currentColor">${Math.round(p)}%</text></svg>`;
+}
+function homeSpark(vals, w, h) {
+  w = w || 88; h = h || 38;
+  vals = (vals && vals.length) ? vals : [0, 0];
+  const max = Math.max.apply(null, vals), min = Math.min.apply(null, vals), n = vals.length, pad = 3;
+  const pts = vals.map((v, i) => [pad + i * (w - 2 * pad) / Math.max(1, n - 1), h - pad - (v - min) / ((max - min) || 1) * (h - 2 * pad)]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = `${line} L${pts[n - 1][0].toFixed(1)} ${h} L${pts[0][0].toFixed(1)} ${h} Z`;
+  const id = 'hsp' + Math.random().toString(36).slice(2, 7);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>`
+    + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+    + `<circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.4" fill="var(--accent)"/></svg>`;
 }
 
 function renderDocumentLibraryList(opts = {}) {

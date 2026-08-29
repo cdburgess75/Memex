@@ -1143,6 +1143,52 @@ router.post('/watch', auth, async (req, res) => {
     res.json({ notify });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// GET /api/files/home-stats — the numbers behind the Dashboard Home viz: a
+// storage quota (for the donut), an uploads-per-day trend (for the sparkline),
+// and active users. Files/bytes/shared are computed client-side from the file
+// list the Home already loads.
+router.get('/home-stats', auth, async (req, res) => {
+  try {
+    const isAdmin = req.user.role === 'admin';
+    // Storage donut: an explicit workspace quota (setting) if present — used vs
+    // quota; otherwise the real disk (used vs total), which gives a meaningful
+    // ring rather than a near-empty one against a huge free volume.
+    let usedBytes = null, totalBytes = null;
+    const qs = await settings.getOrEnv('storage_quota_gb');
+    try {
+      const st = await require('fs').promises.statfs(await storage.localBase());
+      const diskTotal = Number(st.blocks) * Number(st.bsize);
+      const diskFree = Number(st.bavail) * Number(st.bsize);
+      if (qs && Number(qs) > 0) { totalBytes = Number(qs) * 1024 * 1024 * 1024; usedBytes = null; /* client fills workspace bytes */ }
+      else { totalBytes = diskTotal; usedBytes = diskTotal - diskFree; }
+    } catch { /* unknown */ }
+
+    // Uploads per day over the last 14 days (admin: workspace-wide; else the
+    // user's own), for the sparkline.
+    const params = [];
+    let actorClause = '';
+    if (!isAdmin) { actorClause = 'AND lower(actor_email) = lower($1)'; params.push(req.user.email); }
+    let uploads14 = new Array(14).fill(0);
+    try {
+      const rows = await db.query(
+        `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') d, count(*)::int n
+           FROM document_events WHERE event_type = 'uploaded'
+            AND created_at > now() - interval '14 days' ${actorClause}
+          GROUP BY d`, params);
+      const byDay = new Map(rows.map(r => [r.d, r.n]));
+      uploads14 = Array.from({ length: 14 }, (_, i) => {
+        const key = new Date(Date.now() - (13 - i) * 864e5).toISOString().slice(0, 10);
+        return byDay.get(key) || 0;
+      });
+    } catch { /* events table may be empty */ }
+
+    let activeUsers = 1;
+    if (isAdmin) { try { const a = await db.queryOne(`SELECT count(distinct user_email)::int n FROM activity_log WHERE created_at > now() - interval '7 days'`); activeUsers = a?.n || 0; } catch { /* */ } }
+
+    res.json({ usedBytes, totalBytes, uploads14, activeUsers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/files/follows — doc ids the current user follows (for the file bells).
 router.get('/follows', auth, async (req, res) => {
   try { res.json({ ids: await docFollows.followedIds(req.user.email) }); }
