@@ -230,6 +230,9 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .status-popover-title { font: 700 11px var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 4px 8px 6px; }
 .status-popover .security-indicator { display: flex; width: 100%; align-items: center; justify-content: flex-start; padding: 7px 12px 7px 28px; font-size: 12px; box-shadow: none; }
 #update-indicator { font-family: var(--mono); letter-spacing: -0.02em; }
+#update-indicator .upd-ver { font-family: var(--mono); letter-spacing: -0.02em; }
+#update-indicator .upd-state { font-family: var(--body); font-weight: 600; letter-spacing: 0; color: #2E7D32; margin-left: 7px; }
+#update-indicator .upd-state::before { content: '·'; margin-right: 7px; color: var(--ink-faint); font-weight: 400; }
 /* Inline update-check result, shown in the status popover (no bottom toast). */
 .status-note { padding: 2px 12px 4px 28px; font: 500 11.5px var(--body); color: var(--ink-soft); line-height: 1.35; }
 .status-note:empty { display: none; }
@@ -1762,12 +1765,22 @@ html.file-home-mode .masthead-actions { display: flex; }
 .call-ctrl.on { background: #2E7D32; }
 .call-ctrl.hang { background: #C0392B; }
 .file-preview-fallback { margin: auto; text-align: center; padding: 40px; }
-.file-type-tabs { display: flex; gap: 4px; min-width: 0; flex: 1 1 auto; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.file-type-tabs::-webkit-scrollbar { display: none; }
-.file-type-tab { flex: 0 0 auto; }
-.file-type-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
-.file-type-tab:hover { background: var(--surface-2); color: var(--ink); }
-.file-type-tab.active { background: var(--accent-wash); color: var(--accent); }
+/* Collapsed type filter: a single funnel button opens a selectable dropdown,
+   replacing the old horizontal All/Documents/Spreadsheets… tab row to save
+   horizontal real estate. Token-based so it themes without override sweeps. */
+.file-filter-wrap { position: relative; flex: 0 0 auto; }
+.file-filter-btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft); font: 600 13px var(--ui); padding: 7px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.file-filter-btn:hover { border-color: var(--accent); color: var(--ink); }
+.file-filter-btn .file-filter-icon { color: var(--ink-faint); flex: 0 0 auto; }
+.file-filter-btn .chev { font-size: 12px; line-height: 1; color: var(--ink-faint); }
+.file-filter-btn.filtered { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+.file-filter-btn.filtered .file-filter-icon, .file-filter-btn.filtered .chev { color: var(--accent); }
+.file-filter-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 194px; padding: 6px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow), 0 8px 22px rgba(0,0,0,0.10); }
+.file-filter-menu.open { display: grid; gap: 2px; }
+.file-filter-item { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: 6px; background: transparent; color: var(--ink); padding: 8px 10px; text-align: left; font: 600 13.5px var(--body); cursor: pointer; }
+.file-filter-item:hover { background: var(--accent-wash); color: var(--accent); }
+.file-filter-item.active { color: var(--accent); font-weight: 700; }
+.file-filter-check { width: 13px; flex: 0 0 auto; color: var(--accent); font-size: 12px; text-align: center; }
 .file-recent-rail { margin-bottom: 18px; }
 .file-recent-title { font: 700 11px var(--ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); margin: 2px 0 9px; }
 .file-recent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
@@ -3968,8 +3981,10 @@ async function checkForUpdate(manual) {
   latestUpdateInfo = r;
   updateCtaRefresh(r);
   if (r.behind === 0) {
+    // "Up to date" lives inside the pill, next to the version — no separate note line.
     el.className = 'security-indicator ok'; el.title = `Up to date — ${v}`;
-    setUpdateNote('Up to date', 'ok'); // the pill already shows the version — don't repeat it
+    el.innerHTML = `<span class="upd-ver">${esc(v)}</span><span class="upd-state">Up to date</span>`;
+    setUpdateNote('');
   } else if (r.behind != null && r.behind <= 10) {
     const msg = `${r.behind} release${r.behind === 1 ? '' : 's'} behind — latest ${r.latest}. Run ./upgrade.sh to update.`;
     el.className = 'security-indicator warning'; el.title = msg;
@@ -6566,8 +6581,10 @@ function fileLibraryCommandBarHtml() {
     const fileOnly = folderCount === 0;
     return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
-  const tabs = FILE_TYPE_TABS.map(t => `<button class="file-type-tab${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')">${esc(t.label)}</button>`).join('');
-  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span><div class="file-type-tabs">${tabs}</div></div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
+  const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
+  const filterControl = `<div class="file-filter-wrap"><button class="file-filter-btn${activeType.id !== 'all' ? ' filtered' : ''}" id="file-filter-btn" type="button" onclick="toggleFileFilterMenu(event)" aria-haspopup="true" title="Filter by file type"><svg class="file-filter-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span class="file-filter-label">${esc(activeType.id === 'all' ? 'All types' : activeType.label)}</span><span class="chev">⌄</span></button><div class="file-filter-menu" id="file-filter-menu">${items}</div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span>${filterControl}</div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
@@ -7146,6 +7163,18 @@ function chooseUpload(kind) {
   document.getElementById(kind === 'folder' ? 'folder-picker' : 'file-picker')?.click();
 }
 
+function toggleFileFilterMenu(event) {
+  event?.stopPropagation();
+  const el = document.getElementById('file-filter-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
+}
+
+function closeFileFilterMenu() {
+  document.getElementById('file-filter-menu')?.classList.remove('open');
+}
+
 function toggleSearchMenu(event) {
   event?.stopPropagation();
   const el = document.getElementById('file-search-menu');
@@ -7194,6 +7223,7 @@ function closeAllMenus() {
   closeStatusMenu();
   closeNotifMenu();
   closeCreateMenu();
+  closeFileFilterMenu();
   if (typeof closeMeetPanel === 'function') closeMeetPanel();
   if (typeof closeFileMenu === 'function') closeFileMenu();
   document.getElementById('file-cols-menu')?.classList.remove('open');
@@ -7203,7 +7233,7 @@ function anyMenuOpen() {
   return !!document.querySelector(
     '.app-menu-popover.open, #status-popover.open, #notif-panel.open, #meet-panel.open,' +
     '#apps-menu.open, #search-control-menu.open, #file-create-menu.open, #file-upload-menu.open,' +
-    '#file-search-menu.open, #file-cols-menu.open, #preview-open-menu.open, #file-row-menu'
+    '#file-filter-menu.open, #file-search-menu.open, #file-cols-menu.open, #preview-open-menu.open, #file-row-menu'
   );
 }
 // Static scrims declared in the page markup toggle their `.open` class; dynamic
