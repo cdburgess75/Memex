@@ -7,7 +7,12 @@ const settings = require('./settings');
 // past the general 300/window API cap and 429 mid-batch. These paths get their own
 // high limiter instead, and the general limiter skips them. (Public upload-link and
 // upload-links routes are deliberately NOT matched — they stay under the normal cap.)
-const UPLOAD_PATH_RE = /^\/api\/files\/(upload-stream|uploads|upload)(\/|$)/;
+// Bulk-upload routes skipped by the general apiLimiter (they have their own
+// generous limiters). Includes the public exchange-upload route so a recipient
+// dropping a large folder isn't throttled to apiLimiter's 300/window — that
+// route re-verifies nothing password-related (uploads carry a ticket), so it is
+// safe outside the tight budget.
+const UPLOAD_PATH_RE = /^\/api\/files\/(upload-stream|uploads|upload|share\/[^/]+\/upload)(\/|$)/;
 function isUploadPath(req) {
   return UPLOAD_PATH_RE.test(String(req.originalUrl || req.url || '').split('?')[0]);
 }
@@ -73,10 +78,20 @@ function makeRateLimiters() {
       limit: intFromEnv('RATE_LIMIT_AUTH_MAX', 20),
       message: 'Too many login attempts. Please wait and try again shortly.',
     }),
+    // Guards the password-attempt surface (info / ticket / download): a tight
+    // count so a stolen link's password can't be brute-forced.
     shareLimiter: createLimiter({
       windowMs: shareWindowMs,
       limit: intFromEnv('RATE_LIMIT_SHARE_MAX', 60),
       message: 'Too many share-link attempts. Please wait and try again shortly.',
+    }),
+    // Recipient uploads through an exchange link are one request per file, so a
+    // dropped folder legitimately makes many — a generous budget, since these
+    // are already bounded by the per-file size cap and the per-link total cap.
+    exchangeUploadLimiter: createLimiter({
+      windowMs,
+      limit: intFromEnv('RATE_LIMIT_EXCHANGE_UPLOAD_MAX', 600),
+      message: 'Too many uploads in a short time. Please wait and try again shortly.',
     }),
   };
 }

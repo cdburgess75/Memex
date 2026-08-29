@@ -203,33 +203,20 @@ router.post('/performance', auth, requireRole('admin'), requireIncomplete, async
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/setup/mfa — turn on TOTP as a default required action in Keycloak, so every
-// user (incl. the admin) is prompted to set up an authenticator at next login. Best-
-// effort: on any failure it returns a hint to enable it in the Keycloak console.
+// POST /api/setup/mfa — require TOTP for LOCAL (password) accounts only.
+// Microsoft 365 and Active Directory users are deliberately excluded: they
+// already did MFA at their own identity provider, and a realm-wide default
+// required action dead-ended a real M365 sign-in on an enrollment screen
+// (2026-08-28). The lib stamps the action per local user instead.
 router.post('/mfa', auth, requireRole('admin'), async (req, res) => {
   const enable = req.body.enable !== false;
   try {
-    const base = String(process.env.KEYCLOAK_INTERNAL_URL || process.env.KEYCLOAK_URL || '').replace(/\/$/, '');
-    const realm = process.env.KEYCLOAK_REALM || 'memex';
-    const user = process.env.KEYCLOAK_ADMIN_USER || 'admin';
-    const pass = process.env.KEYCLOAK_ADMIN_PASSWORD;
-    if (!base || !pass) throw new Error('Keycloak admin credentials are not available on the server.');
-    const tokRes = await fetch(`${base}/realms/master/protocol/openid-connect/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'password', client_id: 'admin-cli', username: user, password: pass }),
-    });
-    if (!tokRes.ok) throw new Error(`Keycloak admin auth failed (${tokRes.status}).`);
-    const accessToken = (await tokRes.json()).access_token;
-    // Keycloak's route lives under /authentication/ — the alias alone 404s.
-    const upd = await fetch(`${base}/admin/realms/${realm}/authentication/required-actions/CONFIGURE_TOTP`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alias: 'CONFIGURE_TOTP', name: 'Configure OTP', providerId: 'CONFIGURE_TOTP', enabled: enable, defaultAction: enable, priority: 10 }),
-    });
-    if (!upd.ok) throw new Error(`Keycloak required-action update failed (${upd.status}).`);
+    const r = await kcAdmin.setLocalTotpRequirement(enable);
     await settings.set('mfa_required', enable ? 'true' : null, req.user.id);
-    res.json({ ok: true, enabled: enable });
+    res.json({
+      ok: true, enabled: enable, ...r,
+      note: 'Applies to existing local accounts. A local account created later is not auto-covered — re-save this toggle (safe to repeat) after adding one.',
+    });
   } catch (e) {
     res.json({ ok: false, error: e.message, hint: 'Enable it manually: Keycloak admin console → Authentication → Required Actions → Configure OTP → set as Default.' });
   }

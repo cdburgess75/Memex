@@ -115,6 +115,71 @@ async function removeMicrosoftIdp() {
   if (!r.ok && r.status !== 404) throw new Error(`Keycloak identity-provider delete failed (${r.status}).`);
 }
 
+/* ---------- MFA (TOTP) for local accounts ---------- */
+
+// Require TOTP enrollment for LOCAL accounts only. Members arriving through
+// Microsoft 365 brokering or AD/LDAP federation already authenticated — and
+// did MFA — at their own identity provider; stacking a second Depot-only
+// authenticator on them is friction with no security gain (a real M365
+// sign-in dead-ended on the enrollment screen, 2026-08-28). So the required
+// action is never a realm-wide default: it is stamped per-user onto accounts
+// that actually sign in with a Depot password.
+//
+// Limitation, deliberate: a local account created AFTER enabling is not
+// auto-stamped — re-save the toggle (idempotent) or set the action on the new
+// user in Keycloak. The route surfaces this in its response.
+async function setLocalTotpRequirement(enable) {
+  const token = await adminToken();
+  // Keep the action AVAILABLE either way (people may opt in from their own
+  // account console) — but never DEFAULT, which is what hit brokered users.
+  const raUrl = '/authentication/required-actions/CONFIGURE_TOTP';
+  const cur = await kc(token, 'GET', raUrl);
+  const rep = cur.ok ? await cur.json()
+    : { alias: 'CONFIGURE_TOTP', name: 'Configure OTP', providerId: 'CONFIGURE_TOTP', priority: 10 };
+  const upd = await kc(token, 'PUT', raUrl, { ...rep, enabled: true, defaultAction: false });
+  if (!upd.ok) throw new Error(`Keycloak required-action update failed (${upd.status}).`);
+
+  let stamped = 0, cleared = 0, skippedFederated = 0, alreadyEnrolled = 0;
+  for (let first = 0; ; first += 100) {
+    const page = await kc(token, 'GET', `/users?max=100&first=${first}`);
+    if (!page.ok) throw new Error(`Keycloak user list failed (${page.status}).`);
+    const users = await page.json();
+    if (!Array.isArray(users) || !users.length) break;
+    for (const u of users) {
+      const pending = Array.isArray(u.requiredActions) ? u.requiredActions : [];
+      // AD/LDAP users carry federationLink; brokered (M365) users have
+      // federated-identity entries. A local account has neither.
+      let federated = !!u.federationLink;
+      if (!federated) {
+        const fid = await kc(token, 'GET', `/users/${u.id}/federated-identity`);
+        federated = fid.ok && ((await fid.json()) || []).length > 0;
+      }
+      if (federated) {
+        skippedFederated += 1;
+        // Never leave a federated account holding a stale enrollment prompt.
+        if (pending.includes('CONFIGURE_TOTP')) {
+          await kc(token, 'PUT', `/users/${u.id}`, { ...u, requiredActions: pending.filter(a => a !== 'CONFIGURE_TOTP') });
+        }
+        continue;
+      }
+      if (enable) {
+        if (pending.includes('CONFIGURE_TOTP')) continue;
+        // Someone already carrying an authenticator has nothing to enroll.
+        const creds = await kc(token, 'GET', `/users/${u.id}/credentials`);
+        const hasOtp = creds.ok && ((await creds.json()) || []).some((c) => c.type === 'otp');
+        if (hasOtp) { alreadyEnrolled += 1; continue; }
+        const r = await kc(token, 'PUT', `/users/${u.id}`, { ...u, requiredActions: [...pending, 'CONFIGURE_TOTP'] });
+        if (r.ok) stamped += 1;
+      } else if (pending.includes('CONFIGURE_TOTP')) {
+        const r = await kc(token, 'PUT', `/users/${u.id}`, { ...u, requiredActions: pending.filter(a => a !== 'CONFIGURE_TOTP') });
+        if (r.ok) cleared += 1;
+      }
+    }
+    if (users.length < 100) break;
+  }
+  return { stamped, cleared, skippedFederated, alreadyEnrolled };
+}
+
 /* ---------- Active Directory sign-in (LDAP user federation) ---------- */
 
 function ldapConfig({ connectionUrl, bindDn, bindCredential, usersDn }) {
@@ -214,6 +279,7 @@ async function testLdap({ connectionUrl, bindDn, bindCredential }) {
 module.exports = {
   adminToken,
   setRealmDisplayName,
+  setLocalTotpRequirement,
   ensureMicrosoftIdp,
   removeMicrosoftIdp,
   ensureLdapFederation,
