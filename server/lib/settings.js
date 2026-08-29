@@ -37,6 +37,9 @@ const ENV_MAP = {
   http_proxy:                     'HTTP_PROXY',
   max_upload_mb:                  'MAX_UPLOAD_MB',
   max_upload_files:               'MAX_UPLOAD_FILES',
+  // Comma/space-separated extensions to refuse on upload. Empty/unset = the built-in
+  // executable blocklist (see routes/files.js DEFAULT_BLOCKED_EXTS).
+  blocked_file_exts:              'BLOCKED_FILE_EXTS',
   min_free_disk_mb:               'MIN_FREE_DISK_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
   max_document_versions:          'MAX_DOCUMENT_VERSIONS',
