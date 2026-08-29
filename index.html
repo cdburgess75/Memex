@@ -18,9 +18,9 @@
   --ink: #1B1B19;
   --ink-soft: #5B5A56;
   --ink-faint: #8E8C87;
-  --accent: #C2603D;
-  --accent-soft: #A94E2F;
-  --accent-wash: #F8ECE6;
+  --accent: #4A4FC0;
+  --accent-soft: #3B3FA5;
+  --accent-wash: #ECEDFB;
   --rule: rgba(27,27,25,0.09);
   --rule-soft: rgba(27,27,25,0.05);
   --shadow: 0 1px 2px rgba(20,19,17,0.05), 0 0 0 1px rgba(20,19,17,0.04);
@@ -37,9 +37,9 @@ html.dark {
   --ink: #ECEAF0;
   --ink-soft: #A9A6B2;
   --ink-faint: #74717E;
-  --accent: #E08A66;
-  --accent-soft: #C2603D;
-  --accent-wash: #2A1E18;
+  --accent: #8C8FF2;
+  --accent-soft: #5B60D6;
+  --accent-wash: #23253A;
   --rule: rgba(236,234,240,0.11);
   --rule-soft: rgba(236,234,240,0.06);
   --shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05);
@@ -1886,32 +1886,51 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-card-actions .file-library-icon-btn { min-width: 26px; height: 26px; color: var(--ink-faint); }
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
-.home-h1 { font-size: 22px; font-weight: 800; margin: 4px 0 2px; letter-spacing: -.01em; }
-.home-lede { color: var(--ink-faint); font-size: 13px; margin: 0 0 20px; }
-.home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
-.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-.home-kpi-label { font-size: 12px; color: var(--ink-faint); font-weight: 600; }
-.home-kpi-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 12px; color: var(--accent); }
-.home-kpi-value { font-size: 25px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
-.home-kpi-sub { font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
-.home-act-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-size: 10px; font-weight: 700; flex: none; }
-.home-grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+.home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
+.home-lede { color: var(--ink-faint); font-size: 14px; margin: 0 0 24px; }
+.home-section-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 26px 0 14px; }
+.home-section-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.home-kpi { border: 1px solid var(--rule); border-radius: 16px; background: var(--surface); padding: 18px 18px 16px; box-shadow: 0 1px 3px rgba(16,18,40,.05); }
+.home-kpi-top { display: flex; align-items: center; justify-content: space-between; }
+.home-kpi-label { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
+.home-kpi-ic { color: var(--ink-faint); opacity: .55; display: flex; }
+.home-kpi-ic svg { width: 18px; height: 18px; }
+.home-kpi-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.home-kpi-value { font-size: 30px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
+.home-kpi-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; }
+.home-kpi-delta { font-size: 12px; font-weight: 700; margin-top: 7px; display: inline-flex; align-items: center; gap: 3px; }
+.home-kpi-delta.up { color: #17935C; } .home-kpi-delta.down { color: #E5484D; }
+.home-act-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
+.home-grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
 .home-grid2.single { grid-template-columns: 1fr; }
-.home-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 14px 16px; }
-.home-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.home-card { border: 1px solid var(--rule); border-radius: 16px; background: var(--surface); padding: 16px 18px; box-shadow: 0 1px 3px rgba(16,18,40,.05); }
+.home-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .home-card-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
-.home-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.home-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.home-link:hover { text-decoration: underline; }
+.home-tbl { width: 100%; border-collapse: collapse; }
+.home-tbl th { text-align: left; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; padding: 2px 10px 12px; }
+.home-tbl th.num, .home-tbl td.num { text-align: right; }
+.home-tbl td { padding: 11px 10px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-soft); }
+.home-tbl tbody tr { cursor: pointer; }
+.home-tbl tbody tr:hover td { background: var(--accent-wash); }
+.home-tbl tbody tr:hover td:first-child { border-radius: 8px 0 0 8px; } .home-tbl tbody tr:hover td:last-child { border-radius: 0 8px 8px 0; }
+.home-tbl-name { display: flex; align-items: center; gap: 11px; font-weight: 600; color: var(--ink); }
+.home-tbl-name .file-icon { width: 26px; height: 26px; flex: none; }
+.home-tbl-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
 .home-file { display: flex; align-items: center; gap: 11px; padding: 8px 4px; border-radius: 8px; cursor: pointer; }
 .home-file:hover { background: var(--rule); }
 .home-file-icon .file-icon { width: 30px; height: 30px; }
 .home-file-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-file-sub { font-size: 11px; color: var(--ink-faint); }
-.home-act { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--rule); }
+.home-act { display: flex; align-items: center; gap: 11px; padding: 11px 2px; border-bottom: 1px solid var(--rule); }
 .home-act:last-child { border-bottom: 0; }
-.home-act-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex: none; }
-.home-act-t { font-size: 12.5px; }
-.home-act-time { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
-@media (max-width: 800px) { .home-kpis { grid-template-columns: repeat(2, 1fr); } .home-grid2 { grid-template-columns: 1fr; } }
+.home-act-body { flex: 1; min-width: 0; }
+.home-act-t { font-size: 12.5px; line-height: 1.4; }
+.home-act-time { font-size: 11px; color: var(--ink-faint); white-space: nowrap; flex: none; }
+@media (max-width: 900px) { .home-kpis { grid-template-columns: repeat(2, 1fr); } .home-grid2 { grid-template-columns: 1fr; } }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -2675,15 +2694,6 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
-    <div class="mast-upload" id="mast-upload">
-      <button class="mast-upload-main" type="button" onclick="chooseUpload('files')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>Upload</button>
-      <button class="mast-upload-caret" type="button" onclick="toggleMastUploadMenu(event)" aria-haspopup="true" aria-label="Upload options"><span class="chev">⌄</span></button>
-      <div class="mast-upload-menu" id="mast-upload-menu" role="menu">
-        <button type="button" role="menuitem" onclick="closeMastUploadMenu();chooseUpload('files')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>Upload files</button>
-        <button type="button" role="menuitem" onclick="closeMastUploadMenu();chooseUpload('folder')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>Upload folder</button>
-      </div>
-    </div>
-    <span class="mast-div" aria-hidden="true"></span>
     <div class="status-wrap">
       <button class="security-indicator info" id="status-pill" type="button" onclick="toggleStatusMenu(event)" aria-haspopup="true" title="System status">Status</button>
       <div class="status-popover" id="status-popover">
@@ -6171,7 +6181,14 @@ function fileOwner(f) {
   return f.uploaded_by_name || email;
 }
 function fileDate(value) { return value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : ''; }
-function fileSizeLabel(size) { return size > 1024*1024 ? (size/1024/1024).toFixed(1)+' MB' : Math.max(1, Math.round((size || 0)/1024))+' KB'; }
+function fileSizeLabel(size) {
+  size = Number(size) || 0;
+  const trim = (n) => (Math.round(n * 100) / 100).toString(); // up to 2 decimals, no trailing zeros
+  if (size >= 1024 ** 4) return trim(size / 1024 ** 4) + ' TB';
+  if (size >= 1024 ** 3) return trim(size / 1024 ** 3) + ' GB';
+  if (size >= 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + ' MB';
+  return Math.max(1, Math.round(size / 1024)) + ' KB';
+}
 // Per-extension icon system: a document sheet tinted + labeled by file type,
 // with a small glyph for media/archive/code/key. One function, inline SVG (no
 // external assets), theme-aware sheet via CSS vars, and it renders ANY
@@ -7422,26 +7439,51 @@ async function renderHome() {
     const name = String(currentUser?.name || currentUser?.email || 'there').split(/[\s@]/)[0];
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+    const wsLabel = brandDefaults.name ? esc(brandDefaults.name) : 'your workspace';
     const initialsOf = (s) => (s || '?').split(/[\s@._]+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase() || '?';
-    const kpi = (label, value, sub, viz) => `<div class="home-kpi"><div class="home-kpi-label">${label}</div><div class="home-kpi-row"><div><div class="home-kpi-value tnum">${value}</div>${sub ? `<div class="home-kpi-sub">${sub}</div>` : ''}</div>${viz || ''}</div></div>`;
-    const recentHtml = recentFiles.length
-      ? recentFiles.map(f => `<div class="home-file" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><span class="home-file-icon">${fileIconHtml(fileExt(fileDisplayName(f)))}</span><div class="home-file-meta"><div class="home-file-name">${esc(fileDisplayName(f))}</div><div class="home-file-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`).join('')
-      : emptyState('No files yet', 'Upload files to see them here.');
+
+    // Real 14-day daily series bucketed from the file list (uploads & shares).
+    const now = Date.now(), DAY = 86400000;
+    const bucket = (pred) => { const arr = new Array(14).fill(0); files.forEach(f => { const t = new Date(f.created_at || 0).getTime(); const idx = 13 - Math.floor((now - t) / DAY); if (idx >= 0 && idx < 14 && pred(f)) arr[idx]++; }); return arr; };
+    const filesSeries = (uploads14 && uploads14.length > 1) ? uploads14 : bucket(() => true);
+    const sharedSeries = bucket(isSharedFile);
+    const filesDelta = homeDelta(filesSeries), sharedDelta = homeDelta(sharedSeries);
+    const sparkColor = (d) => d ? (d.up ? '#17935C' : '#E5484D') : 'var(--accent)';
+    const deltaHtml = (d, label) => d ? `<div class="home-kpi-delta ${d.up ? 'up' : 'down'}">${d.up ? '▲' : '▼'} ${d.pct}%${label ? ` <span style="color:var(--ink-faint);font-weight:500">${label}</span>` : ''}</div>` : '';
+
+    const IC_DB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>';
+    const IC_FILES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+    const IC_SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
+    const IC_USERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg>';
+    const IC_LAYERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>';
+
+    const kpi = (label, value, icon, valueCol, viz) => `<div class="home-kpi"><div class="home-kpi-top"><span class="home-kpi-label">${label}</span><span class="home-kpi-ic">${icon}</span></div><div class="home-kpi-row"><div><div class="home-kpi-value tnum">${value}</div>${valueCol}</div>${viz || ''}</div></div>`;
+    const storageTile = totalBytes > 0
+      ? kpi('Storage used', `${Math.round(pct)}%`, IC_DB, `<div class="home-kpi-sub">${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}</div>`, homeDonut(pct))
+      : kpi('Storage used', fileSizeLabel(usedBytes), IC_DB, `<div class="home-kpi-sub">across ${files.length.toLocaleString()} files</div>`, '');
+
+    const recentRows = recentFiles.length
+      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = (isSharedFile(f) || f.share_count > 0 || f.is_shared) ? 'Shared' : 'Private'; return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill" style="background:${ti.color}">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
+      : `<tr><td colspan="5">${emptyState('No files yet', 'Upload files to see them here.')}</td></tr>`;
+    const recentCard = `<div class="home-card"><table class="home-tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Modified</th><th>Access</th></tr></thead><tbody>${recentRows}</tbody></table></div>`;
+
     const activityCard = isAdmin
-      ? `<div class="home-card"><div class="home-card-h"><h3>Activity</h3></div>${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div><div class="home-act-time">${fileDate(a.created_at)}</div></div></div>`; }).join('') : emptyState('No recent activity', '')}</div>`
+      ? `<div class="home-card">${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('') : emptyState('No recent activity', 'Activity across the workspace will appear here.')}</div>`
       : '';
 
     document.getElementById('home-view').innerHTML = `
       <h1 class="home-h1">${greet}, ${esc(name)}</h1>
-      <p class="home-lede">Your workspace at a glance.</p>
+      <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
+      <div class="home-section-h"><h2>Key metrics</h2><button class="home-link" onclick="setFileView('active')">Open library</button></div>
       <div class="home-kpis">
-        ${kpi('Storage used', fileSizeLabel(usedBytes), totalBytes ? `of ${fileSizeLabel(totalBytes)}` : '', homeDonut(pct))}
-        ${kpi('Files', files.length.toLocaleString(), 'uploads · 14 days', homeSpark(uploads14))}
-        ${kpi('Shared', shared.toLocaleString(), 'via links or grants', '')}
-        ${isAdmin ? kpi('Active users', String(stats.activeUsers ?? '—'), 'last 7 days', '') : kpi('Libraries', libs.toLocaleString(), '', '')}
+        ${storageTile}
+        ${kpi('Files', files.length.toLocaleString(), IC_FILES, deltaHtml(filesDelta, 'this week') || '<div class="home-kpi-sub">total files</div>', homeSpark(filesSeries, sparkColor(filesDelta)))}
+        ${kpi('Shared files', shared.toLocaleString(), IC_SHARE, deltaHtml(sharedDelta, 'this week') || '<div class="home-kpi-sub">via links or grants</div>', homeSpark(sharedSeries, sparkColor(sharedDelta)))}
+        ${isAdmin ? kpi('Active users', String(stats.activeUsers ?? '—'), IC_USERS, '<div class="home-kpi-sub">last 7 days</div>', '') : kpi('Libraries', libs.toLocaleString(), IC_LAYERS, '<div class="home-kpi-sub">you can access</div>', '')}
       </div>
+      <div class="home-section-h"><h2>Recent &amp; activity</h2></div>
       <div class="home-grid2${isAdmin ? '' : ' single'}">
-        <div class="home-card"><div class="home-card-h"><h3>Recent files</h3><button class="home-link" onclick="setFileView('active')">Open library</button></div>${recentHtml}</div>
+        ${recentCard}
         ${activityCard}
       </div>`;
   } catch (e) {
@@ -7523,24 +7565,39 @@ function folderCardHtml(folder) {
 
 // Small inline-SVG viz for the Dashboard Home, colored with the workspace accent.
 function homeDonut(pct, size) {
-  size = size || 56; const p = Math.max(0, Math.min(100, pct || 0));
+  size = size || 60; const p = Math.max(0, Math.min(100, pct || 0));
   const r = size / 2 - 5, c = 2 * Math.PI * r, off = c * (1 - p / 100);
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">`
-    + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--rule)" stroke-width="7"/>`
+    + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent-wash)" stroke-width="7"/>`
     + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`
-    + `<text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" font-weight="800" font-size="${(size * 0.24).toFixed(0)}" fill="currentColor">${Math.round(p)}%</text></svg>`;
+    + `<text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" font-weight="800" font-size="${(size * 0.23).toFixed(0)}" fill="var(--ink)">${Math.round(p)}%</text></svg>`;
 }
-function homeSpark(vals, w, h) {
-  w = w || 88; h = h || 38;
-  vals = (vals && vals.length) ? vals : [0, 0];
-  const max = Math.max.apply(null, vals), min = Math.min.apply(null, vals), n = vals.length, pad = 3;
+// vals=series, color=stroke/fill hex or CSS var. Area sparkline with soft gradient fill.
+function homeSpark(vals, color, w, h) {
+  color = color || 'var(--accent)'; w = w || 96; h = h || 40;
+  vals = (vals && vals.length > 1) ? vals : [0, 0.0001];
+  const max = Math.max.apply(null, vals), min = Math.min.apply(null, vals), n = vals.length, pad = 4;
   const pts = vals.map((v, i) => [pad + i * (w - 2 * pad) / Math.max(1, n - 1), h - pad - (v - min) / ((max - min) || 1) * (h - 2 * pad)]);
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const area = `${line} L${pts[n - 1][0].toFixed(1)} ${h} L${pts[0][0].toFixed(1)} ${h} Z`;
-  const id = 'hsp' + Math.random().toString(36).slice(2, 7);
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>`
-    + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
-    + `<circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.4" fill="var(--accent)"/></svg>`;
+  const id = 'hsp' + (homeSpark._i = (homeSpark._i || 0) + 1);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".24"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>`
+    + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+    + `<circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.6" fill="${color}"/></svg>`;
+}
+// Human-readable type label + brand color for a file extension, for the Home type pills.
+const FIC_LABEL = { word:'Word document', excel:'Excel spreadsheet', sheet:'Spreadsheet', ppt:'PowerPoint', pdf:'PDF', email:'Email', image:'Image', video:'Video', audio:'Audio', archive:'Archive', text:'Text file', markdown:'Markdown', code:'Code', key:'Certificate', design:'Design', 'default':'File' };
+function fileTypeInfo(ext) { const fam = (FIC_TYPES[ext] || ['default'])[0]; return { label: FIC_LABEL[fam] || 'File', color: FIC_COLOR[fam] || FIC_COLOR.default }; }
+// Real trend from a daily series: compare the most-recent half against the prior half.
+function homeDelta(series) {
+  const s = (series || []).map(Number).filter(v => !isNaN(v));
+  if (s.length < 2) return null;
+  const half = Math.floor(s.length / 2);
+  const prev = s.slice(0, s.length - half).reduce((a, b) => a + b, 0);
+  const recent = s.slice(s.length - half).reduce((a, b) => a + b, 0);
+  if (prev === 0 && recent === 0) return null;
+  const pct = prev === 0 ? 100 : Math.round((recent - prev) / prev * 100);
+  return { pct: Math.abs(pct), up: recent >= prev };
 }
 
 function renderDocumentLibraryList(opts = {}) {
