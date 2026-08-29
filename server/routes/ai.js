@@ -163,8 +163,9 @@ router.post('/detect-models', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
-// PUT /api/ai/active — switch the global active model (any signed-in user)
-router.put('/active', auth, async (req, res) => {
+// PUT /api/ai/active — switch the global active model (admin only: it changes the
+// model for every user in the workspace and spends the workspace's AI budget).
+router.put('/active', auth, requireRole('admin'), async (req, res) => {
   try {
     const value = (req.body?.model || '').trim();
     if (!value) return res.status(400).json({ error: 'model required' });

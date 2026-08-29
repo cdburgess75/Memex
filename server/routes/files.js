@@ -1211,8 +1211,19 @@ router.get('/watch/state', auth, async (req, res) => {
 router.post('/:id/follow', auth, async (req, res) => {
   try {
     const on = req.body.follow !== false;
-    if (on) await docFollows.follow(req.params.id, req.user.email);
-    else await docFollows.unfollow(req.params.id, req.user.email);
+    if (on) {
+      // Only allow following a file the caller can actually read — otherwise a
+      // follow row on a guessed id leaks the file's name and activity through the
+      // resulting notifications (IDOR). 404 (not 403) avoids confirming existence.
+      const doc = await documentAccess.getAccessibleDocument({
+        id: req.params.id, user: req.user, required: 'read', columns: 'd.id', deleted: 'active',
+      });
+      if (!doc) return res.status(404).json({ error: 'not found' });
+      await docFollows.follow(req.params.id, req.user.email);
+    } else {
+      // Unfollowing only removes the caller's own row, so it needs no access check.
+      await docFollows.unfollow(req.params.id, req.user.email);
+    }
     res.json({ following: on });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
