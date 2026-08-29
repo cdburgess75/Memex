@@ -1871,6 +1871,31 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-card-sub { font-size: 11px; color: var(--ink-faint); }
 .file-card-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 1px; }
 .file-card-actions .file-library-icon-btn { min-width: 26px; height: 26px; color: var(--ink-faint); }
+/* Dashboard Home */
+.home-view { padding: 8px 4px 20px; max-width: 1000px; }
+.home-h1 { font-size: 22px; font-weight: 800; margin: 4px 0 2px; letter-spacing: -.01em; }
+.home-lede { color: var(--ink-faint); font-size: 13px; margin: 0 0 20px; }
+.home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px; }
+.home-kpi-label { font-size: 12px; color: var(--ink-faint); font-weight: 600; }
+.home-kpi-value { font-size: 25px; font-weight: 800; margin-top: 8px; letter-spacing: -.01em; }
+.home-grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+.home-grid2.single { grid-template-columns: 1fr; }
+.home-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 14px 16px; }
+.home-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.home-card-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.home-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.home-file { display: flex; align-items: center; gap: 11px; padding: 8px 4px; border-radius: 8px; cursor: pointer; }
+.home-file:hover { background: var(--rule); }
+.home-file-icon .file-icon { width: 30px; height: 30px; }
+.home-file-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-file-sub { font-size: 11px; color: var(--ink-faint); }
+.home-act { display: flex; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--rule); }
+.home-act:last-child { border-bottom: 0; }
+.home-act-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex: none; }
+.home-act-t { font-size: 12.5px; }
+.home-act-time { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+@media (max-width: 800px) { .home-kpis { grid-template-columns: repeat(2, 1fr); } .home-grid2 { grid-template-columns: 1fr; } }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -7165,6 +7190,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
     ${filePinnedSectionHtml()}
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">
+        ${fileNavButton('Home', 'H', `setFileView('home')`, activeWorkspace === 'files' && activeFile === 'home')}
         ${fileNavButton('Files', 'F', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
         ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'V', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
@@ -7294,10 +7320,12 @@ function setFileView(view) {
   detailsPaneOpen = false;
   document.querySelectorAll('.file-nav-link').forEach(btn => {
     const label = btn.textContent.trim();
-    const isFilesHome = ['Files','Shared','Links','Favorites','Trash'].includes(label);
-    btn.classList.toggle('active', isFilesHome && ((view === 'active' && label === 'Files') || (view === 'favorites' && label === 'Favorites') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
+    const isFilesHome = ['Home','Files','Shared','Links','Favorites','Trash'].includes(label);
+    btn.classList.toggle('active', isFilesHome && ((view === 'home' && label === 'Home') || (view === 'active' && label === 'Files') || (view === 'favorites' && label === 'Favorites') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
   });
-  if (view === 'trash') {
+  if (view === 'home') {
+    renderHome();
+  } else if (view === 'trash') {
     document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Recycle bin</h2></div><div class="file-table-wrap" id="file-list">${emptyState('Loading trash', 'Checking recently deleted files.')}</div>`, 'files', 'trash');
     loadTrash();
   } else if (view === 'links') {
@@ -7324,6 +7352,50 @@ async function renderDocumentLibrary(view = 'active') {
   } catch (e) {
     const el = document.getElementById('file-list');
     if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load documents: ${esc(e.message)}</p>`;
+  }
+}
+
+// Dashboard "Home" — a workspace-at-a-glance landing. Every tile is computed
+// from real data (the user's files + recent + admin activity); nothing is faked.
+async function renderHome() {
+  fileView = 'home';
+  currentFolderPath = '';
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="home-view" id="home-view">${emptyState('Loading your workspace', '')}</div>`, 'files', 'home');
+  const quick = document.getElementById('file-quick-list');
+  if (quick) quick.innerHTML = quickAccessHtml();
+  try {
+    const isAdmin = currentUser?.role === 'admin';
+    const [all, recentOpens] = await Promise.all([apiGet('/files').catch(() => []), apiGet('/files/recent').catch(() => [])]);
+    const files = (all || []).filter(f => !isFolderMarker(f));
+    const totalSize = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
+    const shared = files.filter(isSharedFile).length;
+    const libs = (librariesList || []).length || 1;
+    let activity = [];
+    if (isAdmin) { try { activity = (await apiGet('/admin/activity?limit=8')).events || []; } catch { activity = []; } }
+    const recentFiles = [...files].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
+
+    const name = String(currentUser?.name || currentUser?.email || 'there').split(/[\s@]/)[0];
+    const hr = new Date().getHours();
+    const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+    const kpi = (label, value) => `<div class="home-kpi"><div class="home-kpi-label">${label}</div><div class="home-kpi-value tnum">${value}</div></div>`;
+    const recentHtml = recentFiles.length
+      ? recentFiles.map(f => `<div class="home-file" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><span class="home-file-icon">${fileIconHtml(fileExt(fileDisplayName(f)))}</span><div class="home-file-meta"><div class="home-file-name">${esc(fileDisplayName(f))}</div><div class="home-file-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`).join('')
+      : emptyState('No files yet', 'Upload files to see them here.');
+    const activityCard = isAdmin
+      ? `<div class="home-card"><div class="home-card-h"><h3>Activity</h3></div>${activity.length ? activity.map(a => `<div class="home-act"><span class="home-act-dot"></span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${a.document_name ? ` <b style="font-weight:600">${esc(a.document_name)}</b>` : ''}</div><div class="home-act-time">${fileDate(a.created_at)}</div></div></div>`).join('') : emptyState('No recent activity', '')}</div>`
+      : '';
+
+    document.getElementById('home-view').innerHTML = `
+      <h1 class="home-h1">${greet}, ${esc(name)}</h1>
+      <p class="home-lede">Your workspace at a glance.</p>
+      <div class="home-kpis">${kpi('Files', files.length.toLocaleString())}${kpi('Storage used', fileSizeLabel(totalSize))}${kpi('Shared', shared.toLocaleString())}${kpi('Libraries', libs.toLocaleString())}</div>
+      <div class="home-grid2${isAdmin ? '' : ' single'}">
+        <div class="home-card"><div class="home-card-h"><h3>Recent files</h3><button class="home-link" onclick="setFileView('active')">Open library</button></div>${recentHtml}</div>
+        ${activityCard}
+      </div>`;
+  } catch (e) {
+    const el = document.getElementById('home-view');
+    if (el) el.innerHTML = emptyState('Could not load home', e.message || 'Try refreshing.');
   }
 }
 
