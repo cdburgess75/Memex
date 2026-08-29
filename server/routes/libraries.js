@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -10,7 +11,7 @@ router.get('/', auth, async (req, res) => {
   try {
     res.json(await libraries.listLibraries(req.user));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -21,7 +22,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     if (!name) return res.status(400).json({ error: 'name required' });
     res.json(await libraries.createLibrary({ name, user: req.user }));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -30,7 +31,7 @@ router.get('/:id/members', auth, requireRole('admin'), async (req, res) => {
   try {
     res.json(await libraries.listMembers(req.params.id));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -41,7 +42,7 @@ router.post('/:id/members', auth, requireRole('admin'), async (req, res) => {
     if (!email) return res.status(400).json({ error: 'email required' });
     res.json(await libraries.addMember(req.params.id, { email, user: req.user }));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -52,7 +53,7 @@ router.delete('/:id/members/:memberId', auth, requireRole('admin'), async (req, 
     if (!removed) return res.status(404).json({ error: 'member not found' });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

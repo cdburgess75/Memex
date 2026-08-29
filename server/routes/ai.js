@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -120,7 +121,7 @@ router.post('/extract', auth, (req, res, next) => getAiUpload().then(mw => mw(re
     text = text.replace(/\s+/g, ' ').trim().slice(0, 12000);
     res.json({ text, title: '' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -130,7 +131,7 @@ router.get('/models', auth, async (req, res) => {
     const [models, active] = await Promise.all([aiProviders.listModels(), aiProviders.activeModel()]);
     res.json({ active: `${active.provider}:${active.model}`, models });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

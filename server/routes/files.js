@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -782,7 +783,7 @@ router.get('/local-download', async (req, res) => {
     const { pipeline } = require('stream/promises');
     await pipeline(stream, res);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) serverError(res, e);
     else res.destroy(e);
   }
 });
@@ -825,7 +826,7 @@ router.get('/share/:token/info', async (req, res) => {
       allowUpload: unlocked ? !!share.allow_upload : false,
       maxUploadMb: externalUpload.DEFAULT_MAX_MB,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/share/:token/ticket — exchange the link password (sent in a
@@ -839,7 +840,7 @@ router.post('/share/:token/ticket', async (req, res) => {
       return res.status(401).json({ error: 'Password required' });
     }
     res.json({ ticket: issueShareTicket(share.id) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // Gatekeeper that runs BEFORE multer for recipient uploads: validate the link,
@@ -872,7 +873,7 @@ async function guardExchangeUpload(req, res, next) {
     }
     req.exchangeShare = share;
     next();
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 }
 
 // POST /api/files/share/:token/upload — the recipient sending something back.
@@ -944,7 +945,7 @@ router.post('/share/:token/upload',
       }).catch(() => {});
     }
     res.json({ ok: true, name: display });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 router.get('/share/:token', async (req, res) => {
@@ -1020,7 +1021,7 @@ router.get('/share/:token', async (req, res) => {
     const { pipeline } = require('stream/promises');
     await pipeline(stream, res);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) serverError(res, e);
     else res.destroy(e);
   }
 });
@@ -1044,7 +1045,7 @@ router.get('/', auth, async (req, res) => {
     );
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1081,7 +1082,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     res.json({ ok: true, mode, count: accessible.length });
   } catch (e) {
     console.error('library-transfer failed:', e);
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1099,7 +1100,7 @@ router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res)
     );
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1135,7 +1136,7 @@ router.get('/search', auth, async (req, res) => {
     );
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1154,7 +1155,7 @@ router.get('/watch', auth, async (req, res) => {
     const pref = await folderNotifyPrefs.prefForUser(library, req.query.folder_path || '', req.user.email);
     const notify = pref !== null ? pref : await isLibraryOwner(library, req.user.email);
     res.json({ notify });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 // POST /api/files/watch { library_id, folder_path, notify } — set my explicit
 // choice for this folder (and its subfolders), either direction.
@@ -1163,7 +1164,7 @@ router.post('/watch', auth, async (req, res) => {
     const notify = req.body.notify !== false;
     await folderNotifyPrefs.setPref(req.body.library_id || null, req.body.folder_path || '', req.user.email, notify);
     res.json({ notify });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 // GET /api/files/home-stats — the numbers behind the Dashboard Home viz: a
 // storage quota (for the donut), an uploads-per-day trend (for the sparkline),
@@ -1208,13 +1209,13 @@ router.get('/home-stats', auth, async (req, res) => {
     if (isAdmin) { try { const a = await db.queryOne(`SELECT count(distinct user_email)::int n FROM activity_log WHERE created_at > now() - interval '7 days'`); activeUsers = a?.n || 0; } catch { /* */ } }
 
     res.json({ usedBytes, totalBytes, uploads14, activeUsers });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/follows — doc ids the current user follows (for the file bells).
 router.get('/follows', auth, async (req, res) => {
   try { res.json({ ids: await docFollows.followedIds(req.user.email) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/watch/state?library_id= — everything the inline bells need for
@@ -1226,7 +1227,7 @@ router.get('/watch/state', auth, async (req, res) => {
     const isOwner = await isLibraryOwner(library, req.user.email);
     const prefs = await folderNotifyPrefs.listUserPrefs(library, req.user.email);
     res.json({ isOwner, prefs });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/:id/follow { follow } — follow/unfollow this file for activity.
@@ -1247,7 +1248,7 @@ router.post('/:id/follow', auth, async (req, res) => {
       await docFollows.unfollow(req.params.id, req.user.email);
     }
     res.json({ following: on });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/upload
@@ -1269,7 +1270,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
   try {
     await storage.upload(storagePath, buffer, mimetype);
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return serverError(res, e);
   }
 
   try {
@@ -1298,7 +1299,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     // so a failed upload can't orphan an encrypted blob with no row pointing at it
     // (mirrors the upload-stream path's cleanup).
     await storage.del(storagePath).catch(() => {});
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1339,7 +1340,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
     if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
-    return res.status(500).json({ error: e.message });
+    return serverError(res, e);
   }
 
   try {
@@ -1368,7 +1369,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1411,7 +1412,7 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
     await fs.mkdir(await chunkDir(session.id), { recursive: true });
     res.json({ session: uploadSessionClientShape(session) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1426,7 +1427,7 @@ router.get('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), asy
     if (!session) return res.status(404).json({ error: 'Upload session not found' });
     res.json({ session: uploadSessionClientShape(session) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1485,7 +1486,7 @@ router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'cont
     );
     res.json({ session: uploadSessionClientShape(updated) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1535,7 +1536,7 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     await removeUploadSessionFiles(session.id);
     res.json({ doc, canIngest, session: uploadSessionClientShape(updated), chunked: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1557,7 +1558,7 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
     );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1582,7 +1583,7 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
     );
     res.json({ shares: rows.map(row => shareLinkClientShape(row)) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1599,7 +1600,7 @@ router.get('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
     const grants = await documentAccess.listGrants(doc.id);
     res.json({ grants });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1662,7 +1663,7 @@ router.delete('/:id/access/:grantId', auth, requireRole('admin', 'contributor'),
     await logEvent(`access revoke · ${doc.name} · ${grant.subject_email}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1688,7 +1689,7 @@ router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res
       document_deleted: !!row.deleted_at
     })) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1726,7 +1727,7 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
     await logEvent(`share create · ${doc.name}`, req.user.id, req.user.email);
     res.json({ share: shareLinkClientShape(share, url) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1871,7 +1872,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     await logEvent(`send · ${doc.name} · ${recipients.length} recipient(s)`, req.user.id, req.user.email);
     res.json({ results, expiresAt, hasPassword: !!password });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1898,7 +1899,7 @@ router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'),
     await logEvent(`share revoke · ${req.params.id}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1922,7 +1923,7 @@ router.get('/:id/url', auth, async (req, res) => {
     await logDocumentEvent(doc.id, 'downloaded', req.user.id, req.user.email, doc.name);
     res.json({ url, name: doc.name });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1955,7 +1956,7 @@ router.get('/:id/office', auth, async (req, res) => {
     await logDocumentEvent(doc.id, 'viewed', req.user.id, req.user.email, doc.name);
     res.json({ viewUrl, editUrl, ext });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -1981,7 +1982,7 @@ router.post('/:id/google', auth, async (req, res) => {
     try {
       buffer = await storage.download(doc.storage_path);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      return serverError(res, e);
     }
     const ext = doc.name.split('.').pop().toLowerCase();
 
@@ -2035,7 +2036,7 @@ router.post('/:id/google', auth, async (req, res) => {
     await db.query('UPDATE documents SET google_drive_id = $1 WHERE id = $2', [driveFile.id, doc.id]);
     res.json({ editUrl: driveFile.webViewLink, driveId: driveFile.id });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2116,7 +2117,7 @@ router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), asy
     await logDocumentEvent(doc.id, 'updated', req.user.id, req.user.email, `Google export · ${fileSizeLabelForEvent(buffer.length)}`);
     res.json({ success: true, size: buffer.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2153,7 +2154,7 @@ router.get('/:id/history', auth, requireRole('admin'), async (req, res) => {
 
     res.json({ doc, events, versions, retention_days: retention });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2192,7 +2193,7 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     await logEvent(`version restore · ${updated.name} · v${version.version_number}`, req.user.id, req.user.email);
     res.json({ doc: updated });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2214,7 +2215,7 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     await logEvent(`trash · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2234,7 +2235,7 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
     res.json({ success: true, name: updated.name });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2262,7 +2263,7 @@ router.get('/recent', auth, async (req, res) => {
       [req.user.id, ...documentAccess.userParams(req.user, 'read')]
     );
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/:id/open — record that the caller opened this document
@@ -2277,7 +2278,7 @@ router.post('/:id/open', auth, async (req, res) => {
       [req.user.id, doc.id]
     );
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // Build a safe, optionally-foldered document name (no traversal, single basename per segment).
@@ -2311,7 +2312,7 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
       user: req.user, sourceDetail: 'created', libraryId: req.body?.library_id || null,
     });
     res.json(doc);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
@@ -2330,7 +2331,7 @@ router.post('/folder', auth, requireRole('admin', 'contributor'), async (req, re
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     res.json({ ok: true, path: folderPath });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/rename — rename a folder (re-prefix every file under it)
@@ -2353,7 +2354,7 @@ router.post('/folder/rename', auth, requireRole('admin', 'contributor'), async (
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/delete — move a whole folder's contents to Trash
@@ -2370,7 +2371,7 @@ router.post('/folder/delete', auth, requireRole('admin', 'contributor'), async (
     await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
@@ -2392,7 +2393,7 @@ router.post('/folder/reparent', auth, requireRole('admin', 'contributor'), async
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/move — move a folder's contents to another library
@@ -2410,7 +2411,7 @@ router.post('/folder/move', auth, requireRole('admin', 'contributor'), async (re
     await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/folder/zip?path=... — download a folder's files as a compressed zip
@@ -2434,7 +2435,7 @@ router.get('/folder/zip', auth, async (req, res) => {
     // whole ZIP in memory — bounds peak RAM regardless of folder size.
     await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, folderPath)), res);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) serverError(res, e);
     else res.destroy(e);
   }
 });
@@ -2467,7 +2468,7 @@ router.get('/folder/links', auth, requireRole('admin', 'contributor'), async (re
       adminAll ? [folderPath] : [folderPath, req.user.id]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/links — mint a public download link for a folder.
@@ -2506,7 +2507,7 @@ router.post('/folder/links', auth, requireRole('admin', 'contributor'), async (r
     await logEvent(`folder share create · ${folderPath} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_share_created', req.user.id, req.user.email, `${folderPath} (${docs.length})`);
     res.json({ share: folderShareClientShape(share, url) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // DELETE /api/files/folder/links/:shareId — revoke a folder download link.
@@ -2525,7 +2526,7 @@ router.delete('/folder/links/:shareId', auth, requireRole('admin', 'contributor'
     await logEvent(`folder share revoke · ${share.folder_path}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_share_revoked', req.user.id, req.user.email, share.folder_path);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/folder/share/:token — public, revocable, expiring folder ZIP download.
@@ -2580,7 +2581,7 @@ router.get('/folder/share/:token', async (req, res) => {
     // route, so buffering the whole archive would be a remote-OOM vector.
     await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, share.folder_path)), res);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) serverError(res, e);
     else res.destroy(e);
   }
 });
@@ -2608,7 +2609,7 @@ router.get('/folder/members', auth, requireRole('admin', 'contributor'), async (
       [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase()]
     );
     res.json({ grants: rows.map(r => ({ ...r, doc_count: Number(r.doc_count) })) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/members — grant one person access to every file in a folder.
@@ -2656,7 +2657,7 @@ router.post('/folder/members', auth, requireRole('admin', 'contributor'), async 
       }).catch(() => {});
     }
     res.json({ ok: true, count: rows.length, permission });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // DELETE /api/files/folder/members — revoke a person's access across a folder.
@@ -2677,7 +2678,7 @@ router.delete('/folder/members', auth, requireRole('admin', 'contributor'), asyn
     await logEvent(`folder access revoke · ${folderPath} · ${email} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_access_revoked', req.user.id, req.user.email, `${folderPath} · ${email} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/folder/copy — duplicate a folder's files into another library.
@@ -2704,7 +2705,7 @@ router.post('/folder/copy', auth, requireRole('admin', 'contributor'), async (re
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);
     res.json({ ok: true, count: docs.length });
-  } catch (e) { console.error('folder copy failed:', e); res.status(500).json({ error: e.message }); }
+  } catch (e) { console.error('folder copy failed:', e); serverError(res, e); }
 });
 
 // PUT /api/files/:id/content — overwrite a text file's content (md/txt/csv) and re-index
@@ -2722,7 +2723,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     await db.query('UPDATE documents SET size = $2, document_text = $3 WHERE id = $1', [doc.id, buffer.length, documentText]);
     await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
     res.json({ ok: true, size: buffer.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
@@ -2748,7 +2749,7 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
     await logEvent(`restore · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2770,7 +2771,7 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
     await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -2935,7 +2936,7 @@ router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (r
     const url = `${await publicAppBase(req)}/u/${token}`;
     await logEvent(`upload link create · ${label || 'file request'}`, req.user.id, req.user.email);
     res.json({ link: uploadLinkClientShape(row, url) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/upload-links — list my active links (admins see all).
@@ -2949,7 +2950,7 @@ router.get('/upload-links', auth, requireRole('admin', 'contributor'), async (re
       [req.user.id, req.user.role || '']
     );
     res.json({ links: rows.map(r => uploadLinkClientShape(r)) });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // DELETE /api/files/upload-links/:id — revoke.
@@ -2963,7 +2964,7 @@ router.delete('/upload-links/:id', auth, requireRole('admin', 'contributor'), as
     );
     if (!row) return res.status(404).json({ error: 'Upload link not found' });
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/upload-link/:token/info — public: describe the link for the page.
@@ -2972,7 +2973,7 @@ router.get('/upload-link/:token/info', async (req, res) => {
     const { row, error } = await loadActiveUploadLink(req.params.token);
     if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
     res.json({ label: row.label || null, needsPassword: !!row.password_hash });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/upload-link/:token — public: accept an upload (no account).
@@ -3029,7 +3030,7 @@ router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw
       }).catch(() => {});
     }
     res.json({ ok: true, name: base });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 module.exports = router;

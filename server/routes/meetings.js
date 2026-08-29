@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 // Schedule an internal video meeting: pick a time + attendees, and Depot emails
 // each a calendar invite (.ics, METHOD:REQUEST) carrying a deep link into the
 // built-in WebRTC room. The room is ad-hoc (no persistence needed — a named room
@@ -137,7 +138,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
       sentCount, failedCount: results.length - sentCount, skippedCount: skipped.length,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

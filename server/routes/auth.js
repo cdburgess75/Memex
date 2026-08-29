@@ -1,3 +1,4 @@
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -26,7 +27,7 @@ router.get('/profile', auth, async (req, res) => {
     const p = await profiles.getProfile(req.user.id);
     res.json({ display_name: p?.display_name || '', avatar: p?.avatar || '' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -40,7 +41,7 @@ router.put('/profile', auth, async (req, res) => {
     const saved = await profiles.setProfile(req.user, { display_name, avatar });
     res.json({ display_name: saved?.display_name || '', avatar: saved?.avatar || '' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

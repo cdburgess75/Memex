@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -15,7 +16,7 @@ router.get('/', auth, async (req, res) => {
       notifications.getPref(req.user),
     ]);
     res.json({ notifications: items, unread, enabled });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/notifications/read — { all: true } or { ids: [...] }
@@ -25,7 +26,7 @@ router.post('/read', auth, async (req, res) => {
       ? await notifications.markAllRead(req.user)
       : await notifications.markRead(req.user, req.body?.ids || []);
     res.json({ updated });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // PUT /api/notifications/pref — { enabled: bool } (per-user in-app opt-out).
@@ -33,7 +34,7 @@ router.put('/pref', auth, async (req, res) => {
   try {
     const enabled = await notifications.setPref(req.user, req.body?.enabled !== false);
     res.json({ enabled });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/notifications/test-email — admin: verify SMTP config by mailing self.
@@ -46,7 +47,7 @@ router.post('/test-email', auth, requireRole('admin'), async (req, res) => {
       actorEmail: req.user.email,
     });
     res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 module.exports = router;

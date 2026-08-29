@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 // Per-user, cross-device UI preferences (pinned libraries + favorite files). Stored
 // server-side so they follow the user, with the client keeping a localStorage cache.
 const express = require('express');
@@ -55,7 +56,7 @@ router.put('/', auth, async (req, res) => {
     );
     res.json({ ok: true, pinnedLibraries: pins, favoriteFiles: favs });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
