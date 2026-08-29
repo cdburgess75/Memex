@@ -2438,6 +2438,12 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   justify-content: center;
   flex-shrink: 0;
 }
+/* SVG per-extension icon variant: no badge background; the sheet color comes
+   from theme-aware CSS vars so it reads on light and dark grounds. */
+:root { --fic-sheet: #FFFFFF; --fic-edge: #D8D9E6; --fic-line: #EDEEF6; }
+html.dark, html.office-dark { --fic-sheet: #2A2C39; --fic-edge: #3C3E50; --fic-line: rgba(255,255,255,.07); }
+.file-icon.file-icon--doc { background: transparent; color: inherit; border-radius: 0; }
+.file-icon.file-icon--doc svg { height: 100%; width: auto; display: block; }
 .file-icon.pdf  { background: #FCEAE8; color: #C0392B; }
 .file-icon.xlsx, .file-icon.xls, .file-icon.csv { background: #E8F5E9; color: #2E7D32; }
 .file-icon.pptx, .file-icon.ppt { background: #FEF0E6; color: #D84315; }
@@ -6095,11 +6101,51 @@ function fileOwner(f) {
 }
 function fileDate(value) { return value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : ''; }
 function fileSizeLabel(size) { return size > 1024*1024 ? (size/1024/1024).toFixed(1)+' MB' : Math.max(1, Math.round((size || 0)/1024))+' KB'; }
+// Per-extension icon system: a document sheet tinted + labeled by file type,
+// with a small glyph for media/archive/code/key. One function, inline SVG (no
+// external assets), theme-aware sheet via CSS vars, and it renders ANY
+// extension — unknown ones fall through to a generic labeled card.
+const FIC_TYPES = {
+  docx:['word','DOC'],doc:['word','DOC'],dotx:['word','DOC'],rtf:['text','RTF'],
+  xlsx:['excel','XLS'],xls:['excel','XLS'],csv:['sheet','CSV'],
+  pptx:['ppt','PPT'],ppt:['ppt','PPT'],pdf:['pdf','PDF'],
+  eml:['email','EML'],msg:['email','MSG'],
+  jpg:['image','JPG'],jpeg:['image','JPG'],png:['image','PNG'],gif:['image','GIF'],svg:['image','SVG'],heic:['image','HEIC'],webp:['image','WEBP'],bmp:['image','BMP'],
+  mp4:['video','MP4'],mov:['video','MOV'],webm:['video','WEBM'],mkv:['video','MKV'],
+  mp3:['audio','MP3'],wav:['audio','WAV'],m4a:['audio','M4A'],
+  zip:['archive','ZIP'],'7z':['archive','7Z'],rar:['archive','RAR'],tar:['archive','TAR'],gz:['archive','GZ'],
+  txt:['text','TXT'],log:['text','LOG'],md:['markdown','MD'],
+  html:['code','HTML'],htm:['code','HTM'],js:['code','JS'],json:['code','JSON'],css:['code','CSS'],xml:['code','XML'],yml:['code','YML'],yaml:['code','YAML'],
+  pem:['key','PEM'],key:['key','KEY'],cer:['key','CER'],crt:['key','CRT'],fig:['design','FIG']
+};
+const FIC_COLOR = { word:'#2B579A',excel:'#217346',sheet:'#3E7A57',ppt:'#C43E1C',pdf:'#D93025',email:'#6A54C9',image:'#128C7E',video:'#7C3AED',audio:'#DB2777',archive:'#C99A2E',text:'#64748B',markdown:'#3A7CA5',code:'#475569',key:'#9A6D2E',design:'#A259FF','default':'#7A7D93' };
+const FIC_GLYPH = {
+  image:'<path d="M9 25l4.2-5 3 3.4L19.5 19 23 25z" fill="#fff" opacity=".92"/><circle cx="11" cy="18.5" r="1.7" fill="#fff" opacity=".92"/>',
+  video:'<path d="M13.5 18.4l6 3.6-6 3.6z" fill="#fff" opacity=".95"/>',
+  audio:'<path d="M12.5 25v-6.5l7-1.6V23" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" opacity=".95"/><circle cx="11.2" cy="25" r="1.7" fill="#fff" opacity=".95"/><circle cx="18.2" cy="23" r="1.7" fill="#fff" opacity=".95"/>',
+  archive:'<path d="M16 15v10" stroke="#fff" stroke-width="1.7" stroke-dasharray="1.5 1.7" opacity=".92"/>',
+  code:'<path d="M13.5 18l-3 3 3 3M18.5 18l3 3-3 3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".92"/>',
+  key:'<circle cx="13" cy="20" r="2.4" fill="none" stroke="#fff" stroke-width="1.6" opacity=".95"/><path d="M15 21.4l5 2.2M18.6 22.9l-.7 1.6M20.2 23.6l-.7 1.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".95"/>',
+  design:'<circle cx="13" cy="19" r="2.1" fill="#fff" opacity=".95"/><circle cx="19" cy="19" r="2.1" fill="#fff" opacity=".6"/><circle cx="16" cy="24" r="2.1" fill="#fff" opacity=".8"/>'
+};
+function fileIconSvg(ext, px) {
+  px = px || 34;
+  const t = FIC_TYPES[ext] || ['default', (ext || 'FILE').toUpperCase().slice(0, 4)];
+  const col = FIC_COLOR[t[0]] || FIC_COLOR['default'];
+  const glyph = FIC_GLYPH[t[0]] || '';
+  const h = Math.round(px * 40 / 32);
+  return `<svg class="ficon" width="${px}" height="${h}" viewBox="0 0 32 40" aria-hidden="true">`
+    + `<path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20l7 7v26.5A2.5 2.5 0 0 1 24.5 38h-17A2.5 2.5 0 0 1 5 35.5z" fill="var(--fic-sheet)" stroke="var(--fic-edge)" stroke-width="1"/>`
+    + `<path d="M20 2l7 7h-5.2A1.8 1.8 0 0 1 20 7.2z" fill="${col}" opacity=".30"/>`
+    + `<path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H9v36H7.5A2.5 2.5 0 0 1 5 35.5z" fill="${col}" opacity=".16"/>`
+    + `<line x1="12" y1="12" x2="19" y2="12" stroke="var(--fic-line)" stroke-width="1.4" stroke-linecap="round"/>`
+    + `<line x1="12" y1="15.5" x2="23" y2="15.5" stroke="var(--fic-line)" stroke-width="1.4" stroke-linecap="round"/>`
+    + glyph
+    + `<rect x="8" y="27.5" width="16" height="8.5" rx="2" fill="${col}"/>`
+    + `<text x="16" y="33.7" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="700" font-size="5.6" letter-spacing=".2" fill="#fff">${esc(t[1])}</text></svg>`;
+}
 function fileIconHtml(ext) {
-  // Badge = first 3 letters of the extension (XLS, DOC, PPT, CSV, MP4, MP3, ZIP,
-  // PDF, TXT…), not the friendly app name. The Type column still uses fileKind().
-  const badge = ext ? ext.slice(0, 3) : 'file';
-  return `<div class="file-icon ${ext}">${esc(badge)}</div>`;
+  return `<span class="file-icon file-icon--doc">${fileIconSvg(ext, 34)}</span>`;
 }
 function normalizeFilePath(path) {
   return String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
@@ -8434,6 +8480,18 @@ document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu'
 // closeTopModal), which covers the row menu and the file preview scrim.
 
 // ---- folder actions ----
+// Follow/unfollow a folder so you're notified (in-app + email) when files land
+// in it or a subfolder. The library owner is notified automatically; this is for
+// anyone else who wants to know — one toggle, self-service.
+async function toggleFolderWatch(path) {
+  try {
+    const q = new URLSearchParams({ library_id: currentLibraryId || '', folder_path: path || '' }).toString();
+    const cur = await apiGet('/files/watch?' + q);
+    const r = await apiPost('/files/watch', { library_id: currentLibraryId || null, folder_path: path || '', watch: !cur.watching });
+    toast(r.watching ? "You'll be notified when files are added here" : 'Notifications off for this folder');
+  } catch (e) { toast('Could not update notifications: ' + e.message); }
+}
+
 let folderMenuPath = '';
 function openFolderMenu(path, event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -8446,6 +8504,7 @@ function openFolderMenu(path, event) {
     `<div class="file-menu-rule"></div>`,
     canShare ? `<button class="file-menu-item" onclick="closeFileMenu();openFolderShare(folderMenuPath)">Share…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();toggleFolderWatch(folderMenuPath)">Notify me of new files…</button>`,
     `<div class="file-menu-rule"></div>`,
     `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>`,
