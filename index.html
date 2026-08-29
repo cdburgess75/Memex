@@ -2645,7 +2645,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 <header class="masthead">
   <div class="masthead-left">
     <div class="brand-block">
-      <div class="brand">
+      <div class="brand" role="button" tabindex="0" title="Home" style="cursor:pointer" onclick="goHome()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goHome()}">
         <span class="brand-logo" aria-hidden="true">D</span>
         <h1>Depot</h1>
       </div>
@@ -7312,6 +7312,11 @@ function setFileFilter(filter) {
   navPush();
 }
 
+// Clicking the masthead logo returns to the Dashboard Home from anywhere.
+function goHome() {
+  if (state && state.tab !== 'files') setTab('files');
+  setFileView('home');
+}
 function setFileView(view) {
   if (state) state.tab = 'files';
   fileView = view;
