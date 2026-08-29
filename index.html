@@ -1812,7 +1812,7 @@ html[data-density="compact"] .file-library-table .file-row-sub { display: none; 
 html[data-density="compact"] .file-library-table .file-library-name { grid-template-columns: 24px minmax(0, 1fr); gap: 9px; }
 html[data-density="compact"] .file-library-table .file-icon { width: 24px; height: 24px; font-size: 8px; }
 html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px; height: 24px; }
-.file-library-select { width: 18px; height: 18px; border: 1.5px solid var(--ink-faint); border-radius: 5px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; line-height: 1; opacity: 0; transition: opacity 0.12s; }
+.file-library-select { width: 18px; height: 18px; border: 1.5px solid var(--ink-faint); border-radius: 5px; background: transparent; color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; line-height: 1; opacity: 0.4; transition: opacity 0.12s; }
 .file-library-table tbody tr:hover .file-library-select, .file-library-select.selected { opacity: 1; }
 .file-library-select.selected { background: var(--accent); border-color: var(--accent); }
 .file-library-select.selected::before { content: '✓'; }
@@ -1838,8 +1838,8 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .fc-caret:not(.fc-caret-empty):hover { background: var(--surface-2); color: var(--accent); }
 .fc-caret-empty { visibility: hidden; }
 .file-commander-count { color: var(--ink-faint); font-size: 12px; }
-.file-commander-folder .fc-dots { display: inline-flex; align-items: center; justify-content: center; opacity: 0; color: var(--ink-faint); cursor: pointer; border-radius: 4px; padding: 1px; }
-.file-commander-folder:hover .fc-dots { opacity: 0.7; }
+.file-commander-folder .fc-dots { display: inline-flex; align-items: center; justify-content: center; opacity: 0.4; color: var(--ink-faint); cursor: pointer; border-radius: 4px; padding: 1px; }
+.file-commander-folder:hover .fc-dots { opacity: 0.8; }
 .file-commander-folder .fc-dots:hover { opacity: 1; color: var(--accent); background: var(--accent-wash); }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 /* ---- Two-column file-home redesign: pinned rail, in-rail folder tree, breadcrumb ---- */
@@ -6896,7 +6896,7 @@ function renderContentSearchResults(rows, q) {
 
 function currentLibraryName() {
   const lib = librariesList.find(l => String(l.id) === String(currentLibraryId));
-  return lib ? lib.name : (librariesList[0]?.name || 'Ptech Workspace');
+  return lib ? lib.name : (librariesList[0]?.name || (brandDefaults.name || 'Workspace'));
 }
 
 // Files endpoint scoped to the active library.
@@ -6977,10 +6977,10 @@ async function switchAiModel(value) {
 async function loadLibraries() {
   try {
     librariesList = await apiGet('/libraries');
-    if (!Array.isArray(librariesList) || !librariesList.length) librariesList = [{ id: null, name: 'Ptech Workspace' }];
+    if (!Array.isArray(librariesList) || !librariesList.length) librariesList = [{ id: null, name: (brandDefaults.name || 'Workspace') }];
   } catch {
     // Backend without the libraries API yet — fall back to a single default.
-    librariesList = [{ id: null, name: 'Ptech Workspace' }];
+    librariesList = [{ id: null, name: (brandDefaults.name || 'Workspace') }];
   }
   if (!currentLibraryId || !librariesList.some(l => String(l.id) === String(currentLibraryId))) {
     currentLibraryId = librariesList[0].id || null;
@@ -8614,7 +8614,7 @@ function historyDate(value) {
 async function openFileHistory(fileId) {
   if (currentUser?.role !== 'admin') return;
   closeFileHistory();
-  document.body.insertAdjacentHTML('beforeend', `<div class="file-history-scrim" id="file-history-scrim" onclick="if(event.target.id==='file-history-scrim')closeFileHistory()"><div class="file-history-modal"><div class="file-history-head"><div><h2 class="file-history-title">File history</h2><div class="file-history-sub">Loading...</div></div><button class="file-action-btn" onclick="closeFileHistory()">Close</button></div><div class="file-history-body"><div class="file-empty-home">Loading history...</div></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="file-history-scrim" id="file-history-scrim" onclick="if(event.target.id==='file-history-scrim')closeFileHistory()"><div class="file-history-modal"><div class="file-history-head"><div><h2 class="file-history-title">File history</h2><div class="file-history-sub">Loading…</div></div><button class="file-action-btn" onclick="closeFileHistory()">Close</button></div><div class="file-history-body"><div class="file-empty-home">Loading history…</div></div></div></div>`);
   try {
     const data = await apiGet('/files/' + fileId + '/history');
     const doc = data.doc || {};
