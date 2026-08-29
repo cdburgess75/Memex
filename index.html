@@ -1702,6 +1702,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .mast-upload-menu button:hover { background: var(--rule); }
 .mast-upload-menu button svg { color: var(--ink-faint); flex: none; }
 .mast-div { width: 1px; height: 22px; background: var(--rule); margin: 0 2px; align-self: center; }
+.mast-icon-wrap { position: relative; display: inline-flex; }
 .mast-icon-btn { position: relative; width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-faint); cursor: pointer; display: inline-grid; place-items: center; }
 .mast-icon-btn:hover { background: var(--rule); color: var(--ink); }
 .notif-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 700 10.5px var(--ui); display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--surface); }
@@ -2733,12 +2734,10 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
-    <button class="mast-icon-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
-    <button class="mast-icon-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
+    <div class="mast-icon-wrap"><button class="mast-icon-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button><div class="meet-panel" id="meet-panel"></div></div>
+    <div class="mast-icon-wrap"><button class="mast-icon-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button><div class="notif-panel" id="notif-panel"></div></div>
     <button class="mast-icon-btn" type="button" onclick="openSettings()" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <button class="mast-icon-btn" id="theme-btn" type="button" onclick="event.stopPropagation();toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme"><span id="theme-btn-icon"></span></button>
-    <div class="meet-panel" id="meet-panel"></div>
-    <div class="notif-panel" id="notif-panel"></div>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -5328,7 +5327,7 @@ function renderConnections() {
         <div class="conn-meta">${esc(c.label || c.kind)}${c.lastError ? ' — ' + esc(c.lastError) : ''}</div>
       </div>
       <div class="conn-actions">
-        ${c.enabled ? `<button class="ghost-btn" onclick="connBrowse('${escAttr(c.id)}', '')">Browse</button>` : ''}
+        ${c.enabled ? `<button class="ghost-btn" data-cid="${escAttr(c.id)}" onclick="connBrowse(this.dataset.cid, '')">Browse</button>` : ''}
         <button class="ghost-btn" onclick="connTest('${escAttr(c.id)}')">Test</button>
         <button class="ghost-btn" onclick="connEdit('${escAttr(c.id)}')">Edit</button>
         <button class="ghost-btn" onclick="connDelete('${escAttr(c.id)}')">Remove</button>
@@ -5355,11 +5354,11 @@ async function connBrowse(id, path) {
 
 function connCrumbs(b) {
   const segs = (b.path || '').split('/').filter(Boolean);
-  const links = [`<a href="#" onclick="connBrowse('${escAttr(b.id)}', ''); return false">${esc(b.name || 'root')}</a>`];
+  const links = [`<a href="#" data-cid="${escAttr(b.id)}" onclick="connBrowse(this.dataset.cid, ''); return false">${esc(b.name || 'root')}</a>`];
   let acc = '';
   for (const s of segs) {
     acc = acc ? acc + '/' + s : s;
-    links.push(`<a href="#" onclick="connBrowse('${escAttr(b.id)}', '${escAttr(acc)}'); return false">${esc(s)}</a>`);
+    links.push(`<a href="#" data-cid="${escAttr(b.id)}" data-path="${escAttr(acc)}" onclick="connBrowse(this.dataset.cid, this.dataset.path); return false">${esc(s)}</a>`);
   }
   return links.join(' / ');
 }
@@ -5372,13 +5371,13 @@ function renderConnectorBrowser(el) {
     <div class="conn-row">
       <div class="conn-main">
         <div class="conn-name">${e.type === 'dir'
-          ? `📁 <a href="#" onclick="connBrowse('${escAttr(b.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
-          : e.openUrl ? `<a href="#" title="Open in Microsoft 365" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener'); return false">${esc(e.name)}</a>` : esc(e.name)}</div>
+          ? `📁 <a href="#" data-cid="${escAttr(b.id)}" data-path="${escAttr(e.path)}" onclick="connBrowse(this.dataset.cid, this.dataset.path); return false">${esc(e.name)}</a>`
+          : e.openUrl ? `<a href="#" title="Open in Microsoft 365" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl); return false">${esc(e.name)}</a>` : esc(e.name)}</div>
         <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
       </div>
       <div class="conn-actions">
-        ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
-        ${e.type !== 'dir' ? `<button class="ghost-btn" onclick="connDownload('${escAttr(b.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button>` : ''}
+        ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
+        ${e.type !== 'dir' ? `<button class="ghost-btn" data-cid="${escAttr(b.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.cid, this.dataset.path, this.dataset.name)">Download</button>` : ''}
       </div>
     </div>`;
   el.innerHTML = `
@@ -5387,6 +5386,14 @@ function renderConnectorBrowser(el) {
     <div class="btn-row" style="margin-top:14px">
       <button class="ghost-btn" onclick="connBrowsing = null; renderConnections()">Back to connections</button>
     </div>`;
+}
+
+// Open a connector/mount file's external (Microsoft 365) link. The URL comes from
+// the remote system, so only follow real web URLs — never javascript:/data:.
+function connOpenExternal(url) {
+  const u = String(url || '');
+  if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener');
+  else toast('That item has no valid external link.');
 }
 
 async function connDownload(id, path, name) {
@@ -7344,11 +7351,11 @@ async function openMount(id, path = '') {
 function mountCrumbsHtml() {
   const m = mountView;
   const segs = (m.path || '').split('/').filter(Boolean);
-  const parts = [`<a href="#" onclick="openMount('${escAttr(m.id)}', ''); return false">${esc(m.name)}</a>`];
+  const parts = [`<a href="#" data-mid="${escAttr(m.id)}" onclick="openMount(this.dataset.mid, ''); return false">${esc(m.name)}</a>`];
   let acc = '';
   for (const s of segs) {
     acc = acc ? acc + '/' + s : s;
-    parts.push(`<a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(acc)}'); return false">${esc(s)}</a>`);
+    parts.push(`<a href="#" data-mid="${escAttr(m.id)}" data-path="${escAttr(acc)}" onclick="openMount(this.dataset.mid, this.dataset.path); return false">${esc(s)}</a>`);
   }
   return parts.join(' / ');
 }
@@ -7362,7 +7369,7 @@ function renderMountView() {
     <div class="conn-row">
       <div class="conn-main">
         <div class="conn-name">${e.type === 'dir'
-          ? `📁 <a href="#" onclick="openMount('${escAttr(m.id)}', '${escAttr(e.path)}'); return false">${esc(e.name)}</a>`
+          ? `📁 <a href="#" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" onclick="openMount(this.dataset.mid, this.dataset.path); return false">${esc(e.name)}</a>`
           : `<a href="#" onclick="previewMountEntry(${i}); return false">${esc(e.name)}</a>`}</div>
         <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
       </div>
@@ -7386,9 +7393,9 @@ function previewMountEntry(i) {
   const e = m?.ordered?.[i];
   if (!e) return;
   closeFilePreview();
-  const primary = e.openUrl ? `<button class="run-btn" onclick="window.open('${escAttr(e.openUrl)}', '_blank', 'noopener')" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
+  const primary = e.openUrl ? `<button class="run-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
   const body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(fileExt(e.name))}<div class="file-info-meta"><div class="file-row-title">${esc(e.name)}</div><div class="file-row-sub">${fmtBytes(e.size || 0)}${e.modified ? ' · ' + new Date(e.modified).toLocaleString() : ''} · via ${esc(m.name)}</div></div></div><p class="settings-notice" style="margin-top:10px">This file lives in ${esc(m.kind || 'the connected system')} — Depot streams it on demand; nothing is copied.</p></div>`;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" onclick="connDownload('${escAttr(m.id)}', '${escAttr(e.path)}', '${escAttr(e.name)}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
