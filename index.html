@@ -7315,7 +7315,8 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
       </div>
       ${connMountsNavHtml()}
       <div class="file-nav-section">Quick access</div>
-      <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading...</div></div>
+      <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading…</div></div>
+      ${currentUser?.role === 'admin' ? `<div class="file-nav-section">Workspace</div><div class="file-nav-main">${fileNavButton('Admin', '⚙', "setTab('admin')", activeWorkspace === 'admin')}</div>` : ''}
     </div>
   </section>`;
 }
