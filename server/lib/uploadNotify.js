@@ -12,7 +12,7 @@
 // 200-file folder is one notification and one email, not two hundred.
 const notifications = require('./notifications');
 const emailEvents = require('./emailEvents');
-const folderWatchers = require('./folderWatchers');
+const folderNotifyPrefs = require('./folderNotifyPrefs');
 const libraries = require('./libraries');
 
 const FLUSH_MS = Number(process.env.UPLOAD_NOTIFY_DEBOUNCE_MS || 15000);
@@ -20,20 +20,28 @@ const pending = new Map();
 const keyOf = (libraryId, folderPath, uploader) =>
   `${libraryId || ''}|${folderPath || ''}|${String(uploader || '').toLowerCase()}`;
 
+// Role defaults, overridable per person: the library OWNER is notified by
+// default, MEMBERS are not — and each person's own explicit pref (folder or
+// library level) wins. The uploader is never notified.
 async function recipientsFor(libraryId, folderPath, uploaderEmail) {
-  const out = new Map(); // lower(email) -> email (preserve display casing)
-  try {
-    const lib = await libraries.info(libraryId);
-    if (lib && lib.created_by_email) out.set(lib.created_by_email.toLowerCase(), lib.created_by_email);
-  } catch { /* no owner is fine */ }
-  try {
-    // Don't let a follower row overwrite the owner's display casing when they're
-    // the same address — first (owner) wins.
-    for (const w of await folderWatchers.subscribersFor(libraryId, folderPath)) {
-      if (!out.has(w.toLowerCase())) out.set(w.toLowerCase(), w);
-    }
-  } catch { /* watchers optional */ }
-  if (uploaderEmail) out.delete(String(uploaderEmail).toLowerCase()); // never self-notify
+  let ownerEmail = null;
+  try { const lib = await libraries.info(libraryId); ownerEmail = (lib && lib.created_by_email) || null; } catch { /* no owner */ }
+  let members = [];
+  try { members = (await libraries.listMembers(libraryId)).map((m) => m && m.subject_email).filter(Boolean); } catch { /* open library */ }
+  let prefs = new Map();
+  try { prefs = await folderNotifyPrefs.effectiveFor(libraryId, folderPath); } catch { /* prefs optional */ }
+
+  const out = new Map(); // lower(email) -> email
+  if (ownerEmail) {
+    const k = ownerEmail.toLowerCase();
+    if (prefs.has(k) ? prefs.get(k) : true) out.set(k, ownerEmail); // owner default ON
+  }
+  for (const m of members) {
+    const k = m.toLowerCase();
+    if (out.has(k)) continue;
+    if (prefs.has(k) ? prefs.get(k) : false) out.set(k, m); // member default OFF
+  }
+  if (uploaderEmail) out.delete(String(uploaderEmail).toLowerCase());
   return [...out.values()];
 }
 

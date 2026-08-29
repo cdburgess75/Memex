@@ -1859,6 +1859,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
 .file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
+.file-library-icon-btn.file-bell-btn.on { color: var(--accent); }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -2731,6 +2732,10 @@ let currentFolderPath = '';
 const _loadIdSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]').map(String)); } catch { return new Set(); } };
 let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
 let favoriteFileIds = _loadIdSet('memex_favorite_files');
+// Inline-bell state: which files the user follows, and their notify prefs for
+// the current library (owner default on / member default off).
+let followedFileIds = new Set();
+let folderNotifyState = { libraryId: null, isOwner: false, prefs: new Map() };
 let filePinnedCollapsed = localStorage.getItem('memex_pinned_collapsed') === 'true';
 let fileBreadcrumbHidden = localStorage.getItem('memex_breadcrumb_hidden') === 'true';
 function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); syncPreferencesToServer(); }
@@ -6231,13 +6236,24 @@ function fileHomeRow(f) {
   return `<tr><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
+const ICON_BELL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
+const ICON_BELL_OFF = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8.4 3.6A6 6 0 0 1 18 9c0 5 2 6 2 6M6 9c0 5-2 6-2 6h12"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg>';
+const ICON_SHARE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.8l7.4-4.6M8.3 13.2l7.4 4.6"/></svg>';
+const ICON_DOWNLOAD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg>';
 function fileLibraryActions(f) {
+  const fid = esc(String(f.id));
   const fav = favoriteFileIds.has(String(f.id));
-  return `<button class="file-library-icon-btn file-fav-btn${fav ? ' on' : ''}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button><button class="file-library-icon-btn" title="Actions" data-fid="${esc(String(f.id))}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
+  const following = followedFileIds.has(String(f.id));
+  return `<button class="file-library-icon-btn file-bell-btn${following ? ' on' : ''}" title="${following ? 'Following this file — click to stop' : 'Follow this file for updates'}" aria-label="Follow file" data-fid="${fid}" onclick="event.stopPropagation();toggleFileFollow(this.dataset.fid, this)">${following ? ICON_BELL : ICON_BELL_OFF}</button>`
+    + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-fid="${fid}" onclick="event.stopPropagation();openShareFile(this.dataset.fid)">${ICON_SHARE}</button>`
+    + `<button class="file-library-icon-btn" title="Download" aria-label="Download" data-fid="${fid}" onclick="event.stopPropagation();downloadFile(this.dataset.fid)">${ICON_DOWNLOAD}</button>`
+    + `<button class="file-library-icon-btn file-fav-btn${fav ? ' on' : ''}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" data-fid="${fid}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button>`
+    + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button>`;
 }
 function ownerCellHtml(owner) {
   const initials = (owner || '').split(/[\s@.]+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase() || '?';
-  return `<span class="file-owner"><span class="file-owner-avatar">${esc(initials)}</span><span class="file-owner-name">${esc(owner)}</span></span>`;
+  // Initials only, full name on hover — saves the row width for inline actions.
+  return `<span class="file-owner" title="${esc(owner)}"><span class="file-owner-avatar">${esc(initials)}</span></span>`;
 }
 function fileNameCellHtml(f) {
   const ext = fileExt(f.name);
@@ -6271,7 +6287,10 @@ function folderLibraryRow(folder) {
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
     `<td${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions"><button class="file-library-icon-btn" title="Folder actions" data-folder="${esc(folder.path)}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></td></tr>`;
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+    + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
+    + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
+    + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
 }
 function fileLibraryCommandBar(title = 'Documents') {
   return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-breadcrumb-row" id="file-library-breadcrumb"></div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
@@ -7289,6 +7308,7 @@ async function renderDocumentLibrary(view = 'active') {
   if (quick) quick.innerHTML = quickAccessHtml();
   try {
     filesList = await apiGet(filesEndpoint());
+    await Promise.all([loadFollowState(), loadFolderNotifyState()]); // inline-bell state
     renderDocumentLibraryList();
   } catch (e) {
     const el = document.getElementById('file-list');
@@ -8480,16 +8500,67 @@ document.addEventListener('click', e => { if (!e.target.closest('#file-row-menu'
 // closeTopModal), which covers the row menu and the file preview scrim.
 
 // ---- folder actions ----
-// Follow/unfollow a folder so you're notified (in-app + email) when files land
-// in it or a subfolder. The library owner is notified automatically; this is for
-// anyone else who wants to know — one toggle, self-service.
-async function toggleFolderWatch(path) {
+// Load the inline-bell state for the current library: followed files + this
+// user's folder notify prefs (+ whether they're the owner, the folder default).
+async function loadFollowState() {
+  try { const r = await apiGet('/files/follows'); followedFileIds = new Set((r.ids || []).map(String)); }
+  catch { followedFileIds = new Set(); }
+}
+async function loadFolderNotifyState() {
+  try {
+    const r = await apiGet('/files/watch/state?' + new URLSearchParams({ library_id: currentLibraryId || '' }));
+    folderNotifyState = { libraryId: currentLibraryId || null, isOwner: !!r.isOwner, prefs: new Map((r.prefs || []).map(p => [normalizeFilePath(p.folder_path || ''), !!p.enabled])) };
+  } catch { folderNotifyState = { libraryId: currentLibraryId || null, isOwner: false, prefs: new Map() }; }
+}
+// Effective bell state for a folder: the most-specific matching pref, else the
+// role default (owner on / member off).
+function folderBellOn(path) {
+  const p = normalizeFilePath(path || '');
+  let best = null;
+  for (const [fp, en] of folderNotifyState.prefs) {
+    if (fp === '' || fp === p || p.startsWith(fp + '/')) { if (!best || fp.length > best.len) best = { en, len: fp.length }; }
+  }
+  return best ? best.en : folderNotifyState.isOwner;
+}
+// File bell: follow / unfollow this file for activity (edits, share downloads).
+async function toggleFileFollow(id, btn) {
+  try {
+    const on = !followedFileIds.has(String(id));
+    const r = await apiPost('/files/' + id + '/follow', { follow: on });
+    if (r.following) followedFileIds.add(String(id)); else followedFileIds.delete(String(id));
+    if (btn) { btn.classList.toggle('on', r.following); btn.innerHTML = r.following ? ICON_BELL : ICON_BELL_OFF; btn.title = r.following ? 'Following this file — click to stop' : 'Follow this file for updates'; }
+    toast(r.following ? 'Following this file' : 'Stopped following this file');
+  } catch (e) { toast('Could not update: ' + e.message); }
+}
+// Folder bell: turn new-file notifications on/off for this folder.
+async function toggleFolderBell(path, btn) {
+  try {
+    const cur = folderBellOn(path);
+    const r = await apiPost('/files/watch', { library_id: currentLibraryId || null, folder_path: path || '', notify: !cur });
+    folderNotifyState.prefs.set(normalizeFilePath(path || ''), r.notify);
+    if (btn) { btn.classList.toggle('on', r.notify); btn.innerHTML = r.notify ? ICON_BELL : ICON_BELL_OFF; btn.title = r.notify ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'; }
+    toast(r.notify ? "You'll be notified of new files here" : 'Muted new-file notifications for this folder');
+  } catch (e) { toast('Could not update notifications: ' + e.message); }
+}
+
+// New-file notifications are ON by default for everyone with access. This
+// toggle lets you mute (or re-enable) a folder — one click, self-service.
+async function toggleFolderNotify(path) {
   try {
     const q = new URLSearchParams({ library_id: currentLibraryId || '', folder_path: path || '' }).toString();
     const cur = await apiGet('/files/watch?' + q);
-    const r = await apiPost('/files/watch', { library_id: currentLibraryId || null, folder_path: path || '', watch: !cur.watching });
-    toast(r.watching ? "You'll be notified when files are added here" : 'Notifications off for this folder');
+    const r = await apiPost('/files/watch', { library_id: currentLibraryId || null, folder_path: path || '', notify: !cur.notify });
+    toast(r.notify ? "You'll be notified of new files here" : 'Muted new-file notifications for this folder');
   } catch (e) { toast('Could not update notifications: ' + e.message); }
+}
+// Reflect current state on the folder menu's notify item (default: on → "Turn off").
+function refreshFolderNotifyLabel(path) {
+  const el = document.getElementById('folder-notify-item');
+  if (!el) return;
+  const q = new URLSearchParams({ library_id: currentLibraryId || '', folder_path: path || '' }).toString();
+  apiGet('/files/watch?' + q)
+    .then((s) => { el.textContent = s.notify ? 'Turn off new-file notifications' : 'Turn on new-file notifications'; })
+    .catch(() => {});
 }
 
 let folderMenuPath = '';
@@ -8504,7 +8575,7 @@ function openFolderMenu(path, event) {
     `<div class="file-menu-rule"></div>`,
     canShare ? `<button class="file-menu-item" onclick="closeFileMenu();openFolderShare(folderMenuPath)">Share…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();toggleFolderWatch(folderMenuPath)">Notify me of new files…</button>`,
+    `<button class="file-menu-item" id="folder-notify-item" onclick="closeFileMenu();toggleFolderNotify(folderMenuPath)">Turn off new-file notifications</button>`,
     `<div class="file-menu-rule"></div>`,
     `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>`,
@@ -8524,6 +8595,7 @@ function openFolderMenu(path, event) {
   left = Math.max(8, Math.min(left, window.innerWidth - rect.width - 8));
   top = Math.max(8, Math.min(top, window.innerHeight - rect.height - 8));
   menu.style.left = left + 'px'; menu.style.top = top + 'px';
+  refreshFolderNotifyLabel(path);
   return false;
 }
 async function downloadFolderZip(path) {
