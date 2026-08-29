@@ -17,3 +17,8 @@ memex-backup.json
 # Per-customer license + operator secrets (mounted into the container read-only)
 license.json
 secrets/
+
+# Signing/verify keys: keep the directory ignored so a private key dropped here is
+# never committed; the public license-verify key is the one deliberate exception.
+keys/
+!keys/ptech-license-public.pem
