@@ -1686,6 +1686,19 @@ html.file-home-mode .masthead-actions { display: flex; }
 #status-pill:focus-visible, #search-control-btn:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
+/* Masthead: Upload split-dropdown + inline icon cluster (matches the mock) */
+.mast-upload { position: relative; display: inline-flex; align-items: stretch; }
+.mast-upload-main { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #fff; border: 0; border-radius: 9px 0 0 9px; padding: 9px 14px; font: 600 13.5px var(--ui); cursor: pointer; }
+.mast-upload-caret { background: var(--accent); color: #fff; border: 0; border-left: 1px solid rgba(255,255,255,.28); border-radius: 0 9px 9px 0; padding: 0 9px; cursor: pointer; display: inline-flex; align-items: center; }
+.mast-upload-main:hover, .mast-upload-caret:hover { filter: brightness(1.08); }
+.mast-upload-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 190px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px; display: none; z-index: 60; }
+.mast-upload-menu.open { display: block; }
+.mast-upload-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--ink); padding: 9px 10px; border-radius: 8px; font: 500 13px var(--ui); cursor: pointer; text-align: left; }
+.mast-upload-menu button:hover { background: var(--rule); }
+.mast-upload-menu button svg { color: var(--ink-faint); flex: none; }
+.mast-div { width: 1px; height: 22px; background: var(--rule); margin: 0 2px; align-self: center; }
+.mast-icon-btn { position: relative; width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-faint); cursor: pointer; display: inline-grid; place-items: center; }
+.mast-icon-btn:hover { background: var(--rule); color: var(--ink); }
 .notif-badge { position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #fff; font: 700 10.5px var(--ui); display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px var(--surface); }
 .notif-badge.show { display: inline-flex; }
 .notif-panel { display: none; position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: 340px; max-width: 86vw; padding: 8px; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
@@ -2662,6 +2675,15 @@ html.dark .file-action-btn.danger { color: #E57373; }
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
+    <div class="mast-upload" id="mast-upload">
+      <button class="mast-upload-main" type="button" onclick="chooseUpload('files')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>Upload</button>
+      <button class="mast-upload-caret" type="button" onclick="toggleMastUploadMenu(event)" aria-haspopup="true" aria-label="Upload options"><span class="chev">⌄</span></button>
+      <div class="mast-upload-menu" id="mast-upload-menu" role="menu">
+        <button type="button" role="menuitem" onclick="closeMastUploadMenu();chooseUpload('files')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>Upload files</button>
+        <button type="button" role="menuitem" onclick="closeMastUploadMenu();chooseUpload('folder')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>Upload folder</button>
+      </div>
+    </div>
+    <span class="mast-div" aria-hidden="true"></span>
     <div class="status-wrap">
       <button class="security-indicator info" id="status-pill" type="button" onclick="toggleStatusMenu(event)" aria-haspopup="true" title="System status">Status</button>
       <div class="status-popover" id="status-popover">
@@ -2674,17 +2696,12 @@ html.dark .file-action-btn.danger { color: #E57373; }
       </div>
     </div>
     <button class="update-cta" id="update-cta" type="button" onclick="openUpdateModal()" title="A licensed update is available" aria-label="Update available" style="display:none"><span class="update-cta-dot" aria-hidden="true"></span>Update</button>
-    <div class="apps-wrap">
-      <button class="notif-btn" id="apps-btn" type="button" onclick="toggleAppsMenu(event)" title="Menu" aria-label="Open menu" aria-haspopup="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="notif-badge" id="apps-badge"></span></button>
-      <div class="apps-menu" id="apps-menu" role="menu" aria-label="Quick menu">
-        <button class="apps-cell" id="meet-btn" type="button" role="menuitem" onclick="toggleMeetPanel(event)" title="Meetings and calls"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg>Meetings<span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
-        <button class="apps-cell" id="notif-btn" type="button" role="menuitem" onclick="toggleNotifMenu(event)" title="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications<span class="notif-badge" id="notif-badge"></span></button>
-        <button class="apps-cell" id="theme-btn" type="button" role="menuitem" onclick="event.stopPropagation();toggleTheme()" title="Toggle light/dark theme"><span id="theme-btn-icon"></span><span id="theme-btn-label">Theme</span></button>
-        <button class="apps-cell" type="button" role="menuitem" onclick="closeAppsMenu();openSettings()" title="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
-      </div>
-      <div class="meet-panel" id="meet-panel"></div>
-      <div class="notif-panel" id="notif-panel"></div>
-    </div>
+    <button class="mast-icon-btn" id="meet-btn" type="button" onclick="toggleMeetPanel(event)" title="Meetings and calls" aria-label="Meetings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l4.5-2.5v9L15 14M3 7h12v10H3z"/></svg><span class="meet-presence-dot" id="meet-presence-dot" style="display:none"></span></button>
+    <button class="mast-icon-btn" id="notif-btn" type="button" onclick="toggleNotifMenu(event)" title="Notifications" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="notif-badge" id="notif-badge"></span></button>
+    <button class="mast-icon-btn" type="button" onclick="openSettings()" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <button class="mast-icon-btn" id="theme-btn" type="button" onclick="event.stopPropagation();toggleTheme()" title="Toggle light/dark theme" aria-label="Toggle theme"><span id="theme-btn-icon"></span></button>
+    <div class="meet-panel" id="meet-panel"></div>
+    <div class="notif-panel" id="notif-panel"></div>
     <div class="app-menu-wrap">
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
@@ -3724,6 +3741,16 @@ function toggleAppsMenu(event) {
 }
 function closeAppsMenu() {
   document.getElementById('apps-menu')?.classList.remove('open');
+}
+function toggleMastUploadMenu(event) {
+  event?.stopPropagation();
+  const el = document.getElementById('mast-upload-menu');
+  const willOpen = !el?.classList.contains('open');
+  closeAllMenus();
+  if (willOpen) el?.classList.add('open');
+}
+function closeMastUploadMenu() {
+  document.getElementById('mast-upload-menu')?.classList.remove('open');
 }
 
 /* ---------- toast ---------- */
@@ -7142,6 +7169,7 @@ function closeAllMenus() {
   closeSearchMenu();
   closeAppMenu();
   closeAppsMenu();
+  closeMastUploadMenu();
   closeLibraryMenu();
   closeAiModelMenu();
   closeSearchScopeMenu();
