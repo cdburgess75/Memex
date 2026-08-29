@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
@@ -33,7 +34,7 @@ router.get('/config', auth, requireRole('admin'), async (_req, res) => {
   try {
     const cfg = await backup.getConfig();
     res.json({ config: { ...cfg, destinations: maskDest(cfg.destinations) }, status: await backup.status() });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // PUT /api/backup/config — update schedule/retention/destinations
@@ -51,7 +52,7 @@ router.put('/config', auth, requireRole('admin'), async (req, res) => {
     await backup.reschedule();
     const cfg = await backup.getConfig();
     res.json({ ok: true, config: { ...cfg, destinations: maskDest(cfg.destinations) }, status: await backup.status() });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/backup/run — run a backup now
@@ -59,7 +60,7 @@ router.post('/run', auth, requireRole('admin'), async (_req, res) => {
   try {
     const result = await backup.runBackup({ manual: true });
     res.json({ ok: true, result, status: await backup.status() });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/backup/download/:name?token=... — signed, no session (for the "pull" destination)

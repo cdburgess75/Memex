@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const db = require('../lib/db');
@@ -62,7 +63,7 @@ router.get('/files/:fileId', async (req, res) => {
       SupportsGetLock: true,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -80,7 +81,7 @@ router.get('/files/:fileId/contents', async (req, res) => {
     res.setHeader('Content-Length', buffer.length);
     res.send(buffer);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -157,7 +158,7 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
     }).catch(() => {});
     res.status(200).end();
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

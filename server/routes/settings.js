@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -81,7 +82,7 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
     );
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -144,7 +145,7 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
     }
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 

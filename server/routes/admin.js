@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
@@ -28,7 +29,7 @@ router.get('/stats', auth, requireRole('admin'), async (req, res) => {
 
     res.json({ recentActivity, topContributors });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -40,7 +41,7 @@ router.get('/users', auth, requireRole('admin'), async (req, res) => {
     );
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -76,7 +77,7 @@ router.put('/users/:userId/role', auth, requireRole('admin'), async (req, res) =
     }
     res.json({ role });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -133,7 +134,7 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
       daily,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -153,7 +154,7 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       probes: compliance.probeMeta(),
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -164,7 +165,7 @@ router.post('/compliance/probe', auth, requireRole('admin'), async (_req, res) =
     const [frameworks, summary] = await Promise.all([compliance.profileStatus(), compliance.summary()]);
     res.json({ ok: true, frameworks, summary, probes: { lastRun: probe.at, results: probe.results } });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -193,7 +194,7 @@ router.put('/compliance', auth, requireRole('admin'), async (req, res) => {
     await settings.refresh();
     res.json({ ok: true, frameworks: await compliance.profileStatus() });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -203,7 +204,7 @@ router.post('/backfill-owner-acl', auth, requireRole('admin'), async (req, res) 
     const granted = await documentAccess.backfillOwnerGrants();
     res.json({ ok: true, granted });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -256,7 +257,7 @@ router.get('/activity', auth, requireRole('admin'), async (req, res) => {
       eventTypes: types.map(t => t.event_type),
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -286,7 +287,7 @@ router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="memex-activity-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(lines.join('\n'));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -334,14 +335,14 @@ router.get('/migrate/seafile/status', auth, requireRole('admin'), (_req, res) =>
 router.get('/compliance/audit-verify', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/auditLog').verify());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/admin/compliance/evidence — aggregate evidence bundle (JSON).
 router.get('/compliance/evidence', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/evidence').build());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/admin/compliance/evidence.md — the same bundle as a Markdown download.
@@ -352,14 +353,14 @@ router.get('/compliance/evidence.md', auth, requireRole('admin'), async (_req, r
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="memex-compliance-evidence-${new Date().toISOString().slice(0, 10)}.md"`);
     res.send(md);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/admin/access-review — user/role/library-access/last-activity review.
 router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/accessReview').build());
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/admin/access-review.csv — the same review as a CSV download.
@@ -370,7 +371,7 @@ router.get('/access-review.csv', auth, requireRole('admin'), async (_req, res) =
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="memex-access-review-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send(csv);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 module.exports = router;

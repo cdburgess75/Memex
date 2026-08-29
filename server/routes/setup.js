@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 // First-boot Setup Wizard API (Deployment Blueprint).
 //
 // On a fresh install nothing is configured, so `setup_completed` is absent and the
@@ -75,7 +76,7 @@ router.get('/status', auth, async (req, res) => {
         ldap: String((await settings.get('login_ldap_enabled')) || '').toLowerCase() === 'true',
       },
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/setup/tenant — customer identity.
@@ -92,7 +93,7 @@ router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req
     if (req.body.accent) await settings.set('brand_accent', String(req.body.accent), req.user.id);
     if (req.body.logo !== undefined) await settings.set('brand_logo', req.body.logo === '' ? null : String(req.body.logo), req.user.id);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/setup/integrations — AI + email.
@@ -154,7 +155,7 @@ router.post('/integrations', auth, requireRole('admin'), requireIncomplete, asyn
       }
     }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/setup/test/ai — live Anthropic reachability check (tests the provided key
@@ -200,7 +201,7 @@ router.post('/performance', auth, requireRole('admin'), requireIncomplete, async
     if (req.body.backupEnabled) await setNum('backup_interval_hours', req.body.backupIntervalHours, 24);
     try { await require('../lib/backup').reschedule(); } catch { /* scheduler re-arm is best-effort */ }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/setup/mfa — require TOTP for LOCAL (password) accounts only.
@@ -313,7 +314,7 @@ router.get('/export', auth, requireRole('admin'), async (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="depot-config.json"');
     res.json({ _note: 'Depot deployment config (secret values blanked). Import into a fresh instance and re-enter secrets.', settings: out });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/setup/complete — flip the durable flag; the client then reloads into the app.
@@ -321,7 +322,7 @@ router.post('/complete', auth, requireRole('admin'), requireIncomplete, async (r
   try {
     await settings.set('setup_completed', 'true', req.user.id);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { serverError(res, e); }
 });
 
 module.exports = router;

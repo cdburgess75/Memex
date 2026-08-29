@@ -1,4 +1,5 @@
 'use strict';
+const { serverError } = require('../lib/httpError');
 // License status + an OPT-IN one-click updater. The header's "Update available"
 // action is gated on GET /api/license reporting updatesEntitled=true.
 const express = require('express');
@@ -14,7 +15,7 @@ router.get('/', auth, async (req, res) => {
   try {
     res.json(await license.status());
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
@@ -42,7 +43,7 @@ router.post('/update-run', auth, requireRole('admin'), async (req, res) => {
       res.json({ ok: true, output: clip(stdout) + clip(stderr) });
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    serverError(res, e);
   }
 });
 
