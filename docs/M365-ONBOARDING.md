@@ -76,20 +76,38 @@ is missing, sends fail `403 … [RAOP] : Blocked by tenant configured AppOnly
 AccessPolicy settings` even though everything in Entra shows Granted. After
 granting, allow **up to an hour** of propagation before the first send works.
 
-**Layer 2 — confine `Mail.Send` to the designated sender mailbox** (otherwise
-app-only Mail.Send can send as anyone in the tenant):
+**What the app can send as.** The role assignment above is organization-wide,
+so Depot can send as **any mailbox in the tenant**. Say this plainly to the
+customer — it is what makes "notifications come from the person who shared the
+file" work (see *Sending as the logged-in user* below) without anyone
+maintaining a membership list.
+
+> **Do not add an Application Access Policy to "fix" this.** Older versions of
+> this runbook created a `RestrictAccess` policy scoped to a "Depot Senders"
+> group. Verified against a live tenant on 2026-08-28: it does **not** restrict
+> anything while the organization-wide role assignment exists. The two
+> authorities are a *union*, not an intersection — Microsoft's own interop note
+> says access policies constrain only the permission granted in Entra ID, and
+> an app-only send as a mailbox outside the group succeeds. Microsoft has also
+> deprecated these policies ("don't create new App Access Policies"). Creating
+> one buys a false sense of scope and a maintenance burden, nothing else.
+
+**If a customer genuinely requires a narrower scope**, do it at the layer that
+actually enforces — RBAC for Applications with a *filter-based* management
+scope, so it needs no upkeep as staff change:
 
 ```powershell
-New-DistributionGroup -Name "Depot Senders" -Type Security   # add the sender mailbox, e.g. depot@customer.com
-New-ApplicationAccessPolicy -AppId <app-client-id> -PolicyScopeGroupId "Depot Senders" `
-  -AccessRight RestrictAccess -Description "Depot may send only as its own mailbox"
-Test-ApplicationAccessPolicy -AppId <app-client-id> -Identity depot@customer.com   # → Granted
-Test-ApplicationAccessPolicy -AppId <app-client-id> -Identity ceo@customer.com     # → Denied
+New-ManagementScope -Name "Depot Senders Scope" -RecipientRestrictionFilter "RecipientTypeDetails -eq 'UserMailbox'"
+New-ManagementRoleAssignment -App <enterprise-app-object-id> -Role "Application Mail.Send" `
+  -CustomResourceScope "Depot Senders Scope"
+# then remove the org-wide assignment created above, AND remove the Entra
+# Mail.Send consent — leaving it in place produces no effective scoping.
 ```
 
-Note the two test cmdlets are **not interchangeable**:
-`Test-ApplicationAccessPolicy` only evaluates layer 2 — it happily returns
-"Granted" on a tenant where layer 1 still blocks every send.
+Verify with `Test-ServicePrincipalAuthorization -Identity <object-id> -Resource
+<mailbox>` and read `AllowedResourceScope`. Note that neither Test- cmdlet
+reports the effective union of both authorities, so **confirm with a real
+send** before telling a customer a restriction is in force.
 
 ## 3. Wire the box (ParaTech, over the tailnet)
 

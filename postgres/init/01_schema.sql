@@ -195,6 +195,10 @@ CREATE TABLE IF NOT EXISTS document_share_links (
   revoked_by_email     TEXT,
   created_by           UUID,
   created_by_email     TEXT,
+  recipient_email      TEXT,     -- who this link was sent to; NULL = anonymous copy-link
+  allow_upload         BOOLEAN     NOT NULL DEFAULT FALSE,  -- recipient may send files back
+  upload_count         INTEGER     NOT NULL DEFAULT 0,      -- per-link inbound file ceiling
+  upload_bytes         BIGINT      NOT NULL DEFAULT 0,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_accessed_at      TIMESTAMPTZ,
   access_count         INTEGER     NOT NULL DEFAULT 0

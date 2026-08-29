@@ -3159,7 +3159,8 @@ function setupStepHtml(step, s) {
   if (step === 0) return `
     <p class="setup-lead">Your administrator account is managed by the identity server. You set your password at first login; here you can require multi-factor authentication for everyone.</p>
     <div class="setup-field"><label>Administrator</label><input value="${esc(s.adminEmail || currentUser?.email || '')}" readonly></div>
-    <label class="setup-check"><input type="checkbox" id="setup-mfa" ${s.mfaRequired ? 'checked' : ''} onchange="setupToggleMfa(this.checked)"> Require multi-factor authentication (TOTP) for all users</label>
+    <label class="setup-check"><input type="checkbox" id="setup-mfa" ${s.mfaRequired ? 'checked' : ''} onchange="setupToggleMfa(this.checked)"> Require an authenticator app (TOTP) for password sign-ins</label>
+    <p class="setup-hint" style="margin:4px 0 0 26px">Applies to local accounts only — people signing in with Microsoft 365 or Active Directory keep their own provider's MFA.</p>
     <div id="setup-mfa-result" class="setup-result"></div>`;
   if (step === 1) return `
     <div class="setup-field"><label>Company / organization name</label><input id="setup-org" value="${esc(s.tenant?.orgName || '')}" placeholder="Acme Corporation"></div>
@@ -7635,7 +7636,7 @@ async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share</h2><p class="sub">${esc(f.name)}</p><section class="file-share-section"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that opens this file without signing in.</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section><section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Grant specific signed-in people view or edit access.</p><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share</h2><p class="sub">${esc(f.name)}</p><section class="file-share-section"><h3>Send to people</h3><p class="file-share-hint">Emails a link from you. People who already have an account get access with their own sign-in; anyone else gets a private link — one each, so you can see who opened it and cut one person off without affecting the others.</p><div class="file-share-grid"><label for="send-to">To</label><input id="send-to" type="text" placeholder="jane@clientco.com, bob@clientco.com"><label for="send-note">Note</label><input id="send-note" type="text" placeholder="Optional — appears in the email"><label for="send-expiry">Expires</label><select id="send-expiry"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="send-password">Password</label><input id="send-password" type="password" placeholder="Optional — shown to you once, never emailed"></div><label class="setup-check" style="margin-top:10px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="send-allow-upload" checked> Let them send files back too</label><div class="btn-row"><button class="run-btn" onclick="sendFileToPeople()">Send</button></div><div id="file-send-result" style="display:none;margin-top:10px"></div></section><section class="file-share-section" style="margin-top:24px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that opens this file without signing in.</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section><section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Grant specific signed-in people view or edit access.</p><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div></div></div>`);
   await loadShareLinks(f.id);
   await loadFileAccess(f.id);
 }
@@ -7722,7 +7723,7 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
       list.innerHTML = emptyState('No share links yet', 'Create a link when you are ready to share this file outside the workspace.');
       return;
     }
-    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
+    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'}${s.recipient_email ? ` · ${esc(s.recipient_email)}` : ' link'}</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}${s.allow_upload ? ' · Can send files back' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
   } catch (e) {
     list.innerHTML = emptyState('Could not load shares', e.message || 'Try opening the share dialog again.');
   }
@@ -7774,6 +7775,44 @@ async function revokeFileAccess(grantId) {
     await loadFileAccess(f.id);
   } catch (e) {
     toast('Revoke failed: ' + e.message);
+  }
+}
+
+async function sendFileToPeople() {
+  const f = firstSelectedFile();
+  if (!f) return;
+  const to = document.getElementById('send-to')?.value?.trim() || '';
+  if (!to) { toast('Enter at least one email address'); return; }
+  const days = document.getElementById('send-expiry')?.value || '30';
+  const out = document.getElementById('file-send-result');
+  if (out) { out.style.display = ''; out.innerHTML = '<span class="setup-result">Sending…</span>'; }
+  try {
+    const data = await apiPost('/files/' + f.id + '/send', {
+      recipients: to,
+      message: document.getElementById('send-note')?.value || '',
+      expiresInDays: days,
+      neverExpires: days === '0',
+      password: document.getElementById('send-password')?.value || '',
+      allowUpload: !!document.getElementById('send-allow-upload')?.checked,
+    });
+    // Per-recipient outcome, plainly: granted (existing member), emailed link,
+    // link minted but the email failed (surface it — silence here means a client
+    // waiting on a file that never arrives), or a hard error.
+    const rows = (data.results || []).map(r => {
+      if (r.kind === 'granted' && r.sent === false) return `<div>⚠ ${esc(r.to)} — access granted, but the notification email failed (${esc(r.reason || 'unknown')}). They can still open it once signed in.</div>`;
+      if (r.kind === 'granted') return `<div>✓ ${esc(r.to)} — has an account; given ${esc(r.permission)} access and emailed</div>`;
+      if (r.kind === 'link' && r.sent) return `<div>✓ ${esc(r.to)} — link emailed${data.hasPassword ? ' (remember to pass them the password separately)' : ''}</div>`;
+      // Email failed but the link exists — surface the URL right here (the links
+      // list stores tokens hashed and can never show it), so it isn't lost.
+      if (r.kind === 'link') return `<div>⚠ ${esc(r.to)} — link created but the email failed (${esc(r.reason || 'unknown')}). Copy and send it yourself:<br><input class="file-share-url" readonly value="${esc(r.url || '')}" onclick="this.select()" style="width:100%;margin-top:4px"></div>`;
+      return `<div>✕ ${esc(r.to)} — ${esc(r.error || 'failed')}</div>`;
+    }).join('');
+    if (out) out.innerHTML = rows || 'Nothing sent.';
+    ['send-to', 'send-note', 'send-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    await loadShareLinks(f.id);
+    await loadFileAccess?.(f.id)?.catch?.(() => {});
+  } catch (e) {
+    if (out) out.innerHTML = `<div>✕ ${esc(e.message)}</div>`;
   }
 }
 

@@ -196,40 +196,38 @@ describe('POST /integrations — Microsoft 365 (Graph) email credentials', () =>
   });
 });
 
-describe('POST /mfa — Keycloak required-action toggle', () => {
-  // The admin REST route lives under /authentication/; the bare alias 404s.
-  // This URL shipped broken for months because the call was unreachable (the
-  // container never had admin creds) — pin it so it cannot silently rot again.
-  const realFetch = global.fetch;
-  beforeEach(() => {
-    process.env.KEYCLOAK_INTERNAL_URL = 'http://keycloak:8080';
-    process.env.KEYCLOAK_ADMIN_USER = 'admin';
-    process.env.KEYCLOAK_ADMIN_PASSWORD = 'test-admin-pass';
-  });
-  afterEach(() => {
-    global.fetch = realFetch;
-    delete process.env.KEYCLOAK_INTERNAL_URL;
-    delete process.env.KEYCLOAK_ADMIN_USER;
-    delete process.env.KEYCLOAK_ADMIN_PASSWORD;
-  });
+describe('POST /mfa — local-accounts-only TOTP toggle', () => {
+  // The /authentication/-URL pin (which shipped broken for months) now lives in
+  // __tests__/lib/keycloakAdmin.test.js with the rest of the admin-API contract;
+  // here we pin the route's own behavior: local-only semantics via the lib, the
+  // mfa_required setting, and the honest new-accounts-not-covered note.
+  const kcAdmin = require('../../lib/keycloakAdmin');
+  let spy;
+  afterEach(() => { spy?.mockRestore(); });
 
-  test('PUTs the /authentication/ required-actions route and records mfa_required', async () => {
-    global.fetch = jest.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'tok' }) })
-      .mockResolvedValueOnce({ ok: true, status: 204 });
+  test('delegates to setLocalTotpRequirement and records mfa_required', async () => {
+    spy = jest.spyOn(kcAdmin, 'setLocalTotpRequirement')
+      .mockResolvedValue({ stamped: 2, cleared: 0, skippedFederated: 3, alreadyEnrolled: 1 });
     const r = await request(app).post('/api/setup/mfa').send({ enable: true });
     expect(r.status).toBe(200);
-    expect(r.body.ok).toBe(true);
-    const putUrl = global.fetch.mock.calls[1][0];
-    expect(putUrl).toBe('http://keycloak:8080/admin/realms/memex/authentication/required-actions/CONFIGURE_TOTP');
-    expect(global.fetch.mock.calls[1][1].method).toBe('PUT');
+    expect(r.body).toMatchObject({ ok: true, enabled: true, stamped: 2, skippedFederated: 3 });
+    expect(r.body.note).toMatch(/local account created later/i);
+    expect(spy).toHaveBeenCalledWith(true);
     expect(settings.set).toHaveBeenCalledWith('mfa_required', 'true', 'u1');
   });
 
+  test('disable clears the setting and passes enable=false through', async () => {
+    spy = jest.spyOn(kcAdmin, 'setLocalTotpRequirement')
+      .mockResolvedValue({ stamped: 0, cleared: 2, skippedFederated: 3, alreadyEnrolled: 0 });
+    const r = await request(app).post('/api/setup/mfa').send({ enable: false });
+    expect(r.body).toMatchObject({ ok: true, enabled: false, cleared: 2 });
+    expect(spy).toHaveBeenCalledWith(false);
+    expect(settings.set).toHaveBeenCalledWith('mfa_required', null, 'u1');
+  });
+
   test('failure returns ok:false with the manual-console hint, and does not record the setting', async () => {
-    global.fetch = jest.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'tok' }) })
-      .mockResolvedValueOnce({ ok: false, status: 404 });
+    spy = jest.spyOn(kcAdmin, 'setLocalTotpRequirement')
+      .mockRejectedValue(new Error('Keycloak required-action update failed (404).'));
     const r = await request(app).post('/api/setup/mfa').send({ enable: true });
     expect(r.body.ok).toBe(false);
     expect(r.body.error).toMatch(/404/);

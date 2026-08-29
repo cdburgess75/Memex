@@ -114,6 +114,76 @@ describe('ensureMicrosoftIdp', () => {
   });
 });
 
+describe('setLocalTotpRequirement — TOTP for local accounts only', () => {
+  // URL-routed mock: this flow touches several endpoints per user, and order
+  // is an implementation detail — route by URL+method instead of by sequence.
+  const LOCAL = { id: 'u-local', username: 'pat', requiredActions: [] };
+  const BROKERED = { id: 'u-m365', username: 'dave', requiredActions: ['CONFIGURE_TOTP'] };
+  const LDAP = { id: 'u-ad', username: 'owen', federationLink: 'ldap-comp', requiredActions: [] };
+  let puts;
+
+  function routeFetch() {
+    puts = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      const u = String(url); const method = opts?.method || 'GET';
+      const json = (j) => ({ ok: true, status: 200, json: async () => j });
+      if (u.includes('/realms/master/')) return json({ access_token: 'admtok' });
+      if (method === 'PUT') { puts.push({ url: u, body: JSON.parse(opts.body) }); return { ok: true, status: 204, json: async () => ({}) }; }
+      if (u.includes('/authentication/required-actions/CONFIGURE_TOTP')) return json({ alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: true, priority: 10 });
+      if (u.includes('/users?')) return json(u.includes('first=0') ? [LOCAL, BROKERED, LDAP] : []);
+      if (u.includes('/u-m365/federated-identity')) return json([{ identityProvider: 'microsoft' }]);
+      if (u.includes('/federated-identity')) return json([]);
+      if (u.includes('/credentials')) return json([{ type: 'password' }]);
+      return json({});
+    });
+  }
+
+  test('the required-actions URL keeps its /authentication/ segment (shipped broken for months — do not let it rot)', async () => {
+    routeFetch();
+    await kcAdmin.setLocalTotpRequirement(true);
+    const ra = puts.find(p => p.url.includes('required-actions'));
+    expect(ra.url).toBe('http://keycloak:8080/admin/realms/memex/authentication/required-actions/CONFIGURE_TOTP');
+  });
+
+  test('enable: default stays OFF, local users get stamped, federated users get cleared instead', async () => {
+    routeFetch();
+    const r = await kcAdmin.setLocalTotpRequirement(true);
+    // Never realm-wide: that is exactly what dead-ended a brokered M365 login.
+    expect(puts.find(p => p.url.includes('required-actions')).body.defaultAction).toBe(false);
+    // The local account is stamped…
+    const local = puts.find(p => p.url.endsWith('/users/u-local'));
+    expect(local.body.requiredActions).toContain('CONFIGURE_TOTP');
+    // …the brokered account has its stale prompt REMOVED, not added…
+    const brokered = puts.find(p => p.url.endsWith('/users/u-m365'));
+    expect(brokered.body.requiredActions).not.toContain('CONFIGURE_TOTP');
+    // …and the AD user (federationLink) is skipped without extra lookups.
+    expect(puts.find(p => p.url.endsWith('/users/u-ad'))).toBeUndefined();
+    expect(r).toMatchObject({ stamped: 1, skippedFederated: 2 });
+  });
+
+  test('disable: pending prompts are cleared from local users', async () => {
+    LOCAL.requiredActions = ['CONFIGURE_TOTP'];
+    routeFetch();
+    const r = await kcAdmin.setLocalTotpRequirement(false);
+    const local = puts.find(p => p.url.endsWith('/users/u-local'));
+    expect(local.body.requiredActions).not.toContain('CONFIGURE_TOTP');
+    expect(r.cleared).toBe(1);
+    LOCAL.requiredActions = [];
+  });
+
+  test('a local user who already has an authenticator is not asked to enroll again', async () => {
+    routeFetch();
+    const inner = global.fetch;
+    global.fetch = jest.fn(async (url, opts) => {
+      if (String(url).includes('/u-local/credentials')) return { ok: true, status: 200, json: async () => [{ type: 'otp' }] };
+      return inner(url, opts);
+    });
+    const r = await kcAdmin.setLocalTotpRequirement(true);
+    expect(puts.find(p => p.url.endsWith('/users/u-local'))).toBeUndefined();
+    expect(r.alreadyEnrolled).toBe(1);
+  });
+});
+
 describe('removeMicrosoftIdp', () => {
   test('tolerates an already-absent provider', async () => {
     mockFetch([tokenResponse, { status: 404 }]);

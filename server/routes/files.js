@@ -16,11 +16,13 @@ const libraries = require('../lib/libraries');
 const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
+const email = require('../lib/email');
 const auditLog = require('../lib/auditLog');
 const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const { zipStream } = require('../lib/zip');
+const externalUpload = require('../lib/externalUpload');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -104,6 +106,45 @@ async function getUpload() {
     }).single('file');
   }
   return _uploadMw;
+}
+
+// A SEPARATE multer for recipient (external) uploads. Two hard differences from
+// the staff instance: (1) the memory buffer is capped at the external per-file
+// limit, not 256 MB — multer aborts at the cap instead of buffering a 250 MB
+// body into heap before the handler can reject it; (2) files:1 so a multipart
+// with many parts can't be used to multiply memory. The extension blocklist is
+// applied in the handler (externalUpload), not here.
+const EXTERNAL_MAX_FILES_PER_LINK = 500;
+const EXTERNAL_MAX_BYTES_PER_LINK = 2 * 1024 * 1024 * 1024; // 2 GB total per link
+let _extUploadMw = null;
+function externalUploadMw() {
+  if (!_extUploadMw) {
+    _extUploadMw = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: externalUpload.DEFAULT_MAX_MB * 1024 * 1024, files: 1 },
+    }).single('file');
+  }
+  return _extUploadMw;
+}
+
+// Short-lived, single-purpose download tickets so a password never rides in a
+// URL (query strings land in proxy access logs and browser history, defeating
+// the password as a second factor). The recipient's page exchanges the password
+// — sent in a header — for a ticket, and the download link carries the ticket.
+// Signed with a boot-time key: no storage, and a server restart just means the
+// recipient re-enters the password. Not the password, so safe to log.
+const SHARE_TICKET_KEY = crypto.randomBytes(32);
+function issueShareTicket(shareId, ttlMs = 30 * 60 * 1000) {
+  const exp = Date.now() + ttlMs;
+  const mac = crypto.createHmac('sha256', SHARE_TICKET_KEY).update(`${shareId}.${exp}`).digest('base64url');
+  return `${exp}.${mac}`;
+}
+function verifyShareTicket(shareId, ticket) {
+  const [expStr, mac] = String(ticket || '').split('.');
+  const exp = Number(expStr);
+  if (!exp || exp < Date.now() || !mac) return false;
+  const expected = crypto.createHmac('sha256', SHARE_TICKET_KEY).update(`${shareId}.${exp}`).digest('base64url');
+  try { return crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected)); } catch { return false; }
 }
 
 async function anthropic() {
@@ -200,6 +241,10 @@ async function ensureShareLinksTable() {
       revoked_by_email     TEXT,
       created_by           UUID,
       created_by_email     TEXT,
+      recipient_email      TEXT,
+      allow_upload         BOOLEAN     NOT NULL DEFAULT FALSE,
+      upload_count         INTEGER     NOT NULL DEFAULT 0,
+      upload_bytes         BIGINT      NOT NULL DEFAULT 0,
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_accessed_at      TIMESTAMPTZ,
       access_count         INTEGER     NOT NULL DEFAULT 0
@@ -292,6 +337,8 @@ function shareLinkClientShape(row, url = null) {
     revoked_at: row.revoked_at,
     created_at: row.created_at,
     created_by_email: row.created_by_email,
+    recipient_email: row.recipient_email || null,   // null = anonymous copy-link
+    allow_upload: !!row.allow_upload,
     last_accessed_at: row.last_accessed_at,
     access_count: Number(row.access_count || 0),
     has_password: !!row.password_hash,
@@ -695,6 +742,165 @@ router.get('/local-download', async (req, res) => {
 });
 
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
+// Look up an exchange link without disclosing anything until the password (if
+// any) is satisfied. Public — no auth by design.
+async function loadExchangeLink(token) {
+  await ensureShareLinksTable();
+  // s.* already carries upload_count / upload_bytes for the per-link cap check.
+  const share = await db.queryOne(
+    `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id
+     FROM document_share_links s
+     JOIN documents d ON d.id = s.document_id
+     WHERE s.token_hash = $1`,
+    [tokenHash(token)]
+  );
+  if (!share || share.revoked_at || share.deleted_at) return { error: 'not_found' };
+  if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) return { error: 'expired' };
+  return { share };
+}
+
+// GET /api/files/share/:token/info — what the exchange page renders from.
+// Deliberately thin: the file's name and size, and whether a password is
+// needed. Nothing about the workspace, the sender's colleagues, or the library.
+router.get('/share/:token/info', async (req, res) => {
+  try {
+    const { share, error } = await loadExchangeLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    const needsPassword = !!share.password_hash;
+    const supplied = req.headers['x-share-password'] || req.query.password;
+    const unlocked = !needsPassword || verifySharePassword(supplied, share.password_salt, share.password_hash);
+    res.json({
+      name: unlocked ? share.name : null,
+      size: unlocked ? Number(share.doc_size || 0) : null,
+      sentBy: unlocked ? share.created_by_email : null,
+      expiresAt: share.expires_at,
+      needsPassword,
+      unlocked,
+      allowUpload: unlocked ? !!share.allow_upload : false,
+      maxUploadMb: externalUpload.DEFAULT_MAX_MB,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/files/share/:token/ticket — exchange the link password (sent in a
+// header, never a URL) for a short-lived download ticket the browser can put on
+// a plain <a href>. Public.
+router.post('/share/:token/ticket', async (req, res) => {
+  try {
+    const { share, error } = await loadExchangeLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    if (!verifySharePassword(req.headers['x-share-password'], share.password_salt, share.password_hash)) {
+      return res.status(401).json({ error: 'Password required' });
+    }
+    res.json({ ticket: issueShareTicket(share.id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Gatekeeper that runs BEFORE multer for recipient uploads: validate the link,
+// the password (from a header), the two-way flag, disk headroom, and the
+// per-link ceiling — all without parsing the body. So a bad token or wrong
+// password is rejected before a single byte of the file is buffered, and multer
+// (capped at the external per-file size) only ever runs for an authorised send.
+async function guardExchangeUpload(req, res, next) {
+  try {
+    const { share, error } = await loadExchangeLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    if (!share.allow_upload) return res.status(403).json({ error: 'This link is download-only.' });
+    // A password-protected link authorises uploads with a TICKET, not the raw
+    // password. The ticket is minted once by POST /ticket (which DOES verify the
+    // password, under the tight share limiter), so this high-volume route — one
+    // request per dropped file, on the generous limiter — is never a password
+    // brute-force oracle: a wrong guess can't be tried here at all. Links with
+    // no password need no ticket.
+    if (share.password_hash && !verifyShareTicket(share.id, req.headers['x-share-ticket'])) {
+      return res.status(401).json({ error: 'ticket_required' });
+    }
+    if (Number(share.upload_count || 0) >= EXTERNAL_MAX_FILES_PER_LINK ||
+        Number(share.upload_bytes || 0) >= EXTERNAL_MAX_BYTES_PER_LINK) {
+      return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
+    }
+    // Keep the volume's reserve intact even in the worst case (a full-size file).
+    const free = await freeDiskBytes();
+    if (Number.isFinite(free) && free - externalUpload.DEFAULT_MAX_MB * 1024 * 1024 < await minFreeDiskBytes()) {
+      return res.status(507).json({ error: 'The server is low on disk space right now. Please try again later.' });
+    }
+    req.exchangeShare = share;
+    next();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// POST /api/files/share/:token/upload — the recipient sending something back.
+// The most exposed endpoint in the product: no account, no session, just a
+// bearer token. guardExchangeUpload has already validated the link, password,
+// disk, and per-link cap before multer buffered anything.
+router.post('/share/:token/upload',
+  guardExchangeUpload,
+  (req, res, next) => externalUploadMw()(req, res, (err) => {
+    if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB limit for this link.` });
+    next();
+  }),
+  async (req, res) => {
+  try {
+    const share = req.exchangeShare;
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+
+    const { buffer, originalname, mimetype, size } = req.file;
+    const display = cleanDisplayName(originalname) || 'upload';
+    const rejection = externalUpload.rejectionFor(display, size);
+    if (rejection) return res.status(400).json({ error: rejection });
+
+    // Reserve the per-link quota ATOMICALLY before storing, with the actual
+    // size now known. The guard's earlier check is a best-effort early-out (it
+    // avoids buffering when the link is already full); this conditional UPDATE
+    // is the hard ceiling — concurrent uploads cannot overshoot it, because only
+    // the rows that still fit are updated. A reserved slot for a store that then
+    // fails is left consumed (conservative, fail-safe) rather than decremented.
+    const reserved = await db.queryOne(
+      `UPDATE document_share_links
+         SET upload_count = upload_count + 1, upload_bytes = upload_bytes + $2, last_accessed_at = NOW()
+       WHERE id = $1 AND upload_count < $3 AND upload_bytes + $2 <= $4
+       RETURNING id`,
+      [share.id, Number(size) || 0, EXTERNAL_MAX_FILES_PER_LINK, EXTERNAL_MAX_BYTES_PER_LINK]
+    );
+    if (!reserved) return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
+
+    // Land beside the file that was sent, so the exchange stays in one place.
+    const parent = String(share.name || '').includes('/') ? share.name.split('/').slice(0, -1).join('/') : '';
+    const subdir = externalUpload.safeRelativePath(req.body?.relativePath);
+    const from = String(share.recipient_email || 'external').toLowerCase();
+    const displayName = [parent, subdir, path.basename(display)].filter(Boolean).join('/');
+
+    const sanitized = path.basename(display).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${sanitized}`;
+    await storage.upload(storagePath, buffer, mimetype);
+    const owner = { id: share.created_by, email: share.created_by_email };
+    const { doc } = await createDocumentRecord({
+      displayName, storagePath, mimetype, storedSize: size, user: owner,
+      sourceDetail: `via exchange link · from ${from}`,
+      libraryId: share.library_id,
+    });
+    // The per-link quota was already reserved atomically above.
+    await logDocumentEvent(share.document_id, 'external_upload_received', null, from,
+      `${display} · ${requestAuditDetail(req)}`);
+
+    if (share.created_by_email) {
+      notifications.create({
+        userId: share.created_by, userEmail: share.created_by_email,
+        type: 'upload_received',
+        title: `${from} sent you a file`,
+        body: `"${display}" · via your exchange link`,
+        refType: 'document', refId: doc.id, dedupeMinutes: 2,
+      }).catch(() => {});
+      emailEvents.send('upload_received', {
+        to: share.created_by_email,
+        subject: `${from} sent you a file: ${display}`,
+        text: `${from} uploaded "${display}" through the link you sent them for "${share.name}".\n\nSign in to Depot to view it.`,
+      }).catch(() => {});
+    }
+    res.json({ ok: true, name: display });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/share/:token', async (req, res) => {
   await ensureShareLinksTable();
   const hash = tokenHash(req.params.token);
@@ -710,8 +916,12 @@ router.get('/share/:token', async (req, res) => {
     if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
       return res.status(410).json({ error: 'Share link expired' });
     }
-    const password = req.query.password || req.headers['x-share-password'];
-    if (!verifySharePassword(password, share.password_salt, share.password_hash)) {
+    // Accept either the password (header preferred; query kept for existing API
+    // callers) or a short-lived download ticket the exchange page minted from
+    // the password — so a browser download never carries the password in its URL.
+    const password = req.headers['x-share-password'] || req.query.password;
+    const ticketOk = req.query.dl && verifyShareTicket(share.id, req.query.dl);
+    if (!ticketOk && !verifySharePassword(password, share.password_salt, share.password_hash)) {
       return res.status(401).json({ error: 'Share password required' });
     }
 
@@ -724,13 +934,16 @@ router.get('/share/:token', async (req, res) => {
     // Notify whoever created the share link that their file was downloaded
     // (2-min dedupe so a browser's double-fetch doesn't double-notify).
     if (share.created_by_email) {
+      // Per-recipient links can say WHO opened it — that is the question the
+      // sender actually has. Anonymous copy-links stay generic.
+      const via = share.recipient_email ? `the link you sent to ${share.recipient_email}` : 'a share link you created';
       try {
         await notifications.create({
           userId: share.created_by || null,
           userEmail: share.created_by_email,
           type: 'share_downloaded',
-          title: 'Your shared file was downloaded',
-          body: `"${share.name}" · via share link`,
+          title: share.recipient_email ? `${share.recipient_email} downloaded your file` : 'Your shared file was downloaded',
+          body: `"${share.name}" · via ${share.recipient_email ? 'their link' : 'share link'}`,
           refType: 'document',
           refId: share.document_id,
           dedupeMinutes: 2,
@@ -738,8 +951,10 @@ router.get('/share/:token', async (req, res) => {
       } catch (e) { console.error('notification (share_downloaded) failed:', e.message); }
       emailEvents.send('share_downloaded', {
         to: share.created_by_email,
-        subject: `Your shared file was downloaded: ${share.name}`,
-        text: `"${share.name}" was just downloaded via a Memex share link you created.`,
+        subject: share.recipient_email
+          ? `${share.recipient_email} downloaded: ${share.name}`
+          : `Your shared file was downloaded: ${share.name}`,
+        text: `"${share.name}" was just downloaded via ${via}.`,
       }).catch(() => {});
     }
     // Stream the file to the client instead of buffering it in memory (this is a
@@ -1189,7 +1404,7 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     const rows = await db.query(
       `SELECT id, document_id, expires_at, revoked_at, created_at, created_by_email,
-              last_accessed_at, access_count, password_hash
+              recipient_email, allow_upload, last_accessed_at, access_count, password_hash
        FROM document_share_links
        WHERE document_id = $1
        ORDER BY created_at DESC`,
@@ -1333,10 +1548,158 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
                  last_accessed_at, access_count, password_hash`,
       [doc.id, tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email]
     );
-    const url = `${await publicAppBase(req)}/api/files/share/${token}`;
+    // The exchange page, not the raw API: it shows the file, prompts for the
+    // password when one is set (the bare API endpoint just returns 401 JSON —
+    // a dead end for a password-protected copy-link), and offers the download.
+    const url = `${await publicAppBase(req)}/s/${token}`;
     await logDocumentEvent(doc.id, 'share_created', req.user.id, req.user.email, `${expiresAt ? `expires ${expiresAt}` : 'no expiration'}${hash ? ' · password protected' : ''}`);
     await logEvent(`share create · ${doc.name}`, req.user.id, req.user.email);
     res.json({ share: shareLinkClientShape(share, url) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/files/:id/send — send a file to people, inside or outside the org.
+//
+// One link PER RECIPIENT, so "did the client open it?" has an answer and one
+// person can be cut off without breaking the others. An address that belongs to
+// an existing member is not given an anonymous link at all: they get a proper
+// access grant, so internal files stay behind the sign-in they already have.
+// A password, when set, is never put in the email — it goes back to the sender
+// once, to pass along by another route. Otherwise it protects nothing.
+router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  await ensureShareLinksTable();
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS,
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const raw = Array.isArray(req.body?.recipients) ? req.body.recipients : String(req.body?.recipients || '').split(/[,;\s]+/);
+    const recipients = [...new Set(raw.map(s => String(s || '').trim().toLowerCase()).filter(Boolean))];
+    if (!recipients.length) return res.status(400).json({ error: 'At least one recipient is required.' });
+    // Per-call cap. Higher-volume abuse across repeated calls is bounded by the
+    // authenticated-user requirement plus apiLimiter (default 300 req/15min/IP).
+    if (recipients.length > 25) return res.status(400).json({ error: 'Send to at most 25 people at a time.' });
+    const bad = recipients.filter(r => !/^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(r));
+    if (bad.length) return res.status(400).json({ error: `Not a valid email address: ${bad[0]}` });
+
+    const days = Number.parseInt(req.body?.expiresInDays ?? 30, 10);
+    const safeDays = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
+    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 864e5).toISOString();
+    const password = String(req.body?.password || '').trim();
+    const allowUpload = req.body?.allowUpload !== false;
+    const note = String(req.body?.message || '').slice(0, 2000).trim();
+    const base = await publicAppBase(req);
+    const sender = String(req.user.email || '').toLowerCase();
+    const senderName = req.user.email || 'A colleague';
+    const senderDomain = sender.split('@')[1] || '';
+
+    // Managing access (creating an ACL grant) requires admin on the document —
+    // the same authority POST /:id/access demands. A contributor who only has
+    // write can still SEND the file, but their internal recipients get a
+    // sign-in-gated link, not a grant they lack the authority to hand out.
+    const canManage = !!(await documentAccess.getAccessibleDocument({
+      id: doc.id, user: req.user, required: 'admin', columns: 'd.id',
+    }));
+
+    // "Internal" = someone who signs into THIS deployment: already a known user,
+    // or on the sender's own email domain (covers colleagues federated through
+    // M365/AD who have not opened Depot yet, so no user_roles row exists). Those
+    // get an access grant (behind their own sign-in); everyone else gets a link.
+    const known = new Set(
+      (await db.query('SELECT lower(email) AS email FROM user_roles WHERE lower(email) = ANY($1::text[])', [recipients]))
+        .map(r => r.email)
+    );
+    const isInternal = (to) => known.has(to) || (senderDomain && to.endsWith('@' + senderDomain));
+
+    // Ranked so an existing grant is never silently downgraded by a send.
+    const RANK = { read: 1, write: 2, admin: 3 };
+    const existingGrants = new Map(
+      (await db.query('SELECT lower(subject_email) AS email, permission FROM document_acl WHERE document_id = $1 AND subject_type = $2', [doc.id, 'user']))
+        .map(r => [r.email, r.permission])
+    );
+
+    const results = [];
+    for (const to of recipients) {
+      try {
+        if (canManage && isInternal(to)) {
+          const want = req.body?.permission === 'write' ? 'write' : 'read';
+          const existing = existingGrants.get(to);
+          // Never downgrade: if they already hold an equal-or-higher grant, keep it.
+          const permission = existing && RANK[existing] >= RANK[want] ? existing : want;
+          if (!existing || permission !== existing) {
+            await documentAccess.grantUserAccess(doc.id, { email: to, permission, grantedBy: req.user });
+          }
+          try {
+            await logDocumentEvent(doc.id, 'access_granted', req.user.id, req.user.email, `${to} · ${permission} · via send`);
+          } catch (e) { console.error('audit (access_granted via send) failed:', e.message); }
+          let sent = true, reason;
+          if (to !== sender) {
+            notifications.create({
+              userEmail: to, type: 'share_granted',
+              title: `${senderName} shared a file with you`,
+              body: `"${doc.name}" · ${permission} access`,
+              refType: 'document', refId: doc.id,
+            }).catch(() => {});
+            // Direct sendMail, not emailEvents: this IS the send the user
+            // clicked, so it must not be suppressed by a notification toggle —
+            // and its delivery must be reported honestly (grant emails used to
+            // be fire-and-forget, hiding failures).
+            const mail = await email.sendMail({
+              to,
+              subject: `${senderName} shared a file with you`,
+              text: `${senderName} gave you ${permission} access to "${doc.name}" in Depot.${note ? `\n\n${note}` : ''}\n\nOpen it here (sign in with your usual account):\n${base}\n`,
+              actorEmail: req.user.email,
+            });
+            sent = mail?.sent !== false;
+            reason = mail?.sent === false ? mail.reason : undefined;
+          }
+          results.push({ to, kind: 'granted', permission, sent, reason });
+          continue;
+        }
+
+        const token = crypto.randomBytes(32).toString('base64url');
+        const { salt, hash } = passwordParts(password);
+        await db.query(
+          `INSERT INTO document_share_links
+             (document_id, token_hash, password_salt, password_hash, expires_at,
+              created_by, created_by_email, recipient_email, allow_upload)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [doc.id, tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email, to, allowUpload]
+        );
+        const url = `${base}/s/${token}`;
+        const lines = [
+          `${senderName} sent you a file: "${doc.name}".`,
+          note ? `\n${note}\n` : '',
+          `Open it here:\n${url}`,
+          allowUpload ? '\nYou can also send files back from that same page — no account needed.' : '',
+          expiresAt ? `\nThis link expires on ${new Date(expiresAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.` : '',
+          hash ? '\nIt is password protected; the sender will pass the password along separately.' : '',
+        ].filter(Boolean);
+        // Audit BEFORE the email — the link and its record are the durable
+        // artifact; the email is best-effort. Never let an audit hiccup mark a
+        // delivered email as failed (that used to invite a confused re-send).
+        try {
+          await logDocumentEvent(doc.id, 'external_share_sent', req.user.id, req.user.email,
+            `${to}${expiresAt ? ` · expires ${expiresAt}` : ' · no expiry'}${hash ? ' · password protected' : ''}${allowUpload ? ' · two-way' : ''}`);
+        } catch (e) { console.error('audit (external_share_sent) failed:', e.message); }
+        // Direct sendMail, not emailEvents: this email IS the action the user
+        // clicked — a notification toggle must not silently suppress it.
+        const mail = await email.sendMail({
+          to,
+          subject: `${senderName} sent you a file: ${doc.name}`,
+          text: lines.join('\n'),
+          actorEmail: req.user.email,
+        });
+        results.push({ to, kind: 'link', sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined, url });
+      } catch (e) {
+        results.push({ to, kind: 'error', error: e.message });
+      }
+    }
+    await logEvent(`send · ${doc.name} · ${recipients.length} recipient(s)`, req.user.id, req.user.email);
+    res.json({ results, expiresAt, hasPassword: !!password });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2509,3 +2872,5 @@ module.exports.collaboraEditUrl = collaboraEditUrl;
 module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
 module.exports.writeChunk = writeChunk;
 module.exports.chunkedFileStream = chunkedFileStream;
+module.exports.issueShareTicket = issueShareTicket;
+module.exports.verifyShareTicket = verifyShareTicket;

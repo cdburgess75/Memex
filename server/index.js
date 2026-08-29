@@ -60,9 +60,13 @@ app.use(require('./lib/securityHeaders'));
 // don't go through this parser — they stream via the upload routes.)
 app.use(express.json({ limit: '1mb' }));
 
-const { apiLimiter, authLimiter, shareLimiter, uploadLimiter } = makeRateLimiters();
+const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
-app.use('/api/files/share', shareLimiter);
+// Recipient uploads (one POST per file) get the generous limiter so a dropped
+// folder isn't 429'd mid-batch; everything else under /share — info, ticket,
+// download, which are the password-guessing surface — keeps the tight limiter.
+app.use('/api/files/share', (req, res, next) =>
+  (/^\/[^/]+\/upload\/?$/.test(req.path) ? exchangeUploadLimiter : shareLimiter)(req, res, next));
 // Public folder ZIP downloads. Mount matches only the token route
 // (/api/files/folder/share/:token), not the authed /folder/shares create/list —
 // Express requires a segment boundary, and "shares" continues past "share".
@@ -225,6 +229,17 @@ app.get(['/healthz', '/api/health'], async (_req, res) => {
 app.get('/u/:token', (req, res) => {
   const token = String(req.params.token || '').replace(/[^a-zA-Z0-9]/g, '');
   res.type('html').send(require('./lib/uploadPage')(token));
+});
+
+// Public exchange page for a file sent to someone outside the organization:
+// the file they were sent, plus (when the sender allowed it) somewhere to send
+// files back. Same reasoning as /u/ above — served before the SPA catch-all so
+// it needs no auth, and the token is only used client-side against the public
+// /api/files/share/:token endpoints. Share tokens are base64url, so the filter
+// keeps - and _ as well.
+app.get('/s/:token', (req, res) => {
+  const token = String(req.params.token || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  res.type('html').send(require('./lib/exchangePage')(token));
 });
 
 // Serve only the vendored client libraries statically — NOT the repo root, which
