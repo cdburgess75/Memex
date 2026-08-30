@@ -80,6 +80,11 @@ const ENV_MAP = {
   login_ms365_enabled:            'LOGIN_MS365_ENABLED',
   login_ms365_tenant_id:          'LOGIN_MS365_TENANT_ID',
   login_ms365_client_id:          'LOGIN_MS365_CLIENT_ID',
+  // When 'true', the M365 sign-in also requests delegated Microsoft Graph scopes and
+  // stores the brokered token, so SharePoint connectors can read as the signed-in
+  // user. Off by default; turning it on re-triggers Microsoft consent (needs admin
+  // consent for Sites.Read.All / Files.Read.All on the app registration).
+  login_ms365_graph_delegation:   'LOGIN_MS365_GRAPH_DELEGATION',
   login_ldap_enabled:             'LOGIN_LDAP_ENABLED',
   login_ldap_url:                 'LOGIN_LDAP_URL',
   login_ldap_users_dn:            'LOGIN_LDAP_USERS_DN',

@@ -19,6 +19,16 @@ const GRAPH = 'https://graph.microsoft.com/v1.0';
 const _tokens = new Map();
 
 async function token(cfg) {
+  // Delegated mode: the route has already fetched the signed-in user's own Microsoft
+  // Graph token (via Keycloak's broker endpoint) and put it on cfg.delegatedToken, so
+  // this connection reads SharePoint with the USER's permissions, not the app's. Use
+  // it directly — do NOT run the app-only client-credentials flow, and do NOT cache it
+  // (it is per-user and per-request).
+  if (cfg.delegated) {
+    const dt = String(cfg.delegatedToken || '').trim();
+    if (!dt) { const e = new Error('This SharePoint connection uses each user’s own Microsoft 365 sign-in, but no user token was available for this request.'); e.status = 401; throw e; }
+    return dt;
+  }
   const tenant = String(cfg.tenantId || '').trim();
   const clientId = String(cfg.clientId || '').trim();
   // Two credential shapes, mirroring lib/email.js: a client secret, or a
@@ -153,6 +163,8 @@ module.exports = {
       help: 'Path inside the container to the PEM private key — fleet boxes mount it at /secrets/graph.key.pem. Keeps the key out of the database and backups.' },
     { key: 'certKey', label: 'Certificate private key (paste)', type: 'password', secret: true,
       help: 'Alternative to the path: paste the PEM private key; it is stored encrypted. A pasted key wins over the path.' },
+    { key: 'delegated', label: 'Use each signed-in user’s own Microsoft 365 permissions', type: 'bool',
+      help: 'When on, files are accessed as the signed-in user — SharePoint decides per file what each person can read or write, instead of the app’s shared service identity. Requires "Microsoft 365 Graph delegation" enabled under Sign-in methods, and each user to be signed in with Microsoft. The client secret / certificate above are not used in this mode.' },
   ],
 
   async test(cfg) {

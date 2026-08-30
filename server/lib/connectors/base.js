@@ -96,7 +96,10 @@ function splitFields(adapter, values) {
   for (const f of adapter.fields || []) {
     const v = values[f.key];
     if (v === undefined) continue;
-    (f.secret ? secrets : config)[f.key] = f.type === 'bool' ? Boolean(v)
+    // A bool field posted as the STRING "false" (e.g. by a non-UI API client) must
+    // not coerce to true via Boolean("false"); accept only real-truthy / "true"/"1"/"on".
+    (f.secret ? secrets : config)[f.key] = f.type === 'bool'
+        ? (v === true || v === 1 || ['true', '1', 'on', 'yes'].includes(String(v).toLowerCase()))
       : f.type === 'number' ? Number(v)
       : String(v);
   }

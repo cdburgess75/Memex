@@ -13,6 +13,31 @@ const requireRole = require('../middleware/requireRole');
 const connectors = require('../lib/connectors');
 const base = require('../lib/connectors/base');
 const audit = require('../lib/auditLog');
+const keycloakAdmin = require('../lib/keycloakAdmin');
+
+// Gate content access to a connector, then hand the adapter what it needs.
+//
+// Delegated connectors defer ENTIRELY to the upstream system: SharePoint/365 (and,
+// for SMB, NTFS) is the sole authority over what each user may read or write, so
+// Depot adds no permission layer of its own — it just fetches the caller's own token
+// and lets the remote system decide per file. App-only connectors reach the remote
+// system as a single shared service identity that does NOT reflect the caller, so
+// Depot must gate those itself: real members only, never view-only guests.
+//
+// (Connector management — create / edit / delete / test — stays admin-only via
+// requireRole on those routes; this governs only the browse/read/write data path.)
+async function accessConnector(req, cfg) {
+  if (cfg && cfg.delegated) {
+    cfg.delegatedToken = await keycloakAdmin.getBrokerToken(req.headers.authorization);
+    return;
+  }
+  const role = req.user && req.user.role;
+  if (role !== 'admin' && role !== 'contributor') {
+    const e = new Error('You don’t have access to this connection.');
+    e.status = 403;
+    throw e;
+  }
+}
 
 // Adapters and the registry throw errors carrying an HTTP status; anything without
 // one is a genuine surprise and should not leak its message to the client.
@@ -80,6 +105,7 @@ router.post('/:id/test', auth, requireRole('admin'), async (req, res) => {
   let id = req.params.id;
   try {
     const { adapter, cfg } = await connectors.resolve(id);
+    await accessConnector(req, cfg);
     const result = await adapter.test(cfg);
     await connectors.recordTest(id, true, null);
     res.json({ ok: true, message: result?.message || 'Connected.' });
@@ -90,24 +116,23 @@ router.post('/:id/test', auth, requireRole('admin'), async (req, res) => {
 });
 
 /* ---------- pass-through file operations ---------- */
-
-// Interim access guard (AZ-1): connectors currently reach the remote system as a
-// single service identity (SharePoint app-only, SMB one stored login), so anyone
-// allowed to browse sees everything that identity can. Until per-user delegated
-// auth lands (use the caller's own SharePoint/NTFS permissions), at least exclude
-// read-only guests — browsing/downloading a mount requires admin or contributor.
-router.get('/:id/browse', auth, requireRole('admin', 'contributor'), async (req, res) => {
+// Content access is gated per connector by accessConnector(): delegated connectors
+// defer to the upstream system (365/NTFS decides), app-only connectors are gated by
+// Depot (real members only). See the accessConnector comment above.
+router.get('/:id/browse', auth, async (req, res) => {
   try {
     const { adapter, cfg } = await connectors.resolve(req.params.id);
+    await accessConnector(req, cfg);
     const path = base.normalizePath(req.query.path || '');
     const entries = await adapter.list(cfg, path);
     res.json({ path, entries });
   } catch (e) { fail(res, e, 'could not browse that location'); }
 });
 
-router.get('/:id/file', auth, requireRole('admin', 'contributor'), async (req, res) => {
+router.get('/:id/file', auth, async (req, res) => {
   try {
     const { row, adapter, cfg } = await connectors.resolve(req.params.id);
+    await accessConnector(req, cfg);
     const path = base.normalizePath(req.query.path || '');
     if (!path) return res.status(400).json({ error: 'path required' });
 
@@ -139,10 +164,11 @@ router.get('/:id/file', auth, requireRole('admin', 'contributor'), async (req, r
   } catch (e) { fail(res, e, 'could not read that file'); }
 });
 
-router.put('/:id/file', auth, requireRole('admin', 'contributor'), async (req, res) => {
+router.put('/:id/file', auth, async (req, res) => {
   try {
     const { row, adapter, cfg } = await connectors.resolve(req.params.id);
-    base.assertCapability(adapter, row, 'write');
+    await accessConnector(req, cfg);
+    if (!cfg.delegated) base.assertCapability(adapter, row, 'write');
     const path = base.normalizePath(req.query.path || '');
     if (!path) return res.status(400).json({ error: 'path required' });
     await adapter.write(cfg, path, req);
@@ -151,10 +177,11 @@ router.put('/:id/file', auth, requireRole('admin', 'contributor'), async (req, r
   } catch (e) { fail(res, e, 'could not write that file'); }
 });
 
-router.delete('/:id/file', auth, requireRole('admin', 'contributor'), async (req, res) => {
+router.delete('/:id/file', auth, async (req, res) => {
   try {
     const { row, adapter, cfg } = await connectors.resolve(req.params.id);
-    base.assertCapability(adapter, row, 'remove');
+    await accessConnector(req, cfg);
+    if (!cfg.delegated) base.assertCapability(adapter, row, 'remove');
     const path = base.normalizePath(req.query.path || '');
     if (!path) return res.status(400).json({ error: 'path required' });
     await adapter.remove(cfg, path);
@@ -163,10 +190,11 @@ router.delete('/:id/file', auth, requireRole('admin', 'contributor'), async (req
   } catch (e) { fail(res, e, 'could not delete that file'); }
 });
 
-router.post('/:id/folder', auth, requireRole('admin', 'contributor'), async (req, res) => {
+router.post('/:id/folder', auth, async (req, res) => {
   try {
     const { row, adapter, cfg } = await connectors.resolve(req.params.id);
-    base.assertCapability(adapter, row, 'mkdir');
+    await accessConnector(req, cfg);
+    if (!cfg.delegated) base.assertCapability(adapter, row, 'mkdir');
     const path = base.normalizePath(req.body?.path || '');
     if (!path) return res.status(400).json({ error: 'path required' });
     await adapter.mkdir(cfg, path);

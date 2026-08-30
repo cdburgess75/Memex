@@ -4912,6 +4912,7 @@ async function saveMs365Login(enable) {
       tenantId: document.getElementById('cfg-ms365-tenant').value.trim(),
       clientId: document.getElementById('cfg-ms365-client').value.trim(),
       clientSecret: document.getElementById('cfg-ms365-secret').value,
+      graphDelegation: !!document.getElementById('cfg-ms365-delegation')?.checked,
     });
     if (r.ok) {
       document.getElementById('cfg-ms365-secret').value = '';
@@ -5800,7 +5801,10 @@ function systemSettingsHtml() {
         <input type="text" id="cfg-ms365-client" value="${esc(s.login_ms365_client_id||'')}" placeholder="the Depot app registration in the customer tenant">
         <label>Login client secret</label>
         <input type="password" id="cfg-ms365-secret" autocomplete="new-password" placeholder="printed by setup-graph.ps1 -EnableLogin — blank = keep current">
+        <label>Graph delegation</label>
+        <label class="setup-check" style="justify-self:start"><input type="checkbox" id="cfg-ms365-delegation" ${s.login_ms365_graph_delegation==='true'?'checked':''}> SharePoint connectors read as the signed-in user</label>
       </div>
+      <p class="setup-muted" style="font-size:11px;margin:2px 0 8px">Graph delegation lets a SharePoint connector honor each person's own SharePoint permissions instead of a shared service account. Turning it on requests extra Microsoft Graph scopes at sign-in — grant <strong>admin consent</strong> for the delegated <em>Sites.ReadWrite.All</em> / <em>Files.ReadWrite.All</em> permissions on the app registration first, then Enable/update here (this re-triggers the Microsoft consent screen once). Each user then reads and writes exactly what their own SharePoint permissions allow — SharePoint decides per file. Users may need to re-sign-in with Microsoft periodically to refresh access.</p>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
         <button class="ghost-btn" onclick="saveMs365Login(true)">Enable / update</button>
         <button class="ghost-btn" onclick="saveMs365Login(false)">Disable</button>
