@@ -91,7 +91,12 @@ router.post('/:id/test', auth, requireRole('admin'), async (req, res) => {
 
 /* ---------- pass-through file operations ---------- */
 
-router.get('/:id/browse', auth, async (req, res) => {
+// Interim access guard (AZ-1): connectors currently reach the remote system as a
+// single service identity (SharePoint app-only, SMB one stored login), so anyone
+// allowed to browse sees everything that identity can. Until per-user delegated
+// auth lands (use the caller's own SharePoint/NTFS permissions), at least exclude
+// read-only guests — browsing/downloading a mount requires admin or contributor.
+router.get('/:id/browse', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const { adapter, cfg } = await connectors.resolve(req.params.id);
     const path = base.normalizePath(req.query.path || '');
@@ -100,7 +105,7 @@ router.get('/:id/browse', auth, async (req, res) => {
   } catch (e) { fail(res, e, 'could not browse that location'); }
 });
 
-router.get('/:id/file', auth, async (req, res) => {
+router.get('/:id/file', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const { row, adapter, cfg } = await connectors.resolve(req.params.id);
     const path = base.normalizePath(req.query.path || '');
