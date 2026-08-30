@@ -247,11 +247,27 @@ router.post('/login-ms365', auth, requireRole('admin'), async (req, res) => {
     const clientSecret = trimmedOrNull(req.body.clientSecret);   // blank = keep the one Keycloak holds
     if (!GUID.test(tenantId || '')) return res.json({ ok: false, error: 'Entra tenant ID must be a GUID.' });
     if (!GUID.test(clientId || '')) return res.json({ ok: false, error: 'Application (client) ID must be a GUID.' });
-    const r = await kcAdmin.ensureMicrosoftIdp({ tenantId, clientId, clientSecret });
+    // Graph delegation: opt-in. When absent from the request, keep the stored value
+    // so a plain re-save doesn't silently flip it. Turning it ON is what makes
+    // ensureMicrosoftIdp request delegated Graph scopes + store the token (and thus
+    // re-triggers Microsoft consent) — a deliberate admin action.
+    const graphDelegation = req.body.graphDelegation !== undefined
+      ? req.body.graphDelegation !== false
+      : String(await settings.getOrEnv('login_ms365_graph_delegation') || '').toLowerCase() === 'true';
+    const r = await kcAdmin.ensureMicrosoftIdp({ tenantId, clientId, clientSecret, graphDelegation });
+    // When delegation is on, grant the broker read-token role to all users (via the
+    // realm default role) so EXISTING Microsoft users — not just new logins — can have
+    // their token read. Best-effort: don't fail the whole enable if this step trips.
+    let delegationNote = null;
+    if (graphDelegation) {
+      try { await kcAdmin.ensureBrokerReadTokenDefault(); }
+      catch (e) { delegationNote = `Sign-in updated, but granting token access to existing users failed (${e.message}). Delegated connectors may only work for users who sign in with Microsoft after this change.`; }
+    }
     await settings.set('login_ms365_enabled', 'true', req.user.id);
     await settings.set('login_ms365_tenant_id', tenantId, req.user.id);
     await settings.set('login_ms365_client_id', clientId, req.user.id);
-    res.json({ ok: true, enabled: true, created: r.created });
+    await settings.set('login_ms365_graph_delegation', graphDelegation ? 'true' : 'false', req.user.id);
+    res.json({ ok: true, enabled: true, created: r.created, graphDelegation, ...(delegationNote ? { note: delegationNote } : {}) });
   } catch (e) {
     res.json({ ok: false, error: e.message, hint: 'Run setup-graph.ps1 -EnableLogin first, and check the redirect URI …/realms/<realm>/broker/microsoft/endpoint is on the app registration.' });
   }

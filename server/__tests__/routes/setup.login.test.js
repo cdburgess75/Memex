@@ -60,7 +60,7 @@ describe('POST /login-ms365', () => {
   test('enables: provisions the IdP and records flag + display ids (never the secret)', async () => {
     const r = await request(app).post('/api/setup/login-ms365').send({ tenantId: TID, clientId: CID, clientSecret: 'topsecret' });
     expect(r.body).toMatchObject({ ok: true, enabled: true, created: true });
-    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: 'topsecret' });
+    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: 'topsecret', graphDelegation: false });
     expect(wrote('login_ms365_enabled')[1]).toBe('true');
     expect(wrote('login_ms365_tenant_id')[1]).toBe(TID);
     expect(wrote('login_ms365_client_id')[1]).toBe(CID);
@@ -73,7 +73,7 @@ describe('POST /login-ms365', () => {
     ));
     const r = await request(app).post('/api/setup/login-ms365').send({});
     expect(r.body.ok).toBe(true);
-    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: null });
+    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: null, graphDelegation: false });
   });
 
   test('a Keycloak failure reports ok:false with a hint and does not set the flag', async () => {

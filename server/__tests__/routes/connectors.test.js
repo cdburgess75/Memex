@@ -10,6 +10,7 @@ jest.mock('../../middleware/auth', () => (req, _res, next) => {
 jest.mock('../../middleware/requireRole', () => (...roles) => (req, res, next) =>
   roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'forbidden' }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => {}) }));
+jest.mock('../../lib/keycloakAdmin', () => ({ getBrokerToken: jest.fn(async () => 'user-graph-token') }));
 jest.mock('../../lib/connectors', () => ({
   catalog: jest.fn(() => [{ kind: 'smb', label: 'SMB', fields: [] }]),
   list: jest.fn(),
@@ -25,6 +26,7 @@ const express = require('express');
 const request = require('supertest');
 const connectors = require('../../lib/connectors');
 const audit = require('../../lib/auditLog');
+const keycloakAdmin = require('../../lib/keycloakAdmin');
 
 function app() {
   const a = express();
@@ -146,6 +148,34 @@ describe('write paths respect the read-only flag', () => {
     const res = await request(app()).delete('/api/connectors/c1/file?path=a.txt');
     expect(res.status).toBe(403);
     expect(SMB_ADAPTER.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('content access gating: delegated defers to 365, app-only is gated by Depot', () => {
+  test('app-only mount: a view-only guest is refused browse (shared identity → Depot must gate)', async () => {
+    mockRole = 'viewer';
+    connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).get('/api/connectors/c1/browse?path=');
+    expect(res.status).toBe(403);
+    expect(SMB_ADAPTER.list).not.toHaveBeenCalled();
+    expect(keycloakAdmin.getBrokerToken).not.toHaveBeenCalled();
+  });
+
+  test('delegated mount: any signed-in user may browse — 365 decides — and their own token is injected', async () => {
+    mockRole = 'viewer';
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    const res = await request(app()).get('/api/connectors/c1/browse?path=');
+    expect(res.status).toBe(200);
+    expect(keycloakAdmin.getBrokerToken).toHaveBeenCalled();
+    expect(SMB_ADAPTER.list).toHaveBeenCalledWith(expect.objectContaining({ delegatedToken: 'user-graph-token' }), '');
+  });
+
+  test('delegated mount: the Depot read-only flag does NOT block writes — SharePoint decides', async () => {
+    mockRole = 'viewer';
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    const res = await request(app()).put('/api/connectors/c1/file?path=a.txt').send('data');
+    expect(res.status).toBe(200);
+    expect(SMB_ADAPTER.write).toHaveBeenCalled();
   });
 });
 
