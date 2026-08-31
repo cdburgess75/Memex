@@ -19,7 +19,12 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: unless-stopped
-    command: start-dev --import-realm
+    # Public installs pin the hostname (start --hostname=<domain>) so Keycloak's
+    # token issuer is identical on the browser AND internal hosts — required for
+    # delegated Microsoft 365 connectors, whose server-side broker-token fetch
+    # (via KEYCLOAK_INTERNAL_URL) otherwise rejects browser-issued tokens as
+    # invalid. install.sh sets KC_START_CMD per deployment; local mode = start-dev.
+    command: ${KC_START_CMD:-start-dev --import-realm}
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
