@@ -40,7 +40,6 @@ jest.mock('../../middleware/auth', () => (req, _res, next) => {
 
 const db = require('../../lib/db');
 const storage = require('../../lib/storage');
-const documentAccess = require('../../lib/documentAccess');
 
 function makeApp() {
   const app = express();
@@ -51,7 +50,6 @@ function makeApp() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  documentAccess._resetForTests();
   mockUser = {
     id: '810da857-4296-473f-99e9-96f2a5ebd47e',
     email: 'user@test.com',
@@ -90,7 +88,6 @@ describe('file route document access checks', () => {
     const res = await request(makeApp()).get('/api/files');
 
     expect(res.status).toBe(200);
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS document_acl'));
     const listQuery = db.query.mock.calls.find(call => String(call[0]).includes('ORDER BY d.created_at DESC'));
     expect(listQuery[0]).toContain('FROM document_acl da');
     expect(listQuery[1]).toEqual(['contributor', mockUser.id, mockUser.id, 'user@test.com', ['read', 'write', 'admin'], null]);

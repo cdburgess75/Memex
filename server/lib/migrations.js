@@ -7,8 +7,9 @@
 // schema — the gap that made upgrades risky (schema changes were scattered idempotent
 // CREATE/ALTER IF NOT EXISTS calls with no ordering, no record, and no rollback).
 //
-// The app still carries those historical idempotent calls; NEW schema changes should
-// be added here as a numbered .sql file instead.
+// Those historical runtime "ensure*" calls were consolidated into
+// 0004_runtime_ensure_tables.sql; ALL schema changes now live here as numbered
+// .sql files.
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');

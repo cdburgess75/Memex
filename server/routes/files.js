@@ -14,7 +14,6 @@ const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
-const profiles = require('../lib/profiles');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const email = require('../lib/email');
@@ -64,9 +63,6 @@ async function isFileTypeAllowed(name) {
 }
 const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 64 * 1024 * 1024;
-let uploadSessionsEnsured = false;
-let shareLinksEnsured = false;
-let folderShareLinksEnsured = false;
 
 function cleanDisplayName(name) {
   return String(name || '')
@@ -225,92 +221,14 @@ async function saveDocumentVersion(doc, user, source = 'replace') {
   return version;
 }
 
-async function ensureUploadSessionsTable() {
-  if (uploadSessionsEnsured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS upload_sessions (
-      id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      name              TEXT        NOT NULL,
-      size              BIGINT      NOT NULL DEFAULT 0,
-      mime_type         TEXT        NOT NULL,
-      storage_path      TEXT        NOT NULL,
-      chunk_size        INTEGER     NOT NULL,
-      total_chunks      INTEGER     NOT NULL,
-      received_chunks   INTEGER[]   NOT NULL DEFAULT '{}',
-      received_bytes    BIGINT      NOT NULL DEFAULT 0,
-      uploaded_by       UUID,
-      uploaded_by_email TEXT,
-      status            TEXT        NOT NULL DEFAULT 'active' CHECK (status IN ('active','complete','canceled')),
-      document_id       UUID        REFERENCES documents(id) ON DELETE SET NULL,
-      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      completed_at      TIMESTAMPTZ
-    )
-  `);
-  await db.query('CREATE INDEX IF NOT EXISTS upload_sessions_user_status_idx ON upload_sessions(uploaded_by, status, updated_at DESC)');
-  uploadSessionsEnsured = true;
-}
-
-async function ensureShareLinksTable() {
-  if (shareLinksEnsured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS document_share_links (
-      id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      document_id          UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-      token_hash           TEXT        NOT NULL UNIQUE,
-      password_salt        TEXT,
-      password_hash        TEXT,
-      expires_at           TIMESTAMPTZ,
-      revoked_at           TIMESTAMPTZ,
-      revoked_by           UUID,
-      revoked_by_email     TEXT,
-      created_by           UUID,
-      created_by_email     TEXT,
-      recipient_email      TEXT,
-      allow_upload         BOOLEAN     NOT NULL DEFAULT FALSE,
-      upload_count         INTEGER     NOT NULL DEFAULT 0,
-      upload_bytes         BIGINT      NOT NULL DEFAULT 0,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_accessed_at      TIMESTAMPTZ,
-      access_count         INTEGER     NOT NULL DEFAULT 0
-    )
-  `);
-  await db.query('CREATE INDEX IF NOT EXISTS document_share_links_document_idx ON document_share_links(document_id, created_at DESC)');
-  await db.query('CREATE INDEX IF NOT EXISTS document_share_links_active_idx ON document_share_links(token_hash) WHERE revoked_at IS NULL');
-  shareLinksEnsured = true;
-}
-
-// Public download links for a whole folder. Unlike per-file links (which reference
-// one document_id), a folder link snapshots the exact set of document IDs the
-// creator could read under the folder at creation time (document_ids[]). The public
-// download serves only that frozen set, so a later ACL change can never widen what
-// the link exposes, and files added to the folder afterward are NOT retroactively
-// shared. Same token/password/expiry/revoke model as document_share_links.
-async function ensureFolderShareLinksTable() {
-  if (folderShareLinksEnsured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS folder_share_links (
-      id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      folder_path          TEXT        NOT NULL,
-      document_ids         UUID[]      NOT NULL DEFAULT '{}',
-      token_hash           TEXT        NOT NULL UNIQUE,
-      password_salt        TEXT,
-      password_hash        TEXT,
-      expires_at           TIMESTAMPTZ,
-      revoked_at           TIMESTAMPTZ,
-      revoked_by           UUID,
-      revoked_by_email     TEXT,
-      created_by           UUID,
-      created_by_email     TEXT,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_accessed_at      TIMESTAMPTZ,
-      access_count         INTEGER     NOT NULL DEFAULT 0
-    )
-  `);
-  await db.query('CREATE INDEX IF NOT EXISTS folder_share_links_creator_idx ON folder_share_links(created_by, created_at DESC)');
-  await db.query('CREATE INDEX IF NOT EXISTS folder_share_links_active_idx ON folder_share_links(token_hash) WHERE revoked_at IS NULL');
-  folderShareLinksEnsured = true;
-}
+// upload_sessions, document_share_links, and folder_share_links schema:
+// migrations/0004_runtime_ensure_tables.sql. Folder links differ from per-file
+// links (which reference one document_id): a folder link snapshots the exact set
+// of document IDs the creator could read under the folder at creation time
+// (document_ids[]). The public download serves only that frozen set, so a later
+// ACL change can never widen what the link exposes, and files added to the
+// folder afterward are NOT retroactively shared. Same token/password/expiry/
+// revoke model as document_share_links.
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -643,16 +561,6 @@ async function chunkedFileStream(session) {
   })());
 }
 
-// content_hash (U6 re-upload dedupe) is added in place; a nullable TEXT column and a
-// partial index are metadata-only changes, so this is instant even on a large table.
-let _docColsEnsured = false;
-async function ensureDocumentColumns() {
-  if (_docColsEnsured) return;
-  await db.query('ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash TEXT');
-  await db.query('CREATE INDEX IF NOT EXISTS documents_content_hash_idx ON documents(library_id, content_hash) WHERE content_hash IS NOT NULL AND deleted_at IS NULL');
-  _docColsEnsured = true;
-}
-
 // Fire an upload notification (owner + folder followers, summary-batched) for a
 // real member upload. Best-effort and never throws into the upload path.
 function recordUploadNotify(user, displayName, libraryId) {
@@ -673,7 +581,6 @@ function recordUploadNotify(user, displayName, libraryId) {
 }
 
 async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false }) {
-  await ensureDocumentColumns();
   let canIngest = false;
   let documentText = null;
   let contentHash = null;
@@ -792,7 +699,6 @@ router.get('/local-download', async (req, res) => {
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
 async function loadExchangeLink(token) {
-  await ensureShareLinksTable();
   // s.* already carries upload_count / upload_bytes for the per-link cap check.
   const share = await db.queryOne(
     `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id
@@ -949,7 +855,6 @@ router.post('/share/:token/upload',
 });
 
 router.get('/share/:token', async (req, res) => {
-  await ensureShareLinksTable();
   const hash = tokenHash(req.params.token);
   try {
     const share = await db.queryOne(
@@ -1029,9 +934,6 @@ router.get('/share/:token', async (req, res) => {
 // GET /api/files
 router.get('/', auth, async (req, res) => {
   try {
-    await documentAccess.ensureDocumentAclTable();
-    await libraries.ensureLibraries();
-    await profiles.ensureProfiles();
     const libParam = req.query.library || null;
     const rows = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
@@ -1052,7 +954,6 @@ router.get('/', auth, async (req, res) => {
 // POST /api/files/library-transfer — move or copy selected files into a library
 router.post('/library-transfer', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await libraries.ensureLibraries();
     const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
     const libraryId = req.body?.libraryId;
     const mode = req.body?.mode === 'copy' ? 'copy' : 'move';
@@ -1089,7 +990,6 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
 // GET /api/files/trash — list soft-deleted documents (admin/contributor)
 router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await documentAccess.ensureDocumentAclTable();
     const rows = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}
        FROM documents d
@@ -1110,7 +1010,6 @@ router.get('/search', auth, async (req, res) => {
   if (!q) return res.json([]);
 
   try {
-    await documentAccess.ensureDocumentAclTable();
     const rows = await db.query(
       `SELECT
          d.id, d.name, d.size, d.mime_type, d.storage_path, d.google_drive_id,
@@ -1375,7 +1274,6 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
 
 // POST /api/files/uploads — create or resume a local-backed chunked upload session.
 router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadSessionsTable();
   const displayName = cleanDisplayName(req.body.displayName || req.body.name) || 'upload';
   if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
 
@@ -1418,7 +1316,6 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
 
 // GET /api/files/uploads/:sessionId — inspect resumable upload state.
 router.get('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadSessionsTable();
   try {
     const session = await db.queryOne(
       'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
@@ -1433,7 +1330,6 @@ router.get('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), asy
 
 // PUT /api/files/uploads/:sessionId/chunks/:index — upload one raw chunk.
 router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadSessionsTable();
   const index = Number.parseInt(req.params.index, 10);
   if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Valid chunk index required' });
 
@@ -1492,7 +1388,6 @@ router.put('/uploads/:sessionId/chunks/:index', auth, requireRole('admin', 'cont
 
 // POST /api/files/uploads/:sessionId/complete — assemble chunks into final storage.
 router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadSessionsTable();
   try {
     const session = await db.queryOne(
       'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
@@ -1542,7 +1437,6 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
 
 // DELETE /api/files/uploads/:sessionId — cancel an incomplete upload and remove chunks.
 router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadSessionsTable();
   try {
     const session = await db.queryOne(
       'SELECT * FROM upload_sessions WHERE id = $1 AND uploaded_by = $2',
@@ -1564,7 +1458,6 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
 
 // GET /api/files/:id/shares — list share links for a document.
 router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureShareLinksTable();
   try {
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
@@ -1669,9 +1562,7 @@ router.delete('/:id/access/:grantId', auth, requireRole('admin', 'contributor'),
 
 // GET /api/files/shares — list share links across documents.
 router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureShareLinksTable();
   try {
-    await documentAccess.ensureDocumentAclTable();
     const rows = await db.query(
       `SELECT s.id, s.document_id, d.name AS document_name, s.expires_at, s.revoked_at,
               s.created_at, s.created_by_email, s.last_accessed_at, s.access_count,
@@ -1695,7 +1586,6 @@ router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res
 
 // POST /api/files/:id/shares — create a secure public share link.
 router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureShareLinksTable();
   try {
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
@@ -1740,7 +1630,6 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
 // A password, when set, is never put in the email — it goes back to the sender
 // once, to pass along by another route. Otherwise it protects nothing.
 router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureShareLinksTable();
   try {
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS,
@@ -1878,7 +1767,6 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
 
 // DELETE /api/files/:id/shares/:shareId — revoke a share link.
 router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureShareLinksTable();
   try {
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
@@ -2239,22 +2127,12 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
   }
 });
 
-// Per-user "recently opened" tracking, powering the Recent rail.
-let _recentEnsured = false;
-async function ensureRecentOpens() {
-  if (_recentEnsured) return;
-  await db.query(`CREATE TABLE IF NOT EXISTS recent_opens (
-    user_id UUID NOT NULL, document_id UUID NOT NULL,
-    opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, document_id))`);
-  await db.query('CREATE INDEX IF NOT EXISTS recent_opens_user_idx ON recent_opens(user_id, opened_at DESC)');
-  _recentEnsured = true;
-}
+// Per-user "recently opened" tracking, powering the Recent rail
+// (recent_opens schema: migrations/0004_runtime_ensure_tables.sql).
 
 // GET /api/files/recent — documents the caller has opened, most recent first
 router.get('/recent', auth, async (req, res) => {
   try {
-    await ensureRecentOpens();
     const rows = await db.query(
       `SELECT d.id, d.name, d.size, d.mime_type, d.created_at, d.uploaded_by, d.uploaded_by_email, d.library_id, r.opened_at
        FROM recent_opens r JOIN documents d ON d.id = r.document_id
@@ -2271,7 +2149,6 @@ router.post('/:id/open', auth, async (req, res) => {
   try {
     const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'read', columns: 'id', deleted: 'active' });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    await ensureRecentOpens();
     await db.query(
       `INSERT INTO recent_opens (user_id, document_id, opened_at) VALUES ($1, $2, NOW())
        ON CONFLICT (user_id, document_id) DO UPDATE SET opened_at = NOW()`,
@@ -2453,7 +2330,6 @@ function folderZipEntries(docs, folderPath) {
 
 // GET /api/files/folder/links?path=... — list the caller's folder download links.
 router.get('/folder/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureFolderShareLinksTable();
   try {
     const folderPath = safeDocName(req.query.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
@@ -2473,7 +2349,6 @@ router.get('/folder/links', auth, requireRole('admin', 'contributor'), async (re
 
 // POST /api/files/folder/links — mint a public download link for a folder.
 router.post('/folder/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureFolderShareLinksTable();
   try {
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
@@ -2512,7 +2387,6 @@ router.post('/folder/links', auth, requireRole('admin', 'contributor'), async (r
 
 // DELETE /api/files/folder/links/:shareId — revoke a folder download link.
 router.delete('/folder/links/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureFolderShareLinksTable();
   try {
     const adminAll = (req.user.role === 'admin');
     const share = await db.queryOne(
@@ -2531,7 +2405,6 @@ router.delete('/folder/links/:shareId', auth, requireRole('admin', 'contributor'
 
 // GET /api/files/folder/share/:token — public, revocable, expiring folder ZIP download.
 router.get('/folder/share/:token', async (req, res) => {
-  await ensureFolderShareLinksTable();
   const hash = tokenHash(req.params.token);
   try {
     const share = await db.queryOne('SELECT * FROM folder_share_links WHERE token_hash = $1', [hash]);
@@ -2589,7 +2462,6 @@ router.get('/folder/share/:token', async (req, res) => {
 // GET /api/files/folder/members?path=... — who has been granted access across a folder.
 router.get('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await documentAccess.ensureDocumentAclTable();
     const folderPath = safeDocName(req.query.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     // Only surface grants on files the caller can administer, and collapse the
@@ -2615,7 +2487,6 @@ router.get('/folder/members', auth, requireRole('admin', 'contributor'), async (
 // POST /api/files/folder/members — grant one person access to every file in a folder.
 router.post('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await documentAccess.ensureDocumentAclTable();
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const email = documentAccess.normalizeEmail(req.body?.email);
@@ -2663,7 +2534,6 @@ router.post('/folder/members', auth, requireRole('admin', 'contributor'), async 
 // DELETE /api/files/folder/members — revoke a person's access across a folder.
 router.delete('/folder/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await documentAccess.ensureDocumentAclTable();
     const folderPath = safeDocName(req.body?.path, '');
     const email = documentAccess.normalizeEmail(req.body?.email);
     if (!folderPath || !email) return res.status(400).json({ error: 'path and email required' });
@@ -2684,7 +2554,6 @@ router.delete('/folder/members', auth, requireRole('admin', 'contributor'), asyn
 // POST /api/files/folder/copy — duplicate a folder's files into another library.
 router.post('/folder/copy', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    await libraries.ensureLibraries();
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
@@ -2790,7 +2659,6 @@ router.post('/ask', auth, async (req, res) => {
 
   sseHeaders(res);
   try {
-    await documentAccess.ensureDocumentAclTable();
     const docs = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}, document_text FROM documents
        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
@@ -2854,35 +2722,7 @@ router.post('/ask', auth, async (req, res) => {
 // A public link that lets a non-member upload files WITHOUT an account. Uploads
 // are attributed to the member who created the link and land in the link's
 // destination library/folder; the creator gets an in-app notification.
-let uploadLinksEnsured = false;
-async function ensureUploadLinksTable() {
-  if (uploadLinksEnsured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS upload_links (
-      id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      token_hash        TEXT        NOT NULL UNIQUE,
-      label             TEXT,
-      library_id        UUID,
-      folder_path       TEXT,
-      password_salt     TEXT,
-      password_hash     TEXT,
-      expires_at        TIMESTAMPTZ,
-      revoked_at        TIMESTAMPTZ,
-      created_by        UUID,
-      created_by_email  TEXT,
-      notify_email      BOOLEAN     NOT NULL DEFAULT TRUE,
-      notify_alert      BOOLEAN     NOT NULL DEFAULT TRUE,
-      upload_count      INTEGER     NOT NULL DEFAULT 0,
-      last_used_at      TIMESTAMPTZ,
-      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await db.query('CREATE INDEX IF NOT EXISTS upload_links_active_idx ON upload_links(token_hash) WHERE revoked_at IS NULL');
-  await db.query('CREATE INDEX IF NOT EXISTS upload_links_owner_idx ON upload_links(created_by, created_at DESC)');
-  await db.query('ALTER TABLE upload_links ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE');
-  await db.query('ALTER TABLE upload_links ADD COLUMN IF NOT EXISTS notify_alert BOOLEAN NOT NULL DEFAULT TRUE');
-  uploadLinksEnsured = true;
-}
+// upload_links schema: migrations/0004_runtime_ensure_tables.sql.
 
 function normalizeFolderPath(p) {
   return String(p || '').split('/').map(s => s.trim()).filter(Boolean).join('/');
@@ -2908,7 +2748,6 @@ function uploadLinkClientShape(row, url = null) {
 }
 
 async function loadActiveUploadLink(token) {
-  await ensureUploadLinksTable();
   const row = await db.queryOne('SELECT * FROM upload_links WHERE token_hash = $1', [tokenHash(token)]);
   if (!row || row.revoked_at) return { error: 'notfound' };
   if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return { error: 'expired' };
@@ -2917,7 +2756,6 @@ async function loadActiveUploadLink(token) {
 
 // POST /api/files/upload-links — create a file-request link (member-facing).
 router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadLinksTable();
   try {
     const token = crypto.randomBytes(32).toString('hex');
     const { salt, hash } = passwordParts(req.body?.password);
@@ -2941,7 +2779,6 @@ router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (r
 
 // GET /api/files/upload-links — list my active links (admins see all).
 router.get('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadLinksTable();
   try {
     const rows = await db.query(
       `SELECT * FROM upload_links
@@ -2955,7 +2792,6 @@ router.get('/upload-links', auth, requireRole('admin', 'contributor'), async (re
 
 // DELETE /api/files/upload-links/:id — revoke.
 router.delete('/upload-links/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  await ensureUploadLinksTable();
   try {
     const row = await db.queryOne(
       `UPDATE upload_links SET revoked_at = NOW()

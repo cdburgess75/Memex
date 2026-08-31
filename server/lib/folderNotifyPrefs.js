@@ -4,26 +4,9 @@
 // an explicit choice (enabled true/false) for a person at a library
 // (folder_path='') or a folder (and its subfolders). No row → the role default.
 // One toggle in the folder 3-dots menu, self-service, either direction.
+// Schema (including the folder_notify_prefs_uniq expression index the
+// ON CONFLICT below infers against): migrations/0004_runtime_ensure_tables.sql.
 const db = require('./db');
-
-let ensured = false;
-async function ensure() {
-  if (ensured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS folder_notify_prefs (
-      id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      library_id       UUID,
-      folder_path      TEXT        NOT NULL DEFAULT '',
-      subscriber_email TEXT        NOT NULL,
-      enabled          BOOLEAN     NOT NULL,
-      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS folder_notify_prefs_uniq
-    ON folder_notify_prefs (COALESCE(library_id, '00000000-0000-0000-0000-000000000000'), folder_path, lower(subscriber_email))`);
-  await db.query('CREATE INDEX IF NOT EXISTS folder_notify_prefs_lib_idx ON folder_notify_prefs(library_id)');
-  ensured = true;
-}
 
 const norm = (p) => String(p || '').replace(/^\/+|\/+$/g, '');
 // A pref at the library root ('') or an ancestor folder applies to an upload at p.
@@ -31,7 +14,6 @@ const applies = (rowPath, p) => rowPath === '' || rowPath === p || p.startsWith(
 
 // Set (or update) this user's explicit choice for this place.
 async function setPref(libraryId, folderPath, email, enabled) {
-  await ensure();
   await db.query(
     `INSERT INTO folder_notify_prefs (library_id, folder_path, subscriber_email, enabled)
      VALUES ($1, $2, $3, $4)
@@ -44,7 +26,6 @@ async function setPref(libraryId, folderPath, email, enabled) {
 // This user's effective explicit pref for an upload at folderPath (most specific
 // matching row wins), or null when they have no applicable choice.
 async function prefForUser(libraryId, folderPath, email) {
-  await ensure();
   const rows = await db.query(
     'SELECT folder_path, enabled FROM folder_notify_prefs WHERE library_id IS NOT DISTINCT FROM $1 AND lower(subscriber_email) = lower($2)',
     [libraryId || null, email]
@@ -57,7 +38,6 @@ async function prefForUser(libraryId, folderPath, email) {
 // Map lower(email) → enabled, one entry per person who has an applicable pref
 // (most specific wins). Used to override the role defaults during fan-out.
 async function effectiveFor(libraryId, folderPath) {
-  await ensure();
   const rows = await db.query(
     'SELECT subscriber_email, folder_path, enabled FROM folder_notify_prefs WHERE library_id IS NOT DISTINCT FROM $1',
     [libraryId || null]
@@ -77,11 +57,10 @@ async function effectiveFor(libraryId, folderPath) {
 
 // All of this user's explicit prefs in a library (for the inline bells).
 async function listUserPrefs(libraryId, email) {
-  await ensure();
   return db.query(
     'SELECT folder_path, enabled FROM folder_notify_prefs WHERE library_id IS NOT DISTINCT FROM $1 AND lower(subscriber_email) = lower($2)',
     [libraryId || null, email]
   );
 }
 
-module.exports = { ensure, setPref, prefForUser, effectiveFor, listUserPrefs };
+module.exports = { setPref, prefForUser, effectiveFor, listUserPrefs };

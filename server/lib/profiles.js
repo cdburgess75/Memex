@@ -1,32 +1,14 @@
 'use strict';
 // Per-user profile (display name + avatar) stored in our DB, overlaying the
-// Keycloak identity. Idempotent runtime migration, same pattern as lib/libraries.js.
+// Keycloak identity. Schema: migrations/0004_runtime_ensure_tables.sql.
 const db = require('./db');
 
-let ensured = false;
-
-async function ensureProfiles() {
-  if (ensured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS user_profiles (
-      user_id       UUID        PRIMARY KEY,
-      email         TEXT,
-      display_name  TEXT,
-      avatar        TEXT,
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  ensured = true;
-}
-
 async function getProfile(userId) {
-  await ensureProfiles();
   if (!userId) return null;
   return db.queryOne('SELECT user_id, email, display_name, avatar FROM user_profiles WHERE user_id = $1', [userId]);
 }
 
 async function setProfile(user, { display_name, avatar } = {}) {
-  await ensureProfiles();
   return db.queryOne(
     `INSERT INTO user_profiles (user_id, email, display_name, avatar, updated_at)
      VALUES ($1, $2, $3, $4, NOW())
@@ -40,4 +22,4 @@ async function setProfile(user, { display_name, avatar } = {}) {
   );
 }
 
-module.exports = { ensureProfiles, getProfile, setProfile };
+module.exports = { getProfile, setProfile };

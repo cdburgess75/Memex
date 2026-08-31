@@ -85,7 +85,7 @@ In-browser Office editing is **Collabora Online**, reached through a **same-orig
 
 ### Database & migrations
 
-Postgres via `pg`; all queries go through `server/lib/db.js` (`query`, `queryOne`, `withTransaction`) — **every query is parameterized**. Schema migrations are forward-only ordered `.sql` files in `server/migrations/`, applied once at startup and recorded in `schema_migrations` (`server/lib/migrations.js`); startup aborts if a migration fails. NOTE: several tables are still created by runtime `CREATE TABLE IF NOT EXISTS` (`ensure*Table`) helpers rather than migrations — prefer adding new schema as a migration.
+Postgres via `pg`; all queries go through `server/lib/db.js` (`query`, `queryOne`, `withTransaction`) — **every query is parameterized**. Schema migrations are forward-only ordered `.sql` files in `server/migrations/`, applied once at startup and recorded in `schema_migrations` (`server/lib/migrations.js`); startup aborts if a migration fails. The historical runtime `CREATE TABLE IF NOT EXISTS` (`ensure*Table`) helpers were consolidated into `0004_runtime_ensure_tables.sql` — all schema changes go in migrations.
 
 ## Deployment
 

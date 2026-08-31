@@ -288,9 +288,6 @@ async function start() {
     }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
-    // Add the tamper-evident audit-log columns before the first event append.
-    try { await require('./lib/auditLog').ensureChain(); console.log('[startup] audit-log chain ready'); }
-    catch (e) { console.error('[startup] audit-log chain init failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
     try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
     catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
