@@ -5398,6 +5398,7 @@ function renderConnectorBrowser(el) {
   const canWrite = !!caps.write && writable;
   const canMkdir = !!caps.mkdir && writable;
   const canDelete = !!caps.remove && writable;
+  const canMove = !!caps.move && writable;
   const dirs = b.entries.filter(e => e.type === 'dir');
   const files = b.entries.filter(e => e.type !== 'dir');
   const row = (e) => `
@@ -5411,6 +5412,7 @@ function renderConnectorBrowser(el) {
       <div class="conn-actions">
         ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
         ${e.type !== 'dir' ? `<button class="ghost-btn" data-cid="${escAttr(b.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.cid, this.dataset.path, this.dataset.name)">Download</button>` : ''}
+        ${canMove ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connRename(this.dataset.path, this.dataset.name)" title="Rename in the source system">Rename</button>` : ''}
         ${e.type !== 'dir' && canDelete ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDeleteFile(this.dataset.path, this.dataset.name)" title="Delete from the source system">Delete</button>` : ''}
       </div>
     </div>`;
@@ -5479,6 +5481,20 @@ async function connDeleteFile(path, name) {
     toast('Deleted');
     connBrowse(b.id, b.path);
   } catch (e) { if (!connActionError(e, b, () => connDeleteFile(path, name))) toast('Delete failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+async function connRename(path, name) {
+  const b = connBrowsing; if (!b) return;
+  const nn = (prompt('Rename to', name) || '').trim();
+  if (!nn || nn === name) return;
+  if (/[\\/]/.test(nn)) { toast('Name can’t contain a slash'); return; }
+  const parent = path.split('/').slice(0, -1).join('/');
+  const to = (parent ? parent + '/' : '') + nn;
+  try {
+    await apiPost(`/connectors/${encodeURIComponent(b.id)}/move`, { from: path, to });
+    toast('Renamed');
+    connBrowse(b.id, b.path);
+  } catch (e) { if (!connActionError(e, b, () => connRename(path, name))) toast('Rename failed: ' + ((e.body && e.body.error) || e.message)); }
 }
 
 function connUploadPick() {

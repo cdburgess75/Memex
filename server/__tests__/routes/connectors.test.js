@@ -38,9 +38,10 @@ function app() {
 }
 
 const SMB_ADAPTER = {
-  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true },
+  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true, move: true },
   list: jest.fn(async () => [{ name: 'a.txt', path: 'a.txt', type: 'file', size: 1, modified: null }]),
   read: jest.fn(), write: jest.fn(async () => {}), remove: jest.fn(), mkdir: jest.fn(),
+  move: jest.fn(async () => {}),
   test: jest.fn(async () => ({ message: 'Connected.' })),
 };
 
@@ -232,5 +233,28 @@ describe('POST /api/connectors/:id/test', () => {
     expect(res.body.ok).toBe(false);
     expect(res.body.message).toMatch(/LOGON_FAILURE/);
     expect(connectors.recordTest).toHaveBeenCalledWith('c1', false, 'STATUS_LOGON_FAILURE');
+  });
+});
+
+describe('POST /api/connectors/:id/move (rename)', () => {
+  test('renames when writable — calls adapter.move(cfg, from, to)', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/move').send({ from: 'a.txt', to: 'b.txt' });
+    expect(res.status).toBe(200);
+    expect(SMB_ADAPTER.move).toHaveBeenCalledWith({}, 'a.txt', 'b.txt');
+  });
+
+  test('read-only connector rejects rename (403, adapter untouched)', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/move').send({ from: 'a.txt', to: 'b.txt' });
+    expect(res.status).toBe(403);
+    expect(SMB_ADAPTER.move).not.toHaveBeenCalled();
+  });
+
+  test('requires both from and to', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'Eng', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/move').send({ from: 'a.txt' });
+    expect(res.status).toBe(400);
+    expect(SMB_ADAPTER.move).not.toHaveBeenCalled();
   });
 });

@@ -145,7 +145,7 @@ module.exports = {
   kind: 'sharepoint',
   label: 'SharePoint document library',
   blurb: 'A SharePoint site\'s document library, via Microsoft Graph app-only auth.',
-  caps: { write: true, remove: true, mkdir: true, range: true },
+  caps: { write: true, remove: true, mkdir: true, range: true, move: true },
 
   fields: [
     { key: 'siteUrl', label: 'Site URL', type: 'text', required: true,
@@ -256,6 +256,22 @@ module.exports = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' }),
+    });
+  },
+
+  // Rename an item in place. Cross-folder moves would need the target folder's
+  // driveItem id for parentReference — the UI only renames within a folder for now.
+  async move(cfg, from, to) {
+    const site = await siteId(cfg);
+    const fromAbs = resolveWithinRoot(cfg.rootPath, from);
+    const toAbs = resolveWithinRoot(cfg.rootPath, to);
+    if (fromAbs.split('/').slice(0, -1).join('/') !== toAbs.split('/').slice(0, -1).join('/')) {
+      const e = new Error('Moving between folders isn’t supported yet — rename keeps the item in its folder.'); e.status = 400; throw e;
+    }
+    await graph(cfg, `/sites/${site}/drive/${itemRef(fromAbs)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: toAbs.split('/').pop() }),
     });
   },
 
