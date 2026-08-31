@@ -68,7 +68,7 @@ module.exports = {
   kind: 'smb',
   label: 'SMB / Windows file share',
   blurb: 'A Windows or Samba share — the usual way to reach an NTFS volume on a local file server.',
-  caps: { write: true, remove: true, mkdir: true, range: true },
+  caps: { write: true, remove: true, mkdir: true, range: true, move: true },
 
   fields: [
     { key: 'host', label: 'Server', type: 'text', required: true, placeholder: 'files.corp.local',
@@ -147,5 +147,10 @@ module.exports = {
   async mkdir(cfg, path) {
     const abs = resolveWithinRoot(cfg.rootPath, path);
     await call(cfg, 'mkdir', [toSmb(abs)]);
+  },
+
+  // Rename or move within the share (smb2's rename takes old + new full paths).
+  async move(cfg, from, to) {
+    await call(cfg, 'rename', [toSmb(resolveWithinRoot(cfg.rootPath, from)), toSmb(resolveWithinRoot(cfg.rootPath, to))]);
   },
 };

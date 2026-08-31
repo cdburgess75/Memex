@@ -246,6 +246,21 @@ router.post('/:id/folder', auth, async (req, res) => {
   } catch (e) { fail(res, e, 'could not create that folder'); }
 });
 
+router.post('/:id/move', auth, async (req, res) => {
+  try {
+    const { row, adapter, cfg } = await connectors.resolve(req.params.id);
+    await accessConnector(req, row, cfg);
+    if (!cfg.delegated) base.assertCapability(adapter, row, 'move');
+    if (typeof adapter.move !== 'function') { const e = new Error('This connection does not support rename.'); e.status = 400; throw e; }
+    const from = base.normalizePath(req.body?.from || '');
+    const to = base.normalizePath(req.body?.to || '');
+    if (!from || !to) return res.status(400).json({ error: 'from and to are required' });
+    await adapter.move(cfg, from, to);
+    record(req, 'connector_move', `${row.name}:${from} → ${to}`);
+    res.json({ ok: true, path: to });
+  } catch (e) { fail(res, e, 'could not rename that item'); }
+});
+
 /* ---------- per-user unlock for delegated SMB shares ---------- */
 
 // Unlock a delegated SMB connection with the caller's OWN domain credentials, held in
