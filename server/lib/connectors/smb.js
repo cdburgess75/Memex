@@ -78,9 +78,13 @@ module.exports = {
     { key: 'rootPath', label: 'Folder within the share', type: 'text', placeholder: 'Projects/2026',
       help: 'Optional. Scopes the connection to a subfolder — nothing above it is reachable.' },
     { key: 'domain', label: 'Domain', type: 'text', placeholder: 'CORP', default: 'WORKGROUP' },
-    { key: 'username', label: 'Username', type: 'text', required: true },
-    { key: 'password', label: 'Password', type: 'password', required: true, secret: true },
+    { key: 'username', label: 'Username', type: 'text',
+      help: 'Service-account username. Leave blank when "own network credentials" is on — each user supplies their own.' },
+    { key: 'password', label: 'Password', type: 'password', secret: true,
+      help: 'Service-account password. Not used when "own network credentials" is on.' },
     { key: 'port', label: 'Port', type: 'number', default: 445 },
+    { key: 'delegated', label: 'Use each signed-in user’s own network credentials', type: 'bool',
+      help: 'When on, each user unlocks this share with their own domain sign-in and sees only what NTFS grants them — instead of a shared service account. Depot holds those credentials only in memory for the session (never stored). The username/password above are not used in this mode.' },
   ],
 
   async test(cfg) {

@@ -3570,7 +3570,14 @@ async function getToken() {
 
 async function apiGet(path) {
   const res = await fetch('/api' + path, { headers: { Authorization: `Bearer ${await getToken()}` } });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const t = await res.text();
+    // Keep the message text (back-compat), but attach status + parsed body so callers
+    // can branch on a machine code (e.g. SMB_CREDENTIALS_REQUIRED) without string-matching.
+    const err = new Error(t); err.status = res.status;
+    try { err.body = JSON.parse(t); } catch { /* non-JSON body */ }
+    throw err;
+  }
   return res.json();
 }
 
@@ -5351,7 +5358,13 @@ async function connBrowse(id, path) {
     const r = await apiGet(`/connectors/${encodeURIComponent(id)}/browse?path=${encodeURIComponent(path || '')}`);
     connBrowsing = { id, name: c ? c.name : '', path: r.path || '', entries: r.entries || [] };
     renderConnections();
-  } catch (e) { toast('Browse failed: ' + e.message); }
+  } catch (e) {
+    if (e.status === 428 && e.body && e.body.code === 'SMB_CREDENTIALS_REQUIRED') {
+      promptSmbUnlock(id, c ? c.name : 'this share', () => connBrowse(id, path));
+      return;
+    }
+    toast('Browse failed: ' + ((e.body && e.body.error) || e.message));
+  }
 }
 
 function connCrumbs(b) {
@@ -7351,9 +7364,68 @@ async function openMount(id, path = '') {
   const c = connMounts.find(x => x.id === id);
   try {
     const r = await apiGet(`/connectors/${encodeURIComponent(id)}/browse?path=${encodeURIComponent(path || '')}`);
-    mountView = { id, name: c ? c.name : 'Connection', kind: c ? (c.label || c.kind) : '', path: r.path || '', entries: r.entries || [] };
+    mountView = { id, name: c ? c.name : 'Connection', kind: c ? (c.label || c.kind) : '', path: r.path || '', entries: r.entries || [], delegated: c ? !!c.delegated : false };
     renderMountView();
-  } catch (e) { toast('Could not open that connection: ' + e.message); }
+  } catch (e) {
+    // A delegated SMB share needs the user's own network credentials for this session —
+    // prompt for them, then retry the same browse.
+    if (e.status === 428 && e.body && e.body.code === 'SMB_CREDENTIALS_REQUIRED') {
+      promptSmbUnlock(id, c ? c.name : 'this share', () => openMount(id, path));
+      return;
+    }
+    toast('Could not open that connection: ' + ((e.body && e.body.error) || e.message));
+  }
+}
+
+let _smbUnlock = null;
+// Ask the user for their OWN domain credentials to unlock a delegated SMB share.
+// The credentials are sent once to verify + hold for the session; they are never
+// stored by the browser and never persisted server-side.
+function promptSmbUnlock(id, name, onUnlocked) {
+  closeSmbUnlock();
+  _smbUnlock = { id, onUnlocked };
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="scrim open" id="smb-unlock-scrim" onclick="if(event.target.id==='smb-unlock-scrim')closeSmbUnlock()">
+      <div class="modal" style="max-width:430px" onclick="event.stopPropagation()">
+        <h2 style="margin:0 0 6px">Unlock ${esc(name)}</h2>
+        <p class="settings-notice" style="margin:0 0 14px">Sign in with your own network account — you'll see only what your Windows permissions allow. Your credentials are used only for this session and are never stored.</p>
+        <div class="settings-grid" style="grid-template-columns:104px 1fr">
+          <label>Domain</label><input type="text" id="smb-unlock-domain" placeholder="CORP" autocomplete="off">
+          <label>Username</label><input type="text" id="smb-unlock-user" autocomplete="off">
+          <label>Password</label><input type="password" id="smb-unlock-pass" autocomplete="off" onkeydown="if(event.key==='Enter')submitSmbUnlock()">
+        </div>
+        <div id="smb-unlock-err" style="color:#C0392B;min-height:16px;margin-top:8px;font-size:12px"></div>
+        <div class="btn-row" style="margin-top:14px;justify-content:flex-end;gap:8px">
+          <button class="ghost-btn" onclick="closeSmbUnlock()">Cancel</button>
+          <button class="run-btn" id="smb-unlock-go" onclick="submitSmbUnlock()">Unlock</button>
+        </div>
+      </div>
+    </div>`);
+  setTimeout(() => document.getElementById('smb-unlock-user')?.focus(), 40);
+}
+function closeSmbUnlock() { document.getElementById('smb-unlock-scrim')?.remove(); _smbUnlock = null; }
+async function submitSmbUnlock() {
+  if (!_smbUnlock) return;
+  const errEl = document.getElementById('smb-unlock-err');
+  const btn = document.getElementById('smb-unlock-go');
+  const body = {
+    domain: document.getElementById('smb-unlock-domain')?.value.trim() || '',
+    username: document.getElementById('smb-unlock-user')?.value.trim() || '',
+    password: document.getElementById('smb-unlock-pass')?.value || '',
+  };
+  if (!body.username || !body.password) { if (errEl) errEl.textContent = 'Enter your username and password.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Unlocking…'; }
+  try {
+    const r = await apiPost(`/connectors/${encodeURIComponent(_smbUnlock.id)}/credentials`, body);
+    if (r.ok) { const cb = _smbUnlock.onUnlocked; closeSmbUnlock(); if (cb) cb(); }
+    else { if (errEl) errEl.textContent = r.error || 'Could not connect with those credentials.'; if (btn) { btn.disabled = false; btn.textContent = 'Unlock'; } }
+  } catch (e) { if (errEl) errEl.textContent = ((e.body && e.body.error) || 'Unlock failed. Try again.'); if (btn) { btn.disabled = false; btn.textContent = 'Unlock'; } }
+}
+// Lock: forget this session's credentials for a share (e.g. on a shared machine).
+async function lockSmbMount(id) {
+  try { await apiDelete(`/connectors/${encodeURIComponent(id)}/credentials`); } catch { /* best effort */ }
+  toast('Locked — you’ll be asked to sign in again next time.');
+  if (mountView && mountView.id === id) { fileView = 'home'; setFileView('home'); }
 }
 
 function mountCrumbsHtml() {
@@ -7383,8 +7455,11 @@ function renderMountView() {
       </div>
     </div>`;
   const main = `<div class="file-library" id="mount-view">
-    <div class="file-library-breadcrumb-row" style="padding:10px 0">${mountCrumbsHtml()}</div>
-    <p class="note" style="margin:0 0 12px;font-size:12px">Live view of ${esc(m.kind || 'the connected system')} — files stay at the source; nothing is copied into Depot.</p>
+    <div class="file-library-breadcrumb-row" style="padding:10px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>${mountCrumbsHtml()}</div>
+      ${m.delegated ? `<button class="ghost-btn" style="font-size:12px;flex:0 0 auto" data-mid="${escAttr(m.id)}" onclick="lockSmbMount(this.dataset.mid)" title="Forget your sign-in for this share on this device">Lock</button>` : ''}
+    </div>
+    <p class="note" style="margin:0 0 12px;font-size:12px">Live view of ${esc(m.kind || 'the connected system')} — files stay at the source; nothing is copied into Depot.${m.delegated ? ' You are signed in with your own network account.' : ''}</p>
     ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
   </div>`;
   mountView.ordered = [...dirs, ...files];

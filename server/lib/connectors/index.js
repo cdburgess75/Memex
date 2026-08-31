@@ -85,6 +85,8 @@ function publicView(row, adapter) {
     hasSecrets: Boolean(row.secret && row.secret.length),
     enabled: row.enabled,
     readOnly: row.read_only,
+    // Surfaced to the UI (admin + non-admin) so a per-user mount can show a "lock" action.
+    delegated: !!(row.config && row.config.delegated),
     lastStatus: row.last_status || null,
     lastError: row.last_error || null,
     lastCheckedAt: row.last_checked_at || null,
