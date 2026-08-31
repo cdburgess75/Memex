@@ -228,10 +228,33 @@ if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
   if [ "$kc_locked" = "1" ]; then info "Keycloak redirects locked to ${APP_URL}."
   else warn "Couldn't auto-lock Keycloak redirects (it may still be starting). The realm keeps its default; you can narrow it later in the Keycloak admin console: Clients → memex-app → Valid redirect URIs → ${APP_URL}/* (and Web origins → +)."; fi
 fi
+
+# Replace the seed admin's well-known bootstrap password ("memex-admin", baked into
+# the imported realm) with a random one, so no universally-known credential exists
+# after install. Best-effort with retries; if it can't be set the realm's temporary
+# default still applies and we say so below — this never blocks the install.
+SEED_ADMIN_PW="$(gen 12)"
+seed_pw_set=0
+for _ in $(seq 1 20); do
+  # shellcheck disable=SC2086
+  if $DC $COMPOSE exec -T -e SEEDPW="$SEED_ADMIN_PW" keycloak sh -c '
+      kc=/opt/keycloak/bin/kcadm.sh
+      "$kc" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+      uid=$("$kc" get users -r memex -q username=admin --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
+      [ -n "$uid" ] || exit 1
+      "$kc" set-password -r memex --userid "$uid" --new-password "$SEEDPW" --temporary >/dev/null 2>&1
+    '; then seed_pw_set=1; break; fi
+  sleep 3
+done
+
 echo
 echo "  ${B}First login${N}"
 echo "    Email:    admin@memex.local"
-echo "    Password: memex-admin   (you'll be forced to change it)"
+if [ "$seed_pw_set" = "1" ]; then
+  echo "    Password: ${B}${SEED_ADMIN_PW}${N}   (temporary — you'll be forced to change it; save it now)"
+else
+  echo "    Password: memex-admin   (realm default — you'll be forced to change it)"
+fi
 echo "    Then the Setup Wizard walks you through tenant identity, integrations,"
 echo "    and performance limits — no host-file editing needed."
 echo "    (Re-run setup later on a configured box with FIRST_BOOT=force.)"
