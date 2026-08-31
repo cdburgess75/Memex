@@ -97,9 +97,16 @@ if [ "$KEEP_ENV" = "0" ]; then
     [ -n "${APP_DOMAIN:-}" ] || die "Public mode needs a domain."
     # Behind HTTPS the editor must be told to speak wss:// — ssl.termination=true.
     APP_URL="https://$APP_DOMAIN"; KEYCLOAK_URL="auto"; TRUST_PROXY="1"; COLLABORA_SSL="true"
+    # Run Keycloak in prod mode with a pinned hostname so its token issuer is the
+    # public URL on EVERY host (browser + internal). Delegated Microsoft 365
+    # connectors fetch the user's token server-side via KEYCLOAK_INTERNAL_URL; a
+    # request-derived issuer would make Keycloak reject that browser-issued token.
+    KC_START_CMD="start --hostname=$APP_DOMAIN --import-realm"
   else
     # Plain http on this box → the editor speaks ws:// (ssl.termination=false).
     APP_URL="http://localhost:$PORT"; KEYCLOAK_URL="http://localhost:$KC_PORT"; TRUST_PROXY=""; COLLABORA_SSL="false"
+    # No fixed public domain in local mode → dev mode (request-based hostname).
+    KC_START_CMD="start-dev --import-realm"
   fi
 
   # The seeded Keycloak user admin@memex.local is the only account that exists on
@@ -132,6 +139,10 @@ KEYCLOAK_URL=$KEYCLOAK_URL
 KEYCLOAK_PUBLIC_PORT=$KC_PORT
 KEYCLOAK_REALM=memex
 KEYCLOAK_CLIENT_ID=memex-app
+# Keycloak launch command (compose: command: \${KC_START_CMD:-...}). Public mode
+# pins --hostname so the token issuer is identical on browser + internal hosts
+# (delegated Microsoft 365 connectors require this); local mode uses start-dev.
+KC_START_CMD=$KC_START_CMD
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 ANTHROPIC_MODEL=claude-sonnet-4-6
 ADMIN_EMAILS=$ADMIN_EMAILS
@@ -168,6 +179,18 @@ else
   if [ "$MODE" = public ]; then
     grep -q '^APP_BIND=' .env || printf 'APP_BIND=127.0.0.1\n' >> .env
     grep -q '^KC_BIND=' .env || printf 'KC_BIND=127.0.0.1\n' >> .env
+  fi
+  # Backfill the Keycloak launch command. Public installs pin the hostname
+  # (derived from APP_URL) so the token issuer is consistent across hosts — this
+  # switches Keycloak from start-dev to prod mode on the next up, and is what makes
+  # delegated Microsoft 365 connectors work. Local installs stay on start-dev.
+  if ! grep -q '^KC_START_CMD=' .env; then
+    if [ "$MODE" = public ]; then
+      _dom="$(sed -n 's#^APP_URL=https\{0,1\}://##p' .env | sed 's#[:/].*##')"
+      [ -n "$_dom" ] && printf 'KC_START_CMD=start --hostname=%s --import-realm\n' "$_dom" >> .env
+    else
+      printf 'KC_START_CMD=start-dev --import-realm\n' >> .env
+    fi
   fi
 fi
 # App host port (source of truth: .env) — used by the health check and summary.
