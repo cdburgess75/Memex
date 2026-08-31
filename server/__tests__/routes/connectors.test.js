@@ -11,6 +11,7 @@ jest.mock('../../middleware/requireRole', () => (...roles) => (req, res, next) =
   roles.includes(req.user.role) ? next() : res.status(403).json({ error: 'forbidden' }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => {}) }));
 jest.mock('../../lib/keycloakAdmin', () => ({ getBrokerToken: jest.fn(async () => 'user-graph-token') }));
+jest.mock('../../lib/smbSessionCreds', () => ({ get: jest.fn(() => null), set: jest.fn(), forget: jest.fn() }));
 jest.mock('../../lib/connectors', () => ({
   catalog: jest.fn(() => [{ kind: 'smb', label: 'SMB', fields: [] }]),
   list: jest.fn(),
@@ -27,6 +28,7 @@ const request = require('supertest');
 const connectors = require('../../lib/connectors');
 const audit = require('../../lib/auditLog');
 const keycloakAdmin = require('../../lib/keycloakAdmin');
+const smbSessionCreds = require('../../lib/smbSessionCreds');
 
 function app() {
   const a = express();
@@ -161,21 +163,53 @@ describe('content access gating: delegated defers to 365, app-only is gated by D
     expect(keycloakAdmin.getBrokerToken).not.toHaveBeenCalled();
   });
 
-  test('delegated mount: any signed-in user may browse — 365 decides — and their own token is injected', async () => {
+  test('delegated SharePoint: any signed-in user may browse — 365 decides — and their own token is injected', async () => {
     mockRole = 'viewer';
-    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    connectors.resolve.mockResolvedValue({ row: { id: 'c1', kind: 'sharepoint', name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
     const res = await request(app()).get('/api/connectors/c1/browse?path=');
     expect(res.status).toBe(200);
     expect(keycloakAdmin.getBrokerToken).toHaveBeenCalled();
     expect(SMB_ADAPTER.list).toHaveBeenCalledWith(expect.objectContaining({ delegatedToken: 'user-graph-token' }), '');
   });
 
-  test('delegated mount: the Depot read-only flag does NOT block writes — SharePoint decides', async () => {
+  test('delegated SharePoint: the Depot read-only flag does NOT block writes — SharePoint decides', async () => {
     mockRole = 'viewer';
-    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    connectors.resolve.mockResolvedValue({ row: { id: 'c1', kind: 'sharepoint', name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
     const res = await request(app()).put('/api/connectors/c1/file?path=a.txt').send('data');
     expect(res.status).toBe(200);
     expect(SMB_ADAPTER.write).toHaveBeenCalled();
+  });
+
+  test('delegated SMB without an unlock: browse returns 428 with a credentials-required code', async () => {
+    mockRole = 'viewer';
+    smbSessionCreds.get.mockReturnValueOnce(null);
+    connectors.resolve.mockResolvedValue({ row: { id: 'c1', kind: 'smb', name: 'Files', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    const res = await request(app()).get('/api/connectors/c1/browse?path=');
+    expect(res.status).toBe(428);
+    expect(res.body.code).toBe('SMB_CREDENTIALS_REQUIRED');
+    expect(SMB_ADAPTER.list).not.toHaveBeenCalled();
+  });
+
+  test('delegated SMB after unlock: the user’s own credentials are injected into the adapter cfg', async () => {
+    mockRole = 'viewer';
+    smbSessionCreds.get.mockReturnValueOnce({ domain: 'CORP', username: 'jdoe', password: 'pw' });
+    connectors.resolve.mockResolvedValue({ row: { id: 'c1', kind: 'smb', name: 'Files', read_only: true }, adapter: SMB_ADAPTER, cfg: { delegated: true, host: 'fs', share: 'Eng' } });
+    const res = await request(app()).get('/api/connectors/c1/browse?path=');
+    expect(res.status).toBe(200);
+    expect(SMB_ADAPTER.list).toHaveBeenCalledWith(expect.objectContaining({ username: 'jdoe', password: 'pw', domain: 'CORP' }), '');
+  });
+
+  test('admin Test on a delegated SMB mount reports per-user, not a persisted failure', async () => {
+    mockRole = 'admin';
+    smbSessionCreds.get.mockReturnValueOnce(null);
+    connectors.resolve.mockResolvedValue({ row: { id: 'c1', kind: 'smb', name: 'Files' }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    const res = await request(app()).post('/api/connectors/c1/test');
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toMatch(/per-user/i);
+    // must NOT stamp the connector as errored for lacking a service credential
+    expect(connectors.recordTest).not.toHaveBeenCalled();
+    expect(SMB_ADAPTER.test).not.toHaveBeenCalled();
   });
 });
 
