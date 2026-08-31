@@ -5434,7 +5434,7 @@ function connEdit(id) {
 function connFieldHtml(f, cfg, hasSecrets) {
   const type = f.type === 'password' ? 'password' : f.type === 'number' ? 'number' : 'text';
   if (f.type === 'bool') {
-    return `<label>${esc(f.label)}</label><input type="checkbox" id="conn-f-${escAttr(f.key)}" ${cfg[f.key] ? 'checked' : ''}>`;
+    return `<label>${esc(f.label)}</label><input type="checkbox" id="conn-f-${escAttr(f.key)}" ${cfg[f.key] ? 'checked' : ''} onchange="connFieldChanged()">`;
   }
   // A stored secret is never sent to the client; blank means "keep what's saved".
   const placeholder = f.secret && hasSecrets ? 'Saved — leave blank to keep it' : (f.placeholder || f.help || '');
@@ -5449,7 +5449,12 @@ function renderConnectionForm(el) {
   const kind = connKinds.find(k => k.kind === c.kind);
   if (!kind) { el.innerHTML = `<p class="settings-notice">Unknown connection type.</p>`; return; }
   const cfg = c.config || {};
-  const fields = kind.fields.map(f => connFieldHtml(f, cfg, c.hasSecrets)).join('');
+  // Hide fields the current config makes irrelevant — e.g. the app-only tenant/
+  // client/credential fields when "delegated" is ticked (unused when the connection
+  // reads as the signed-in user). Re-rendered live on any bool toggle.
+  const fields = kind.fields
+    .filter(f => !(f.hideWhen && cfg[f.hideWhen]))
+    .map(f => connFieldHtml(f, cfg, c.hasSecrets)).join('');
   el.innerHTML = `
     <div class="settings-sub">${c.id ? 'Edit' : 'New'} — ${esc(kind.label)}</div>
     <p class="settings-notice">${esc(kind.blurb || '')}</p>
@@ -5485,6 +5490,25 @@ function connFormValues() {
     else if (el.value.trim() || !f.secret) out[f.key] = el.value.trim();
   }
   return out;
+}
+
+// Re-render the connector form after a bool toggle so fields gated by hideWhen
+// (e.g. the app-only credentials under "delegated") show/hide live. Capture the
+// current inputs into connEditing first so nothing the admin typed is lost.
+function connFieldChanged() {
+  const c = connEditing;
+  if (!c) return;
+  const kind = connKinds.find(k => k.kind === c.kind);
+  const nameEl = document.getElementById('conn-f-name'); if (nameEl) c.name = nameEl.value;
+  const w = document.getElementById('conn-f-writable'); if (w) c.readOnly = !w.checked;
+  const en = document.getElementById('conn-f-enabled'); if (en) c.enabled = en.checked;
+  c.config = c.config || {};
+  for (const f of (kind ? kind.fields : [])) {
+    const el = document.getElementById('conn-f-' + f.key);
+    if (!el) continue; // hidden field → keep whatever was last captured
+    c.config[f.key] = f.type === 'bool' ? el.checked : el.value;
+  }
+  renderConnections();
 }
 
 async function connSave() {
