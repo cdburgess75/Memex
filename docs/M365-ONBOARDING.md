@@ -165,6 +165,37 @@ Two operational notes:
   (LDAP over TLS); plain `ldap://` is refused because simple binds would carry
   user passwords in cleartext between the box and the domain controller.
 
+## 4b. Delegated SharePoint — act as the signed-in user (optional)
+
+Two SharePoint access models, chosen **per connector**:
+
+| Model | How it's set up | Who decides access |
+|---|---|---|
+| **App-only** (default) | the certificate + `Sites.Selected`, granted per site (`bin/grant-site.ps1`) | **Depot** gates it — a member reaches every granted site |
+| **Delegated** | `Sites.ReadWrite.All` / `Files.ReadWrite.All`; Depot calls Graph *as the signed-in user* | **365** decides — each user sees exactly their own SharePoint/OneDrive permissions |
+
+Use **delegated** when the customer's rule is "Depot never decides permissions — 365 does." It rides on the same Microsoft login broker as step 4 (Keycloak stores each user's token), so it **requires** M365 sign-in.
+
+**1. Grant the delegated scopes + tenant admin consent** — same script, add `-EnableDelegation` (implies `-EnableLogin`). Run as a **Global Administrator**:
+
+```powershell
+pwsh bin/setup-graph.ps1 -DisplayName "Depot (<Customer>)" -CertPath <cert.cer> `
+  -EnableDelegation -AppUrl https://depot.customer.com
+```
+
+Adds `offline_access`, `Sites.ReadWrite.All`, `Files.ReadWrite.All` to the app registration and grants tenant-wide (`AllPrincipals`) admin consent — idempotent and non-destructive (it *unions* into the existing login consent, never clobbering `openid/profile/email`). Those two scopes are admin-consent-required, which is why a mere app admin can't run it.
+
+**2. Turn it on in Depot** — Settings → Sign-in methods → Microsoft 365 → enable **"Graph delegation"** → Save. This reconfigures the Keycloak Microsoft IdP to request the scopes and store each user's token. (Enabling it re-triggers Microsoft consent on next login — expected.)
+
+**3. Users re-authenticate** — every user signs **out and back in with Microsoft** once. A plain token refresh won't pick up the new scopes; a fresh Microsoft login is required to mint a token that carries them (existing users also pick up the broker read-token role on that login).
+
+**4. Mark the connector delegated** — on a SharePoint connector (Settings → Connections), tick **"delegated."** App-only connectors are unaffected; the flag is per connector.
+
+Notes:
+- Delegated `Sites.ReadWrite.All` is bounded by what the signed-in user can already reach — it is **not** tenant-wide data access (that's the app-only `Sites.Selected` model). Depot acting *as the user* is the point.
+- The brokered token lasts ~1 hour; `offline_access` is granted so it can be refreshed. Automatic refresh (Keycloak token-exchange) is a planned follow-on; until then a user may need to re-auth after ~1h.
+- Record `m365.delegation = true` in the customer manifest.
+
 ## 5. Verify
 
 - Setup Wizard → Integrations → **Send test email** (or `POST /api/setup/test/email`).
@@ -172,8 +203,11 @@ Two operational notes:
     → layer 1 (RBAC for Applications) is missing or still propagating; see
     step 2. Verify with `Test-ServicePrincipalAuthorization`, then wait it out.
 - Connections → the SharePoint connector → **Test**.
+- Delegated connector (if step 4b was done): sign in as an ordinary 365 user and
+  confirm the connector browses that user's **own** SharePoint/OneDrive — and that
+  a site they have no access to does **not** appear.
 - Fleet manifest updated: `m365.tenant_id`, `app_id`, `cert_thumbprint`,
-  `cert_expires`, `sites_selected`, `mail_sender`.
+  `cert_expires`, `sites_selected`, `mail_sender`, and `delegation` (if enabled).
 
 - Sign-in: log out → the **Sign in with Microsoft 365** button appears → a work
   account signs in and lands as a new (or linked) Depot user.
