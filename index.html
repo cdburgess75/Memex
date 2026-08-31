@@ -3568,6 +3568,15 @@ async function getToken() {
   return localStorage.getItem('memex_access_token');
 }
 
+// Build an Error carrying status + parsed body, so callers can branch on a machine
+// code (e.g. SMB_CREDENTIALS_REQUIRED) instead of string-matching the message.
+async function apiError(res) {
+  const t = await res.text();
+  const err = new Error(t); err.status = res.status;
+  try { err.body = JSON.parse(t); } catch { /* non-JSON body */ }
+  return err;
+}
+
 async function apiGet(path) {
   const res = await fetch('/api' + path, { headers: { Authorization: `Bearer ${await getToken()}` } });
   if (!res.ok) {
@@ -3589,7 +3598,7 @@ async function apiPost(path, body, signal) {
   };
   if (signal) opts.signal = signal;
   const res = await fetch('/api' + path, opts);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw await apiError(res);
   return res.json();
 }
 
@@ -3599,7 +3608,7 @@ async function apiPut(path, body) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw await apiError(res);
   return res.json();
 }
 
@@ -3607,7 +3616,7 @@ async function apiDelete(path, body) {
   const opts = { method: 'DELETE', headers: { Authorization: `Bearer ${await getToken()}` } };
   if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const res = await fetch('/api' + path, opts);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw await apiError(res);
   return res.json();
 }
 
@@ -5380,6 +5389,15 @@ function connCrumbs(b) {
 
 function renderConnectorBrowser(el) {
   const b = connBrowsing;
+  // Gate write actions on the adapter's capabilities AND the connector's read-only
+  // flag — the same fields the backend enforces, so we never show an action the
+  // server would reject. (Delegated connectors defer to 365/NTFS for the final say.)
+  const conn = connList.find(x => x.id === b.id) || {};
+  const caps = conn.caps || {};
+  const writable = !conn.readOnly;
+  const canWrite = !!caps.write && writable;
+  const canMkdir = !!caps.mkdir && writable;
+  const canDelete = !!caps.remove && writable;
   const dirs = b.entries.filter(e => e.type === 'dir');
   const files = b.entries.filter(e => e.type !== 'dir');
   const row = (e) => `
@@ -5393,10 +5411,17 @@ function renderConnectorBrowser(el) {
       <div class="conn-actions">
         ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
         ${e.type !== 'dir' ? `<button class="ghost-btn" data-cid="${escAttr(b.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.cid, this.dataset.path, this.dataset.name)">Download</button>` : ''}
+        ${e.type !== 'dir' && canDelete ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDeleteFile(this.dataset.path, this.dataset.name)" title="Delete from the source system">Delete</button>` : ''}
       </div>
     </div>`;
+  const toolbar = (canWrite || canMkdir) ? `
+    <div class="btn-row" style="margin-bottom:12px">
+      ${canWrite ? `<button class="ghost-btn" onclick="connUploadPick()">↑ Upload here</button>` : ''}
+      ${canMkdir ? `<button class="ghost-btn" onclick="connNewFolder()">+ New folder</button>` : ''}
+    </div>` : '';
   el.innerHTML = `
     <div class="conn-meta" style="margin-bottom:10px">${connCrumbs(b)}</div>
+    ${toolbar}
     ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
     <div class="btn-row" style="margin-top:14px">
       <button class="ghost-btn" onclick="connBrowsing = null; renderConnections()">Back to connections</button>
@@ -5421,6 +5446,64 @@ async function connDownload(id, path, name) {
     a.href = URL.createObjectURL(blob); a.download = name || 'file';
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
   } catch (e) { toast('Download failed: ' + e.message); }
+}
+
+// ---- Connector write actions (upload / new folder / delete) ----
+// A delegated SMB share needs a per-user unlock; a write before unlocking returns
+// 428. Detect that, prompt for credentials, and retry the same action.
+function connActionError(e, b, retry) {
+  if (e && e.status === 428 && e.body && e.body.code === 'SMB_CREDENTIALS_REQUIRED') {
+    promptSmbUnlock(b.id, b.name || 'this share', retry || (() => connBrowse(b.id, b.path)));
+    return true;
+  }
+  return false;
+}
+
+async function connNewFolder() {
+  const b = connBrowsing; if (!b) return;
+  const name = (prompt('New folder name') || '').trim();
+  if (!name) return;
+  const path = (b.path ? b.path + '/' : '') + name;
+  try {
+    await apiPost(`/connectors/${encodeURIComponent(b.id)}/folder`, { path });
+    toast('Folder created');
+    connBrowse(b.id, b.path);
+  } catch (e) { if (!connActionError(e, b, () => connNewFolder())) toast('Create folder failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+async function connDeleteFile(path, name) {
+  const b = connBrowsing; if (!b) return;
+  if (!confirm(`Delete “${name}” from the source system? This can't be undone from Depot.`)) return;
+  try {
+    await apiDelete(`/connectors/${encodeURIComponent(b.id)}/file?path=${encodeURIComponent(path)}`);
+    toast('Deleted');
+    connBrowse(b.id, b.path);
+  } catch (e) { if (!connActionError(e, b, () => connDeleteFile(path, name))) toast('Delete failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+function connUploadPick() {
+  const b = connBrowsing; if (!b) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true;
+  inp.onchange = async () => {
+    let ok = 0;
+    for (const file of inp.files) {
+      const path = (b.path ? b.path + '/' : '') + file.name;
+      try {
+        const res = await fetch(`/api/connectors/${encodeURIComponent(b.id)}/file?path=${encodeURIComponent(path)}`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${await getToken()}` }, body: file,
+        });
+        if (!res.ok) throw await apiError(res);
+        ok++;
+      } catch (e) {
+        if (connActionError(e, b, () => connUploadPick())) return;
+        toast(`Upload failed for ${file.name}: ` + ((e.body && e.body.error) || e.message));
+        break;
+      }
+    }
+    if (ok) { toast(ok === 1 ? 'Uploaded' : `Uploaded ${ok} files`); connBrowse(b.id, b.path); }
+  };
+  inp.click();
 }
 
 function connNew(kind) { connEditing = { kind, readOnly: true, enabled: true, config: {} }; renderConnections(); }
