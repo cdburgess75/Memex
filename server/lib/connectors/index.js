@@ -36,7 +36,7 @@ function catalog() {
     fields: (a.fields || []).map((f) => ({
       key: f.key, label: f.label, type: f.type, required: !!f.required,
       secret: !!f.secret, placeholder: f.placeholder || '', help: f.help || '',
-      default: f.default ?? '',
+      default: f.default ?? '', hideWhen: f.hideWhen || null,
     })),
   }));
 }
