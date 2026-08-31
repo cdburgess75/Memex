@@ -32,12 +32,13 @@ Browser — index.html (single-file SPA, OIDC Code+PKCE against Keycloak, all da
 Node/Express — server/
    ├─ index.js            composition root (~350 lines): CORS, rate limits, security
    │                      headers, Collabora proxy, migrations-before-listen, /healthz
-   ├─ routes/  (18 routers) auth, files (+ share/folder-share/upload/upload-stream/
-   │                      uploads sub-routers), ai, log, security, admin, admin/settings,
-   │                      notifications, preferences, libraries, version, license, setup,
-   │                      meetings, backup, connectors, csp-report
-   ├─ lib/     (~44 modules) db, settings, storage, migrations, auditLog, wopiTokens,
-   │                      documentAccess, connectors/, aiProviders, emailEvents, …
+   ├─ routes/  (18 routers) auth, files (+ files/folders.js domain sub-router,
+   │                      mounted at /api/files/folder), ai, log, security, admin,
+   │                      admin/settings, notifications, preferences, libraries,
+   │                      version, license, setup, meetings, backup, connectors, csp-report
+   ├─ lib/     (~47 modules) db, settings, storage, migrations, auditLog, wopiTokens,
+   │                      documentAccess, documents (createDocumentRecord/DOCUMENT_COLUMNS),
+   │                      fileEvents, shareLinks, connectors/, aiProviders, emailEvents, …
    └─ middleware/         auth.js (JWKS verify + role auto-provision), requireRole.js
         │
         ├─ Postgres (via pg)   documents, folders, shares, libraries, user_roles,
@@ -46,7 +47,7 @@ Node/Express — server/
         └─ Collabora (WOPI)    in-browser Office editing, same-origin proxied
 ```
 
-`routes/files.js` is the large one (~3,000 lines, 64 routes) spanning documents, shares, chunked/encrypted uploads, folders, Collabora discovery, and the AI "ask." Treat it as the highest-churn file.
+`routes/files.js` is the large one (~2,300 lines, 50 routes) spanning documents, shares, chunked/encrypted uploads, Collabora discovery, and the AI "ask." Treat it as the highest-churn file. **ST-1 is splitting it into domain sub-routers, one per release** — the folder operations (create/rename/delete/reparent/move, ZIP, public download links, member ACLs) already live in `routes/files/folders.js`, mounted with `router.use('/folder', …)`. Shared helpers extracted for the sub-routers live in `lib/`: `lib/documents.js` (`createDocumentRecord`, `DOCUMENT_COLUMNS`, `safeDocName`, dedupe/index/notify pipeline), `lib/shareLinks.js` (token/password crypto, client shapes, download tickets, `publicAppBase`), `lib/fileEvents.js` (`logEvent`/`logDocumentEvent`/`requestAuditDetail`). `files.js` re-imports these under their original names and keeps its `module.exports.*` re-exports stable for existing consumers (`index.js`, `admin.js`, tests).
 
 ### Auth flow
 
