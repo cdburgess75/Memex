@@ -1,45 +1,16 @@
 'use strict';
 // Tamper-evident audit log. Every file event in document_events is hash-chained:
 // each row's hash = SHA-256(prev_row_hash | canonical(row)). Altering, deleting,
-// or reordering any row breaks the chain, which verify() detects. New columns
-// (chain_seq, prev_hash, hash, ts_ms) are added in place; pre-existing rows
-// (hash NULL) are outside the chain and ignored by verify.
+// or reordering any row breaks the chain, which verify() detects. The chain
+// columns (chain_seq, prev_hash, hash, ts_ms), their sequence/index, and the
+// deliberate drop of the document_id FK come from
+// migrations/0004_runtime_ensure_tables.sql; pre-existing rows (hash NULL) are
+// outside the chain and ignored by verify.
 const crypto = require('crypto');
 const db = require('./db');
 
 const AUDIT_LOCK = 728412; // advisory-lock key that serializes appends across instances
 const VERIFY_BATCH = 5000;
-
-let ensured = false;
-let ensuring = null;
-async function ensureChain() {
-  if (ensured) return;
-  if (ensuring) return ensuring; // collapse concurrent first-calls onto one run
-  ensuring = (async () => {
-    // chain_seq is BIGINT + an explicit sequence default, NOT BIGSERIAL: adding a
-    // BIGSERIAL column rewrites the whole table (its nextval default is volatile),
-    // whereas ADD COLUMN BIGINT is a metadata-only change and SET DEFAULT only
-    // affects future inserts. Pre-existing rows keep chain_seq NULL (harmless —
-    // they also have hash NULL and are excluded from the chain).
-    await db.query('ALTER TABLE document_events ADD COLUMN IF NOT EXISTS chain_seq BIGINT');
-    await db.query('CREATE SEQUENCE IF NOT EXISTS document_events_chain_seq OWNED BY document_events.chain_seq');
-    await db.query("ALTER TABLE document_events ALTER COLUMN chain_seq SET DEFAULT nextval('document_events_chain_seq')");
-    await db.query('ALTER TABLE document_events ADD COLUMN IF NOT EXISTS prev_hash TEXT');
-    await db.query('ALTER TABLE document_events ADD COLUMN IF NOT EXISTS hash TEXT');
-    await db.query('ALTER TABLE document_events ADD COLUMN IF NOT EXISTS ts_ms BIGINT');
-    // Partial index so the head lookup (DESC LIMIT 1) and verify walk (ASC) are
-    // index scans, not full-table seq scans held under the append lock.
-    await db.query('CREATE INDEX IF NOT EXISTS document_events_chain_idx ON document_events (chain_seq) WHERE hash IS NOT NULL');
-    // document_id is part of the hashed row, so it must never change after append.
-    // The original FK used ON DELETE SET NULL, which silently rewrote document_id
-    // (and thus broke the chain) whenever a document was purged. Drop the FK so a
-    // purge leaves audit rows untouched; a dangling document_id is expected and
-    // correct for an append-only, tamper-evident log (the admin feed LEFT JOINs).
-    await db.query('ALTER TABLE document_events DROP CONSTRAINT IF EXISTS document_events_document_id_fkey');
-    ensured = true;
-  })();
-  try { await ensuring; } finally { ensuring = null; }
-}
 
 // UUIDs are stored/returned by Postgres in canonical lowercase-hyphenated form,
 // so normalize before hashing: append (JS input) and verify (DB value) must hash
@@ -69,7 +40,6 @@ function serialize(fn) {
 }
 
 async function append({ documentId = null, eventType, actorId = null, actorEmail = null, detail = null }) {
-  await ensureChain();
   const docId = normId(documentId);
   const ts_ms = Date.now();
   return serialize(() => db.withTransaction(async (client) => {
@@ -119,7 +89,6 @@ function verifyRows(rows, startPrev = '') {
 // Walk the chain in keyset-paginated batches so peak memory is O(batch), not the
 // whole log, and verify each batch with the pure verifier.
 async function verify() {
-  await ensureChain();
   let prev = '';
   let after = 0;
   let count = 0;
@@ -139,4 +108,4 @@ async function verify() {
   return { ok: true, count, head: prev || null };
 }
 
-module.exports = { append, verify, verifyRows, hashEvent, normId, ensureChain };
+module.exports = { append, verify, verifyRows, hashEvent, normId };

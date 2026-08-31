@@ -15,7 +15,6 @@ const searchCall = () => db.query.mock.calls.find(c => /document_fts/.test(c[0])
 
 describe('searchAccessibleDocuments — library scope', () => {
   beforeEach(() => {
-    access._resetForTests();
     db.query.mockReset();
     db.query.mockResolvedValue([]);
   });

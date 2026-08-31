@@ -16,7 +16,6 @@ const user = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  access._resetForTests();
 });
 
 describe('documentAccess', () => {
@@ -47,7 +46,8 @@ describe('documentAccess', () => {
     });
 
     expect(doc).toEqual({ id: 'doc-1' });
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS document_acl'));
+    // Schema comes from migrations (0004), not lazy runtime DDL.
+    expect(db.query).not.toHaveBeenCalled();
     expect(db.queryOne).toHaveBeenCalledWith(
       expect.stringContaining('FROM documents d'),
       ['doc-1', 'contributor', user.id, user.id, 'user@test.com', ['read', 'write', 'admin']]
@@ -58,7 +58,6 @@ describe('documentAccess', () => {
   test('grantOwnerAdmin upserts an owner admin grant', async () => {
     await access.grantOwnerAdmin('doc-1', user);
 
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS document_acl'));
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO document_acl'),
       ['doc-1', user.id, 'user@test.com', user.id]

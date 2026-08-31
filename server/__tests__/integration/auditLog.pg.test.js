@@ -1,10 +1,11 @@
 'use strict';
-// Integration test for the tamper-evident audit-log SQL path (ensureChain
-// migration, hash-chained append under the advisory lock, keyset-paginated
-// verify, and tamper detection). Requires a REAL, THROWAWAY Postgres.
+// Integration test for the tamper-evident audit-log SQL path (the chain columns
+// applied by the real migration runner, hash-chained append under the advisory
+// lock, keyset-paginated verify, and tamper detection). Requires a REAL,
+// THROWAWAY Postgres.
 //
-// It DROPS and recreates the document_events table, so point it at a scratch
-// database, never a production one:
+// It DROPS and recreates tables (everything the migrations create), so point it
+// at a scratch database, never a production one:
 //
 //   createdb memex_audit_test
 //   MEMEX_TEST_PG_URL=postgres://user:pass@localhost:5432/memex_audit_test \
@@ -14,16 +15,36 @@
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
 
+// Everything the migrations (0001–0004) create, plus the base tables this test
+// seeds, so reruns start clean.
+const MIGRATION_TABLES = [
+  'schema_migrations', 'user_preferences', 'storage_connectors', 'user_profiles',
+  'notifications', 'library_members', 'libraries', 'document_acl', 'upload_sessions',
+  'document_share_links', 'folder_share_links', 'upload_links', 'recent_opens',
+  'compliance_attestations', 'folder_notify_prefs', 'document_follows',
+  'document_events', 'documents',
+];
+
 suite('auditLog against real Postgres', () => {
-  let db, auditLog;
+  let db, auditLog, migrations;
+
+  async function dropAll() {
+    for (const t of MIGRATION_TABLES) await db.query(`DROP TABLE IF EXISTS ${t} CASCADE`);
+    await db.query('DROP SEQUENCE IF EXISTS document_events_chain_seq');
+  }
 
   beforeAll(async () => {
     process.env.DATABASE_URL = PG;
     db = require('../../lib/db');
     auditLog = require('../../lib/auditLog');
-    // Fresh table + sequence so ensureChain runs from a clean slate.
-    await db.query('DROP TABLE IF EXISTS document_events');
-    await db.query('DROP SEQUENCE IF EXISTS document_events_chain_seq');
+    migrations = require('../../lib/migrations');
+    await dropAll();
+    // Minimal stand-ins for the base tables postgres/init/01_schema.sql provides
+    // on a real box; the migrations build everything else on top of them.
+    await db.query(`CREATE TABLE documents (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMPTZ)`);
     await db.query(`CREATE TABLE document_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       document_id UUID, event_type TEXT NOT NULL, actor_id UUID, actor_email TEXT, detail TEXT,
@@ -33,14 +54,15 @@ suite('auditLog against real Postgres', () => {
   });
 
   afterAll(async () => {
-    try { await db.query('DROP TABLE IF EXISTS document_events'); } catch { /* best effort */ }
-    try { await db.query('DROP SEQUENCE IF EXISTS document_events_chain_seq'); } catch { /* best effort */ }
+    try { await dropAll(); } catch { /* best effort */ }
     try { await db.end(); } catch { /* pool may already be closed */ }
   });
 
-  test('ensureChain adds the columns without rewriting/erroring, and is idempotent', async () => {
-    await auditLog.ensureChain();
-    await auditLog.ensureChain(); // second call is a no-op
+  test('migrations add the chain columns without rewriting/erroring, and re-running is a no-op', async () => {
+    const first = await migrations.run();
+    expect(first.applied).toContain('0004_runtime_ensure_tables.sql');
+    const second = await migrations.run(); // everything recorded → nothing to do
+    expect(second.applied).toEqual([]);
     const cols = await db.query(
       "SELECT column_name FROM information_schema.columns WHERE table_name = 'document_events'"
     );

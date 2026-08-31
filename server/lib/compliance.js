@@ -236,22 +236,9 @@ const CHECKS = {
   },
 };
 
-async function ensureAttestations() {
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS compliance_attestations (
-      control_id        TEXT PRIMARY KEY,
-      met               BOOLEAN NOT NULL DEFAULT false,
-      note              TEXT,
-      attested_by       UUID,
-      attested_by_email TEXT,
-      attested_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-
+// compliance_attestations schema: migrations/0004_runtime_ensure_tables.sql.
 async function getAttestations() {
   try {
-    await ensureAttestations();
     const rows = await db.query('SELECT * FROM compliance_attestations');
     const map = {};
     for (const r of rows) map[r.control_id] = r;
@@ -261,7 +248,6 @@ async function getAttestations() {
 
 async function setAttestation(controlId, { met, note }, user) {
   if (!CONTROL_CATALOG[controlId]?.manual) throw new Error('Control is not a manual attestation');
-  await ensureAttestations();
   await db.query(
     `INSERT INTO compliance_attestations (control_id, met, note, attested_by, attested_by_email, attested_at)
      VALUES ($1, $2, $3, $4, $5, NOW())

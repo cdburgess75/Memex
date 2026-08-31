@@ -4,7 +4,6 @@ jest.mock('../../lib/db', () => ({
   queryOne: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('../../lib/profiles', () => ({
-  ensureProfiles: jest.fn().mockResolvedValue(),
   setProfile: jest.fn().mockResolvedValue({}),
 }));
 
@@ -14,18 +13,8 @@ const notif = require('../../lib/notifications');
 const user = { id: '810da857-4296-473f-99e9-96f2a5ebd47e', email: 'Me@Test.com' };
 
 beforeEach(() => {
-  notif._resetForTests();
   db.query.mockReset(); db.query.mockResolvedValue([]);
   db.queryOne.mockReset(); db.queryOne.mockResolvedValue(null);
-});
-
-describe('ensureTable', () => {
-  test('creates the table, indexes, and the opt-out column', async () => {
-    await notif.ensureTable();
-    const sql = db.query.mock.calls.map(c => c[0]).join('\n');
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS notifications');
-    expect(sql).toContain('ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notifications_enabled');
-  });
 });
 
 describe('create', () => {

@@ -7,28 +7,7 @@ const PERMISSION_LEVELS = {
   admin: ['admin'],
 };
 
-let ensured = false;
-
-async function ensureDocumentAclTable() {
-  if (ensured) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS document_acl (
-      id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-      document_id          UUID        NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-      subject_type         TEXT        NOT NULL DEFAULT 'user' CHECK (subject_type IN ('user')),
-      subject_id           TEXT        NOT NULL,
-      subject_email        TEXT,
-      permission           TEXT        NOT NULL CHECK (permission IN ('read','write','admin')),
-      granted_by           UUID,
-      granted_by_email     TEXT,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(document_id, subject_type, subject_id)
-    )
-  `);
-  await db.query('CREATE INDEX IF NOT EXISTS document_acl_document_idx ON document_acl(document_id)');
-  await db.query('CREATE INDEX IF NOT EXISTS document_acl_subject_idx ON document_acl(subject_type, subject_id)');
-  ensured = true;
-}
+// document_acl schema: migrations/0004_runtime_ensure_tables.sql.
 
 function permissionsFor(required = 'read') {
   return PERMISSION_LEVELS[required] || PERMISSION_LEVELS.read;
@@ -68,7 +47,6 @@ function condition(alias = 'd', startIndex = 1) {
 }
 
 async function getAccessibleDocument({ id, user, required = 'read', columns = '*', deleted = 'active' }) {
-  await ensureDocumentAclTable();
   const deletedClause = deleted === 'active'
     ? 'AND d.deleted_at IS NULL'
     : deleted === 'deleted'
@@ -86,7 +64,6 @@ async function getAccessibleDocument({ id, user, required = 'read', columns = '*
 
 async function grantOwnerAdmin(documentId, user) {
   if (!documentId || !user?.id) return;
-  await ensureDocumentAclTable();
   await db.query(
     `INSERT INTO document_acl
      (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
@@ -98,7 +75,6 @@ async function grantOwnerAdmin(documentId, user) {
 }
 
 async function listGrants(documentId) {
-  await ensureDocumentAclTable();
   return db.query(
     `SELECT id, document_id, subject_type, subject_id, subject_email, permission,
             granted_by, granted_by_email, created_at
@@ -113,7 +89,6 @@ async function grantUserAccess(documentId, { email, permission, grantedBy }) {
   const subjectEmail = normalizeEmail(email);
   if (!subjectEmail || !subjectEmail.includes('@')) throw new Error('Valid user email is required');
   if (!validPermission(permission)) throw new Error('Permission must be read, write, or admin');
-  await ensureDocumentAclTable();
   return db.queryOne(
     `INSERT INTO document_acl
      (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
@@ -136,7 +111,6 @@ async function grantUserAccess(documentId, { email, permission, grantedBy }) {
 }
 
 async function revokeUserAccess(documentId, grantId) {
-  await ensureDocumentAclTable();
   return db.queryOne(
     `DELETE FROM document_acl
      WHERE document_id = $1 AND id = $2
@@ -145,15 +119,10 @@ async function revokeUserAccess(documentId, grantId) {
   );
 }
 
-function _resetForTests() {
-  ensured = false;
-}
-
 // One-time, idempotent: give every existing document an owner/admin grant for its
 // uploader. Needed because grantOwnerAdmin historically failed (text-vs-uuid bug),
 // so pre-existing documents have no owner-ACL rows. Safe to re-run.
 async function backfillOwnerGrants() {
-  await ensureDocumentAclTable();
   const rows = await db.query(
     `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
      SELECT d.id, 'user', d.uploaded_by::text, lower(d.uploaded_by_email), 'admin', d.uploaded_by, d.uploaded_by_email
@@ -168,7 +137,6 @@ async function backfillOwnerGrants() {
 // Documents the user may read whose text is relevant to `query`, ranked by full-text
 // relevance (with a name match fallback). Used to ground AI answers in uploaded files.
 async function searchAccessibleDocuments(user, query, limit = 6, libraryIds = null) {
-  await ensureDocumentAclTable();
   const q = String(query || '').trim();
   if (!q) return [];
   const cap = Math.max(1, Math.min(20, limit));
@@ -194,7 +162,6 @@ async function searchAccessibleDocuments(user, query, limit = 6, libraryIds = nu
 }
 
 module.exports = {
-  ensureDocumentAclTable,
   backfillOwnerGrants,
   searchAccessibleDocuments,
   getAccessibleDocument,
@@ -207,5 +174,4 @@ module.exports = {
   permissionsFor,
   normalizeEmail,
   validPermission,
-  _resetForTests,
 };
