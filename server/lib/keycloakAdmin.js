@@ -7,12 +7,17 @@
 // KEYCLOAK_ADMIN_PASSWORD) — deliberately not settings-backed, for the same reason
 // as the license config: a web admin must not be able to repoint them.
 //
-// Secrets policy: the IdP client secret and the LDAP bind credential are handed
-// straight to Keycloak and never stored in Depot's own settings/database. On
-// update reads Keycloak masks stored secrets as '**********'; sending that mask
-// back preserves the stored value, which is what lets "leave blank to keep
-// current" work without Depot ever holding the secret.
+// Secrets policy: the LDAP bind credential is handed straight to Keycloak and never
+// stored in Depot's own settings/database. On update reads Keycloak masks stored
+// secrets as '**********'; sending that mask back preserves the stored value, which
+// is what lets "leave blank to keep current" work without Depot holding the secret.
+// EXCEPTION (Microsoft 365 Graph delegation): the login client secret is ALSO kept
+// in Depot — encrypted at rest with the storage key — so delegated connectors can
+// refresh the brokered Graph token themselves (Keycloak doesn't refresh a brokered
+// token on read), sparing users an ~hourly re-sign-in.
 
+const settings = require('./settings');
+const encryption = require('./encryption');
 const SECRET_MASK = '**********';
 const MS_ALIAS = 'microsoft';   // must match the SPA's kc_idp_hint
 const LDAP_NAME = 'active-directory';
@@ -194,10 +199,70 @@ async function getBrokerToken(userAuthHeader) {
   try {
     const payload = JSON.parse(Buffer.from(String(accessToken).split('.')[1] || '', 'base64url').toString('utf8'));
     if (payload && payload.exp && payload.exp * 1000 <= Date.now() + 30000) {
+      // Keycloak won't refresh a brokered token on read, so refresh it ourselves
+      // against Entra with the stored refresh token. Only if THAT fails (missing
+      // creds, or the refresh token itself is dead) do we ask the user to re-auth.
+      const refreshed = await refreshMsGraphToken(tok && tok.refresh_token);
+      if (refreshed) return refreshed;
       const e = new Error('Your Microsoft session needs refreshing — sign out and back in with Microsoft.'); e.status = 401; throw e;
     }
   } catch (e) { if (e && e.status) throw e; /* not a decodable JWT → skip the expiry check */ }
   return accessToken;
+}
+
+// ---- Microsoft login client secret (encrypted) + delegated token refresh ----
+
+async function _msEncKey() {
+  return encryption.resolveKey(await settings.getOrEnv('storage_encryption_key'));
+}
+
+// Keep the Microsoft login client secret in Depot, encrypted at rest, so delegated
+// connectors can refresh the brokered Graph token. Called from setup when delegation
+// is enabled with a secret in hand. Ignores the mask and a missing storage key.
+async function storeMsClientSecret(secret) {
+  const s = String(secret || '').trim();
+  if (!s || s === SECRET_MASK) return;
+  const key = await _msEncKey();
+  if (!key) return; // no storage key → can't encrypt; refresh just stays unavailable
+  await settings.set('login_ms365_client_secret_enc', encryption.encrypt(Buffer.from(s, 'utf8'), key).toString('base64'), null);
+}
+
+async function getMsClientSecret() {
+  const b64 = await settings.get('login_ms365_client_secret_enc');
+  const key = b64 ? await _msEncKey() : null;
+  if (!b64 || !key) return null;
+  try { return encryption.decrypt(Buffer.from(b64, 'base64'), key).toString('utf8'); }
+  catch { return null; }
+}
+
+// Refresh the brokered Graph token directly against Entra using the stored refresh
+// token (offline_access) + the login client secret. Returns a fresh Graph access
+// token, or null if we can't refresh (missing creds, or Entra rejected the refresh
+// token — e.g. it expired after ~90d of inactivity), so the caller re-prompts sign-in.
+async function refreshMsGraphToken(refreshToken) {
+  const rt = String(refreshToken || '').trim();
+  if (!rt) return null;
+  const tenant = String(await settings.get('login_ms365_tenant_id') || '').trim();
+  const clientId = String(await settings.get('login_ms365_client_id') || '').trim();
+  const clientSecret = await getMsClientSecret();
+  if (!tenant || !clientId || !clientSecret) return null;
+  try {
+    const r = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: rt,
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: MS_GRAPH_DELEGATED_SCOPE,
+      }).toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.access_token) return data.access_token;
+  } catch { /* network/timeout → fall through */ }
+  return null;
 }
 
 /* ---------- MFA (TOTP) for local accounts ---------- */
@@ -368,6 +433,9 @@ module.exports = {
   ensureMicrosoftIdp,
   removeMicrosoftIdp,
   getBrokerToken,
+  storeMsClientSecret,
+  getMsClientSecret,
+  refreshMsGraphToken,
   ensureBrokerReadTokenDefault,
   ensureLdapFederation,
   removeLdapFederation,
