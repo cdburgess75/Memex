@@ -262,6 +262,10 @@ router.post('/login-ms365', auth, requireRole('admin'), async (req, res) => {
     if (graphDelegation) {
       try { await kcAdmin.ensureBrokerReadTokenDefault(); }
       catch (e) { delegationNote = `Sign-in updated, but granting token access to existing users failed (${e.message}). Delegated connectors may only work for users who sign in with Microsoft after this change.`; }
+      // Keep the client secret (encrypted at rest) so delegated connectors can refresh
+      // the brokered Graph token themselves — otherwise users are bounced to re-sign-in
+      // when the ~1h token expires. Best-effort; needs the secret in hand (not a mask).
+      if (clientSecret) { try { await kcAdmin.storeMsClientSecret(clientSecret); } catch (e) { console.error('store MS client secret (token refresh):', e.message); } }
     }
     await settings.set('login_ms365_enabled', 'true', req.user.id);
     await settings.set('login_ms365_tenant_id', tenantId, req.user.id);

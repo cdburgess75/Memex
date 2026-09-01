@@ -4,6 +4,11 @@
 // The mask round-trip matters most — "blank secret keeps the stored one" only
 // works because Keycloak preserves a config value of '**********' on update.
 
+jest.mock('../../lib/settings', () => ({ get: jest.fn(), set: jest.fn(), getOrEnv: jest.fn() }));
+const settings = require('../../lib/settings');
+const enc = require('../../lib/encryption');
+const KEY_HEX = 'a'.repeat(64);
+
 const kcAdmin = require('../../lib/keycloakAdmin');
 
 const ENV = { ...process.env };
@@ -246,5 +251,57 @@ describe('testLdap', () => {
     expect(r.authentication.error).toBe('invalid credentials');
     expect(jsonBody(calls[1]).action).toBe('testConnection');
     expect(jsonBody(calls[2]).action).toBe('testAuthentication');
+  });
+});
+
+describe('delegated Graph token refresh (Depot-side)', () => {
+  beforeEach(() => {
+    settings.get.mockReset(); settings.set.mockReset(); settings.getOrEnv.mockReset();
+    settings.getOrEnv.mockResolvedValue(KEY_HEX);   // storage_encryption_key
+  });
+
+  test('the login client secret round-trips through encrypted storage', async () => {
+    let storedB64 = null;
+    settings.set.mockImplementation(async (k, v) => { if (k === 'login_ms365_client_secret_enc') storedB64 = v; });
+    await kcAdmin.storeMsClientSecret('super-secret-value');
+    expect(storedB64).toBeTruthy();
+    expect(storedB64).not.toContain('super-secret-value'); // actually encrypted
+    settings.get.mockImplementation(async (k) => (k === 'login_ms365_client_secret_enc' ? storedB64 : null));
+    expect(await kcAdmin.getMsClientSecret()).toBe('super-secret-value');
+  });
+
+  test('storeMsClientSecret ignores the mask and blank values', async () => {
+    await kcAdmin.storeMsClientSecret('**********');
+    await kcAdmin.storeMsClientSecret('');
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  test('refreshMsGraphToken exchanges the refresh token for a fresh Graph token', async () => {
+    const encSecret = enc.encrypt(Buffer.from('cs'), enc.resolveKey(KEY_HEX)).toString('base64');
+    settings.get.mockImplementation(async (k) => ({
+      login_ms365_tenant_id: 'tid', login_ms365_client_id: 'cid', login_ms365_client_secret_enc: encSecret,
+    }[k] ?? null));
+    mockFetch([{ status: 200, json: { access_token: 'fresh-graph-token' } }]);
+    const t = await kcAdmin.refreshMsGraphToken('the-refresh-token');
+    expect(t).toBe('fresh-graph-token');
+    expect(calls[0].url).toContain('login.microsoftonline.com/tid/oauth2/v2.0/token');
+    expect(calls[0].body).toContain('grant_type=refresh_token');
+    expect(calls[0].body).toContain('the-refresh-token');
+  });
+
+  test('refreshMsGraphToken returns null (no Entra call) when the secret is missing', async () => {
+    settings.get.mockImplementation(async (k) => ({ login_ms365_tenant_id: 'tid', login_ms365_client_id: 'cid' }[k] ?? null));
+    global.fetch = jest.fn();
+    expect(await kcAdmin.refreshMsGraphToken('rt')).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('refreshMsGraphToken returns null when Entra rejects the refresh token', async () => {
+    const encSecret = enc.encrypt(Buffer.from('cs'), enc.resolveKey(KEY_HEX)).toString('base64');
+    settings.get.mockImplementation(async (k) => ({
+      login_ms365_tenant_id: 'tid', login_ms365_client_id: 'cid', login_ms365_client_secret_enc: encSecret,
+    }[k] ?? null));
+    mockFetch([{ status: 400, json: { error: 'invalid_grant' } }]);
+    expect(await kcAdmin.refreshMsGraphToken('dead-token')).toBeNull();
   });
 });
