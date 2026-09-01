@@ -12,6 +12,7 @@ jest.mock('../../middleware/requireRole', () => (...roles) => (req, res, next) =
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => {}) }));
 jest.mock('../../lib/keycloakAdmin', () => ({ getBrokerToken: jest.fn(async () => 'user-graph-token') }));
 jest.mock('../../lib/smbSessionCreds', () => ({ get: jest.fn(() => null), set: jest.fn(), forget: jest.fn() }));
+jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true, via: 'graph' })) }));
 jest.mock('../../lib/connectors', () => ({
   catalog: jest.fn(() => [{ kind: 'smb', label: 'SMB', fields: [] }]),
   list: jest.fn(),
@@ -29,6 +30,7 @@ const connectors = require('../../lib/connectors');
 const audit = require('../../lib/auditLog');
 const keycloakAdmin = require('../../lib/keycloakAdmin');
 const smbSessionCreds = require('../../lib/smbSessionCreds');
+const email = require('../../lib/email');
 
 function app() {
   const a = express();
@@ -38,11 +40,12 @@ function app() {
 }
 
 const SMB_ADAPTER = {
-  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true },
+  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true, invite: true },
   list: jest.fn(async () => [{ name: 'a.txt', path: 'a.txt', type: 'file', size: 1, modified: null }]),
   read: jest.fn(), write: jest.fn(async () => {}), remove: jest.fn(), mkdir: jest.fn(),
   move: jest.fn(async () => {}),
   share: jest.fn(async (_cfg, _path, opts) => ({ url: 'https://sp/link', type: opts.type, scope: 'organization' })),
+  shareInvite: jest.fn(async (_cfg, _path, opts) => ({ invited: opts.emails, type: opts.type, native: false, url: 'https://sp/x' })),
   test: jest.fn(async () => ({ message: 'Connected.' })),
 };
 
@@ -279,6 +282,90 @@ describe('POST /api/connectors/:id/share (sharing link)', () => {
   test('requires a path', async () => {
     connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
     const res = await request(app()).post('/api/connectors/c1/share').send({ type: 'view' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/connectors/:id/invite (share by email)', () => {
+  beforeEach(() => {
+    // Default: app-only SharePoint — adapter grants + returns a webUrl, route emails.
+    SMB_ADAPTER.shareInvite.mockImplementation(async (_cfg, _path, opts) => (
+      { invited: opts.emails, type: opts.type, native: false, url: 'https://sp/x' }
+    ));
+    email.sendMail.mockReset();
+    email.sendMail.mockResolvedValue({ sent: true, via: 'graph' });
+  });
+
+  test('app-only: grants access and Depot emails each recipient individually', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['a@x.com', 'b@x.com', 'c@x.com'], type: 'view' });
+    expect(res.status).toBe(200);
+    expect(res.body.emailed).toBe(3);
+    expect(res.body.warning).toBeUndefined();
+    expect(email.sendMail).toHaveBeenCalledTimes(3);
+    // one message per recipient — addresses are not disclosed to each other
+    expect(email.sendMail.mock.calls.map(c => c[0].to)).toEqual(['a@x.com', 'b@x.com', 'c@x.com']);
+    expect(email.sendMail.mock.calls.every(c => c[0].actorEmail === 'dave@x.com')).toBe(true);
+  });
+
+  test('app-only: partial email failure is surfaced as a warning, not silent success', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    email.sendMail
+      .mockResolvedValueOnce({ sent: true })
+      .mockResolvedValueOnce({ sent: false, reason: 'timeout' })
+      .mockResolvedValueOnce({ sent: true });
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['a@x.com', 'b@x.com', 'c@x.com'], type: 'view' });
+    expect(res.status).toBe(200);
+    expect(res.body.emailed).toBe(2);
+    expect(res.body.warning).toMatch(/only 2 could be emailed/);
+  });
+
+  test('app-only: no share link available → access granted, warning that nothing was emailed', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    SMB_ADAPTER.shareInvite.mockResolvedValueOnce({ invited: ['a@x.com'], type: 'view', native: false, url: null });
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['a@x.com'], type: 'view' });
+    expect(res.status).toBe(200);
+    expect(res.body.emailed).toBe(0);
+    expect(res.body.warning).toMatch(/no share link/);
+    expect(email.sendMail).not.toHaveBeenCalled();
+  });
+
+  test('the adapter’s 400 guidance reaches the client (not swallowed as a 5xx)', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const err = new Error('Could not grant access to one of those people. App-only connections can share with existing users and guests, but cannot add a brand-new external guest — add them in SharePoint first, or use a delegated connection.');
+    err.status = 400;
+    SMB_ADAPTER.shareInvite.mockRejectedValueOnce(err);
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['newguest@other.com'], type: 'view' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/brand-new external guest/);
+  });
+
+  test('delegated: SharePoint emails natively, Depot sends nothing', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: { delegated: true } });
+    SMB_ADAPTER.shareInvite.mockResolvedValueOnce({ invited: ['a@x.com'], type: 'view', native: true, url: null });
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['a@x.com'], type: 'view' });
+    expect(res.status).toBe(200);
+    expect(res.body.emailed).toBe(1);
+    expect(email.sendMail).not.toHaveBeenCalled();
+  });
+
+  test('edit invite on a read-only app-only mount is blocked before any grant', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/invite')
+      .send({ path: 'f.docx', emails: ['a@x.com'], type: 'edit' });
+    expect(res.status).toBe(403);
+    expect(SMB_ADAPTER.shareInvite).not.toHaveBeenCalled();
+    expect(email.sendMail).not.toHaveBeenCalled();
+  });
+
+  test('requires at least a path', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/invite').send({ emails: ['a@x.com'], type: 'view' });
     expect(res.status).toBe(400);
   });
 });

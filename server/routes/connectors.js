@@ -15,6 +15,15 @@ const base = require('../lib/connectors/base');
 const audit = require('../lib/auditLog');
 const keycloakAdmin = require('../lib/keycloakAdmin');
 const smbSessionCreds = require('../lib/smbSessionCreds');
+const email = require('../lib/email');
+
+// Minimal HTML escaper for the share-notification email body (there's no shared
+// server-side util; the values are a filename, a sharer address, and a Graph URL).
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
 const { rateLimit } = require('express-rate-limit');
 const { rateLimitEnabled, intFromEnv } = require('../lib/rateLimiters');
 
@@ -298,10 +307,40 @@ router.post('/:id/invite', auth, async (req, res) => {
     const path = base.normalizePath(req.body?.path || '');
     if (!path) return res.status(400).json({ error: 'path required' });
     const emails = Array.isArray(req.body?.emails) ? req.body.emails : [];
-    const result = await adapter.shareInvite(cfg, path, { type, emails });
-    record(req, 'connector_invite', `${row.name}:${path} → ${(result.invited || []).join(', ')} (${type})`);
-    res.json({ ok: true, ...result });
-  } catch (e) { fail(res, e, 'could not send the invitation'); }
+    const message = typeof req.body?.message === 'string' ? req.body.message : '';
+    const result = await adapter.shareInvite(cfg, path, { type, emails, message });
+
+    // Delegated: SharePoint already emailed the recipients as the signed-in user.
+    if (result.native) {
+      record(req, 'connector_invite', `${row.name}:${path} → ${(result.invited || []).join(', ')} (${type}, native)`);
+      return res.json({ ok: true, ...result, emailed: (result.invited || []).length });
+    }
+
+    // App-only: access is granted, but only Depot has a mailbox to notify from.
+    // Send one message per recipient so addresses aren't disclosed to each other,
+    // as the sharer when their mailbox allows (the mailer falls back otherwise).
+    const fileName = path.split('/').pop() || path;
+    const sharer = (req.user && req.user.email) || 'A colleague';
+    const link = result.url;
+    let emailed = 0;
+    if (link) {
+      for (const to of result.invited) {
+        const intro = `${sharer} shared "${fileName}" with you on SharePoint${type === 'edit' ? ' and gave you edit access' : ''}.`;
+        const text = `${intro}${message ? `\n\n"${message}"` : ''}\n\nOpen it here:\n${link}\n\nYou'll be asked to sign in with your organization account.`;
+        const html = `<p>${escHtml(intro)}</p>${message ? `<blockquote>${escHtml(message)}</blockquote>` : ''}`
+          + `<p><a href="${escHtml(link)}">Open &ldquo;${escHtml(fileName)}&rdquo;</a></p>`
+          + `<p style="color:#666;font-size:12px">You'll be asked to sign in with your organization account.</p>`;
+        const r = await email.sendMail({ to, subject: `${sharer} shared "${fileName}" with you`, text, html, actorEmail: req.user && req.user.email });
+        if (r && r.sent) emailed++;
+      }
+    }
+    const total = (result.invited || []).length;
+    record(req, 'connector_invite', `${row.name}:${path} → ${(result.invited || []).join(', ')} (${type}, depot-mail ${emailed}/${total})`);
+    if (!link) return res.json({ ok: true, ...result, emailed: 0, warning: 'Access was granted, but no share link was available to email.' });
+    if (emailed === 0) return res.json({ ok: true, ...result, emailed: 0, warning: 'Access was granted, but the notification email could not be sent — check Settings → Email.' });
+    if (emailed < total) return res.json({ ok: true, ...result, emailed, warning: `Access granted to all ${total}, but only ${emailed} could be emailed — the rest weren’t notified.` });
+    res.json({ ok: true, ...result, emailed });
+  } catch (e) { fail(res, e, 'could not share with those people'); }
 });
 
 /* ---------- per-user unlock for delegated SMB shares ---------- */

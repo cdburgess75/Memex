@@ -296,10 +296,19 @@ module.exports = {
     return { url, type, scope: (data.link && data.link.scope) || scope };
   },
 
-  // Grant named people access and let SharePoint email them the invitation. This is
-  // Graph's /invite (not createLink): it adds a per-recipient permission and sends the
-  // notice, so the file surfaces in their "Shared with me" — the simple, direct-share
-  // path that SharePoint's own UI buries. requireSignIn keeps it org-scoped, not anonymous.
+  // Grant named people access to a file. Graph's /invite adds a per-recipient
+  // permission so the file surfaces in their "Shared with me" — the direct-share
+  // SharePoint's own UI buries. The EMAIL notification, however, is sent from the
+  // caller's mailbox, and an app-only identity has none: `sendInvitation:true`
+  // fails app-only ("There was a problem sharing" / exchangeInvalidUser). So we
+  // split on auth mode:
+  //   • delegated (acting as the signed-in user) → sendInvitation:true, SharePoint
+  //     emails natively as that user.
+  //   • app-only → sendInvitation:false (the supported app-only path: grant, no
+  //     mail) and return the item's webUrl so the CALLER can send the notification
+  //     itself via Depot's own mailer.
+  // Returns { invited, type, native, url }. native=true means the notification was
+  // already sent by SharePoint; native=false means the caller must deliver `url`.
   async shareInvite(cfg, path, opts = {}) {
     const type = opts.type === 'edit' ? 'edit' : 'view';
     const roles = [type === 'edit' ? 'write' : 'read'];
@@ -310,17 +319,53 @@ module.exports = {
     if (bad) { const e = new Error(`"${bad}" is not a valid email address.`); e.status = 400; throw e; }
     const site = await siteId(cfg);
     const abs = resolveWithinRoot(cfg.rootPath, path);
-    await graph(cfg, `/sites/${site}/drive/${itemRef(abs)}/invite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipients: emails.map(email => ({ email })),
-        requireSignIn: true,
-        sendInvitation: true,
-        roles,
-      }),
-    });
-    return { invited: emails, type };
+    const ref = itemRef(abs);
+    const recipients = emails.map(email => ({ email }));
+
+    if (cfg.delegated) {
+      await graph(cfg, `/sites/${site}/drive/${ref}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients, roles, requireSignIn: true, sendInvitation: true,
+          ...(opts.message ? { message: String(opts.message).slice(0, 2000) } : {}),
+        }),
+      });
+      return { invited: emails, type, native: true, url: null };
+    }
+
+    // App-only: grant silently (the notification is the caller's job).
+    try {
+      await graph(cfg, `/sites/${site}/drive/${ref}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients, roles, requireSignIn: true, sendInvitation: false }),
+      });
+    } catch (e) {
+      // Make the failure actionable AND make sure it survives the route's fail(),
+      // which drops e.message for status >= 500. graph() maps a Graph 400 to 502.
+      //  • 403 = a real permission problem (app registration missing the write
+      //    scope, or the item is restricted). Keep 403 (< 500 → message shown).
+      //  • 400 (arrives as 502) = the app-only sharing limitation: existing
+      //    users/guests are fine, but a brand-new external guest can't be minted.
+      //    Demote to 400 so the guidance actually reaches the user.
+      if (e && e.status === 403) {
+        e.message = 'SharePoint refused the share — the connection’s app registration may be missing Sites.ReadWrite.All / Files.ReadWrite.All, or the item is restricted.';
+      } else if (e && (e.status === 400 || e.status === 502)) {
+        e.message = 'Could not grant access to one of those people. App-only connections can share with existing users and guests, but cannot add a brand-new external guest — add them in SharePoint first, or use a delegated connection.';
+        e.status = 400;
+      }
+      throw e;
+    }
+    // A stable link for the notification email. Best-effort: the grant already
+    // succeeded, so a webUrl hiccup shouldn't fail the whole share.
+    let url = null;
+    try {
+      const r = await graph(cfg, `/sites/${site}/drive/${ref}?$select=webUrl,name`);
+      const item = await r.json();
+      url = (item && item.webUrl) || null;
+    } catch { /* keep url null; caller degrades gracefully */ }
+    return { invited: emails, type, native: false, url };
   },
 
   _resetForTests() { _tokens.clear(); _sites.clear(); },
