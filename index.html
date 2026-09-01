@@ -5399,6 +5399,7 @@ function renderConnectorBrowser(el) {
   const canMkdir = !!caps.mkdir && writable;
   const canDelete = !!caps.remove && writable;
   const canMove = !!caps.move && writable;
+  const canShare = !!caps.share;
   const dirs = b.entries.filter(e => e.type === 'dir');
   const files = b.entries.filter(e => e.type !== 'dir');
   const row = (e) => `
@@ -5412,6 +5413,7 @@ function renderConnectorBrowser(el) {
       <div class="conn-actions">
         ${e.type !== 'dir' && e.openUrl ? `<button class="ghost-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : ''}
         ${e.type !== 'dir' ? `<button class="ghost-btn" data-cid="${escAttr(b.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.cid, this.dataset.path, this.dataset.name)">Download</button>` : ''}
+        ${canShare ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" onclick="connShare(this, this.dataset.path)" title="Create a SharePoint sharing link">Share</button>` : ''}
         ${canMove ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connRename(this.dataset.path, this.dataset.name)" title="Rename in the source system">Rename</button>` : ''}
         ${e.type !== 'dir' && canDelete ? `<button class="ghost-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDeleteFile(this.dataset.path, this.dataset.name)" title="Delete from the source system">Delete</button>` : ''}
       </div>
@@ -5495,6 +5497,37 @@ async function connRename(path, name) {
     toast('Renamed');
     connBrowse(b.id, b.path);
   } catch (e) { if (!connActionError(e, b, () => connRename(path, name))) toast('Rename failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+// Small popover: Depot's simplified stand-in for SharePoint's share panel. Offers a
+// view link (always) and an edit link (writable connectors) — one click, copied.
+function connShare(btn, path) {
+  document.querySelectorAll('.conn-share-menu').forEach(m => m.remove());
+  const b = connBrowsing; if (!b) return;
+  const conn = connList.find(x => x.id === b.id) || {};
+  const menu = document.createElement('div');
+  menu.className = 'conn-share-menu';
+  menu.innerHTML = `<button class="ghost-btn" data-type="view">Copy view link</button>` +
+    (conn.readOnly ? '' : `<button class="ghost-btn" data-type="edit">Copy edit link</button>`);
+  const r = btn.getBoundingClientRect();
+  menu.style.cssText = `position:fixed;z-index:1000;top:${Math.round(r.bottom + 4)}px;left:${Math.round(r.left)}px;` +
+    `display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:6px;box-shadow:var(--shadow)`;
+  menu.querySelectorAll('button').forEach(it => { it.onclick = () => { const t = it.dataset.type; menu.remove(); connCreateLink(path, t); }; });
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    const away = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('mousedown', away); } };
+    document.addEventListener('mousedown', away);
+  }, 0);
+}
+
+async function connCreateLink(path, type) {
+  const b = connBrowsing; if (!b) return;
+  try {
+    const r = await apiPost(`/connectors/${encodeURIComponent(b.id)}/share`, { path, type });
+    let copied = false;
+    try { await navigator.clipboard.writeText(r.url); copied = true; } catch { /* clipboard unavailable */ }
+    toast(copied ? `${type === 'edit' ? 'Edit' : 'View'} link copied to clipboard` : `Link: ${r.url}`);
+  } catch (e) { if (!connActionError(e, b, () => connCreateLink(path, type))) toast('Share failed: ' + ((e.body && e.body.error) || e.message)); }
 }
 
 function connUploadPick() {

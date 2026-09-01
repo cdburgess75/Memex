@@ -145,7 +145,7 @@ module.exports = {
   kind: 'sharepoint',
   label: 'SharePoint document library',
   blurb: 'A SharePoint site\'s document library, via Microsoft Graph app-only auth.',
-  caps: { write: true, remove: true, mkdir: true, range: true, move: true },
+  caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true },
 
   fields: [
     { key: 'siteUrl', label: 'Site URL', type: 'text', required: true,
@@ -273,6 +273,27 @@ module.exports = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: toAbs.split('/').pop() }),
     });
+  },
+
+  // Create a SharePoint sharing link (Graph createLink) — Depot's simple stand-in
+  // for SharePoint's own share panel. type: 'view'|'edit'. scope 'organization' =
+  // anyone in the tenant with the link; the tenant may downgrade/deny 'anonymous',
+  // which is 365 deciding and surfaces here as an error. In delegated mode the link
+  // is minted AS the signed-in user, so it can only grant what they may already share.
+  async share(cfg, path, opts = {}) {
+    const type = opts.type === 'edit' ? 'edit' : 'view';
+    const scope = opts.scope || 'organization';
+    const site = await siteId(cfg);
+    const abs = resolveWithinRoot(cfg.rootPath, path);
+    const r = await graph(cfg, `/sites/${site}/drive/${itemRef(abs)}/createLink`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, scope }),
+    });
+    const data = await r.json();
+    const url = data && data.link && data.link.webUrl;
+    if (!url) { const e = new Error('SharePoint returned no sharing link (tenant policy may block it).'); e.status = 502; throw e; }
+    return { url, type, scope: (data.link && data.link.scope) || scope };
   },
 
   _resetForTests() { _tokens.clear(); _sites.clear(); },

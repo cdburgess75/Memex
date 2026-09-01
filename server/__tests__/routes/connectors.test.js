@@ -38,10 +38,11 @@ function app() {
 }
 
 const SMB_ADAPTER = {
-  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true, move: true },
+  label: 'SMB', caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true },
   list: jest.fn(async () => [{ name: 'a.txt', path: 'a.txt', type: 'file', size: 1, modified: null }]),
   read: jest.fn(), write: jest.fn(async () => {}), remove: jest.fn(), mkdir: jest.fn(),
   move: jest.fn(async () => {}),
+  share: jest.fn(async (_cfg, _path, opts) => ({ url: 'https://sp/link', type: opts.type, scope: 'organization' })),
   test: jest.fn(async () => ({ message: 'Connected.' })),
 };
 
@@ -256,5 +257,28 @@ describe('POST /api/connectors/:id/move (rename)', () => {
     const res = await request(app()).post('/api/connectors/c1/move').send({ from: 'a.txt' });
     expect(res.status).toBe(400);
     expect(SMB_ADAPTER.move).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/connectors/:id/share (sharing link)', () => {
+  test('view link works even on a read-only mount, and returns the url', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/share').send({ path: 'CEO.docx', type: 'view' });
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('https://sp/link');
+    expect(SMB_ADAPTER.share).toHaveBeenCalledWith({}, 'CEO.docx', { type: 'view' });
+  });
+
+  test('edit link is blocked on a read-only (app-only) mount', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: true }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/share').send({ path: 'CEO.docx', type: 'edit' });
+    expect(res.status).toBe(403);
+    expect(SMB_ADAPTER.share).not.toHaveBeenCalled();
+  });
+
+  test('requires a path', async () => {
+    connectors.resolve.mockResolvedValue({ row: { name: 'SP', read_only: false }, adapter: SMB_ADAPTER, cfg: {} });
+    const res = await request(app()).post('/api/connectors/c1/share').send({ type: 'view' });
+    expect(res.status).toBe(400);
   });
 });
