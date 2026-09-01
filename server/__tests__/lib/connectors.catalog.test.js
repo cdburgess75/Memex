@@ -33,4 +33,11 @@ describe('connector catalog() field schema', () => {
     expect(f.password.hideWhen).toBe('delegated');
     expect(f.host.hideWhen).toBeNull();
   });
+
+  test('sharing is offered on SharePoint but NOT SMB (NTFS has no web-share)', () => {
+    const sp = cat.find((c) => c.kind === 'sharepoint');
+    const smb = cat.find((c) => c.kind === 'smb');
+    expect(sp.caps.share).toBe(true);
+    expect(Boolean(smb.caps.share)).toBe(false);
+  });
 });
