@@ -7497,12 +7497,20 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
 /* ---- External connections in the Files sidebar ------------------------------
    One entry per enabled connection (Settings → Connections). Clicking one
    browses the mount in the main file area — live pass-through, nothing copied. */
+// Friendly type label shown under a connection's name in the nav.
+function connKindLabel(c) {
+  if (c.kind === 'sharepoint') return 'SharePoint';
+  if (c.kind === 'smb') return 'Windows / SMB share';
+  return c.label || c.kind || 'Connection';
+}
+
 function connMountsNavHtml() {
   if (!connMountsLoaded) { setTimeout(loadConnMounts, 0); return '<div id="conn-mounts-nav"></div>'; }
   if (!connMounts.length) return '<div id="conn-mounts-nav"></div>';
-  const items = connMounts.map(c =>
-    fileNavButton(esc(c.name), '⇄', `openMount('${escAttr(c.id)}')`, fileView === 'mount' && mountView?.id === c.id)
-  ).join('');
+  const items = connMounts.map(c => {
+    const active = fileView === 'mount' && mountView?.id === c.id;
+    return `<button class="file-nav-link ${active ? 'active' : ''}" data-mid="${escAttr(c.id)}" onclick="openMount(this.dataset.mid)"><span style="display:flex;flex-direction:column;gap:1px;line-height:1.2;min-width:0;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span style="font-size:11px;font-weight:500;color:var(--ink-faint)">${esc(connKindLabel(c))}</span></span></button>`;
+  }).join('');
   return `<div id="conn-mounts-nav"><div class="file-nav-section">Connections</div><div class="file-nav-main">${items}</div></div>`;
 }
 
