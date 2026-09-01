@@ -145,7 +145,7 @@ module.exports = {
   kind: 'sharepoint',
   label: 'SharePoint document library',
   blurb: 'A SharePoint site\'s document library, via Microsoft Graph app-only auth.',
-  caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true },
+  caps: { write: true, remove: true, mkdir: true, range: true, move: true, share: true, invite: true },
 
   fields: [
     { key: 'siteUrl', label: 'Site URL', type: 'text', required: true,
@@ -294,6 +294,33 @@ module.exports = {
     const url = data && data.link && data.link.webUrl;
     if (!url) { const e = new Error('SharePoint returned no sharing link (tenant policy may block it).'); e.status = 502; throw e; }
     return { url, type, scope: (data.link && data.link.scope) || scope };
+  },
+
+  // Grant named people access and let SharePoint email them the invitation. This is
+  // Graph's /invite (not createLink): it adds a per-recipient permission and sends the
+  // notice, so the file surfaces in their "Shared with me" — the simple, direct-share
+  // path that SharePoint's own UI buries. requireSignIn keeps it org-scoped, not anonymous.
+  async shareInvite(cfg, path, opts = {}) {
+    const type = opts.type === 'edit' ? 'edit' : 'view';
+    const roles = [type === 'edit' ? 'write' : 'read'];
+    const emails = (Array.isArray(opts.emails) ? opts.emails : [])
+      .map(e => String(e || '').trim()).filter(Boolean);
+    if (!emails.length) { const e = new Error('At least one recipient email is required.'); e.status = 400; throw e; }
+    const bad = emails.find(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+    if (bad) { const e = new Error(`"${bad}" is not a valid email address.`); e.status = 400; throw e; }
+    const site = await siteId(cfg);
+    const abs = resolveWithinRoot(cfg.rootPath, path);
+    await graph(cfg, `/sites/${site}/drive/${itemRef(abs)}/invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipients: emails.map(email => ({ email })),
+        requireSignIn: true,
+        sendInvitation: true,
+        roles,
+      }),
+    });
+    return { invited: emails, type };
   },
 
   _resetForTests() { _tokens.clear(); _sites.clear(); },

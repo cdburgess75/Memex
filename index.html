@@ -5,10 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Depot</title>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/vendor/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* Inter, self-hosted (variable, latin). Bundled at /vendor/fonts so Depot never
+   phones out to Google Fonts — keeps the appliance self-contained and lets the
+   CSP stay 'self' for fonts/styles. Full weight axis (100–900). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/vendor/fonts/inter-var.woff2') format('woff2');
+}
 :root {
   /* Depot signature — light */
   --masthead-h: 56px; /* header height — kept in sync with the file-home layout calcs */
@@ -7701,12 +7709,14 @@ function mountShare(btn, path) {
   const m = mountView; if (!m) return;
   const menu = document.createElement('div');
   menu.className = 'conn-share-menu';
-  menu.innerHTML = `<button class="ghost-btn" data-type="view">Copy view link</button>` +
-    (m.readOnly ? '' : `<button class="ghost-btn" data-type="edit">Copy edit link</button>`);
+  const caps = m.caps || {};
+  menu.innerHTML = `<button class="ghost-btn" data-act="link" data-type="view">Copy view link</button>` +
+    (m.readOnly ? '' : `<button class="ghost-btn" data-act="link" data-type="edit">Copy edit link</button>`) +
+    (caps.invite ? `<button class="ghost-btn" data-act="invite">Email people…</button>` : '');
   const r = btn.getBoundingClientRect();
   menu.style.cssText = `position:fixed;z-index:1000;top:${Math.round(r.bottom + 4)}px;left:${Math.round(r.left)}px;` +
     `display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:6px;box-shadow:var(--shadow)`;
-  menu.querySelectorAll('button').forEach(it => { it.onclick = () => { const t = it.dataset.type; menu.remove(); mountCreateLink(path, t); }; });
+  menu.querySelectorAll('button').forEach(it => { it.onclick = () => { const act = it.dataset.act, t = it.dataset.type; menu.remove(); if (act === 'invite') mountInvite(path); else mountCreateLink(path, t); }; });
   document.body.appendChild(menu);
   setTimeout(() => {
     const away = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('mousedown', away); } };
@@ -7722,6 +7732,24 @@ async function mountCreateLink(path, type) {
     try { await navigator.clipboard.writeText(r.url); copied = true; } catch { /* clipboard unavailable */ }
     toast(copied ? `${type === 'edit' ? 'Edit' : 'View'} link copied to clipboard` : `Link: ${r.url}`);
   } catch (e) { if (!mountActionError(e, () => mountCreateLink(path, type))) toast('Share failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+// Share a file with named people by email (Graph /invite). SharePoint sends the
+// notification and the file lands in their "Shared with me" — the simple direct-share
+// that SharePoint's own dialog makes needlessly fiddly.
+async function mountInvite(path) {
+  const m = mountView; if (!m) return;
+  const raw = prompt('Email address(es) to share with — separate multiple with commas:');
+  if (raw == null) return;
+  const emails = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  if (!emails.length) return;
+  // Offer edit only where the mount is writable; otherwise view-only, no prompt.
+  const type = (!m.readOnly && confirm('Let them edit?\n\nOK = can edit   ·   Cancel = view only')) ? 'edit' : 'view';
+  try {
+    const r = await apiPost(`/connectors/${encodeURIComponent(m.id)}/invite`, { path, emails, type });
+    const n = (r.invited || emails).length;
+    toast(`Shared with ${n} ${n === 1 ? 'person' : 'people'} (${type === 'edit' ? 'can edit' : 'view only'})`);
+  } catch (e) { if (!mountActionError(e, () => mountInvite(path))) toast('Invite failed: ' + ((e.body && e.body.error) || e.message)); }
 }
 
 function mountUploadPick() {
