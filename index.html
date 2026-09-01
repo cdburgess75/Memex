@@ -7748,7 +7748,10 @@ async function mountInvite(path) {
   try {
     const r = await apiPost(`/connectors/${encodeURIComponent(m.id)}/invite`, { path, emails, type });
     const n = (r.invited || emails).length;
-    toast(`Shared with ${n} ${n === 1 ? 'person' : 'people'} (${type === 'edit' ? 'can edit' : 'view only'})`);
+    const who = `${n} ${n === 1 ? 'person' : 'people'}`, acc = type === 'edit' ? 'can edit' : 'view only';
+    if (r.warning) toast(`Shared with ${who} (${acc}) — ${r.warning}`);
+    else if (typeof r.emailed === 'number' && r.emailed < n) toast(`Shared with ${who} (${acc}) — emailed ${r.emailed} of ${n}`);
+    else toast(`Shared with ${who} (${acc}) — emailed`);
   } catch (e) { if (!mountActionError(e, () => mountInvite(path))) toast('Invite failed: ' + ((e.body && e.body.error) || e.message)); }
 }
 
