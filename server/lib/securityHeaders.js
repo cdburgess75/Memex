@@ -18,7 +18,7 @@
 //     which is mounted AFTER the proxy).
 //
 // But three NON-default configurations put resources on other origins, and enforcing
-// 'self' would break them: S3/Supabase object storage (previews load from external
+// 'self' would break them: S3 object storage (previews load from external
 // presigned URLs), a separately-hosted Collabora (collabora_url set), and a
 // split-domain Keycloak (external KEYCLOAK_URL). For those we keep the policy
 // report-only so nothing breaks — the report-uri still gathers data for a tailored

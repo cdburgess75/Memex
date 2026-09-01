@@ -5,8 +5,7 @@ const settings = require('./settings');
 // The authenticated bulk-upload routes issue one request per file (and per chunk
 // for resumable uploads), so a legitimate folder of hundreds of files would blow
 // past the general 300/window API cap and 429 mid-batch. These paths get their own
-// high limiter instead, and the general limiter skips them. (Public upload-link and
-// upload-links routes are deliberately NOT matched — they stay under the normal cap.)
+// high limiter instead, and the general limiter skips them.
 // Bulk-upload routes skipped by the general apiLimiter (they have their own
 // generous limiters). Includes the public exchange-upload route so a recipient
 // dropping a large folder isn't throttled to apiLimiter's 300/window — that

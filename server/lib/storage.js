@@ -5,54 +5,6 @@ async function PROVIDER() {
   return (await settings.getOrEnv('storage_provider')) || 'local';
 }
 
-// ─── Supabase ────────────────────────────────────────────────────────────────
-
-const { createClient } = require('@supabase/supabase-js');
-async function supabaseClient() {
-  return createClient(
-    await settings.getOrEnv('supabase_url'),
-    await settings.getOrEnv('supabase_service_role_key')
-  );
-}
-
-async function supabaseUpload(storagePath, buffer, mimeType) {
-  const { error } = await (await supabaseClient()).storage
-    .from('documents')
-    .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
-  if (error) throw error;
-}
-
-async function supabaseDownload(storagePath) {
-  const { data, error } = await (await supabaseClient()).storage.from('documents').download(storagePath);
-  if (error) throw error;
-  return Buffer.from(await data.arrayBuffer());
-}
-
-async function supabaseDownloadStream(storagePath) {
-  const { data, error } = await (await supabaseClient()).storage.from('documents').download(storagePath);
-  if (error) throw error;
-  const { Readable } = require('stream');
-  if (data && typeof data.stream === 'function' && Readable.fromWeb) {
-    const length = typeof data.size === 'number' ? data.size : null;
-    return { stream: Readable.fromWeb(data.stream()), length, totalSize: length, range: null };
-  }
-  const buf = Buffer.from(await data.arrayBuffer());
-  return { stream: Readable.from(buf), length: buf.length, totalSize: buf.length, range: null };
-}
-
-async function supabaseGetUrl(storagePath, ttl) {
-  const { data, error } = await (await supabaseClient()).storage
-    .from('documents')
-    .createSignedUrl(storagePath, ttl);
-  if (error) throw error;
-  return data.signedUrl;
-}
-
-async function supabaseDel(storagePath) {
-  const { error } = await (await supabaseClient()).storage.from('documents').remove([storagePath]);
-  if (error) throw error;
-}
-
 // ─── At-rest encryption (local storage) ─────────────────────────────────────
 // AES-256-GCM. Key can be a 64-char hex string (32 raw bytes) or any passphrase
 // (scrypt-derived). Wire format: MAGIC(4) + IV(12) + AUTH_TAG(16) + CIPHERTEXT.
@@ -342,22 +294,17 @@ async function s3Copy(fromStoragePath, toStoragePath) {
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
-async function upload(storagePath, buffer, mimeType) {
-  switch (await PROVIDER()) {
-    case 'local': return localUpload(storagePath, buffer);
-    case 's3':    return s3Upload(storagePath, buffer, mimeType);
-    default:      return supabaseUpload(storagePath, buffer, mimeType);
-  }
+function unsupportedProvider(p) {
+  return new Error(`Unsupported storage_provider "${p}" — use "local" or "s3"`);
 }
 
-async function streamToBuffer(readable) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of readable) {
-    chunks.push(chunk);
-    size += chunk.length;
+async function upload(storagePath, buffer, mimeType) {
+  const p = await PROVIDER();
+  switch (p) {
+    case 'local': return localUpload(storagePath, buffer);
+    case 's3':    return s3Upload(storagePath, buffer, mimeType);
+    default:      throw unsupportedProvider(p);
   }
-  return { buffer: Buffer.concat(chunks), size };
 }
 
 // Wrap a readable so it fails (err.code UPLOAD_TOO_LARGE) once more than maxBytes
@@ -384,59 +331,58 @@ function capStream(readable, maxBytes) {
 // an over-cap abort rejects cleanly rather than emitting an unhandled error.
 async function uploadStream(storagePath, readable, mimeType, opts = {}) {
   const src = opts && opts.maxBytes ? capStream(readable, opts.maxBytes) : readable;
-  switch (await PROVIDER()) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localUploadStream(storagePath, src);
     case 's3':    return s3UploadStream(storagePath, src, mimeType);
-    default: {
-      const { buffer, size } = await streamToBuffer(src);
-      await supabaseUpload(storagePath, buffer, mimeType);
-      return { size };
-    }
+    default:      throw unsupportedProvider(p);
   }
 }
 
 async function download(storagePath) {
-  switch (await PROVIDER()) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localDownload(storagePath);
     case 's3':    return s3Download(storagePath);
-    default:      return supabaseDownload(storagePath);
+    default:      throw unsupportedProvider(p);
   }
 }
 
 // Streaming variant of download() for serving files to a client without buffering
 // the whole object in memory. Returns { stream, length|null }.
 async function downloadStream(storagePath, opts = {}) {
-  switch (await PROVIDER()) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localDownloadStream(storagePath, opts);
     case 's3':    return s3DownloadStream(storagePath, opts);
-    default:      return supabaseDownloadStream(storagePath);
+    default:      throw unsupportedProvider(p);
   }
 }
 
 async function getUrl(storagePath, ttl = 3600) {
-  switch (await PROVIDER()) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localGetUrl(storagePath, ttl);
     case 's3':    return s3GetUrl(storagePath, ttl);
-    default:      return supabaseGetUrl(storagePath, ttl);
+    default:      throw unsupportedProvider(p);
   }
 }
 
 async function del(storagePath) {
-  switch (await PROVIDER()) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localDel(storagePath);
     case 's3':    return s3Del(storagePath);
-    default:      return supabaseDel(storagePath);
+    default:      throw unsupportedProvider(p);
   }
 }
 
-async function copy(fromStoragePath, toStoragePath, mimeType) {
-  switch (await PROVIDER()) {
+async function copy(fromStoragePath, toStoragePath) {
+  const p = await PROVIDER();
+  switch (p) {
     case 'local': return localCopy(fromStoragePath, toStoragePath);
     case 's3':    return s3Copy(fromStoragePath, toStoragePath);
-    default: {
-      const buffer = await supabaseDownload(fromStoragePath);
-      return supabaseUpload(toStoragePath, buffer, mimeType);
-    }
+    default:      throw unsupportedProvider(p);
   }
 }
 

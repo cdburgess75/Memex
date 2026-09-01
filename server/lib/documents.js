@@ -1,7 +1,7 @@
 'use strict';
 // Core document-creation service shared across every upload path (staff upload,
 // chunked/streamed upload, public upload-link, folder copy, blank-doc create) and
-// the admin Seafile migration. Extracted from routes/files.js (ST-1) so the file
+// the folder sub-router. Extracted from routes/files.js (ST-1) so the file
 // sub-routers share one insert/dedupe/index/notify pipeline. Also home to the
 // canonical document column list and the traversal-safe name helper.
 const crypto = require('crypto');
@@ -13,7 +13,7 @@ const { extractText } = require('./textExtraction');
 const { logEvent, logDocumentEvent } = require('./fileEvents');
 
 const DOCUMENT_COLUMNS = `
-  id, name, size, mime_type, storage_path, google_drive_id, uploaded_by,
+  id, name, size, mime_type, storage_path, uploaded_by,
   uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
   restored_at, restored_by, restored_by_email
 `;

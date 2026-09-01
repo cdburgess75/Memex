@@ -824,7 +824,7 @@ router.get('/search', auth, async (req, res) => {
   try {
     const rows = await db.query(
       `SELECT
-         d.id, d.name, d.size, d.mime_type, d.storage_path, d.google_drive_id,
+         d.id, d.name, d.size, d.mime_type, d.storage_path,
          d.uploaded_by, d.uploaded_by_email, d.created_at, d.deleted_at, d.deleted_by,
          ts_headline(
            'english',
@@ -1639,10 +1639,7 @@ router.get('/:id/office', auth, async (req, res) => {
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    const signedUrl = await storage.getUrl(doc.storage_path, 3600);
     const ext = doc.name.split('.').pop().toLowerCase();
-
-    const viewUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(signedUrl)}`;
 
     // Self-hosted in-browser editing via Collabora/WOPI (no Microsoft/personal
     // accounts). Null when editing isn't configured (COLLABORA_URL unset) or the
@@ -1654,168 +1651,7 @@ router.get('/:id/office', auth, async (req, res) => {
     await logEvent(`view · ${doc.name}`, req.user.id, req.user.email);
     // Mirror the read into the tamper-evident chain (see /:id/url above).
     await logDocumentEvent(doc.id, 'viewed', req.user.id, req.user.email, doc.name);
-    res.json({ viewUrl, editUrl, ext });
-  } catch (e) {
-    serverError(res, e);
-  }
-});
-
-// POST /api/files/:id/google
-router.post('/:id/google', auth, async (req, res) => {
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    return res.status(400).json({
-      error: 'Google Drive integration is not configured. Set GOOGLE_SERVICE_ACCOUNT_KEY in your environment.'
-    });
-  }
-
-  try {
-    const doc = await documentAccess.getAccessibleDocument({
-      id: req.params.id,
-      user: req.user,
-      required: 'write',
-      columns: DOCUMENT_COLUMNS,
-      deleted: 'active',
-    });
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
-
-    let buffer;
-    try {
-      buffer = await storage.download(doc.storage_path);
-    } catch (e) {
-      return serverError(res, e);
-    }
-    const ext = doc.name.split('.').pop().toLowerCase();
-
-    const googleMimeTypes = {
-      docx: 'application/vnd.google-apps.document',
-      doc:  'application/vnd.google-apps.document',
-      xlsx: 'application/vnd.google-apps.spreadsheet',
-      xls:  'application/vnd.google-apps.spreadsheet',
-      pptx: 'application/vnd.google-apps.presentation',
-      ppt:  'application/vnd.google-apps.presentation',
-    };
-
-    const { google } = require('googleapis');
-
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-    } catch {
-      return res.status(500).json({ error: 'Invalid GOOGLE_SERVICE_ACCOUNT_KEY — must be valid JSON' });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
-
-    const drive = google.drive({ version: 'v3', auth });
-
-    const fileMetadata = {
-      name: doc.name,
-      mimeType: googleMimeTypes[ext] || doc.mime_type,
-      ...(process.env.GOOGLE_DRIVE_FOLDER_ID ? { parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] } : {}),
-    };
-
-    const { Readable } = require('stream');
-    const { data: driveFile } = await drive.files.create({
-      requestBody: fileMetadata,
-      media: { mimeType: doc.mime_type, body: Readable.from(buffer) },
-      fields: 'id, webViewLink',
-    });
-
-    try {
-      await drive.permissions.create({
-        fileId: driveFile.id,
-        requestBody: { type: 'user', role: 'writer', emailAddress: req.user.email },
-      });
-    } catch (shareErr) {
-      console.error('Google Drive share failed (non-fatal):', shareErr.message);
-    }
-
-    await db.query('UPDATE documents SET google_drive_id = $1 WHERE id = $2', [driveFile.id, doc.id]);
-    res.json({ editUrl: driveFile.webViewLink, driveId: driveFile.id });
-  } catch (e) {
-    serverError(res, e);
-  }
-});
-
-// POST /api/files/:id/google/export
-router.post('/:id/google/export', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    return res.status(400).json({
-      error: 'Google Drive integration is not configured. Set GOOGLE_SERVICE_ACCOUNT_KEY in your environment.'
-    });
-  }
-
-  try {
-    const doc = await documentAccess.getAccessibleDocument({
-      id: req.params.id,
-      user: req.user,
-      required: 'write',
-      columns: DOCUMENT_COLUMNS,
-      deleted: 'active',
-    });
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
-    if (!doc.google_drive_id) return res.status(400).json({ error: 'Document has not been pushed to Google Drive' });
-
-    const ext = doc.name.split('.').pop().toLowerCase();
-    const exportMimeTypes = {
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      doc:  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      xls:  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      ppt:  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    };
-    const exportMime = exportMimeTypes[ext];
-    if (!exportMime) return res.status(400).json({ error: `Export not supported for .${ext} files` });
-
-    const { google } = require('googleapis');
-
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-    } catch {
-      return res.status(500).json({ error: 'Invalid GOOGLE_SERVICE_ACCOUNT_KEY — must be valid JSON' });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
-    const drive = google.drive({ version: 'v3', auth });
-
-    const { data: exportStream } = await drive.files.export(
-      { fileId: doc.google_drive_id, mimeType: exportMime },
-      { responseType: 'stream' }
-    );
-
-    const chunks = [];
-    await new Promise((resolve, reject) => {
-      exportStream.on('data', chunk => chunks.push(chunk));
-      exportStream.on('end', resolve);
-      exportStream.on('error', reject);
-    });
-    const buffer = Buffer.concat(chunks);
-
-    await saveDocumentVersion(doc, req.user, 'google_export');
-    await storage.upload(doc.storage_path, buffer, exportMime);
-    let documentText = null;
-    let textExtracted = false;
-    try {
-      documentText = await extractText(buffer, doc.name);
-      textExtracted = true;
-    } catch (e) {
-      console.error('Text extraction after Google export failed (non-fatal):', e.message);
-    }
-    if (textExtracted) {
-      await db.query('UPDATE documents SET size = $1, mime_type = $2, document_text = $3 WHERE id = $4', [buffer.length, exportMime, documentText, doc.id]);
-    } else {
-      await db.query('UPDATE documents SET size = $1, mime_type = $2 WHERE id = $3', [buffer.length, exportMime, doc.id]);
-    }
-    await logDocumentEvent(doc.id, 'updated', req.user.id, req.user.email, `Google export · ${fileSizeLabelForEvent(buffer.length)}`);
-    res.json({ success: true, size: buffer.length });
+    res.json({ editUrl, ext });
   } catch (e) {
     serverError(res, e);
   }
@@ -2139,165 +1975,13 @@ router.post('/ask', auth, async (req, res) => {
   }
 });
 
-// ─── Inbound upload links (file requests) ────────────────────────────────────
-// A public link that lets a non-member upload files WITHOUT an account. Uploads
-// are attributed to the member who created the link and land in the link's
-// destination library/folder; the creator gets an in-app notification.
-// upload_links schema: migrations/0004_runtime_ensure_tables.sql.
-
-function normalizeFolderPath(p) {
-  return String(p || '').split('/').map(s => s.trim()).filter(Boolean).join('/');
-}
-
-function uploadLinkClientShape(row, url = null) {
-  return {
-    id: row.id,
-    label: row.label,
-    library_id: row.library_id,
-    folder_path: row.folder_path,
-    expires_at: row.expires_at,
-    revoked_at: row.revoked_at,
-    created_at: row.created_at,
-    created_by_email: row.created_by_email,
-    upload_count: Number(row.upload_count || 0),
-    last_used_at: row.last_used_at,
-    has_password: !!row.password_hash,
-    notify_email: row.notify_email !== false,
-    notify_alert: row.notify_alert !== false,
-    url,
-  };
-}
-
-async function loadActiveUploadLink(token) {
-  const row = await db.queryOne('SELECT * FROM upload_links WHERE token_hash = $1', [tokenHash(token)]);
-  if (!row || row.revoked_at) return { error: 'notfound' };
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return { error: 'expired' };
-  return { row };
-}
-
-// POST /api/files/upload-links — create a file-request link (member-facing).
-router.post('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  try {
-    const token = crypto.randomBytes(32).toString('hex');
-    const { salt, hash } = passwordParts(req.body?.password);
-    const expiresAt = req.body?.expiresAt ? new Date(req.body.expiresAt) : null;
-    if (expiresAt && isNaN(expiresAt.getTime())) return res.status(400).json({ error: 'Invalid expiry date' });
-    const libraryId = req.body?.libraryId || (await libraries.defaultLibraryId());
-    const folderPath = normalizeFolderPath(req.body?.folderPath) || null;
-    const label = (req.body?.label || '').toString().slice(0, 200) || null;
-    const notifyEmail = req.body?.notifyEmail !== false; // default on
-    const notifyAlert = req.body?.notifyAlert !== false; // default on
-    const row = await db.queryOne(
-      `INSERT INTO upload_links (token_hash, label, library_id, folder_path, password_salt, password_hash, expires_at, created_by, created_by_email, notify_email, notify_alert)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [tokenHash(token), label, libraryId, folderPath, salt, hash, expiresAt, req.user.id, String(req.user.email || '').toLowerCase(), notifyEmail, notifyAlert]
-    );
-    const url = `${await publicAppBase(req)}/u/${token}`;
-    await logEvent(`upload link create · ${label || 'file request'}`, req.user.id, req.user.email);
-    res.json({ link: uploadLinkClientShape(row, url) });
-  } catch (e) { serverError(res, e); }
-});
-
-// GET /api/files/upload-links — list my active links (admins see all).
-router.get('/upload-links', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  try {
-    const rows = await db.query(
-      `SELECT * FROM upload_links
-       WHERE revoked_at IS NULL AND (created_by = $1 OR $2 = 'admin')
-       ORDER BY created_at DESC`,
-      [req.user.id, req.user.role || '']
-    );
-    res.json({ links: rows.map(r => uploadLinkClientShape(r)) });
-  } catch (e) { serverError(res, e); }
-});
-
-// DELETE /api/files/upload-links/:id — revoke.
-router.delete('/upload-links/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  try {
-    const row = await db.queryOne(
-      `UPDATE upload_links SET revoked_at = NOW()
-       WHERE id = $1 AND revoked_at IS NULL AND (created_by = $2 OR $3 = 'admin') RETURNING id`,
-      [req.params.id, req.user.id, req.user.role || '']
-    );
-    if (!row) return res.status(404).json({ error: 'Upload link not found' });
-    res.json({ ok: true });
-  } catch (e) { serverError(res, e); }
-});
-
-// GET /api/files/upload-link/:token/info — public: describe the link for the page.
-router.get('/upload-link/:token/info', async (req, res) => {
-  try {
-    const { row, error } = await loadActiveUploadLink(req.params.token);
-    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
-    res.json({ label: row.label || null, needsPassword: !!row.password_hash });
-  } catch (e) { serverError(res, e); }
-});
-
-// POST /api/files/upload-link/:token — public: accept an upload (no account).
-router.post('/upload-link/:token', (req, res, next) => getUpload().then(mw => mw(req, res, next)).catch(next), async (req, res) => {
-  try {
-    const { row, error } = await loadActiveUploadLink(req.params.token);
-    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
-    if (!verifySharePassword(req.body?.password || req.headers['x-upload-password'], row.password_salt, row.password_hash)) {
-      return res.status(401).json({ error: 'Upload password required' });
-    }
-    if (!req.file) return res.status(400).json({ error: 'file required' });
-    const path = require('path');
-    const { buffer, originalname, mimetype, size } = req.file;
-    const base = cleanDisplayName(originalname) || 'upload';
-    // Folder uploads send each file's webkitRelativePath so the tree is preserved
-    // under the destination folder. Drop traversal segments; keep the structure.
-    const rel = String(req.body?.relativePath || '').split('/').map(s => s.trim())
-      .filter(s => s && s !== '.' && s !== '..').join('/');
-    const nested = rel || base;
-    const displayName = row.folder_path ? `${row.folder_path}/${nested}` : nested;
-    const sanitizedName = path.basename(base).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${sanitizedName}`;
-    await storage.upload(storagePath, buffer, mimetype);
-    const owner = { id: row.created_by, email: row.created_by_email };
-    const uploaderName = (req.body?.uploaderName || '').toString().slice(0, 120).trim();
-    const { doc } = await createDocumentRecord({
-      displayName, storagePath, mimetype, storedSize: size, user: owner,
-      sourceDetail: `via upload link${uploaderName ? ` · from ${uploaderName}` : ''}`,
-      libraryId: row.library_id,
-    });
-    await db.query('UPDATE upload_links SET upload_count = upload_count + 1, last_used_at = NOW() WHERE id = $1', [row.id]);
-    // In-app alert (per-link opt-out).
-    if (row.notify_alert !== false && row.created_by_email) {
-      try {
-        await notifications.create({
-          userId: row.created_by,
-          userEmail: row.created_by_email,
-          type: 'upload_received',
-          title: uploaderName ? `${uploaderName} uploaded a file` : 'New file uploaded',
-          body: `"${base}"${row.label ? ` · ${row.label}` : ''}`,
-          refType: 'document',
-          refId: doc.id,
-        });
-      } catch (e) { console.error('notification (upload_received) failed:', e.message); }
-    }
-    // Email alert — gated by BOTH the per-link opt-out and the admin's global
-    // upload-received toggle. Best-effort; no-op when email isn't configured.
-    if (row.notify_email !== false && row.created_by_email) {
-      const who = uploaderName || 'Someone';
-      emailEvents.send('upload_received', {
-        to: row.created_by_email,
-        subject: `New upload${row.label ? ` · ${row.label}` : ''}: ${base}`,
-        text: `${who} uploaded "${base}" via your Depot upload link${row.label ? ` (${row.label})` : ''}.\n\nSign in to Depot to view it.`,
-      }).catch(() => {});
-    }
-    res.json({ ok: true, name: base });
-  } catch (e) { serverError(res, e); }
-});
 
 module.exports = router;
+
 // Exposed for unit testing.
 module.exports.publicAppBase = publicAppBase;
-module.exports.uploadLinkClientShape = uploadLinkClientShape;
-module.exports.normalizeFolderPath = normalizeFolderPath;
 module.exports.discoveryUrlSrc = discoveryUrlSrc;
 module.exports.collaboraEditUrl = collaboraEditUrl;
-module.exports.createDocumentRecord = createDocumentRecord; // reused by the Seafile migration
 module.exports.writeChunk = writeChunk;
 module.exports.chunkedFileStream = chunkedFileStream;
 module.exports.issueShareTicket = issueShareTicket;

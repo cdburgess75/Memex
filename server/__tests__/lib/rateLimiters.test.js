@@ -56,7 +56,7 @@ describe('rateLimiters', () => {
     expect(isUploadPath(mk('/api/files/upload-stream'))).toBe(true);
     expect(isUploadPath(mk('/api/files/uploads'))).toBe(true);
     expect(isUploadPath(mk('/api/files/uploads/abc/chunks/3?x=1'))).toBe(true);
-    // NOT exempted — public upload links and unrelated routes stay under the normal cap
+    // NOT exempted — similarly-prefixed and unrelated routes stay under the normal cap
     expect(isUploadPath(mk('/api/files/upload-link/tok'))).toBe(false);
     expect(isUploadPath(mk('/api/files/upload-links'))).toBe(false);
     expect(isUploadPath(mk('/api/files/list'))).toBe(false);
