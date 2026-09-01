@@ -224,19 +224,9 @@ app.get(['/healthz', '/api/health'], async (_req, res) => {
   }
 });
 
-// Public inbound-upload page (file requests) — a self-contained page that lets a
-// non-member upload without an account. Served here (before the SPA catch-all)
-// so it doesn't require auth. The token is only used client-side to hit the
-// public /api/files/upload-link/:token endpoints.
-app.get('/u/:token', (req, res) => {
-  const token = String(req.params.token || '').replace(/[^a-zA-Z0-9]/g, '');
-  res.type('html').send(require('./lib/uploadPage')(token));
-});
-
 // Public exchange page for a file sent to someone outside the organization:
 // the file they were sent, plus (when the sender allowed it) somewhere to send
-// files back. Same reasoning as /u/ above — served before the SPA catch-all so
-// it needs no auth, and the token is only used client-side against the public
+// files back. Served before the SPA catch-all so it needs no auth, and the token is only used client-side against the public
 // /api/files/share/:token endpoints. Share tokens are base64url, so the filter
 // keeps - and _ as well.
 app.get('/s/:token', (req, res) => {
@@ -299,7 +289,7 @@ async function start() {
     // Decide CSP enforcement once, now that settings are reachable. Enforce the strict
     // policy only on a self-contained deployment — local storage (previews stream
     // same-origin), Collabora proxied through the app (no collabora_url), and no
-    // external Keycloak. Otherwise stay report-only so S3/Supabase storage, a separate
+    // external Keycloak. Otherwise stay report-only so S3 storage, a separate
     // Collabora host, or a split-domain Keycloak isn't broken. Fail-safe: report-only.
     try {
       const localStorage = await require('./lib/storage').isLocalProvider();

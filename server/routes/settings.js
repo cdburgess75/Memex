@@ -14,8 +14,6 @@ const SENSITIVE = new Set([
   'openai_api_key',
   'storage_s3_access_key_id',
   'storage_s3_secret_access_key',
-  'supabase_service_role_key',
-  'google_service_account_key',
   'storage_encryption_key',
   'backup_download_secret',
   'turn_credential',
