@@ -51,8 +51,10 @@ const collaboraProxy = require('./lib/collaboraProxy');
 app.use((req, res, next) => (collaboraProxy.isCollaboraPath(req.path) ? collaboraProxy.httpMiddleware(req, res) : next()));
 
 // Baseline security headers — placed AFTER the Collabora proxy so the editor's
-// proxied responses keep Collabora's own CSP/frame headers untouched.
-app.use(require('./lib/securityHeaders'));
+// proxied responses keep Collabora's own CSP/frame headers untouched. Its CSP is
+// enforced vs report-only per the boot-time self-contained check (see start()).
+const securityHeaders = require('./lib/securityHeaders');
+app.use(securityHeaders);
 
 // Body limit raised from the 100 KB default so branding can carry a logo: the client
 // caps logos at 256 KB, which becomes ~342 KB once base64-encoded into the settings
@@ -294,6 +296,19 @@ async function start() {
     // Periodically hard-delete trashed documents past the retention window.
     try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
     catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
+    // Decide CSP enforcement once, now that settings are reachable. Enforce the strict
+    // policy only on a self-contained deployment — local storage (previews stream
+    // same-origin), Collabora proxied through the app (no collabora_url), and no
+    // external Keycloak. Otherwise stay report-only so S3/Supabase storage, a separate
+    // Collabora host, or a split-domain Keycloak isn't broken. Fail-safe: report-only.
+    try {
+      const localStorage = await require('./lib/storage').isLocalProvider();
+      const externalCollabora = !!(await settings.getOrEnv('collabora_url'));
+      const externalKeycloak = !!(process.env.KEYCLOAK_URL && process.env.KEYCLOAK_URL.trim().toLowerCase() !== 'auto');
+      const selfContained = localStorage && !externalCollabora && !externalKeycloak;
+      securityHeaders.configure({ selfContained });
+      console.log(`[startup] CSP ${selfContained ? 'ENFORCING (self-contained: local storage, proxied Collabora, same-origin Keycloak)' : 'report-only (external-origin dependency detected)'}`);
+    } catch (e) { console.error('[startup] CSP gate — staying report-only:', e.message); }
   });
 
   // Timeouts tuned for large/slow uploads (U9). keepAliveTimeout sits above the common
