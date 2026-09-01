@@ -7520,7 +7520,7 @@ async function openMount(id, path = '') {
   const c = connMounts.find(x => x.id === id);
   try {
     const r = await apiGet(`/connectors/${encodeURIComponent(id)}/browse?path=${encodeURIComponent(path || '')}`);
-    mountView = { id, name: c ? c.name : 'Connection', kind: c ? (c.label || c.kind) : '', path: r.path || '', entries: r.entries || [], delegated: c ? !!c.delegated : false };
+    mountView = { id, name: c ? c.name : 'Connection', kind: c ? (c.label || c.kind) : '', path: r.path || '', entries: r.entries || [], delegated: c ? !!c.delegated : false, caps: c ? (c.caps || {}) : {}, readOnly: c ? !!c.readOnly : true };
     renderMountView();
   } catch (e) {
     // A delegated SMB share needs the user's own network credentials for this session —
@@ -7599,29 +7599,146 @@ function mountCrumbsHtml() {
 function renderMountView() {
   const m = mountView;
   fileView = 'mount';
+  // Gate write actions on adapter caps + the read-only flag (same as the backend);
+  // delegated connectors still defer the final say to 365/NTFS.
+  const caps = m.caps || {};
+  const writable = !m.readOnly;
+  const canWrite = !!caps.write && writable, canMkdir = !!caps.mkdir && writable,
+        canDelete = !!caps.remove && writable, canMove = !!caps.move && writable, canShare = !!caps.share;
   const dirs = m.entries.filter(e => e.type === 'dir');
   const files = m.entries.filter(e => e.type !== 'dir');
-  const row = (e, i) => `
-    <div class="conn-row">
-      <div class="conn-main">
-        <div class="conn-name">${e.type === 'dir'
-          ? `📁 <a href="#" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" onclick="openMount(this.dataset.mid, this.dataset.path); return false">${esc(e.name)}</a>`
-          : `<a href="#" onclick="previewMountEntry(${i}); return false">${esc(e.name)}</a>`}</div>
-        <div class="conn-meta">${e.type === 'dir' ? 'Folder' : fmtBytes(e.size || 0)}${e.modified ? ' — ' + new Date(e.modified).toLocaleString() : ''}</div>
-      </div>
-    </div>`;
+  m.ordered = [...dirs, ...files];
+  const rowIcon = (e) => e.type === 'dir' ? '<span class="file-folder-icon"></span>' : fileIconHtml(fileExt(e.name));
+  const rowActions = (e) => {
+    const a = [];
+    if (e.type !== 'dir') a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountDownload(this.dataset.path, this.dataset.name)">Download</button>`);
+    if (canShare) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" onclick="mountShare(this, this.dataset.path)" title="Create a SharePoint sharing link">Share</button>`);
+    if (canMove) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountRename(this.dataset.path, this.dataset.name)">Rename</button>`);
+    if (e.type !== 'dir' && canDelete) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountDeleteFile(this.dataset.path, this.dataset.name)">Delete</button>`);
+    return a.join('');
+  };
+  const row = (e, i) => `<tr onclick="mountOpen(${i})"><td><div class="file-library-name">${rowIcon(e)}<div><div class="file-row-title" title="${escAttr(e.name)}">${esc(e.name)}</div><div class="file-row-sub">${e.type === 'dir' ? 'Folder' : fileSizeLabel(e.size || 0)}</div></div></div></td><td>${e.modified ? esc(new Date(e.modified).toLocaleDateString()) : ''}</td><td><div class="file-row-actions" style="justify-content:flex-end" onclick="event.stopPropagation()">${rowActions(e)}</div></td></tr>`;
+  const toolbar = (canWrite || canMkdir)
+    ? `<div class="file-library-commandbar"><div class="file-library-command-left">${canWrite ? `<button class="file-library-tool" onclick="mountUploadPick()">↑ Upload</button>` : ''}${canMkdir ? `<button class="file-library-tool" onclick="mountNewFolder()">+ New folder</button>` : ''}</div></div>`
+    : '';
+  const table = m.ordered.length
+    ? `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th>Name</th><th style="width:150px">Modified</th><th style="width:320px"></th></tr></thead><tbody>${m.ordered.map(row).join('')}</tbody></table></div>`
+    : '<p class="settings-notice">This folder is empty.</p>';
   const main = `<div class="file-library" id="mount-view">
-    <div class="file-library-breadcrumb-row" style="padding:10px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <div>${mountCrumbsHtml()}</div>
+    <div class="file-library-breadcrumb-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div class="file-library-breadcrumb">${mountCrumbsHtml()}</div>
       ${m.delegated ? `<button class="ghost-btn" style="font-size:12px;flex:0 0 auto" data-mid="${escAttr(m.id)}" onclick="lockSmbMount(this.dataset.mid)" title="Forget your sign-in for this share on this device">Lock</button>` : ''}
     </div>
     <p class="note" style="margin:0 0 12px;font-size:12px">Live view of ${esc(m.kind || 'the connected system')} — files stay at the source; nothing is copied into Depot.${m.delegated ? ' You are signed in with your own network account.' : ''}</p>
-    ${[...dirs, ...files].map(row).join('') || '<p class="settings-notice">Empty folder.</p>'}
+    ${toolbar}
+    ${table}
   </div>`;
-  mountView.ordered = [...dirs, ...files];
   document.getElementById('panel').innerHTML = fileHomeShell(main, 'files', 'mount');
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml();
+}
+
+// Row click: folders navigate; SharePoint files open in 365; files without a web
+// URL (e.g. SMB) fall back to the info/preview panel.
+function mountOpen(i) {
+  const m = mountView; if (!m) return;
+  const e = m.ordered && m.ordered[i]; if (!e) return;
+  if (e.type === 'dir') return openMount(m.id, e.path);
+  if (e.openUrl) return connOpenExternal(e.openUrl);
+  previewMountEntry(i);
+}
+
+function mountDownload(path, name) { const m = mountView; if (m) connDownload(m.id, path, name); }
+
+// A delegated SMB share needs a per-user unlock; a write before unlocking returns
+// 428 — prompt for credentials and retry the action.
+function mountActionError(e, retry) {
+  const m = mountView;
+  if (m && e && e.status === 428 && e.body && e.body.code === 'SMB_CREDENTIALS_REQUIRED') {
+    promptSmbUnlock(m.id, m.name || 'this share', retry || (() => openMount(m.id, m.path)));
+    return true;
+  }
+  return false;
+}
+
+async function mountNewFolder() {
+  const m = mountView; if (!m) return;
+  const name = (prompt('New folder name') || '').trim();
+  if (!name) return;
+  const path = (m.path ? m.path + '/' : '') + name;
+  try { await apiPost(`/connectors/${encodeURIComponent(m.id)}/folder`, { path }); toast('Folder created'); openMount(m.id, m.path); }
+  catch (e) { if (!mountActionError(e, () => mountNewFolder())) toast('Create folder failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+async function mountDeleteFile(path, name) {
+  const m = mountView; if (!m) return;
+  if (!confirm(`Delete “${name}” from the source system? This can't be undone from Depot.`)) return;
+  try { await apiDelete(`/connectors/${encodeURIComponent(m.id)}/file?path=${encodeURIComponent(path)}`); toast('Deleted'); openMount(m.id, m.path); }
+  catch (e) { if (!mountActionError(e, () => mountDeleteFile(path, name))) toast('Delete failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+async function mountRename(path, name) {
+  const m = mountView; if (!m) return;
+  const nn = (prompt('Rename to', name) || '').trim();
+  if (!nn || nn === name) return;
+  if (/[\\/]/.test(nn)) { toast('Name can’t contain a slash'); return; }
+  const parent = path.split('/').slice(0, -1).join('/');
+  const to = (parent ? parent + '/' : '') + nn;
+  try { await apiPost(`/connectors/${encodeURIComponent(m.id)}/move`, { from: path, to }); toast('Renamed'); openMount(m.id, m.path); }
+  catch (e) { if (!mountActionError(e, () => mountRename(path, name))) toast('Rename failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+function mountShare(btn, path) {
+  document.querySelectorAll('.conn-share-menu').forEach(x => x.remove());
+  const m = mountView; if (!m) return;
+  const menu = document.createElement('div');
+  menu.className = 'conn-share-menu';
+  menu.innerHTML = `<button class="ghost-btn" data-type="view">Copy view link</button>` +
+    (m.readOnly ? '' : `<button class="ghost-btn" data-type="edit">Copy edit link</button>`);
+  const r = btn.getBoundingClientRect();
+  menu.style.cssText = `position:fixed;z-index:1000;top:${Math.round(r.bottom + 4)}px;left:${Math.round(r.left)}px;` +
+    `display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:6px;box-shadow:var(--shadow)`;
+  menu.querySelectorAll('button').forEach(it => { it.onclick = () => { const t = it.dataset.type; menu.remove(); mountCreateLink(path, t); }; });
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    const away = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('mousedown', away); } };
+    document.addEventListener('mousedown', away);
+  }, 0);
+}
+
+async function mountCreateLink(path, type) {
+  const m = mountView; if (!m) return;
+  try {
+    const r = await apiPost(`/connectors/${encodeURIComponent(m.id)}/share`, { path, type });
+    let copied = false;
+    try { await navigator.clipboard.writeText(r.url); copied = true; } catch { /* clipboard unavailable */ }
+    toast(copied ? `${type === 'edit' ? 'Edit' : 'View'} link copied to clipboard` : `Link: ${r.url}`);
+  } catch (e) { if (!mountActionError(e, () => mountCreateLink(path, type))) toast('Share failed: ' + ((e.body && e.body.error) || e.message)); }
+}
+
+function mountUploadPick() {
+  const m = mountView; if (!m) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true;
+  inp.onchange = async () => {
+    let ok = 0;
+    for (const file of inp.files) {
+      const path = (m.path ? m.path + '/' : '') + file.name;
+      try {
+        const res = await fetch(`/api/connectors/${encodeURIComponent(m.id)}/file?path=${encodeURIComponent(path)}`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${await getToken()}` }, body: file,
+        });
+        if (!res.ok) throw await apiError(res);
+        ok++;
+      } catch (e) {
+        if (mountActionError(e, () => mountUploadPick())) return;
+        toast(`Upload failed for ${file.name}: ` + ((e.body && e.body.error) || e.message));
+        break;
+      }
+    }
+    if (ok) { toast(ok === 1 ? 'Uploaded' : `Uploaded ${ok} files`); openMount(m.id, m.path); }
+  };
+  inp.click();
 }
 
 // The uniform preview pane for a connected-system file: info card + the fixed
