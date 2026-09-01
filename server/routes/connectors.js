@@ -282,6 +282,28 @@ router.post('/:id/share', auth, async (req, res) => {
   } catch (e) { fail(res, e, 'could not create a sharing link'); }
 });
 
+router.post('/:id/invite', auth, async (req, res) => {
+  try {
+    const { row, adapter, cfg } = await connectors.resolve(req.params.id);
+    await accessConnector(req, row, cfg);
+    if (typeof adapter.shareInvite !== 'function' || !(adapter.caps && adapter.caps.invite)) {
+      const e = new Error('This connection does not support inviting people.'); e.status = 400; throw e;
+    }
+    const type = req.body?.type === 'edit' ? 'edit' : 'view';
+    // Same read-only guard as /share: an edit invite would grant write on a mount Depot
+    // marks read-only. Delegated defers to what 365 lets the signed-in user share.
+    if (!cfg.delegated && type === 'edit' && row.read_only) {
+      const e = new Error('This connection is read-only — invite people to view, not edit.'); e.status = 403; throw e;
+    }
+    const path = base.normalizePath(req.body?.path || '');
+    if (!path) return res.status(400).json({ error: 'path required' });
+    const emails = Array.isArray(req.body?.emails) ? req.body.emails : [];
+    const result = await adapter.shareInvite(cfg, path, { type, emails });
+    record(req, 'connector_invite', `${row.name}:${path} → ${(result.invited || []).join(', ')} (${type})`);
+    res.json({ ok: true, ...result });
+  } catch (e) { fail(res, e, 'could not send the invitation'); }
+});
+
 /* ---------- per-user unlock for delegated SMB shares ---------- */
 
 // Unlock a delegated SMB connection with the caller's OWN domain credentials, held in
