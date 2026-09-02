@@ -918,6 +918,14 @@ html.dark .chip { color: var(--accent-soft); }
 }
 .modal-x:hover { background: var(--accent-wash); color: var(--ink); }
 .modal-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Shared confirm/prompt dialogs (askConfirm / askPrompt) — replace the browser-native
+   confirm()/prompt() boxes so deleting, renaming and naming look like the rest of Depot. */
+.modal.modal-ask { width: min(440px, 94vw); padding: 24px 26px 20px; }
+.modal-ask h2 { margin: 0 0 8px; font-size: 16px; }
+.modal-ask .ask-msg { margin: 0 0 18px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.5; white-space: pre-line; }
+.modal-ask .ask-input { width: 100%; box-sizing: border-box; padding: 9px 11px; margin-bottom: 18px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 500 13.5px var(--ui); }
+.modal-ask .ask-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.modal-ask .ask-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .reload-banner {
   position: fixed; z-index: 200; left: 50%; bottom: 22px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px;
@@ -4344,7 +4352,7 @@ async function downloadEvidencePackage(btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = 'Evidence package'; } }
 }
 async function attestControl(controlId, met) {
-  const note = met ? (prompt('Optional note / evidence pointer for this control:', '') || '') : '';
+  const note = met ? (await askPrompt('Optional note / evidence pointer for this control:', '') || '') : '';
   try {
     const r = await apiPut('/admin/compliance/attest', { control_id: controlId, met, note });
     updateComplianceIndicator(r.summary);
@@ -4423,7 +4431,7 @@ function fmtBytes(bytes) {
 }
 
 async function adminDeleteFile(fileId, fileName) {
-  if (!confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
+  if (!await askConfirm(`Delete "${fileName}"? This cannot be undone.`, { danger: true })) return;
   try {
     await apiDelete('/files/' + fileId);
     toast('File deleted');
@@ -4758,7 +4766,7 @@ async function saveEncryptionSettings(confirmChange) {
     // confirm it explicitly. Surface the warning and let the admin decide.
     let info = null; try { info = JSON.parse(e.message); } catch {}
     if (info && info.code === 'ENC_KEY_CHANGE_BLOCKED') {
-      if (confirm(`${info.error}\n\nProceed anyway? Existing files will only open again if the previous key is restored.`)) {
+      if (await askConfirm(`${info.error}\n\nProceed anyway? Existing files will only open again if the previous key is restored.`)) {
         return saveEncryptionSettings(true);
       }
       return;
@@ -5316,7 +5324,7 @@ function connActionError(e, b, retry) {
 
 async function connNewFolder() {
   const b = connBrowsing; if (!b) return;
-  const name = (prompt('New folder name') || '').trim();
+  const name = (await askPrompt('New folder name') || '').trim();
   if (!name) return;
   const path = (b.path ? b.path + '/' : '') + name;
   try {
@@ -5328,7 +5336,7 @@ async function connNewFolder() {
 
 async function connDeleteFile(path, name) {
   const b = connBrowsing; if (!b) return;
-  if (!confirm(`Delete “${name}” from the source system? This can't be undone from Depot.`)) return;
+  if (!await askConfirm(`Delete “${name}” from the source system? This can't be undone from Depot.`, { danger: true })) return;
   try {
     await apiDelete(`/connectors/${encodeURIComponent(b.id)}/file?path=${encodeURIComponent(path)}`);
     toast('Deleted');
@@ -5338,7 +5346,7 @@ async function connDeleteFile(path, name) {
 
 async function connRename(path, name) {
   const b = connBrowsing; if (!b) return;
-  const nn = (prompt('Rename to', name) || '').trim();
+  const nn = (await askPrompt('Rename to', name) || '').trim();
   if (!nn || nn === name) return;
   if (/[\\/]/.test(nn)) { toast('Name can’t contain a slash'); return; }
   const parent = path.split('/').slice(0, -1).join('/');
@@ -5516,7 +5524,7 @@ async function connTest(id) {
 
 async function connDelete(id) {
   const c = connList.find(x => x.id === id);
-  if (!confirm(`Remove the connection “${c ? c.name : id}”? Files on the remote system are not touched.`)) return;
+  if (!await askConfirm(`Remove the connection “${c ? c.name : id}”? Files on the remote system are not touched.`, { danger: true })) return;
   try {
     await apiDelete(`/connectors/${id}`);
     toast('Connection removed');
@@ -7003,7 +7011,7 @@ async function ensureFilesView() {
 }
 async function createFolder() {
   if (currentUser?.role === 'viewer') { toast('Viewers cannot create folders'); return; }
-  const name = (prompt('New folder name:') || '').trim();
+  const name = (await askPrompt('New folder name:') || '').trim();
   if (!name) return;
   const path = currentFolderPath ? `${currentFolderPath}/${name}` : name;
   try {
@@ -7016,7 +7024,7 @@ async function createFolder() {
 const NEW_FILE_LABELS = { docx: 'Word document', xlsx: 'Excel spreadsheet', md: 'Markdown file', txt: 'Text file' };
 async function createFile(ext) {
   if (currentUser?.role === 'viewer') { toast('Viewers cannot create files'); return; }
-  const name = (prompt(`Name for the new ${NEW_FILE_LABELS[ext] || ext}:`, 'Untitled') || '').trim();
+  const name = (await askPrompt(`Name for the new ${NEW_FILE_LABELS[ext] || ext}:`, 'Untitled') || '').trim();
   if (!name) return;
   try {
     await ensureFilesView();
@@ -7129,14 +7137,119 @@ function anyMenuOpen() {
 // scrims are inserted on demand and should be removed outright. login-scrim is
 // the auth gate (never Escape-dismissable); the editor owns its own keys.
 const STATIC_SCRIMS = new Set(['settings-scrim', 'version-preview-scrim']);
+/* ---------- shared modal primitive ----------
+   ONE way to open a dialog. Builds the scrim + .modal, sets role="dialog"/aria-modal,
+   closes on backdrop click and on Escape (the global keydown below → closeTopModal),
+   keeps Tab inside the dialog, moves keyboard focus in, and puts focus back where it
+   was on close. Every close path — X, backdrop, Escape, programmatic — runs the same
+   closeModalEl(), so an onClose hook fires exactly once. Hand-built scrims that
+   predate this still work with closeTopModal (they just carry no hook/focus state). */
+function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '' } = {}) {
+  closeModal(id);
+  const prev = document.activeElement;
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim open'; scrim.id = id;
+  scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
+  if (labelledBy) scrim.setAttribute('aria-labelledby', labelledBy);
+  scrim.innerHTML = `<div class="modal ${modalClass}" tabindex="-1">${html}</div>`;
+  scrim._onClose = onClose; scrim._restoreFocus = prev;
+  // Backdrop dismiss only when the press AND the release were on the backdrop — a
+  // drag that starts in an input and ends outside must not close the dialog (per UI
+  // Events, `click` targets the common ancestor of the mousedown/mouseup targets).
+  scrim.addEventListener('mousedown', e => { scrim._downOnBackdrop = (e.target === scrim); });
+  scrim.addEventListener('click', e => { if (e.target === scrim && scrim._downOnBackdrop) closeModalEl(scrim); });
+  scrim.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = focusablesIn(scrim);
+    if (!f.length) { e.preventDefault(); return; }
+    const idx = f.indexOf(document.activeElement), first = f[0], last = f[f.length - 1];
+    // Focus outside the tabbable set (e.g. the container after a click) counts as an end.
+    if (idx === -1) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && idx === 0) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && idx === f.length - 1) { e.preventDefault(); first.focus(); }
+  });
+  // Paint above whatever overlay launched it (e.g. the z-index:60 file-history
+  // overlay) — the native confirm() this replaces was immune to page stacking order.
+  scrim.style.zIndex = String(Math.max(50, topOverlayZ()) + 1);
+  document.body.appendChild(scrim);
+  const auto = scrim.querySelector('[autofocus]') || focusablesIn(scrim)[0] || scrim.firstElementChild;
+  if (auto) auto.focus();
+  return { el: scrim, close: () => closeModalEl(scrim) };
+}
+function focusablesIn(root) {
+  return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+}
+// Highest z-index among visible fixed-position overlays at body level.
+function topOverlayZ() {
+  let z = 0;
+  for (const el of document.body.children) {
+    const cs = getComputedStyle(el);
+    if (cs.position === 'fixed' && cs.display !== 'none') z = Math.max(z, parseInt(cs.zIndex, 10) || 0);
+  }
+  return z;
+}
+function closeModalEl(scrim) {
+  if (!scrim || scrim._closing) return;
+  scrim._closing = true;
+  const hook = scrim._onClose; scrim._onClose = null;
+  const isStatic = STATIC_SCRIMS.has(scrim.id);
+  if (isStatic) scrim.classList.remove('open'); else scrim.remove();
+  const prev = scrim._restoreFocus; scrim._restoreFocus = null;
+  if (prev && typeof prev.focus === 'function' && document.contains(prev)) prev.focus();
+  if (isStatic) scrim._closing = false; // static scrims are hidden and reused, not removed
+  if (hook) hook();
+}
+function closeModal(id) { closeModalEl(document.getElementById(id)); }
 function closeTopModal() {
   const scrims = [...document.querySelectorAll('.scrim.open')]
-    .filter(s => s.id !== 'login-scrim' && s.id !== 'editor-scrim');
+    .filter(sc => sc.id !== 'login-scrim' && sc.id !== 'editor-scrim');
   if (!scrims.length) return false;
-  const top = scrims[scrims.length - 1];
-  if (STATIC_SCRIMS.has(top.id)) top.classList.remove('open');
-  else top.remove();
+  closeModalEl(scrims[scrims.length - 1]);
   return true;
+}
+
+// Styled replacements for window.confirm()/window.prompt(), same contract as the natives so
+// call sites just `await` them: askConfirm → true/false; askPrompt → the string, or
+// null on cancel. Enter accepts, Escape/backdrop cancels. Pass { danger: true } for a
+// destructive action to get the red confirm button (decided per call site, never
+// guessed from message text — file names can contain words like "delete").
+function askConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', title = '', danger = false } = {}) {
+  const isDanger = !!danger;
+  return new Promise(resolve => {
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; resolve(v); };
+    const m = openModal({
+      id: 'ask-scrim', modalClass: 'modal-ask', labelledBy: 'ask-title',
+      onClose: () => finish(false),
+      html: (title ? `<h2 id="ask-title">${esc(title)}</h2><p class="ask-msg">` : `<p class="ask-msg" id="ask-title">`) + esc(message) + '</p>' +
+        `<div class="ask-actions"><button type="button" class="ghost-btn" id="ask-cancel">${esc(cancelLabel)}</button>` +
+        `<button type="button" class="${isDanger ? 'danger-btn' : 'run-btn'}" id="ask-ok" autofocus>${esc(okLabel)}</button></div>`,
+    });
+    const cancel = m.el.querySelector('#ask-cancel'), ok = m.el.querySelector('#ask-ok');
+    cancel.onclick = () => { finish(false); m.close(); };
+    ok.onclick = () => { finish(true); m.close(); };
+    // Enter = OK, unless focus is on Cancel (then the button's own click handles it).
+    m.el.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && document.activeElement !== cancel) { e.preventDefault(); finish(true); m.close(); } });
+  });
+}
+function askPrompt(message, defaultValue = '', { okLabel = 'OK', cancelLabel = 'Cancel', title = '', placeholder = '' } = {}) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; resolve(v); };
+    const m = openModal({
+      id: 'ask-scrim', modalClass: 'modal-ask', labelledBy: 'ask-title',
+      onClose: () => finish(null),
+      html: (title ? `<h2 id="ask-title">${esc(title)}</h2><p class="ask-msg">` : `<p class="ask-msg" id="ask-title">`) + esc(message) + '</p>' +
+        `<input type="text" class="ask-input" id="ask-input" value="${esc(defaultValue == null ? '' : String(defaultValue))}" placeholder="${esc(placeholder)}" autofocus>` +
+        `<div class="ask-actions"><button type="button" class="ghost-btn" id="ask-cancel">${esc(cancelLabel)}</button><button type="button" class="run-btn" id="ask-ok">${esc(okLabel)}</button></div>`,
+    });
+    const input = m.el.querySelector('#ask-input');
+    input.select();
+    m.el.querySelector('#ask-cancel').onclick = () => { finish(null); m.close(); };
+    m.el.querySelector('#ask-ok').onclick = () => { finish(input.value); m.close(); };
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); finish(input.value); m.close(); } });
+  });
 }
 document.addEventListener('click', closeAllMenus);
 document.addEventListener('keydown', e => {
@@ -7350,7 +7463,7 @@ function mountActionError(e, retry) {
 
 async function mountNewFolder() {
   const m = mountView; if (!m) return;
-  const name = (prompt('New folder name') || '').trim();
+  const name = (await askPrompt('New folder name') || '').trim();
   if (!name) return;
   const path = (m.path ? m.path + '/' : '') + name;
   try { await apiPost(`/connectors/${encodeURIComponent(m.id)}/folder`, { path }); toast('Folder created'); openMount(m.id, m.path); }
@@ -7359,14 +7472,14 @@ async function mountNewFolder() {
 
 async function mountDeleteFile(path, name) {
   const m = mountView; if (!m) return;
-  if (!confirm(`Delete “${name}” from the source system? This can't be undone from Depot.`)) return;
+  if (!await askConfirm(`Delete “${name}” from the source system? This can't be undone from Depot.`, { danger: true })) return;
   try { await apiDelete(`/connectors/${encodeURIComponent(m.id)}/file?path=${encodeURIComponent(path)}`); toast('Deleted'); openMount(m.id, m.path); }
   catch (e) { if (!mountActionError(e, () => mountDeleteFile(path, name))) toast('Delete failed: ' + ((e.body && e.body.error) || e.message)); }
 }
 
 async function mountRename(path, name) {
   const m = mountView; if (!m) return;
-  const nn = (prompt('Rename to', name) || '').trim();
+  const nn = (await askPrompt('Rename to', name) || '').trim();
   if (!nn || nn === name) return;
   if (/[\\/]/.test(nn)) { toast('Name can’t contain a slash'); return; }
   const parent = path.split('/').slice(0, -1).join('/');
@@ -7410,12 +7523,12 @@ async function mountCreateLink(path, type) {
 // that SharePoint's own dialog makes needlessly fiddly.
 async function mountInvite(path) {
   const m = mountView; if (!m) return;
-  const raw = prompt('Email address(es) to share with — separate multiple with commas:');
+  const raw = await askPrompt('Email address(es) to share with — separate multiple with commas:');
   if (raw == null) return;
   const emails = raw.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
   if (!emails.length) return;
   // Offer edit only where the mount is writable; otherwise view-only, no prompt.
-  const type = (!m.readOnly && confirm('Let them edit?\n\nOK = can edit   ·   Cancel = view only')) ? 'edit' : 'view';
+  const type = (!m.readOnly && await askConfirm('Let them edit?\n\nOK = can edit   ·   Cancel = view only')) ? 'edit' : 'view';
   try {
     const r = await apiPost(`/connectors/${encodeURIComponent(m.id)}/invite`, { path, emails, type });
     const n = (r.invited || emails).length;
@@ -7645,7 +7758,7 @@ async function restoreFile(fileId, name) {
 }
 
 async function purgeFile(fileId, name) {
-  if (!confirm(`Permanently delete "${name}"? This cannot be undone.`)) return;
+  if (!await askConfirm(`Permanently delete "${name}"? This cannot be undone.`, { danger: true })) return;
   try { await apiDelete('/files/' + fileId + '/purge'); trashList = trashList.filter(f => f.id !== fileId); renderTrashList(); toast(`${name} permanently deleted`); }
   catch (e) { toast('Delete failed: ' + e.message); }
 }
@@ -7935,7 +8048,7 @@ function openFolderPicker(title, excludePaths, onPick) {
   scrim.innerHTML = `<div class="modal"><h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px"><button class="ghost-btn" id="fp-new">+ New folder…</button><button class="ghost-btn" id="fp-cancel">Cancel</button></div></div>`;
   document.body.appendChild(scrim);
   scrim.querySelector('#fp-cancel').onclick = () => scrim.remove();
-  scrim.querySelector('#fp-new').onclick = () => { const n = (prompt('New folder name:') || '').trim(); if (n) { scrim.remove(); onPick(n); } };
+  scrim.querySelector('#fp-new').onclick = async () => { const n = ((await askPrompt('New folder name:')) || '').trim(); if (n) { scrim.remove(); onPick(n); } };
   scrim.querySelectorAll('button[data-path]').forEach(b => b.onclick = () => { scrim.remove(); onPick(b.dataset.path); });
 }
 function moveSelectedToFolder() {
@@ -7976,7 +8089,7 @@ async function deleteSelectedItems() {
   const total = files.length + folders.length;
   if (!total) return;
   const label = total === 1 ? `"${(files[0]?.name) || folders[0].split('/').pop()}"` : `${total} items`;
-  if (!confirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`)) return;
+  if (!await askConfirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`, { danger: true })) return;
   for (const f of files) {
     await apiDelete('/files/' + f.id);
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
@@ -8441,7 +8554,7 @@ async function uploadFiles(items) {
     lines.push(`About to upload ${keep.length} file${keep.length === 1 ? '' : 's'} totaling ${humanGB(keepTotal)} (per-file limit: ${maxMb} MB).`);
     if (keepTotal >= LARGE_UPLOAD_WARN_BYTES) lines.push('Large uploads can take a while and use significant bandwidth.');
     lines.push('\nContinue?');
-    if (!confirm(lines.join('\n'))) return;
+    if (!await askConfirm(lines.join('\n'))) return;
     items = keep;
     if (!items.length) return;
   }
@@ -8638,7 +8751,7 @@ async function openFileHistory(fileId) {
 }
 
 async function restoreFileVersion(fileId, versionId) {
-  if (!confirm('Restore this previous file version? The current file will be saved as a new version first.')) return;
+  if (!await askConfirm('Restore this previous file version? The current file will be saved as a new version first.')) return;
   try {
     const data = await apiPost('/files/' + fileId + '/restore-version/' + versionId, {});
     filesList = filesList.filter(f => String(f.id) !== String(fileId));
@@ -8693,7 +8806,7 @@ async function downloadFile(fileId) {
 async function deleteFile(fileId, name) {
   const f = filesList.find(x => String(x.id) === String(fileId));
   name = name || (f ? fileDisplayName(f) : 'this file');
-  if (!confirm(`Move "${name}" to Trash? You can restore it later.`)) return;
+  if (!await askConfirm(`Move "${name}" to Trash? You can restore it later.`, { danger: true })) return;
   try {
     await apiDelete('/files/' + fileId);
     filesList = filesList.filter(f => String(f.id) !== String(fileId));
@@ -8879,7 +8992,7 @@ async function downloadFolderZip(path) {
 }
 async function renameFolder(path) {
   const cur = path.split('/').pop();
-  const next = (prompt('Rename folder:', cur) || '').trim();
+  const next = (await askPrompt('Rename folder:', cur) || '').trim();
   if (!next || next === cur) return;
   try {
     const r = await apiPost('/files/folder/rename', { path, name: next });
@@ -8891,7 +9004,7 @@ async function renameFolder(path) {
 }
 async function deleteFolder(path) {
   const name = path.split('/').pop();
-  if (!confirm(`Move folder "${name}" and everything inside it to Trash?`)) return;
+  if (!await askConfirm(`Move folder "${name}" and everything inside it to Trash?`, { danger: true })) return;
   try {
     const r = await apiPost('/files/folder/delete', { path });
     if (currentFolderPath === path || currentFolderPath.startsWith(path + '/')) currentFolderPath = path.split('/').slice(0, -1).join('/');
@@ -8990,7 +9103,7 @@ async function createFolderShareLink() {
 }
 function copyFolderShareUrl() { const el = document.getElementById('folder-share-url'); if (el && el.value) { copyText(el.value); toast('Link copied'); } }
 async function revokeFolderShareLink(id) {
-  if (!id || !confirm('Revoke this folder link? People with the link will no longer be able to download it.')) return;
+  if (!id || !await askConfirm('Revoke this folder link? People with the link will no longer be able to download it.', { danger: true })) return;
   try { await apiDelete('/files/folder/links/' + id); toast('Link revoked'); await loadFolderShareLinks(); }
   catch (e) { toast('Revoke failed: ' + e.message); }
 }
@@ -9040,7 +9153,7 @@ async function renameFile(fileId) {
   if (!f) return;
   const folder = fileFolderPath(f);
   const current = fileDisplayName(f);
-  const next = (prompt('Rename file:', current) || '').trim();
+  const next = (await askPrompt('Rename file:', current) || '').trim();
   if (!next || next === current) return;
   const full = folder ? folder + '/' + next : next;
   try {
