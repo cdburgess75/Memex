@@ -1071,7 +1071,7 @@ html.office .provider-btn:hover {
   opacity: 0;
   transition: all 0.25s;
   pointer-events: none;
-  z-index: 60;
+  z-index: 1000;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -2596,16 +2596,8 @@ html.dark .file-icon.pptx, html.dark .file-icon.ppt { background: #2D1A08; color
 html.dark .file-action-btn.danger { color: #E57373; }
 .file-action-btn.danger:hover { border-color: currentColor; background: transparent; }
 .file-action-btn:disabled { opacity: 0.4; cursor: wait; }
-.file-history-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(0,0,0,0.32);
-}
 .file-history-modal {
+  padding: 0; /* it rides on .modal now; the head and body carry their own padding */
   width: min(860px, 100%);
   max-height: min(720px, 92dvh);
   overflow: auto;
@@ -2776,7 +2768,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 </div>
 
 <!-- Account modal -->
-<div class="scrim" id="settings-scrim">
+<div class="scrim" id="settings-scrim" role="dialog" aria-modal="true">
   <div class="modal settings-modal">
     <h2>Settings</h2>
     <p class="sub" id="settings-user-info"></p>
@@ -2790,7 +2782,7 @@ html.dark .file-action-btn.danger { color: #E57373; }
 </div>
 
 <!-- Version preview modal -->
-<div class="scrim" id="version-preview-scrim">
+<div class="scrim" id="version-preview-scrim" role="dialog" aria-modal="true">
   <div class="modal">
     <h2 id="version-preview-title"></h2>
     <div class="prose" id="version-preview-body" style="margin-top:18px;font-size:16px"></div>
@@ -3983,7 +3975,7 @@ async function loadSecurityStatus() {
 }
 
 function closeSecurityStatus() {
-  document.getElementById('security-status-scrim')?.remove();
+  closeModal('security-status-scrim');
 }
 
 // Update check: colors the version pill — green up to date, yellow ≤10 releases
@@ -4109,14 +4101,14 @@ function updateCtaRefresh(info) {
 }
 async function openUpdateModal() {
   closeUpdateModal();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="update-scrim" onclick="if(event.target.id==='update-scrim')closeUpdateModal()"><div class="modal"><h2>Software update</h2><p class="sub">Checking…</p></div></div>`);
+  openModal({ id: 'update-scrim', html: `<h2>Software update</h2><p class="sub">Checking…</p>` });
   let ver = latestUpdateInfo, lic = licenseStatus;
   try { ver = await apiGet('/version/check'); } catch { /* keep cached */ }
   try { lic = await apiGet('/license'); } catch { /* keep cached */ }
   latestUpdateInfo = ver; licenseStatus = lic; updateCtaRefresh(ver);
   renderUpdateModal(ver, lic);
 }
-function closeUpdateModal() { document.getElementById('update-scrim')?.remove(); }
+function closeUpdateModal() { closeModal('update-scrim'); }
 function renderUpdateModal(ver, lic) {
   const m = document.querySelector('#update-scrim .modal');
   if (!m) return;
@@ -4179,7 +4171,7 @@ function openScheduleMeeting() {
   const pad = n => String(n).padStart(2, '0');
   const dval = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const tval = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="schedule-scrim" onclick="if(event.target.id==='schedule-scrim')closeScheduleMeeting()"><div class="modal"><h2>Schedule a meeting</h2>
+  openModal({ id: 'schedule-scrim', html: `<h2>Schedule a meeting</h2>
     <p class="sub">Send email invites with a calendar hook (attendees need a Depot account), or Copy invite to grab a join link you can paste into any chat for a quick meeting.</p>
     <label>Title</label><input type="text" id="mt-title" placeholder="e.g. Weekly standup" autocomplete="off">
     <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:100px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
@@ -4187,10 +4179,10 @@ function openScheduleMeeting() {
     <label>Note (optional)</label><textarea id="mt-note" rows="2" placeholder="Agenda or context"></textarea>
     <div id="mt-result" class="update-output" style="display:none"></div>
     <div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="submitScheduleMeeting(this)">Send invites</button><button class="ghost-btn" onclick="copyMeetingInvite(this)">Copy invite</button><button class="ghost-btn" onclick="closeScheduleMeeting()">Cancel</button></div>
-  </div></div>`);
+  ` });
   setTimeout(() => document.getElementById('mt-title')?.focus(), 30);
 }
-function closeScheduleMeeting() { document.getElementById('schedule-scrim')?.remove(); }
+function closeScheduleMeeting() { closeModal('schedule-scrim'); }
 async function submitScheduleMeeting(btn) {
   const title = (document.getElementById('mt-title')?.value || '').trim();
   const date = document.getElementById('mt-date')?.value;
@@ -4249,13 +4241,13 @@ function openSecurityStatus() {
   };
   const recent = Number(status.recentConnections || 0);
   closeSecurityStatus();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="security-status-scrim" onclick="if(event.target.id==='security-status-scrim')closeSecurityStatus()"><div class="modal"><h2>Security monitor</h2><p class="sub">This is an added host-firewall visibility signal. It does not replace UFW, a reverse proxy, MFA, patching, or network controls.</p><div class="security-modal-grid"><div class="security-status-card"><strong>${esc(securityLevelLabel(status.level))}</strong><span>${esc(status.message || 'No unusual connection pressure reported.')}</span></div><div class="security-status-card"><strong>${esc(status.firewall || 'UFW')}</strong><span>${status.configured ? 'Monitoring connected' : 'Monitoring not connected yet'}</span></div><div class="security-status-card"><strong>${recent} recent connection${recent === 1 ? '' : 's'}</strong><span>Window: ${esc(status.window || '15 minutes')}</span></div></div><div class="btn-row" style="margin-top:20px"><button class="ghost-btn" onclick="loadSecurityStatus()">Refresh</button><button class="run-btn" onclick="closeSecurityStatus()">Close</button></div></div></div>`);
+  openModal({ id: 'security-status-scrim', html: `<h2>Security monitor</h2><p class="sub">This is an added host-firewall visibility signal. It does not replace UFW, a reverse proxy, MFA, patching, or network controls.</p><div class="security-modal-grid"><div class="security-status-card"><strong>${esc(securityLevelLabel(status.level))}</strong><span>${esc(status.message || 'No unusual connection pressure reported.')}</span></div><div class="security-status-card"><strong>${esc(status.firewall || 'UFW')}</strong><span>${status.configured ? 'Monitoring connected' : 'Monitoring not connected yet'}</span></div><div class="security-status-card"><strong>${recent} recent connection${recent === 1 ? '' : 's'}</strong><span>Window: ${esc(status.window || '15 minutes')}</span></div></div><div class="btn-row" style="margin-top:20px"><button class="ghost-btn" onclick="loadSecurityStatus()">Refresh</button><button class="run-btn" onclick="closeSecurityStatus()">Close</button></div>` });
 }
 
-function closeComplianceStatus() { document.getElementById('compliance-status-scrim')?.remove(); }
+function closeComplianceStatus() { closeModal('compliance-status-scrim'); }
 async function openComplianceStatus() {
   closeComplianceStatus();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="compliance-status-scrim" onclick="if(event.target.id==='compliance-status-scrim')closeComplianceStatus()"><div class="modal"><h2>Compliance readiness</h2><p class="sub">Loading…</p></div></div>`);
+  openModal({ id: 'compliance-status-scrim', html: `<h2>Compliance readiness</h2><p class="sub">Loading…</p>` });
   try {
     renderComplianceModal(await apiGet('/admin/compliance'));
   } catch (e) {
@@ -6926,16 +6918,13 @@ async function createLibraryFlow(name) {
 }
 function openNewLibraryModal() {
   closeLibraryMenu();
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal"><h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div></div>`;
-  document.body.appendChild(scrim);
-  const close = () => scrim.remove();
+  const m = openModal({ id: 'new-library-scrim', html: `<h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div>` });
+  const scrim = m.el;
+  const close = () => m.close();
   const input = scrim.querySelector('#new-library-name');
   scrim.querySelector('#new-library-cancel').onclick = close;
   scrim.querySelector('#new-library-create').onclick = () => { const v = input.value; close(); createLibraryFlow(v); };
   input.onkeydown = (e) => { if (e.key === 'Enter') { const v = input.value; close(); createLibraryFlow(v); } if (e.key === 'Escape') close(); };
-  scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
   input.focus();
 }
 
@@ -6944,13 +6933,10 @@ async function openLibraryMembers() {
   const libId = currentLibraryId;
   if (!libId) { toast('This library has no server id yet.'); return; }
   const libName = currentLibraryName();
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal"><h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div></div>`;
-  document.body.appendChild(scrim);
-  const close = () => scrim.remove();
+  const m = openModal({ id: 'library-members-scrim', html: `<h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div>` });
+  const scrim = m.el;
+  const close = () => m.close();
   scrim.querySelector('#lib-members-close').onclick = close;
-  scrim.addEventListener('click', e => { if (e.target === scrim) close(); });
   const emailInput = scrim.querySelector('#lib-member-email');
   const render = async () => {
     const listEl = scrim.querySelector('#lib-members-list');
@@ -6985,13 +6971,10 @@ function openLibraryTransfer(mode) {
   const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId));
   if (!targets.length) { toast('No other library yet — create one first.'); return; }
   const verb = mode === 'copy' ? 'Copy' : 'Move';
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open';
-  scrim.innerHTML = `<div class="modal"><h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div></div>`;
-  document.body.appendChild(scrim);
-  const close = () => scrim.remove();
+  const m = openModal({ id: 'library-transfer-scrim', html: `<h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div>` });
+  const scrim = m.el;
+  const close = () => m.close();
   scrim.querySelector('#lib-transfer-cancel').onclick = close;
-  scrim.addEventListener('click', e => { if (e.target === scrim) close(); });
   scrim.querySelectorAll('button[data-lib]').forEach(b => b.onclick = async () => {
     close();
     try {
@@ -7144,14 +7127,14 @@ const STATIC_SCRIMS = new Set(['settings-scrim', 'version-preview-scrim']);
    was on close. Every close path — X, backdrop, Escape, programmatic — runs the same
    closeModalEl(), so an onClose hook fires exactly once. Hand-built scrims that
    predate this still work with closeTopModal (they just carry no hook/focus state). */
-function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '' } = {}) {
+function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '', modalStyle = '' } = {}) {
   closeModal(id);
   const prev = document.activeElement;
   const scrim = document.createElement('div');
   scrim.className = 'scrim open'; scrim.id = id;
   scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
   if (labelledBy) scrim.setAttribute('aria-labelledby', labelledBy);
-  scrim.innerHTML = `<div class="modal ${modalClass}" tabindex="-1">${html}</div>`;
+  scrim.innerHTML = `<div class="modal ${modalClass}"${modalStyle ? ` style="${modalStyle}"` : ''} tabindex="-1">${html}</div>`;
   scrim._onClose = onClose; scrim._restoreFocus = prev;
   // Backdrop dismiss only when the press AND the release were on the backdrop — a
   // drag that starts in an input and ends outside must not close the dialog (per UI
@@ -7177,15 +7160,22 @@ function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '
   return { el: scrim, close: () => closeModalEl(scrim) };
 }
 function focusablesIn(root) {
-  return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+  return [...root.querySelectorAll('button, [href], input, select, textarea, iframe, video[controls], audio[controls], [contenteditable=""], [contenteditable="true"], [tabindex]:not([tabindex="-1"])')]
     .filter(el => !el.disabled && el.offsetParent !== null);
 }
-// Highest z-index among visible fixed-position overlays at body level.
+// Highest z-index among visible, viewport-covering fixed overlays at body level —
+// i.e. other modal layers (scrims, the file-history overlay). Small fixed chrome —
+// the toast, the in-call dock and incoming-call banner, the reload/meeting banners —
+// is ignored on purpose so dialogs never climb above it and cover it.
 function topOverlayZ() {
   let z = 0;
+  const vw = window.innerWidth, vh = window.innerHeight;
   for (const el of document.body.children) {
     const cs = getComputedStyle(el);
-    if (cs.position === 'fixed' && cs.display !== 'none') z = Math.max(z, parseInt(cs.zIndex, 10) || 0);
+    if (cs.position !== 'fixed' || cs.display === 'none') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < vw * 0.9 || r.height < vh * 0.9) continue; // not a full-screen overlay
+    z = Math.max(z, parseInt(cs.zIndex, 10) || 0);
   }
   return z;
 }
@@ -7340,9 +7330,7 @@ let _smbUnlock = null;
 function promptSmbUnlock(id, name, onUnlocked) {
   closeSmbUnlock();
   _smbUnlock = { id, onUnlocked };
-  document.body.insertAdjacentHTML('beforeend', `
-    <div class="scrim open" id="smb-unlock-scrim" onclick="if(event.target.id==='smb-unlock-scrim')closeSmbUnlock()">
-      <div class="modal" style="max-width:430px" onclick="event.stopPropagation()">
+  openModal({ id: 'smb-unlock-scrim', html: `
         <h2 style="margin:0 0 6px">Unlock ${esc(name)}</h2>
         <p class="settings-notice" style="margin:0 0 14px">Sign in with your own network account — you'll see only what your Windows permissions allow. Your credentials are used only for this session and are never stored.</p>
         <div class="settings-grid" style="grid-template-columns:104px 1fr">
@@ -7355,11 +7343,10 @@ function promptSmbUnlock(id, name, onUnlocked) {
           <button class="ghost-btn" onclick="closeSmbUnlock()">Cancel</button>
           <button class="run-btn" id="smb-unlock-go" onclick="submitSmbUnlock()">Unlock</button>
         </div>
-      </div>
-    </div>`);
+      `, modalStyle: 'max-width:430px', onClose: () => { _smbUnlock = null; } });
   setTimeout(() => document.getElementById('smb-unlock-user')?.focus(), 40);
 }
-function closeSmbUnlock() { document.getElementById('smb-unlock-scrim')?.remove(); _smbUnlock = null; }
+function closeSmbUnlock() { closeModal('smb-unlock-scrim'); _smbUnlock = null; }
 async function submitSmbUnlock() {
   if (!_smbUnlock) return;
   const errEl = document.getElementById('smb-unlock-err');
@@ -7574,7 +7561,7 @@ function previewMountEntry(i) {
   closeFilePreview();
   const primary = e.openUrl ? `<button class="run-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
   const body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(fileExt(e.name))}<div class="file-info-meta"><div class="file-row-title">${esc(e.name)}</div><div class="file-row-sub">${fmtBytes(e.size || 0)}${e.modified ? ' · ' + new Date(e.modified).toLocaleString() : ''} · via ${esc(m.name)}</div></div></div><p class="settings-notice" style="margin-top:10px">This file lives in ${esc(m.kind || 'the connected system')} — Depot streams it on demand; nothing is copied.</p></div>`;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div>`, modalClass: 'file-preview-modal' });
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -8040,16 +8027,13 @@ async function moveItemsIntoFolder(payload, targetPath) {
 function openFolderPicker(title, excludePaths, onPick) {
   const exclude = new Set(excludePaths || []);
   const folders = allFoldersForFiles(filesList).filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')));
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open'; scrim.id = 'folder-picker-scrim';
-  scrim.onclick = e => { if (e.target.id === 'folder-picker-scrim') scrim.remove(); };
   const items = [`<button class="library-menu-item" data-path="">⌂ All files (root)</button>`,
     ...folders.map(f => `<button class="library-menu-item" data-path="${esc(f.path)}">${esc(f.path)}</button>`)].join('');
-  scrim.innerHTML = `<div class="modal"><h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px"><button class="ghost-btn" id="fp-new">+ New folder…</button><button class="ghost-btn" id="fp-cancel">Cancel</button></div></div>`;
-  document.body.appendChild(scrim);
-  scrim.querySelector('#fp-cancel').onclick = () => scrim.remove();
-  scrim.querySelector('#fp-new').onclick = async () => { const n = ((await askPrompt('New folder name:')) || '').trim(); if (n) { scrim.remove(); onPick(n); } };
-  scrim.querySelectorAll('button[data-path]').forEach(b => b.onclick = () => { scrim.remove(); onPick(b.dataset.path); });
+  const m = openModal({ id: 'folder-picker-scrim', html: `<h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px"><button class="ghost-btn" id="fp-new">+ New folder…</button><button class="ghost-btn" id="fp-cancel">Cancel</button></div>` });
+  const scrim = m.el;
+  scrim.querySelector('#fp-cancel').onclick = () => m.close();
+  scrim.querySelector('#fp-new').onclick = async () => { const n = ((await askPrompt('New folder name:')) || '').trim(); if (n) { m.close(); onPick(n); } };
+  scrim.querySelectorAll('button[data-path]').forEach(b => b.onclick = () => { m.close(); onPick(b.dataset.path); });
 }
 function moveSelectedToFolder() {
   const payload = { files: [...selectedFileIds], folders: [...selectedFolderPaths] };
@@ -8131,16 +8115,16 @@ function renderFileDetailsPane() {
 }
 
 function closeAskSelected() {
-  document.getElementById('file-ask-scrim')?.remove();
+  closeModal('file-ask-scrim');
 }
 
 function closeCollectionAsk() {
-  document.getElementById('file-collection-ask-scrim')?.remove();
+  closeModal('file-collection-ask-scrim');
 }
 
 function openCollectionAsk() {
   closeCollectionAsk();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-collection-ask-scrim" onclick="if(event.target.id==='file-collection-ask-scrim')closeCollectionAsk()"><div class="modal file-ask-modal"><h2>Ask the collection</h2><p class="sub">Search across indexed documents and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div></div></div>`);
+  openModal({ id: 'file-collection-ask-scrim', html: `<h2>Ask the collection</h2><p class="sub">Search across indexed documents and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
   setTimeout(() => document.getElementById('file-collection-question')?.focus(), 0);
 }
 
@@ -8170,7 +8154,7 @@ function openAskSelected() {
   if (!selected.length) return;
   closeAskSelected();
   const docs = selected.map(f => `<span class="file-ask-chip" title="${esc(f.name)}">${esc(f.name)}</span>`).join('');
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-ask-scrim" onclick="if(event.target.id==='file-ask-scrim')closeAskSelected()"><div class="modal file-ask-modal"><h2>Ask selected documents</h2><p class="sub">Claude will answer only from the files you selected.</p><div class="file-ask-docs">${docs}</div><textarea class="file-ask-input" id="file-ask-question" placeholder="Ask a question about these documents"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" onclick="submitAskSelected()">Ask Claude</button><button class="ghost-btn" onclick="stopStream()">Stop</button><button class="ghost-btn" onclick="closeAskSelected()">Close</button></div><div class="file-ask-answer dim" id="file-ask-answer">Answer will stream here.</div></div></div>`);
+  openModal({ id: 'file-ask-scrim', html: `<h2>Ask selected documents</h2><p class="sub">Claude will answer only from the files you selected.</p><div class="file-ask-docs">${docs}</div><textarea class="file-ask-input" id="file-ask-question" placeholder="Ask a question about these documents"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" onclick="submitAskSelected()">Ask Claude</button><button class="ghost-btn" onclick="stopStream()">Stop</button><button class="ghost-btn" onclick="closeAskSelected()">Close</button></div><div class="file-ask-answer dim" id="file-ask-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
   setTimeout(() => document.getElementById('file-ask-question')?.focus(), 0);
 }
 
@@ -8185,14 +8169,14 @@ async function submitAskSelected() {
 }
 
 function closeShareSelected() {
-  document.getElementById('file-share-scrim')?.remove();
+  closeModal('file-share-scrim');
 }
 
 async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-share-scrim" onclick="if(event.target.id==='file-share-scrim')closeShareSelected()"><div class="modal file-share-modal"><h2>Share</h2><p class="sub">${esc(f.name)}</p><section class="file-share-section"><h3>Send to people</h3><p class="file-share-hint">Emails a link from you. People who already have an account get access with their own sign-in; anyone else gets a private link — one each, so you can see who opened it and cut one person off without affecting the others.</p><div class="file-share-grid"><label for="send-to">To</label><input id="send-to" type="text" placeholder="jane@clientco.com, bob@clientco.com"><label for="send-note">Note</label><input id="send-note" type="text" placeholder="Optional — appears in the email"><label for="send-expiry">Expires</label><select id="send-expiry"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="send-password">Password</label><input id="send-password" type="password" placeholder="Optional — shown to you once, never emailed"></div><label class="setup-check" style="margin-top:10px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="send-allow-upload" checked> Let them send files back too</label><div class="btn-row"><button class="run-btn" onclick="sendFileToPeople()">Send</button></div><div id="file-send-result" style="display:none;margin-top:10px"></div></section><section class="file-share-section" style="margin-top:24px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that opens this file without signing in.</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section><section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Grant specific signed-in people view or edit access.</p><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div></div></div>`);
+  openModal({ id: 'file-share-scrim', html: `<h2>Share</h2><p class="sub">${esc(f.name)}</p><section class="file-share-section"><h3>Send to people</h3><p class="file-share-hint">Emails a link from you. People who already have an account get access with their own sign-in; anyone else gets a private link — one each, so you can see who opened it and cut one person off without affecting the others.</p><div class="file-share-grid"><label for="send-to">To</label><input id="send-to" type="text" placeholder="jane@clientco.com, bob@clientco.com"><label for="send-note">Note</label><input id="send-note" type="text" placeholder="Optional — appears in the email"><label for="send-expiry">Expires</label><select id="send-expiry"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="send-password">Password</label><input id="send-password" type="password" placeholder="Optional — shown to you once, never emailed"></div><label class="setup-check" style="margin-top:10px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="send-allow-upload" checked> Let them send files back too</label><div class="btn-row"><button class="run-btn" onclick="sendFileToPeople()">Send</button></div><div id="file-send-result" style="display:none;margin-top:10px"></div></section><section class="file-share-section" style="margin-top:24px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that opens this file without signing in.</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section><section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Grant specific signed-in people view or edit access.</p><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div>`, modalClass: 'file-share-modal' });
   await loadShareLinks(f.id);
   await loadFileAccess(f.id);
 }
@@ -8712,7 +8696,7 @@ async function uploadFileResumable(file, displayName, statusEl, ordinal, totalIt
 }
 
 function closeFileHistory() {
-  document.getElementById('file-history-scrim')?.remove();
+  closeModal('file-history-scrim');
 }
 
 function historyDate(value) {
@@ -8722,7 +8706,7 @@ function historyDate(value) {
 async function openFileHistory(fileId) {
   if (currentUser?.role !== 'admin') return;
   closeFileHistory();
-  document.body.insertAdjacentHTML('beforeend', `<div class="file-history-scrim" id="file-history-scrim" onclick="if(event.target.id==='file-history-scrim')closeFileHistory()"><div class="file-history-modal"><div class="file-history-head"><div><h2 class="file-history-title">File history</h2><div class="file-history-sub">Loading…</div></div><button class="file-action-btn" onclick="closeFileHistory()">Close</button></div><div class="file-history-body"><div class="file-empty-home">Loading history…</div></div></div></div>`);
+  openModal({ id: 'file-history-scrim', html: `<div class="file-history-head"><div><h2 class="file-history-title">File history</h2><div class="file-history-sub">Loading…</div></div><button class="file-action-btn" onclick="closeFileHistory()">Close</button></div><div class="file-history-body"><div class="file-empty-home">Loading history…</div></div>`, modalClass: 'file-history-modal' });
   try {
     const data = await apiGet('/files/' + fileId + '/history');
     const doc = data.doc || {};
@@ -9014,13 +8998,10 @@ async function deleteFolder(path) {
 }
 function moveFolderToLibrary(path) {
   if (!Array.isArray(librariesList) || librariesList.length < 2) { toast('No other library to move to'); return; }
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open'; scrim.id = 'folder-move-scrim';
-  scrim.onclick = e => { if (e.target.id === 'folder-move-scrim') scrim.remove(); };
-  scrim.innerHTML = `<div class="modal"><h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="document.getElementById('folder-move-scrim').remove()">Cancel</button></div></div>`;
-  document.body.appendChild(scrim);
+  const m = openModal({ id: 'folder-move-scrim', html: `<h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-move-scrim')">Cancel</button></div>` });
+  const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
-    scrim.remove();
+    m.close();
     try { const r = await apiPost('/files/folder/move', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
     catch (e) { toast('Move failed: ' + e.message); }
   });
@@ -9041,13 +9022,10 @@ async function moveFolderToParent(path) {
 // Copy every file in a folder into another library (originals stay in place).
 function copyFolderToLibrary(path) {
   if (!Array.isArray(librariesList) || !librariesList.length) { toast('No library to copy to'); return; }
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim open'; scrim.id = 'folder-copy-scrim';
-  scrim.onclick = e => { if (e.target.id === 'folder-copy-scrim') scrim.remove(); };
-  scrim.innerHTML = `<div class="modal"><h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="document.getElementById('folder-copy-scrim').remove()">Cancel</button></div></div>`;
-  document.body.appendChild(scrim);
+  const m = openModal({ id: 'folder-copy-scrim', html: `<h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-copy-scrim')">Cancel</button></div>` });
+  const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
-    scrim.remove();
+    m.close();
     toast('Copying folder…');
     try { const r = await apiPost('/files/folder/copy', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Copied ${r.count} file${r.count === 1 ? '' : 's'}`); }
     catch (e) { toast('Copy failed: ' + e.message); }
@@ -9056,12 +9034,12 @@ function copyFolderToLibrary(path) {
 
 // ---- Folder sharing: public download link + internal member access ----
 let folderSharePath = null;
-function closeFolderShare() { document.getElementById('folder-share-scrim')?.remove(); }
+function closeFolderShare() { closeModal('folder-share-scrim'); }
 async function openFolderShare(path) {
   folderSharePath = path;
   closeFolderShare();
   const name = path.split('/').pop();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="folder-share-scrim" onclick="if(event.target.id==='folder-share-scrim')closeFolderShare()"><div class="modal file-share-modal"><button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2>Share folder</h2><p class="sub">${esc(name)}</p>
+  openModal({ id: 'folder-share-scrim', html: `<button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2>Share folder</h2><p class="sub">${esc(name)}</p>
     <section class="file-share-section"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that downloads this folder as a ZIP — no sign-in needed. It shares the files that are in the folder right now.</p>
       <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
       <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
@@ -9073,7 +9051,7 @@ async function openFolderShare(path) {
       <div class="file-share-list" id="folder-access-list">${emptyState('Loading access', 'Checking who can open this folder.')}</div>
     </section>
     <div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeFolderShare()">Close</button></div>
-  </div></div>`);
+  `, modalClass: 'file-share-modal' });
   await loadFolderShareLinks();
   await loadFolderAccess();
 }
@@ -9167,7 +9145,7 @@ function moveFileToLibrary(fileId) {
   selectedFileIds = new Set([String(fileId)]);
   openLibraryTransfer('move');
 }
-function closeFilePreview() { document.getElementById('file-preview-scrim')?.remove(); }
+function closeFilePreview() { closeModal('file-preview-scrim'); }
 function togglePreviewOpenMenu(e) { e?.stopPropagation(); document.getElementById('preview-open-menu')?.classList.toggle('open'); }
 function closePreviewOpenMenu() { document.getElementById('preview-open-menu')?.classList.remove('open'); }
 document.addEventListener('click', e => { const m = document.getElementById('preview-open-menu'); if (m && m.classList.contains('open') && !e.target.closest('.preview-openwith')) m.classList.remove('open'); });
@@ -9206,7 +9184,7 @@ async function previewFile(fileId, opts = {}) {
   const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button></div></div>` : '';
   const shareBtn = (currentUser?.role !== 'viewer') ? `<button class="ghost-btn" onclick="closeFilePreview();openShareFile('${fileId}')">Share</button>` : '';
   closeFilePreview();
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="file-preview-scrim" onclick="if(event.target.id==='file-preview-scrim')closeFilePreview()"><div class="modal file-preview-modal"><div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div></div></div>`);
+  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div>`, modalClass: 'file-preview-modal' });
   if (isText) {
     const el = document.getElementById('file-edit-text');
     try { const r = await fetch(inlineUrl); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
