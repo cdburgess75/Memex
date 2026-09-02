@@ -244,9 +244,18 @@ router.post('/login-ms365', auth, requireRole('admin'), async (req, res) => {
     }
     const tenantId = trimmedOrNull(req.body.tenantId) || (await settings.get('login_ms365_tenant_id'));
     const clientId = trimmedOrNull(req.body.clientId) || (await settings.get('login_ms365_client_id'));
-    const clientSecret = trimmedOrNull(req.body.clientSecret);   // blank = keep the one Keycloak holds
+    let clientSecret = trimmedOrNull(req.body.clientSecret);     // blank = keep the one Keycloak holds
+    if (clientSecret && /^[*•]+$/.test(clientSecret)) clientSecret = null; // a masked placeholder is "keep current"
     if (!GUID.test(tenantId || '')) return res.json({ ok: false, error: 'Entra tenant ID must be a GUID.' });
     if (!GUID.test(clientId || '')) return res.json({ ok: false, error: 'Application (client) ID must be a GUID.' });
+    // A pasted secret must be proven good BEFORE it replaces the one Keycloak holds —
+    // a wrong value here silently bricks every Microsoft sign-in. Fast-fail the classic
+    // mistake (secret ID instead of value), then ask Entra itself.
+    if (clientSecret) {
+      if (GUID.test(clientSecret)) return res.json({ ok: false, error: 'That looks like the secret ID. Paste the secret Value — it is shown once, when the secret is created in Entra.' });
+      const v = await kcAdmin.validateMsClientSecret({ tenantId, clientId, clientSecret });
+      if (!v.ok) return res.json({ ok: false, error: 'Microsoft rejected that client secret — nothing was changed.', hint: v.reason });
+    }
     // Graph delegation: opt-in. When absent from the request, keep the stored value
     // so a plain re-save doesn't silently flip it. Turning it ON is what makes
     // ensureMicrosoftIdp request delegated Graph scopes + store the token (and thus

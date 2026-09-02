@@ -265,6 +265,38 @@ async function refreshMsGraphToken(refreshToken) {
   return null;
 }
 
+// Prove a client secret works BEFORE it is written to Keycloak. A bad paste — the
+// secret ID instead of its value, a browser-autofilled password, a truncated copy —
+// used to overwrite the working secret and brick every Microsoft sign-in until an
+// admin noticed. The client-credentials grant needs no user and no roles: Entra
+// answers invalid_client for a wrong secret regardless of what the app may do.
+// Returns { ok:true } or { ok:false, reason }. A network failure is a refusal, never
+// a pass — writing an unverified secret is the failure mode this exists to prevent.
+async function validateMsClientSecret({ tenantId, clientId, clientSecret }) {
+  try {
+    const r = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: 'https://graph.microsoft.com/.default',
+      }).toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.access_token) return { ok: true };
+    const desc = String(data.error_description || data.error || `HTTP ${r.status}`);
+    // Keep the AADSTS code and its first sentence; drop trace/correlation noise.
+    const reason = desc.split(/\.\s|\n/)[0].replace(/\s*Trace ID.*$/i, '').slice(0, 220);
+    return { ok: false, reason };
+  } catch (e) {
+    const why = e && e.name === 'TimeoutError' ? 'timeout' : (e && e.message) || 'network error';
+    return { ok: false, reason: `could not reach Microsoft to verify the secret (${why}) — nothing was changed; try again` };
+  }
+}
+
 /* ---------- MFA (TOTP) for local accounts ---------- */
 
 // Require TOTP enrollment for LOCAL accounts only. Members arriving through
@@ -431,6 +463,7 @@ module.exports = {
   setRealmDisplayName,
   setLocalTotpRequirement,
   ensureMicrosoftIdp,
+  validateMsClientSecret,
   removeMicrosoftIdp,
   getBrokerToken,
   storeMsClientSecret,
