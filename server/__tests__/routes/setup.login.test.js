@@ -16,6 +16,7 @@ jest.mock('../../lib/settings', () => ({
 jest.mock('../../lib/email', () => ({ sendMail: jest.fn() }));
 jest.mock('../../lib/keycloakAdmin', () => ({
   ensureMicrosoftIdp: jest.fn().mockResolvedValue({ created: true }),
+  validateMsClientSecret: jest.fn().mockResolvedValue({ ok: true }),
   removeMicrosoftIdp: jest.fn().mockResolvedValue(undefined),
   ensureLdapFederation: jest.fn().mockResolvedValue({ created: true }),
   removeLdapFederation: jest.fn().mockResolvedValue(undefined),
@@ -41,6 +42,7 @@ beforeEach(() => {
   settings.getOrEnv.mockResolvedValue(null);
   settings.set.mockClear();
   kcAdmin.ensureMicrosoftIdp.mockClear().mockResolvedValue({ created: true });
+  kcAdmin.validateMsClientSecret.mockClear().mockResolvedValue({ ok: true });
   kcAdmin.removeMicrosoftIdp.mockClear().mockResolvedValue(undefined);
   kcAdmin.ensureLdapFederation.mockClear().mockResolvedValue({ created: true });
   kcAdmin.removeLdapFederation.mockClear().mockResolvedValue(undefined);
@@ -205,5 +207,40 @@ describe('POST /integrations empty-resave protection', () => {
       .send({ emailProvider: 'smtp', smtpHost: 'smtp.office365.com', smtpPort: '587', smtpSecure: true, smtpUser: 'depot@x.com' });
     expect(wrote('smtp_host')[1]).toBe('smtp.office365.com');
     expect(wrote('smtp_secure')[1]).toBe('true');
+  });
+});
+
+describe('POST /login-ms365 — a secret is verified before it can overwrite Keycloak', () => {
+  test('a secret ID (GUID) pasted as the secret is rejected before any Keycloak call', async () => {
+    const r = await request(app).post('/api/setup/login-ms365').send({ tenantId: TID, clientId: CID, clientSecret: '11111111-2222-3333-4444-555555555555' });
+    expect(r.body.ok).toBe(false);
+    expect(r.body.error).toMatch(/secret ID/i);
+    expect(kcAdmin.validateMsClientSecret).not.toHaveBeenCalled();
+    expect(kcAdmin.ensureMicrosoftIdp).not.toHaveBeenCalled();
+    expect(setCalls()).toHaveLength(0);
+  });
+
+  test('a secret Microsoft rejects is refused and Keycloak is left untouched', async () => {
+    kcAdmin.validateMsClientSecret.mockResolvedValue({ ok: false, reason: 'AADSTS7000215: Invalid client secret provided' });
+    const r = await request(app).post('/api/setup/login-ms365').send({ tenantId: TID, clientId: CID, clientSecret: 'autofilled1' });
+    expect(r.body.ok).toBe(false);
+    expect(r.body.error).toMatch(/rejected/i);
+    expect(r.body.hint).toMatch(/AADSTS7000215/);
+    expect(kcAdmin.ensureMicrosoftIdp).not.toHaveBeenCalled();
+    expect(setCalls()).toHaveLength(0);
+  });
+
+  test('a masked placeholder means "keep the current secret" and skips verification', async () => {
+    const r = await request(app).post('/api/setup/login-ms365').send({ tenantId: TID, clientId: CID, clientSecret: '**********' });
+    expect(r.body.ok).toBe(true);
+    expect(kcAdmin.validateMsClientSecret).not.toHaveBeenCalled();
+    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: null, graphDelegation: false });
+  });
+
+  test('a verified secret proceeds exactly as before', async () => {
+    const r = await request(app).post('/api/setup/login-ms365').send({ tenantId: TID, clientId: CID, clientSecret: 'topsecret' });
+    expect(r.body.ok).toBe(true);
+    expect(kcAdmin.validateMsClientSecret).toHaveBeenCalledWith({ tenantId: TID, clientId: CID, clientSecret: 'topsecret' });
+    expect(kcAdmin.ensureMicrosoftIdp).toHaveBeenCalled();
   });
 });

@@ -305,3 +305,29 @@ describe('delegated Graph token refresh (Depot-side)', () => {
     expect(await kcAdmin.refreshMsGraphToken('dead-token')).toBeNull();
   });
 });
+
+describe('validateMsClientSecret — proves a secret before Keycloak stores it', () => {
+  const args = { tenantId: 'tid', clientId: 'cid', clientSecret: 'value~abc' };
+
+  test('ok when Entra issues a token for the client-credentials grant', async () => {
+    mockFetch([{ status: 200, json: { access_token: 't' } }]);
+    expect(await kcAdmin.validateMsClientSecret(args)).toEqual({ ok: true });
+    const body = String(global.fetch.mock.calls[0][1].body);
+    expect(body).toContain('grant_type=client_credentials');
+    expect(new URLSearchParams(body).get('client_secret')).toBe('value~abc'); // ~ is percent-encoded on the wire
+  });
+
+  test('reports the AADSTS reason when Entra rejects it, without trace noise', async () => {
+    mockFetch([{ status: 401, json: { error: 'invalid_client', error_description: 'AADSTS7000215: Invalid client secret provided. Ensure the secret being sent is the value. Trace ID: x Correlation ID: y Timestamp: z' } }]);
+    const v = await kcAdmin.validateMsClientSecret(args);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/^AADSTS7000215: Invalid client secret provided$/);
+  });
+
+  test('a network failure is a refusal, never a pass', async () => {
+    global.fetch = jest.fn(async () => { throw new Error('ECONNRESET'); });
+    const v = await kcAdmin.validateMsClientSecret(args);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toMatch(/could not reach Microsoft/);
+  });
+});
