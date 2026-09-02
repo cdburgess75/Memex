@@ -148,7 +148,14 @@ pwsh bin/setup-graph.ps1 -DisplayName "Depot (<Customer>)" -CertPath <cert.cer> 
 It prints the login client secret **once** plus its expiry. Then in Depot →
 **Settings → Sign-in methods → Microsoft 365**: paste tenant ID, client ID, and
 the secret → **Enable**. Depot provisions the Keycloak identity provider itself;
-no Keycloak console work. Record `m365.login.secret_expires` in the customer
+no Keycloak console work.
+
+> **Paste the secret *Value*, not its ID.** Entra shows the Value once, at
+> creation; the *Secret ID* column is a GUID and will never work. Clear anything
+> the browser autofilled into the box first. Depot proves the secret against
+> Entra **before** writing it — a wrong one is refused with Microsoft's reason
+> and the working secret is left untouched (a bad save once overwrote a live
+> secret and broke every Microsoft sign-in until it was re-entered). Record `m365.login.secret_expires` in the customer
 manifest — the quarterly review checks it, and `-RotateLoginSecret` mints a
 replacement.
 
@@ -191,9 +198,11 @@ Adds `offline_access`, `Sites.ReadWrite.All`, `Files.ReadWrite.All` to the app r
 
 **4. Mark the connector delegated** — on a SharePoint connector (Settings → Connections), tick **"delegated."** App-only connectors are unaffected; the flag is per connector.
 
+**5. Activate token refresh (once)** — Settings → Sign-in methods → Microsoft 365 → paste the login client secret **Value** (the one from §4; mint a new one with `-RotateLoginSecret` if it was not kept) → Save. Depot stores it encrypted and refreshes each user's brokered Graph token itself, so delegated sessions stop bouncing to re-login every ~1h. The same warning as §4 applies: Value not ID, no autofill; the save is verified with Entra first.
+
 Notes:
 - Delegated `Sites.ReadWrite.All` is bounded by what the signed-in user can already reach — it is **not** tenant-wide data access (that's the app-only `Sites.Selected` model). Depot acting *as the user* is the point.
-- The brokered token lasts ~1 hour; `offline_access` is granted so it can be refreshed. Automatic refresh (Keycloak token-exchange) is a planned follow-on; until then a user may need to re-auth after ~1h.
+- The brokered token lasts ~1 hour; `offline_access` is granted so it can be refreshed. Depot refreshes it **itself** once step 5 is done — no Keycloak token-exchange involved.
 - Record `m365.delegation = true` in the customer manifest.
 
 ## 5. Verify
