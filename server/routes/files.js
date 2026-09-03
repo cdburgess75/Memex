@@ -9,6 +9,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
 const thumbnails = require('../lib/thumbnails');
+const mediaTickets = require('../lib/mediaTickets');
 const encryption = require('../lib/encryption');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
@@ -1628,16 +1629,29 @@ router.get('/:id/url', auth, async (req, res) => {
   }
 });
 
+// GET /api/files/media-ticket — a short-lived, user-scoped ticket the page
+// appends to inline media URLs (see mediaTickets.js). Requested over the normal
+// authed channel; the resulting ticket lets <img>/<video> requests, which can't
+// send the Authorization header, still be attributed to this user.
+router.get('/media-ticket', auth, (req, res) => {
+  res.json(mediaTickets.issue(req.user));
+});
+
 // GET /api/files/:id/thumbnail — a small WEBP preview of the file's first
 // page/frame for the card wells, generated lazily on first view and cached in
 // the object store. Types that can't be rendered (or a render failure, or a
 // disabled Collabora for Office) return 204 so the card falls back to its type
 // label. The browser only requests this for previewable types.
-router.get('/:id/thumbnail', auth, async (req, res) => {
+//
+// Auth is by media ticket (?t=), not the Authorization header, because this is
+// loaded as an <img> src. Per-file read access is still enforced below.
+router.get('/:id/thumbnail', async (req, res) => {
   try {
+    const user = mediaTickets.resolve(req.query.t);
+    if (!user) return res.status(401).end();
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
-      user: req.user,
+      user,
       required: 'read',
       columns: `${DOCUMENT_COLUMNS}, d.content_hash`,
       deleted: 'active',
