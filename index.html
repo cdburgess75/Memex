@@ -31,6 +31,8 @@
   --accent-wash: #FCE7EE;
   --accent-ink: #FFFFFF; /* readable text on --accent; recomputed by applyAccent() per luminance */
   --accent-2: #7C3AED;   /* Command Deck secondary — violet, for crimson→violet gradients */
+  --viz-cyan: #0891B2;    /* KPI sparkline / data */
+  --viz-lime: #65A30D;    /* KPI bars / data */
   --danger: #C0392B;        /* destructive actions, critical status */
   --danger-strong: #A93226; /* danger hover */
   --success: #2E7D32;
@@ -61,6 +63,8 @@ html.dark {
   --accent-wash: #2A1420;
   --accent-ink: #FFFFFF; /* crimson accent carries white text */
   --accent-2: #A855F7;   /* Command Deck secondary — violet */
+  --viz-cyan: #22D3EE;    /* KPI sparkline / data */
+  --viz-lime: #A3E635;    /* KPI bars / data */
   --danger: #E5665A;
   --danger-strong: #F07D72;
   --success: #5DBB63;
@@ -151,12 +155,13 @@ body {
   padding: 0 14px;
   border: 0;
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  color: #fff;
   font: 600 13px var(--ui);
   cursor: pointer;
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent-2) 72%, transparent);
 }
-.masthead-upload:hover { filter: brightness(1.06); }
+.masthead-upload:hover { filter: brightness(1.08); }
 .masthead-upload .plus { font-size: 16px; line-height: 1; }
 .masthead-upload .chev { font-size: 11px; opacity: 0.85; }
 /* Upload is the secondary action next to the primary Create button. */
@@ -1456,6 +1461,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-nav-link { cursor: pointer; }
 .file-nav-link:hover, .file-nav-label:hover { background: var(--accent-wash); color: var(--ink); }
 .file-nav-link.active { color: var(--accent); background: var(--accent-wash); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+html.dark .file-nav-link.active { box-shadow: inset 3px 0 0 var(--accent), 0 0 20px -9px var(--accent); }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
 .accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -2784,6 +2790,10 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   .file-home-main { padding: 14px 12px 40px; }
   .file-home-title, .file-library-title { font-size: 19px; }
   .file-library-command-right { display: none; } /* density + details pane: no use on a phone */
+  .file-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .file-card-cover { height: 84px; }
+  .file-card-cover .cover-type { font-size: 30px; }
+  .file-card-body { padding: 9px 11px; }
   .file-library-commandbar.has-selection { padding: 8px 10px; }
   .file-library-tool { padding: 8px 11px; }
   .file-filter-chip { padding: 7px 12px; font-size: 14px; }
@@ -3491,7 +3501,7 @@ function setupStepHtml(step, s) {
         <button class="ghost-btn" type="button" id="setup-logo-remove" onclick="setupClearLogo()" style="${setupHasLogo(s) ? '' : 'display:none'}">Remove</button>
       </div>
     </div>
-    <div class="setup-field"><label>Accent color</label><input type="color" id="setup-accent" value="${esc(s.tenant?.accent || '#C2603D')}" style="width:56px;height:34px;padding:2px;cursor:pointer"></div>`;
+    <div class="setup-field"><label>Accent color</label><input type="color" id="setup-accent" value="${esc(s.tenant?.accent || '#E11048')}" style="width:56px;height:34px;padding:2px;cursor:pointer"></div>`;
   if (step === 2) return `
     <h3 class="setup-h3">AI (Anthropic)</h3>
     <div class="setup-field setup-inline"><input id="setup-ai-key" type="password" autocomplete="new-password" placeholder="Anthropic API key (sk-ant-…)"><button class="ghost-btn" type="button" onclick="setupTestAi()">Test</button></div>
@@ -5907,7 +5917,7 @@ function appearanceSettingsHtml() {
     <div class="settings-sub" style="margin-top:16px">Accent color</div>
     <div class="accent-swatches">${swatches}</div>
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
-      <label class="accent-custom"><input type="color" value="${current || '#C2603D'}" onchange="applyAccent(this.value);switchSettingsTab('profile')"><span>Custom…</span></label>
+      <label class="accent-custom"><input type="color" value="${current || '#E11048'}" onchange="applyAccent(this.value);switchSettingsTab('profile')"><span>Custom…</span></label>
       <button class="ghost-btn" onclick="applyAccent('');switchSettingsTab('profile')">Reset to default</button>
     </div>
     <p class="settings-notice" style="margin-top:10px">Theme and accent are saved on this device.</p>`;
@@ -7919,8 +7929,8 @@ async function renderHome() {
       <div class="home-section-h"><h2>Key metrics</h2><button class="home-link" onclick="setFileView('active')">Open library</button></div>
       <div class="home-kpis">
         ${storageTile}
-        ${kpi('Files', files.length.toLocaleString(), IC_FILES, deltaHtml(filesDelta, 'this week') || '<div class="home-kpi-sub">total files</div>', homeSpark(filesSeries, sparkColor(filesDelta)))}
-        ${kpi('Shared files', shared.toLocaleString(), IC_SHARE, deltaHtml(sharedDelta, 'this week') || '<div class="home-kpi-sub">via links or grants</div>', homeSpark(sharedSeries, sparkColor(sharedDelta)))}
+        ${kpi('Files', files.length.toLocaleString(), IC_FILES, deltaHtml(filesDelta, 'this week') || '<div class="home-kpi-sub">total files</div>', homeSpark(filesSeries, 'var(--viz-cyan)'))}
+        ${kpi('Shared files', shared.toLocaleString(), IC_SHARE, deltaHtml(sharedDelta, 'this week') || '<div class="home-kpi-sub">via links or grants</div>', homeSpark(sharedSeries, 'var(--viz-lime)'))}
         ${isAdmin ? kpi('Active users', String(stats.activeUsers ?? '—'), IC_USERS, '<div class="home-kpi-sub">last 7 days</div>', '') : kpi('Libraries', libs.toLocaleString(), IC_LAYERS, '<div class="home-kpi-sub">you can access</div>', '')}
       </div>
       <div class="home-section-h"><h2>Recent &amp; activity</h2></div>
