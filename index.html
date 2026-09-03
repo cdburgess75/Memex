@@ -1108,6 +1108,11 @@ html.office .provider-btn:hover {
   z-index: 1000;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* A toast holding an Undo control has to be clickable and reads as two parts. */
+.toast.has-action { pointer-events: auto; display: inline-flex; align-items: center; gap: 16px; padding-right: 16px; }
+.toast-action { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: var(--paper); font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 0; cursor: pointer; }
+.toast-action:hover { opacity: 0.75; }
+.toast-action:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
 
 /* ingest mode tabs */
 .mode-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
@@ -4100,11 +4105,35 @@ function closeMastUploadMenu() {
 
 /* ---------- toast ---------- */
 let toastTimer;
+let _toastAction = null;
 function toast(msg) {
   const t = document.getElementById('toast');
+  _toastAction = null;
+  t.classList.remove('has-action');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+// A toast that carries one reversible action (e.g. "Moved to Trash · Undo").
+// Reversible things skip the confirm dialog and offer this instead; it stays
+// up longer so there is time to act, then fades on its own.
+function toastUndo(msg, onAction, { label = 'Undo', duration = 10000 } = {}) {
+  const t = document.getElementById('toast');
+  _toastAction = onAction;
+  const span = document.createElement('span'); span.className = 'toast-msg'; span.textContent = msg;
+  const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'toast-action'; btn.textContent = label;
+  btn.onclick = fireToastAction;
+  t.replaceChildren(span, btn);
+  t.classList.add('has-action', 'show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show', 'has-action'); _toastAction = null; }, duration);
+}
+function fireToastAction() {
+  const fn = _toastAction; _toastAction = null;
+  const t = document.getElementById('toast');
+  clearTimeout(toastTimer);
+  t.classList.remove('show', 'has-action');
+  if (fn) fn();
 }
 
 function securityLevelLabel(level) {
@@ -4660,6 +4689,13 @@ function escAttr(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;',
 function emptyState(title, text, action = '') {
   return `<div class="file-empty-home"><div class="file-empty-title">${esc(title)}</div><div class="file-empty-text">${esc(text)}</div>${action ? `<div class="file-empty-actions">${action}</div>` : ''}</div>`;
 }
+// An empty state should offer the way out, not just describe the void — but only
+// to someone who can actually upload. Viewers get the words without a dead button.
+function uploadEmptyAction() {
+  return (currentUser && currentUser.role !== 'viewer')
+    ? `<button class="run-btn" type="button" onclick="chooseUpload('files')">Upload files</button>`
+    : '';
+}
 
 
 // Helper: apply inline transforms to a string (for use inside table cells etc.)
@@ -4719,12 +4755,12 @@ function fmtBytes(bytes) {
 }
 
 async function adminDeleteFile(fileId, fileName) {
-  if (!await askConfirm(`Delete "${fileName}"? This cannot be undone.`, { danger: true })) return;
+  if (!await askConfirm(`Move "${fileName}" to Trash? You can restore it from Trash later.`, { danger: true })) return;
   try {
     await apiDelete('/files/' + fileId);
-    toast('File deleted');
+    toast('Moved to Trash');
     renderAdmin();
-  } catch (e) { toast('Delete failed: ' + e.message); }
+  } catch (e) { toast('Could not move to Trash: ' + e.message); }
 }
 
 function complianceStatusClass(value) {
@@ -6458,7 +6494,25 @@ function fileOwner(f) {
   if (currentUser && email.toLowerCase() === String(currentUser.email || '').toLowerCase()) return currentUser.name || email;
   return f.uploaded_by_name || email;
 }
-function fileDate(value) { return value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : ''; }
+// Dates read relative while they are fresh ("2 days ago") and switch to an
+// absolute date once they are older than a week ("Sep 17, 2026"). Never both.
+function fileDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const diff = Date.now() - d.getTime();
+  const day = 86400000;
+  if (diff >= 0 && diff < 7 * day) {
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + (mins === 1 ? ' min ago' : ' mins ago');
+    const hrs = Math.floor(diff / 3600000);
+    if (hrs < 24) return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+    const days = Math.floor(diff / day);
+    return days + (days === 1 ? ' day ago' : ' days ago');
+  }
+  return d.toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' });
+}
 function fileSizeLabel(size) {
   size = Number(size) || 0;
   const trim = (n) => (Math.round(n * 100) / 100).toString(); // up to 2 decimals, no trailing zeros
@@ -8179,7 +8233,7 @@ function renderDocumentLibraryList(opts = {}) {
   const inner = (!folders.length && !rows.length)
     ? (q
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
-        : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Upload files or switch views to see shared and recent documents.'))
+        : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
     : fileLayoutMode === 'grid'
       ? `<div class="file-card-grid">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`
       : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
@@ -8391,13 +8445,31 @@ async function deleteSelectedItems() {
   const total = files.length + folders.length;
   if (!total) return;
   const label = total === 1 ? `"${(files[0]?.name) || folders[0].split('/').pop()}"` : `${total} items`;
+  // A files-only delete is fully reversible: skip the dialog, move to Trash, and
+  // offer a 10-second Undo. Folders can't report which documents they trashed,
+  // so a folder in the selection keeps the confirm dialog.
+  if (!folders.length) {
+    const ids = files.map(f => String(f.id));
+    for (const id of ids) {
+      try { await apiDelete('/files/' + id); }
+      catch (e) { toast('Could not move a file to Trash: ' + e.message); return; }
+    }
+    clearFileSelection(false);
+    await loadFiles();
+    toastUndo(`${label} moved to Trash`, async () => {
+      for (const id of ids) { try { await apiPost('/files/' + id + '/restore', {}); } catch (e) {} }
+      await loadFiles();
+      toast(ids.length === 1 ? 'File restored' : `${ids.length} files restored`);
+    });
+    return;
+  }
   if (!await askConfirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`, { danger: true })) return;
   for (const f of files) {
     await apiDelete('/files/' + f.id);
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
   }
   for (const p of folders) {
-    try { await apiPost('/files/folder/delete', { path: p }); } catch (e) { toast('Folder delete failed: ' + e.message); }
+    try { await apiPost('/files/folder/delete', { path: p }); } catch (e) { toast('Could not move that folder to Trash: ' + e.message); }
   }
   clearFileSelection(false);
   await loadFiles();
@@ -8829,7 +8901,7 @@ async function renderFileList() {
   if (!rows.length) {
     el.innerHTML = q
       ? emptyState('No files match this search', 'Try a shorter search, another file type, or clear the search field.')
-      : emptyState('No files in this view', 'Upload files or switch to Shared, Links, or Trash.');
+      : emptyState('No files in this view', 'Drop files anywhere on this page, or switch to Shared, Links, or Trash.', uploadEmptyAction());
     return;
   }
   el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Owner</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
