@@ -2034,6 +2034,8 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-card-grid .file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .file-card-preview { aspect-ratio: 4 / 3; background: var(--surface-2); display: grid; place-items: center; position: relative; }
 .file-card-preview img { width: 100%; height: 100%; object-fit: cover; }
+.file-card-thumb { opacity: 0; transition: opacity .18s ease; }
+.file-card-thumb.loaded { opacity: 1; }
 .file-card-ext { font: 600 22px var(--mono); color: var(--ink-faint); letter-spacing: .02em; }
 .file-card-preview--folder .cover-folder-glyph { color: var(--ink-faint); display: grid; place-items: center; }
 .file-card-body { padding: 12px; min-width: 0; display: grid; gap: 3px; }
@@ -8145,7 +8147,7 @@ function fileCardHtml(f) {
   const name = fileDisplayName(f);
   const ext = fileExt(name);
   return `<div class="file-card${sel ? ' selected' : ''}" data-fid="${fid}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">`
-    + `<div class="file-card-preview"><span class="file-card-ext">${esc((ext || 'file').slice(0, 5))}</span>`
+    + `<div class="file-card-preview">${fileCardThumbHtml(f, ext)}`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
     + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
@@ -9278,6 +9280,25 @@ async function deleteFile(fileId, name) {
 const OFFICE_EXTS = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'];
 const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'm4v', 'mov'];
 const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'ogg', 'oga', 'aac', 'flac'];
+// Types the server can render a card thumbnail for (mirrors server/lib/thumbnails.js).
+// SVG is left off — it already renders fine as-is and needs no raster preview.
+const THUMB_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'pdf', 'mp4', 'webm', 'ogv', 'm4v', 'mov', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
+function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
+// The card well shows a real thumbnail when we can make one, falling back to a
+// quiet type label. The label is rendered up front (hidden) so a failed/absent
+// thumbnail reveals it with no layout shift; the server returns 204 for anything
+// it can't render, which trips onerror.
+function fileCardThumbHtml(f, ext) {
+  const label = `<span class="file-card-ext"${fileHasThumb(ext) ? ' hidden' : ''}>${esc((ext || 'file').slice(0, 5))}</span>`;
+  if (!fileHasThumb(ext)) return label;
+  return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="/api/files/${esc(String(f.id))}/thumbnail" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)">${label}`;
+}
+function thumbFailed(img) {
+  const well = img.parentElement;
+  img.remove();
+  const label = well && well.querySelector('.file-card-ext');
+  if (label) label.hidden = false;
+}
 const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'txt', 'md', 'csv', 'log', 'json', ...VIDEO_EXTS, ...AUDIO_EXTS];
 let recentOpensList = [];
 function recordOpen(fileId) { apiPost('/files/' + fileId + '/open', {}).catch(() => {}); }
