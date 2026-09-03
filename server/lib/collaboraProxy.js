@@ -20,9 +20,24 @@ function isAdminPath(p) {
   return ADMIN_RE.test(String(p || ''));
 }
 
+// Collabora's server-to-server SERVICE endpoints — document conversion, WOPI
+// discovery/capabilities, link/structure extraction, metrics — are consumed by
+// Memex's OWN backend over the internal docker network (e.g. the discovery fetch
+// in routes/files.js), never by the browser editor. They must not be reachable
+// through the public app origin: /cool/convert-to in particular is an unauthenticated
+// document-conversion service (resource abuse + untrusted-input into LibreOffice),
+// and /hosting/discovery leaks internal editor URLs. Block them here so they fall
+// through to the SPA 404; the internal backend calls bypass this proxy entirely.
+const SERVICE_RE = /^\/(?:hosting\/(?:discovery|capabilities)|(?:cool|lool)\/(?:convert-to|extract-link-targets|extract-document-structure|render-search-result|get-thumbnail|getmetrics))(?:\/|$|\?)/i;
+
+function isServicePath(p) {
+  return SERVICE_RE.test(String(p || ''));
+}
+
 function isCollaboraPath(p) {
   const path = String(p || '');
-  if (isAdminPath(path)) return false; // fall through to the SPA 404, never proxied
+  if (isAdminPath(path)) return false;   // admin console/ws — never public
+  if (isServicePath(path)) return false; // server-to-server service endpoints — never public
   return PREFIXES.some(pre => path === pre || path.startsWith(pre + '/') || path.startsWith(pre + '?'));
 }
 
@@ -72,4 +87,4 @@ function handleUpgrade(req, socket, head) {
   }).catch(() => socket.destroy());
 }
 
-module.exports = { isCollaboraPath, isAdminPath, httpMiddleware, handleUpgrade, PREFIXES };
+module.exports = { isCollaboraPath, isAdminPath, isServicePath, httpMiddleware, handleUpgrade, PREFIXES };
