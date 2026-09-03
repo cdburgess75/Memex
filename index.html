@@ -2,7 +2,7 @@
 <html lang="en" class="auth-locked">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Depot</title>
 
 <link rel="preload" href="/vendor/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -1194,13 +1194,8 @@ html.office .provider-btn:hover {
   .shell { grid-template-columns: 1fr; }
   .index-col { border-right: none; border-bottom: 1px solid var(--ink); }
   .panel { padding: 28px 24px 50px; }
-  .masthead, .tabs { padding-left: 20px; padding-right: 20px; }
-  .masthead { align-items: flex-start; flex-direction: column; gap: 12px; overflow: hidden; }
-  .brand { align-items: flex-start; flex-wrap: wrap; max-width: 100%; gap: 8px 12px; }
-  .brand h1 { flex: 0 0 auto; }
-  .brand .colophon { flex: 1 1 180px; min-width: 0; line-height: 1.35; white-space: normal; }
-  .masthead-actions { width: 100%; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
-  .tabs { max-width: 100%; overflow-x: auto; justify-content: flex-start; }
+  /* (masthead layout for narrow screens lives in the "Mobile & tablet" section) */
+  .tabs { padding-left: 20px; padding-right: 20px; max-width: 100%; overflow-x: auto; justify-content: flex-start; }
   .tab { white-space: nowrap; }
   .login-modal { max-width: 100%; padding: 30px 24px 32px; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
@@ -1680,6 +1675,15 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
 .file-library-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px; }
 .file-library-table th { text-align: left; color: var(--ink-faint); font: 600 11.5px var(--ui); letter-spacing: 0.03em; text-transform: uppercase; padding: 11px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+/* Column widths (classes rather than inline styles so narrow screens can shrink them). */
+.file-col-select { width: 44px; }
+.file-col-type { width: 120px; }
+.file-col-size { width: 110px; }
+.file-col-modified { width: 160px; }
+.file-col-owner { width: 210px; }
+.file-col-library { width: 150px; }
+.file-col-actions { width: 150px; }
+.file-col-actions-wide { width: 300px; } /* text-button action cells (Shared/search rows, connection mounts) */
 .file-col-sort { border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0; }
 .file-col-sort:hover { color: var(--ink); }
 .file-col-sort.active { color: var(--accent); }
@@ -1980,7 +1984,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .home-act-body { flex: 1; min-width: 0; }
 .home-act-t { font-size: 12.5px; line-height: 1.4; }
 .home-act-time { font-size: 11px; color: var(--ink-faint); white-space: nowrap; flex: none; }
-@media (max-width: 900px) { .home-kpis { grid-template-columns: repeat(2, 1fr); } .home-grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .home-grid2 { grid-template-columns: 1fr; } }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -2450,16 +2454,24 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .file-table th:nth-child(4), .file-table td:nth-child(4) { display: none; }
 }
 @media (max-width: 820px) {
-  html.file-home-mode .masthead { align-items: flex-start; }
   .file-home-shell { display: block; }
-  .file-home-nav { position: sticky; top: 0; max-height: none; z-index: 4; display: grid; grid-template-columns: 1fr; gap: 12px; padding: 14px 16px; border-right: 0; border-bottom: 1px solid var(--rule); }
-  .file-library-nav { margin-top: 0; }
-  .file-library-heading { padding: 8px 10px; }
-  .file-library-nav-body { gap: 8px; }
+  .rail-resizer { display: none; } /* an invisible col-resize strip has no business on touch layouts */
+  /* The rail collapses into a sticky bar: a compact library chip, then one
+     horizontally scrolling row of pills (views, connections, Admin). */
+  .file-home-nav { position: sticky; top: 0; max-height: none; z-index: 4; display: block; padding: 8px 12px 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .file-library-nav { margin-top: 0; display: grid; gap: 8px; }
+  .library-switch-wrap { justify-self: start; max-width: 100%; }
+  .file-library-heading { width: auto; max-width: 100%; padding: 4px 10px 4px 5px; border-radius: 999px; gap: 8px; }
+  .file-library-heading-sub { display: none; }
+  .file-library-glyph { width: 24px; height: 24px; border-radius: 50%; font-size: 12px; }
+  .library-menu { right: auto; min-width: 260px; max-width: calc(100vw - 24px); }
+  .file-library-nav-body { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 -12px; padding: 0 12px 10px; scroll-snap-type: x proximity; }
+  .file-library-nav-body::-webkit-scrollbar { display: none; }
+  .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main { display: contents; }
   .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree { display: none; }
-  .file-nav-main { display: flex; gap: 8px; flex-wrap: wrap; overflow: visible; padding-bottom: 2px; }
-  .file-nav-link { flex: 0 0 auto; width: auto; white-space: nowrap; padding: 8px 12px; }
-  .file-nav-icon { width: auto; }
+  .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; padding: 6px 13px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
+  .file-nav-link.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
+  .file-nav-link > span > span:last-child:not(:first-child) { display: none; } /* connection pills: name only */
   .file-home-main { padding: 22px 16px 34px; }
   .file-home-title-row { align-items: flex-start; flex-direction: column; }
   .file-home-search { width: 100%; }
@@ -2482,32 +2494,23 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .compliance-control-row { grid-template-columns: 1fr; }
   .compliance-control-gap { grid-column: 1; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
-  .file-library-commandbar { align-items: stretch; flex-direction: column; }
-  .file-library-command-right { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 3px; }
-  /* command-left holds the Create/Upload dropdown menus — no overflow clip here;
-     the type tabs already scroll inside their own overflow container. */
-  .file-library-command-left { width: 100%; flex-wrap: nowrap; padding-bottom: 3px; }
+  /* Command bar wraps instead of stacking; the file table stays a table here
+     (iPad portrait has the width) and only becomes a list on phones. */
+  .file-library-commandbar { align-items: center; flex-direction: row; flex-wrap: wrap; gap: 8px 10px; }
+  .file-library-commandbar:not(.has-selection) { flex-wrap: wrap; }
+  .file-library-command-right { width: auto; flex: 0 0 auto; }
+  /* command-left holds the Create/Upload dropdown menus — no overflow clip here. */
+  .file-library-command-left { width: auto; flex: 1 1 auto; flex-wrap: wrap; }
   .file-library-search { width: 100%; }
-  .file-library-table-wrap { border: 0; background: transparent; overflow: visible; }
-  .file-library-table, .file-library-table tbody, .file-library-table tr, .file-library-table td { display: block; width: 100%; min-width: 0; }
-  .file-library-table thead { display: none; }
-  .file-library-table tr { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; margin-bottom: 12px; padding: 10px 12px; }
-  .file-library-table tr.selected { border-color: #A7B7FF; }
-  .file-library-table td { border: 0; padding: 6px 0; }
-  .file-library-table td:first-child { display: block; }
-  .file-library-actions { justify-content: flex-start; flex-wrap: wrap; }
   .file-library-person { background: transparent; padding: 0; }
   .file-library-layout.details-open { grid-template-columns: 1fr; }
   .file-details-pane { position: static; }
 }
 @media (max-width: 520px) {
   .file-home-main { padding: 18px 12px 30px; }
-  .file-home-nav { gap: 10px; padding: 10px 12px 12px; }
   .file-folder-btn { min-height: 38px; }
   .file-create-btn { justify-content: flex-start; padding: 8px 10px; }
   .file-workspace-main, .file-actions-main, .file-theme-main, .file-nav-label { display: none; }
-  .file-files-main { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
-  .file-files-main .file-nav-link { padding: 8px 12px; }
   .file-rec-card { flex-basis: 88vw; padding: 15px; }
   .file-rec-body { grid-template-columns: 1fr; }
   .file-preview { display: none; }
@@ -2688,6 +2691,172 @@ html.dark .file-action-btn.danger { color: #E57373; }
 .setup-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 18px; }
 /* Tabular figures for aligned numeric columns (KPIs, sizes, dates). */
 .tnum { font-variant-numeric: tabular-nums; }
+/* ── Mobile & tablet (iPhone / iPad) ──────────────────────────────────────────
+   Breakpoints, widest to narrowest:
+     ≤1080  iPad landscape / narrow desktop — table columns shrink so Name survives
+     ≤820   iPad portrait — header becomes brand+actions / search rows; the rail is
+            a sticky pill bar (rules above); the file table stays a table
+     ≤640   phones — one compact header row + search, list rows, bottom-sheet
+            dialogs, 16px fields (stops iOS zoom-on-focus)
+   plus hover:none / pointer:coarse rules for touch regardless of width. */
+.phone-only { display: none; }
+button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+@media (max-width: 1080px) {
+  .file-library-table { min-width: 0; }
+  .file-col-type { width: 96px; }
+  .file-col-size { width: 96px; white-space: nowrap; }
+  .file-col-modified { width: 118px; }
+  .file-col-owner { width: 72px; }
+  .file-col-library { width: 120px; }
+  .file-col-actions { width: 112px; }
+  .file-col-actions-wide { width: 220px; }
+  /* Share and Download stay one tap away in the ⋯ menu; rows keep follow, favorite, more. */
+  .file-library-actions .file-library-icon-btn:nth-child(2),
+  .file-library-actions .file-library-icon-btn:nth-child(3) { display: none; }
+}
+
+@media (max-width: 820px) {
+  .masthead, html.file-home-mode .masthead {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand actions" "search search";
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 16px 10px;
+    min-height: 0;
+    max-width: none;
+    overflow: visible;
+  }
+  .masthead-left { grid-area: brand; min-width: 0; }
+  .brand { flex-wrap: nowrap; max-width: 100%; }
+  .brand--has-logo .brand-logo.has-logo, .brand--has-logo .brand-logo.has-logo img { height: 38px; }
+  .brand--has-logo .brand-logo.has-logo img { max-width: 220px; }
+  .masthead-search { grid-area: search; width: auto; max-width: none; margin: 0; }
+  .masthead-actions, html.file-home-mode .masthead-actions { grid-area: actions; width: auto; max-width: none; overflow: visible; padding: 0; justify-content: flex-end; flex-wrap: nowrap; }
+  .user-chip { max-width: 180px; }
+}
+
+@media (max-width: 640px) {
+  /* iOS Safari zooms into any field under 16px; keep phone fields at 16px. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+  select, textarea { font-size: 16px !important; }
+  .phone-only { display: block; }
+
+  /* Header: brand · status dot · icons · avatar on one row, search below. */
+  .masthead, html.file-home-mode .masthead { gap: 6px 8px; padding: 6px 12px 8px; padding-top: max(6px, env(safe-area-inset-top)); }
+  .brand-logo { width: 30px; height: 30px; font-size: 17px; border-radius: 8px; }
+  .brand h1 { font-size: 19px; }
+  .brand--has-logo .brand-logo.has-logo, .brand--has-logo .brand-logo.has-logo img { height: 30px; }
+  .brand--has-logo .brand-logo.has-logo img { max-width: 140px; }
+  .masthead-actions, html.file-home-mode .masthead-actions { gap: 5px; }
+  #theme-btn { display: none; } /* lives in the account menu on phones (.phone-only) */
+  .mast-icon-btn { width: 34px; height: 34px; border-radius: 8px; }
+  #status-pill { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 0; color: transparent; box-shadow: none; }
+  #status-pill::before { left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; }
+  .update-cta { padding: 0 10px; font-size: 0; gap: 0; }
+  .user-chip { padding: 2px; border-color: transparent; max-width: none; }
+  .user-chip-email, .user-chip .chev { display: none; }
+  .user-chip-avatar { width: 30px; height: 30px; }
+  .masthead-search { height: 40px; padding: 0 4px 0 12px; border-radius: 20px; }
+  .search-scope-btn { padding: 0 8px; }
+  /* Header popovers become sheets pinned under the header row. */
+  .status-popover, .notif-panel, .app-menu-popover, .meet-panel { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 10px; right: 10px; width: auto; max-width: none; min-width: 0; }
+  .search-scope-menu { position: fixed; top: calc(100px + env(safe-area-inset-top)); left: 10px; right: 10px; min-width: 0; }
+
+  /* Files */
+  .file-home-main { padding: 14px 12px 40px; }
+  .file-home-title, .file-library-title { font-size: 19px; }
+  .file-library-command-right { display: none; } /* density + details pane: no use on a phone */
+  .file-library-commandbar.has-selection { padding: 8px 10px; }
+  .file-library-tool { padding: 8px 11px; }
+  .file-filter-chip { padding: 7px 12px; font-size: 14px; }
+  .file-library-breadcrumb { font-size: 13px; }
+
+  /* Rows become a list: [☐] icon + name/sub … ★ ⋯ on line 1, date on line 2.
+     Cells keep their DOM order; flex `order` + a forced line break re-flow them. */
+  .file-library-table-wrap { overflow: visible; }
+  .file-library-table, .file-library-table tbody { display: block; width: 100%; min-width: 0; }
+  .file-library-table thead { display: none; }
+  .file-library-table tbody tr { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; padding: 9px 12px; border-bottom: 1px solid var(--rule-soft); }
+  .file-library-table tbody tr:last-child { border-bottom: 0; }
+  .file-library-table tbody tr::after { content: ''; order: 3; flex-basis: 100%; height: 0; }
+  /* Specificity note: the density rule `html[data-density] .file-library-table td`
+     is (0,2,2); every per-cell rule below is scoped through `tbody` to match it. */
+  html[data-density] .file-library-table td, .file-library-table tbody td { display: block; order: 4; flex: 0 0 auto; padding: 0; border: 0; min-width: 0; margin-top: 3px; font-size: 12px; color: var(--ink-faint); text-align: left; }
+  .file-library-table tbody td.file-col-select { order: 0; flex: 0 0 22px; margin-top: 0; }
+  .file-library-table tbody td.file-col-name, .file-library-table tbody td:first-child:not(.file-col-select) { order: 1; flex: 1 1 0; min-width: 0; margin-top: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .file-library-table tbody td.file-col-actions, .file-library-table tbody td:last-child { order: 2; flex: 0 0 auto; margin-top: 0; }
+  /* Text-button action cells (Home/Shared/search rows, connection mounts) are too wide for line 1: give them their own line. */
+  .file-library-table tbody td:last-child:has(.file-row-actions) { order: 5; flex-basis: 100%; margin-top: 8px; }
+  .file-library-table tbody td.file-col-owner, .file-library-table tbody td:has(> .cell-empty) { display: none; }
+  .file-library-table tbody td.file-col-select + .file-col-name + td:not(.file-col-actions) { margin-left: 32px; } /* meta aligns under the name */
+  .file-library-table tbody td:not(.file-col-select):not(.file-col-name):not(.file-col-actions) + td:not(.file-col-actions):not(:last-child)::before { content: '·'; margin-right: 6px; }
+  .file-library-table tbody td.file-col-name + td::before, .file-library-table tbody td:first-child + td::before { content: none; }
+  .file-row-actions { gap: 6px; }
+  .file-action-btn { padding: 6px 10px; }
+  .file-library-table .file-library-name { grid-template-columns: 30px minmax(0, 1fr); gap: 10px; }
+  .file-library-table .file-icon, .file-library-table .file-folder-icon { width: 30px; height: 30px; }
+  .file-library-table .file-row-title { font-size: 15px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-library-table .file-row-sub { font-size: 12px; }
+  .file-library-actions { gap: 0; }
+  .file-library-select { opacity: 1; width: 20px; height: 20px; }
+  .file-library-table tbody tr:hover { background: transparent; }
+  .file-library-table tbody tr.selected, .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
+
+  /* Dialogs: bottom sheets; Settings and the file preview go full-screen. */
+  .scrim { padding: 0; align-items: flex-end; }
+  #login-scrim, #setup-scrim { align-items: center; padding: 16px; }
+  .modal { width: 100%; max-width: none; max-height: 92vh; max-height: 92dvh; border-radius: 16px 16px 0 0; border-width: 1px 0 0; padding: 22px 18px calc(20px + env(safe-area-inset-bottom)); }
+  .modal.modal-ask { width: 100%; padding: 20px 18px calc(16px + env(safe-area-inset-bottom)); }
+  .login-modal { border-radius: 12px; border-width: 1px; padding: 22px 20px 26px; }
+  .modal-x { top: 10px; right: 10px; width: 34px; height: 34px; }
+  .modal h2 { font-size: 20px; padding-right: 36px; }
+  .modal .btn-row button { flex: 1 1 auto; min-height: 42px; }
+  .settings-modal { height: 100vh; height: 100dvh; max-height: none; border-radius: 0; border: 0; padding-top: calc(14px + env(safe-area-inset-top)); }
+  .settings-modal > h2, .settings-modal > .sub, .settings-modal > .settings-tabs { padding-left: 18px; padding-right: 18px; }
+  .settings-modal > #settings-body { padding: 0 18px; }
+  .settings-modal > .btn-row { padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); }
+  .settings-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 10px 0 14px; }
+  .settings-tabs::-webkit-scrollbar { display: none; }
+  .settings-tab { flex: 0 0 auto; white-space: nowrap; padding: 10px 12px; }
+  .settings-grid { grid-template-columns: 1fr; gap: 4px 0; }
+  .settings-grid label { margin-top: 8px; }
+  .file-preview-modal { width: 100%; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; border: 0; padding-top: env(safe-area-inset-top); }
+  .file-preview-head { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
+  .file-preview-head strong { flex: 1 1 100%; font-size: 14px; }
+  .file-preview-head-actions { flex: 1 1 100%; flex-wrap: wrap; }
+  .file-preview-head-actions > * { flex: 1 1 auto; }
+  .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .home-kpi { padding: 14px 14px 12px; }
+  .home-kpi-value { font-size: 26px; }
+  .home-card { min-width: 0; overflow: hidden; padding: 14px; }
+  .home-tbl { table-layout: fixed; }
+  .home-tbl th:nth-child(n+3), .home-tbl td:nth-child(n+3) { display: none; } /* Name + Type only */
+  .home-tbl td { padding: 10px 6px; }
+  .home-act-t { overflow-wrap: anywhere; }
+  .toast { left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateY(20px); border-radius: 10px; text-align: center; }
+  .toast.show { transform: none; }
+
+  /* Non-file panels (Admin, etc.) */
+  .panel { padding: 20px 14px 40px; }
+  .tabs { padding-left: 12px; padding-right: 12px; }
+}
+
+/* Touch, regardless of width: selection boxes are always visible (no hover to
+   reveal them) and the small icon buttons grow to a comfortable tap size. */
+@media (hover: none) {
+  .file-library-select { opacity: 1; }
+  .file-library-table tbody tr:hover { background: transparent; }
+  .file-library-table tbody tr.selected, .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
+}
+@media (pointer: coarse) {
+  .file-library-icon-btn { min-width: 34px; height: 34px; }
+  .file-library-tool, .icon-btn, .ghost-btn, .run-btn { min-height: 38px; }
+  .file-nav-link, .file-quick-pill { min-height: 38px; }
+  .app-menu-item, .file-upload-menu button, .file-search-menu button, .ai-model-item, .status-popover .security-indicator { padding-top: 11px; padding-bottom: 11px; }
+}
+
 /* Respect the OS "reduce motion" setting: collapse animations (incl. the infinite
    caret blink, panel rise, and update-pulse) and near-zero all transitions. */
 @media (prefers-reduced-motion: reduce) {
@@ -2768,6 +2937,8 @@ html.dark .file-action-btn.danger { color: #E57373; }
       <button class="user-chip" id="user-chip" type="button" onclick="toggleAppMenu(event)" aria-haspopup="true"><span class="user-chip-avatar" id="user-chip-avatar"></span><span class="user-chip-email" id="user-chip-email"></span><span class="chev">⌄</span></button>
       <div class="app-menu-popover" id="app-menu">
         <div class="app-menu-section">Account</div>
+        <!-- Phone-only: the header drops the theme toggle to fit one row, so it lives here. -->
+        <button class="app-menu-item phone-only" onclick="closeAppMenu();toggleTheme()">Switch light / dark theme</button>
         <button class="app-menu-item" onclick="closeAppMenu();signOut()">Sign out</button>
         <div class="app-menu-version" id="app-menu-version"></div>
       </div>
@@ -2994,12 +3165,13 @@ function fileTableHeadHtml(selectAllClass) {
   const cols = visibleFileColumns().map(c => {
     const active = fileSort.col === c.id;
     const arrow = active ? (fileSort.dir > 0 ? ' ▲' : ' ▼') : '';
-    const style = `${c.width ? `width:${c.width};` : ''}${c.align === 'right' ? 'text-align:right;' : ''}`;
-    return `<th style="${style}"><button class="file-col-sort${active ? ' active' : ''}" onclick="setFileSort('${c.id}')">${esc(c.label)}${arrow}</button></th>`;
+    // Column widths live in CSS (.file-col-*) so narrow viewports (iPad, phones)
+    // can shrink or hide them — inline widths would win over every media query.
+    return `<th class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><button class="file-col-sort${active ? ' active' : ''}" onclick="setFileSort('${c.id}')">${esc(c.label)}${arrow}</button></th>`;
   }).join('');
-  const sel = selectAllClass === null ? '<th style="width:44px"></th>'
-    : `<th style="width:44px"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th>`;
-  return `<thead><tr>${sel}${cols}<th style="width:150px;text-align:right;position:relative"><button class="file-col-chooser" title="Choose columns" onclick="toggleFileColumnsMenu(event)">⋮</button><div class="file-cols-menu" id="file-cols-menu"></div></th></tr></thead>`;
+  const sel = selectAllClass === null ? '<th class="file-col-select"></th>'
+    : `<th class="file-col-select"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th>`;
+  return `<thead><tr>${sel}${cols}<th class="file-col-actions" style="text-align:right;position:relative"><button class="file-col-chooser" title="Choose columns" onclick="toggleFileColumnsMenu(event)">⋮</button><div class="file-cols-menu" id="file-cols-menu"></div></th></tr></thead>`;
 }
 function toggleFileColumnsMenu(event) {
   event?.stopPropagation();
@@ -6312,7 +6484,7 @@ function fileHomeRow(f) {
   const owner = fileOwner(f);
   const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
   const folder = fileFolderPath(f);
-  return `<tr><td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td>${fileDate(f.created_at)}</td><td><span class="file-library-person">${esc(owner)}</span></td><td><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
+  return `<tr><td class="file-col-name"><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td class="file-col-modified">${fileDate(f.created_at)}</td><td class="file-col-owner"><span class="file-library-person">${esc(owner)}</span></td><td class="file-col-actions"><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 const ICON_BELL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
@@ -6343,7 +6515,7 @@ function fileNameCellHtml(f) {
   if (!fileVisibleCols.has('type')) bits.push(esc(fileKind(ext)));
   if (folder) bits.push(esc(folder));
   const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
-  return `<td><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title file-name-link" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
+  return `<td class="file-col-name"><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title file-name-link" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
 }
 // Click the file name → open/preview; clicking elsewhere on the row toggles selection.
 function openFileFromName(event, el) {
@@ -6355,9 +6527,9 @@ function openFileFromName(event, el) {
 function fileLibraryRow(f) {
   const selected = selectedFileIds.has(String(f.id));
   const cols = visibleFileColumns().map(c =>
-    c.id === 'name' ? fileNameCellHtml(f) : `<td${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
+    c.id === 'name' ? fileNameCellHtml(f) : `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}>${fileCellHtml(f, c.id)}</td>`
   ).join('');
-  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onmousedown="pointerDragStart(event,'file',this.dataset.fid)" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td style="width:44px"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
+  return `<tr class="${selected ? 'selected' : ''}" data-fid="${esc(String(f.id))}" onmousedown="pointerDragStart(event,'file',this.dataset.fid)" onclick="handleLibraryRowClick(event, this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)"><td class="file-col-select"><button class="file-library-select ${selected ? 'selected' : ''}" title="${selected ? 'Deselect' : 'Select'}" data-fid="${esc(String(f.id))}" onclick="toggleFileSelection(this.dataset.fid, event)"></button></td>${cols}<td class="file-col-actions"><div class="file-library-actions">${fileLibraryActions(f)}</div></td></tr>`;
 }
 function folderLibraryRow(folder) {
   const sel = selectedFolderPaths.has(folder.path);
@@ -6365,8 +6537,8 @@ function folderLibraryRow(folder) {
   // (respecting each column's alignment) rather than an empty cell that reads
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
-    `<td${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td style="width:44px"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+    `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
@@ -6782,7 +6954,7 @@ function renderContentSearchResults(rows, q) {
   if (!rows.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents.`); return; }
   lastRenderedFileIds = rows.map(f => String(f.id));
   const body = rows.map(fileLibraryRow).join('');
-  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th style="width:44px"></th>${visibleFileColumns().map(c => `<th${c.align === 'right' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th style="width:150px;text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th class="file-col-select"></th>${visibleFileColumns().map(c => `<th class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th class="file-col-actions" style="text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
   updateFileLibraryChrome();
 }
 
@@ -7427,7 +7599,7 @@ function renderMountView() {
     ? `<div class="file-library-commandbar"><div class="file-library-command-left">${canWrite ? `<button class="file-library-tool" onclick="mountUploadPick()">↑ Upload</button>` : ''}${canMkdir ? `<button class="file-library-tool" onclick="mountNewFolder()">+ New folder</button>` : ''}</div></div>`
     : '';
   const table = m.ordered.length
-    ? `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th>Name</th><th style="width:150px">Modified</th><th style="width:320px"></th></tr></thead><tbody>${m.ordered.map(row).join('')}</tbody></table></div>`
+    ? `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-actions-wide"></th></tr></thead><tbody>${m.ordered.map(row).join('')}</tbody></table></div>`
     : '<p class="settings-notice">This folder is empty.</p>';
   const main = `<div class="file-library" id="mount-view">
     <div class="file-library-breadcrumb-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -8447,7 +8619,7 @@ async function renderFileList() {
       : emptyState('No files in this view', 'Upload files or switch to Shared, Links, or Trash.');
     return;
   }
-  el.innerHTML = `<table class="file-library-table"><thead><tr><th>Name</th><th style="width:160px">Modified</th><th style="width:210px">Owner</th><th style="width:230px;text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
+  el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Owner</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
 }
 
 function handleFilePickerChange(event) {
