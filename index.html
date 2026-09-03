@@ -8016,6 +8016,7 @@ async function renderHome() {
     const [all, stats] = await Promise.all([
       apiGet('/files').catch(() => []),
       apiGet('/files/home-stats').catch(() => ({})),
+      ensureMediaTicket(),
     ]);
     const files = (all || []).filter(f => !isFolderMarker(f));
     const totalSize = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
@@ -8132,7 +8133,7 @@ async function purgeFile(fileId, name) {
 
 async function loadFiles() {
   try {
-    const [files] = await Promise.all([apiGet(filesEndpoint()), loadRecentOpens()]);
+    const [files] = await Promise.all([apiGet(filesEndpoint()), loadRecentOpens(), ensureMediaTicket()]);
     filesList = files;
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
   } catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
@@ -9291,6 +9292,17 @@ const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'ogg', 'oga', 'aac', 'flac'];
 // SVG is left off — it already renders fine as-is and needs no raster preview.
 const THUMB_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'pdf', 'mp4', 'webm', 'ogv', 'm4v', 'mov', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
 function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
+// Inline media (thumbnail <img>) can't send the auth header, so it authenticates
+// with a short-lived ticket in the URL. Fetch it (once, refreshed well before its
+// 60-min server TTL) before any thumbnail view renders; keep the URL stable so the
+// browser can cache the images.
+let _mediaTicket = '', _mediaTicketAt = 0;
+async function ensureMediaTicket() {
+  if (_mediaTicket && Date.now() - _mediaTicketAt < 45 * 60 * 1000) return _mediaTicket;
+  try { const r = await apiGet('/files/media-ticket'); _mediaTicket = r.ticket || ''; _mediaTicketAt = Date.now(); } catch { /* keep any existing ticket */ }
+  return _mediaTicket;
+}
+function thumbUrl(id) { return `/api/files/${encodeURIComponent(String(id))}/thumbnail${_mediaTicket ? `?t=${encodeURIComponent(_mediaTicket)}` : ''}`; }
 // The card well shows a real thumbnail when we can make one, falling back to a
 // quiet type label. The label is rendered up front (hidden) so a failed/absent
 // thumbnail reveals it with no layout shift; the server returns 204 for anything
@@ -9298,7 +9310,7 @@ function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
 function fileCardThumbHtml(f, ext) {
   const label = `<span class="file-card-ext"${fileHasThumb(ext) ? ' hidden' : ''}>${esc((ext || 'file').slice(0, 5))}</span>`;
   if (!fileHasThumb(ext)) return label;
-  return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="/api/files/${esc(String(f.id))}/thumbnail" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)">${label}`;
+  return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)">${label}`;
 }
 function thumbFailed(img) {
   const well = img.parentElement;
@@ -9311,7 +9323,7 @@ function thumbFailed(img) {
 // on any miss, so a non-previewable type or a render failure looks exactly as before.
 function fileRowIconHtml(f, ext) {
   if (!fileHasThumb(ext)) return fileIconHtml(ext);
-  return `<span class="file-icon file-icon--thumb" data-ext="${esc(ext)}"><img class="file-row-thumb" loading="lazy" decoding="async" alt="" src="/api/files/${esc(String(f.id))}/thumbnail" onload="this.naturalWidth ? this.classList.add('loaded') : rowThumbFailed(this)" onerror="rowThumbFailed(this)"></span>`;
+  return `<span class="file-icon file-icon--thumb" data-ext="${esc(ext)}"><img class="file-row-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : rowThumbFailed(this)" onerror="rowThumbFailed(this)"></span>`;
 }
 function rowThumbFailed(img) {
   const wrap = img.parentElement;
