@@ -2783,7 +2783,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   .file-library-table tbody tr::after { content: ''; order: 3; flex-basis: 100%; height: 0; }
   /* Specificity note: the density rule `html[data-density] .file-library-table td`
      is (0,2,2); every per-cell rule below is scoped through `tbody` to match it. */
-  html[data-density] .file-library-table td, .file-library-table tbody td { display: block; order: 4; flex: 0 0 auto; padding: 0; border: 0; min-width: 0; margin-top: 3px; font-size: 12px; color: var(--ink-faint); text-align: left; }
+  html[data-density] .file-library-table td, .file-library-table tbody td { display: block; order: 4; flex: 0 0 auto; width: auto; padding: 0; border: 0; min-width: 0; margin-top: 3px; font-size: 12px; color: var(--ink-faint); text-align: left; } /* width:auto — the .file-col-* table widths must not size list cells */
   .file-library-table tbody td.file-col-select { order: 0; flex: 0 0 22px; margin-top: 0; }
   .file-library-table tbody td.file-col-name, .file-library-table tbody td:first-child:not(.file-col-select) { order: 1; flex: 1 1 0; min-width: 0; margin-top: 0; font-size: 13.5px; color: var(--ink-soft); }
   .file-library-table tbody td.file-col-actions, .file-library-table tbody td:last-child { order: 2; flex: 0 0 auto; margin-top: 0; }
