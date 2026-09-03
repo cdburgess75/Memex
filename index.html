@@ -1725,6 +1725,22 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-preview-head strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-preview-head-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .file-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--surface-2); }
+/* Preview overlay: keyboard-flighted paging + a details side panel. */
+.file-preview-modal { position: relative; border-radius: 14px; }
+.file-preview-body { overflow: hidden; position: relative; }
+.file-preview-stage { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: auto; }
+.file-preview-info { flex: 0 0 0; width: 0; overflow: hidden; border-left: 1px solid var(--rule); background: var(--surface); }
+.file-preview-modal.info-open .file-preview-info { flex: 0 0 280px; width: 280px; padding: 16px 18px; overflow: auto; }
+.preview-info-title { font: 600 13px var(--ui); color: var(--ink); margin-bottom: 10px; }
+.preview-info-row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13px; }
+.preview-info-k { color: var(--ink-faint); flex: 0 0 auto; }
+.preview-info-v { color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.preview-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface-raised); color: var(--ink-soft); display: grid; place-items: center; cursor: pointer; opacity: .9; transition: opacity .09s, border-color .09s, color .09s; }
+.preview-nav:hover { color: var(--ink); border-color: var(--line-strong); opacity: 1; }
+.preview-nav[disabled] { opacity: .3; cursor: default; pointer-events: none; }
+.preview-nav-prev { left: 14px; }
+.preview-nav-next { right: 14px; }
+.file-preview-modal.info-open .preview-nav-next { right: 294px; }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-media { margin: auto; max-width: 100%; max-height: 100%; background: #000; }
@@ -7793,7 +7809,7 @@ function previewMountEntry(i) {
   closeFilePreview();
   const primary = e.openUrl ? `<button class="run-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
   const body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(fileExt(e.name))}<div class="file-info-meta"><div class="file-row-title">${esc(e.name)}</div><div class="file-row-sub">${fmtBytes(e.size || 0)}${e.modified ? ' · ' + new Date(e.modified).toLocaleString() : ''} · via ${esc(m.name)}</div></div></div><p class="settings-notice" style="margin-top:10px">This file lives in ${esc(m.kind || 'the connected system')} — Depot streams it on demand; nothing is copied.</p></div>`;
-  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div>`, modalClass: 'file-preview-modal' });
+  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><div class="file-preview-stage">${body}</div></div>`, modalClass: 'file-preview-modal' });
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -9378,6 +9394,42 @@ function moveFileToLibrary(fileId) {
   selectedFileIds = new Set([String(fileId)]);
   openLibraryTransfer('move');
 }
+// ── Preview overlay: keyboard-flighted paging + a details side panel ──────────
+// ←/→ move through the files in the current view without leaving the overlay;
+// "i" toggles the details panel; Escape and backdrop-click close (openModal).
+let _previewIds = [], _previewIdx = -1;
+function previewInfoHtml(f, name, ext) {
+  if (!f) return `<div class="preview-info-title">Details</div><div class="preview-info-row"><span class="preview-info-k">Name</span><span class="preview-info-v">${esc(name)}</span></div>`;
+  const loc = fileFolderPath(f) || currentLibraryName();
+  const rows = [
+    ['Type', esc(fileKind(ext))],
+    ['Size', fileSizeLabel(f.size || 0)],
+    ['Modified', fileDate(f.created_at)],
+    ['Owner', esc(fileOwner(f))],
+    ['Location', esc(loc)],
+  ];
+  return `<div class="preview-info-title">Details</div>`
+    + rows.map(([k, v]) => `<div class="preview-info-row"><span class="preview-info-k">${k}</span><span class="preview-info-v" title="${v}">${v}</span></div>`).join('');
+}
+function previewNav(dir) {
+  if (!_previewIds.length || _previewIdx < 0) return;
+  const i = _previewIdx + dir;
+  if (i < 0 || i >= _previewIds.length) return;
+  previewFile(_previewIds[i]);
+}
+function togglePreviewInfo() {
+  document.querySelector('#file-preview-scrim .file-preview-modal')?.classList.toggle('info-open');
+}
+function previewKeydown(e) {
+  const scrim = document.getElementById('file-preview-scrim');
+  if (!scrim || !scrim.classList.contains('open')) return;
+  const t = e.target;
+  if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); previewNav(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); previewNav(1); }
+  else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); togglePreviewInfo(); }
+}
+document.addEventListener('keydown', previewKeydown);
 function closeFilePreview() { closeModal('file-preview-scrim'); }
 function togglePreviewOpenMenu(e) { e?.stopPropagation(); document.getElementById('preview-open-menu')?.classList.toggle('open'); }
 function closePreviewOpenMenu() { document.getElementById('preview-open-menu')?.classList.remove('open'); }
@@ -9385,6 +9437,8 @@ document.addEventListener('click', e => { const m = document.getElementById('pre
 async function previewFile(fileId, opts = {}) {
   recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
+  // Ordered ids in whatever view is showing (list rows or gallery cards), for ←/→ paging.
+  try { _previewIds = [...new Set([...document.querySelectorAll('#file-list [data-fid], #panel [data-fid]')].map(el => el.dataset.fid))]; _previewIdx = _previewIds.indexOf(String(fileId)); } catch (e) { _previewIds = []; _previewIdx = -1; }
   const ext = f ? fileExt(f.name) : '';
   const isText = ['txt', 'md', 'csv', 'log', 'json'].includes(ext);
   const isSheet = ['xlsx', 'xls'].includes(ext);
@@ -9417,7 +9471,9 @@ async function previewFile(fileId, opts = {}) {
   const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button></div></div>` : '';
   const shareBtn = (currentUser?.role !== 'viewer') ? `<button class="ghost-btn" onclick="closeFilePreview();openShareFile('${fileId}')">Share</button>` : '';
   closeFilePreview();
-  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body">${body}</div>`, modalClass: 'file-preview-modal' });
+  const navPrev = _previewIdx > 0 ? '' : ' disabled';
+  const navNext = (_previewIdx >= 0 && _previewIdx < _previewIds.length - 1) ? '' : ' disabled';
+  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
   if (isText) {
     const el = document.getElementById('file-edit-text');
     try { const r = await fetch(inlineUrl); const t = await r.text(); if (el) el.value = t.slice(0, 500000); }
