@@ -8,6 +8,7 @@ const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const { generateToken } = require('../lib/wopiTokens');
 const storage = require('../lib/storage');
+const thumbnails = require('../lib/thumbnails');
 const encryption = require('../lib/encryption');
 const db = require('../lib/db');
 const settings = require('../lib/settings');
@@ -1624,6 +1625,39 @@ router.get('/:id/url', auth, async (req, res) => {
     res.json({ url, name: doc.name });
   } catch (e) {
     serverError(res, e);
+  }
+});
+
+// GET /api/files/:id/thumbnail — a small WEBP preview of the file's first
+// page/frame for the card wells, generated lazily on first view and cached in
+// the object store. Types that can't be rendered (or a render failure, or a
+// disabled Collabora for Office) return 204 so the card falls back to its type
+// label. The browser only requests this for previewable types.
+router.get('/:id/thumbnail', auth, async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({
+      id: req.params.id,
+      user: req.user,
+      required: 'read',
+      columns: `${DOCUMENT_COLUMNS}, d.content_hash`,
+      deleted: 'active',
+    });
+    if (!doc) return res.status(404).end();
+
+    const buf = await thumbnails.getThumbnail(doc);
+    if (!buf) {
+      // Negative result — let the browser cache it briefly so a folder of
+      // un-previewable files doesn't re-request every scroll.
+      res.setHeader('Cache-Control', 'private, max-age=600');
+      return res.status(204).end();
+    }
+    res.setHeader('Content-Type', 'image/webp');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('Content-Length', String(buf.length));
+    return res.end(buf);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).end();
   }
 });
 
