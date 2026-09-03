@@ -1741,6 +1741,41 @@ html.file-home-mode .masthead-actions { display: flex; }
 .preview-nav-prev { left: 14px; }
 .preview-nav-next { right: 14px; }
 .file-preview-modal.info-open .preview-nav-next { right: 294px; }
+/* Three-question share flow */
+.file-share-modal { width: min(560px, 95vw); }
+.share-flow { display: flex; flex-direction: column; }
+.share-q { display: grid; grid-template-columns: 26px 1fr; gap: 14px; padding: 18px 2px; border-bottom: 1px solid var(--rule-soft); }
+.share-q[hidden] { display: none; }
+.share-q-num { width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-soft); font: 600 13px var(--ui); display: grid; place-items: center; }
+.share-q-title { font: 600 15px var(--ui); color: var(--ink); margin-bottom: 12px; }
+.share-seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.share-seg-opt { border: 0; background: var(--surface); color: var(--ink-soft); font: 500 13.5px var(--ui); padding: 9px 14px; cursor: pointer; }
+.share-seg-opt + .share-seg-opt { border-left: 1px solid var(--rule); }
+.share-seg-opt.active { background: var(--accent-wash); color: var(--accent); }
+.share-people { margin-top: 12px; }
+.share-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.share-chips:empty { display: none; }
+.share-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 6px 3px 11px; font-size: 13px; color: var(--ink); }
+.share-chip button { border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+.share-chip button:hover { color: var(--danger); }
+.share-email-input, .share-inline-input { width: 100%; box-sizing: border-box; border: 1px solid var(--rule); border-radius: 8px; padding: 9px 12px; background: var(--surface); color: var(--ink); font: 400 14px var(--ui); }
+.share-email-input:focus, .share-inline-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.share-inline-input { margin: 8px 0 4px; max-width: 260px; }
+.share-radio { display: flex; gap: 11px; align-items: flex-start; padding: 7px 0; cursor: pointer; }
+.share-radio input { margin-top: 3px; accent-color: var(--accent); }
+.share-radio-txt { display: flex; flex-direction: column; gap: 2px; }
+.share-radio-t { font: 500 14px var(--ui); color: var(--ink); }
+.share-radio-note { font-size: 12.5px; color: var(--ink-faint); }
+.share-radio.is-disabled { opacity: .5; cursor: default; }
+.share-toggle { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 14px; color: var(--ink); cursor: pointer; }
+.share-toggle input { accent-color: var(--accent); }
+.share-foot { display: flex; flex-direction: column; gap: 12px; padding: 18px 2px 2px; }
+.share-link-out { display: flex; gap: 8px; }
+.share-link-url { flex: 1; min-width: 0; border: 1px solid var(--rule); border-radius: 8px; padding: 9px 12px; background: var(--surface-2); color: var(--ink); font: 400 13px var(--mono); }
+.share-foot .run-btn { align-self: flex-start; }
+.share-foot .run-btn:disabled { opacity: .5; cursor: default; }
+.share-existing { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.share-existing summary { font: 500 13px var(--ui); color: var(--ink-soft); cursor: pointer; }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-media { margin: auto; max-width: 100%; max-height: 100%; background: #000; }
@@ -3060,6 +3095,7 @@ const RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024;
 let selectedFileIds = new Set();
 let selectedFolderPaths = new Set();
 let lastRenderedFileIds = []; // file ids currently shown in the library table (for select-all)
+let _shareEmails = [], _shareWho = 'link'; // three-question share flow state
 let lastRenderedFolderPaths = []; // folder paths currently shown (for select-all)
 let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout_v2') || 'commander';
@@ -8425,11 +8461,96 @@ async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  openModal({ id: 'file-share-scrim', html: `<h2>Share</h2><p class="sub">${esc(f.name)}</p><section class="file-share-section"><h3>Send to people</h3><p class="file-share-hint">Emails a link from you. People who already have an account get access with their own sign-in; anyone else gets a private link — one each, so you can see who opened it and cut one person off without affecting the others.</p><div class="file-share-grid"><label for="send-to">To</label><input id="send-to" type="text" placeholder="jane@clientco.com, bob@clientco.com"><label for="send-note">Note</label><input id="send-note" type="text" placeholder="Optional — appears in the email"><label for="send-expiry">Expires</label><select id="send-expiry"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="send-password">Password</label><input id="send-password" type="password" placeholder="Optional — shown to you once, never emailed"></div><label class="setup-check" style="margin-top:10px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="send-allow-upload" checked> Let them send files back too</label><div class="btn-row"><button class="run-btn" onclick="sendFileToPeople()">Send</button></div><div id="file-send-result" style="display:none;margin-top:10px"></div></section><section class="file-share-section" style="margin-top:24px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that opens this file without signing in.</p><div class="file-share-grid"><label for="share-expiry">Expires</label><select id="share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="share-password">Password</label><input id="share-password" type="password" placeholder="Optional"></div><div class="btn-row"><button class="run-btn" onclick="createShareLink()">Create link</button></div><div class="file-share-result" id="file-share-result"><input class="file-share-url" id="file-share-url" readonly><button class="file-library-tool" onclick="copyShareUrl()">Copy link</button></div><div class="file-share-list" id="file-share-list">${emptyState('Loading links', 'Checking existing share links for this file.')}</div></section><section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Grant specific signed-in people view or edit access.</p><div class="file-access-form"><input id="file-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="file-access-permission"><option value="read">Can view</option><option value="write">Can edit</option><option value="admin">Can manage</option></select><button class="run-btn" onclick="grantFileAccess()">Grant</button></div><div class="file-share-list" id="file-access-list">${emptyState('Loading access', 'Checking who can open this file.')}</div></section><div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div>`, modalClass: 'file-share-modal' });
+  _shareEmails = []; _shareWho = 'link';
+  openModal({ id: 'file-share-scrim', html: `<h2>Share</h2><p class="sub">${esc(f.name)}</p>`
+    + `<div class="share-flow">`
+    + `<div class="share-q"><div class="share-q-num">1</div><div class="share-q-body"><div class="share-q-title">Who gets it</div>`
+    + `<div class="share-seg"><button type="button" class="share-seg-opt active" data-who="link" onclick="shareSetWho('link')">Anyone with the link</button><button type="button" class="share-seg-opt" data-who="people" onclick="shareSetWho('people')">Only people I invite</button></div>`
+    + `<div class="share-people" id="share-people" hidden><div class="share-chips" id="share-chips"></div><input class="share-email-input" id="share-email-input" type="email" autocomplete="off" placeholder="Add people by email, then press Enter" onkeydown="shareEmailKey(event)"></div>`
+    + `</div></div>`
+    + `<div class="share-q"><div class="share-q-num">2</div><div class="share-q-body"><div class="share-q-title">What they can do</div>`
+    + `<label class="share-radio"><input type="radio" name="share-perm" value="read" checked><span class="share-radio-txt"><span class="share-radio-t">Can view</span><span class="share-radio-note">Open and download the file.</span></span></label>`
+    + `<label class="share-radio" id="share-perm-edit"><input type="radio" name="share-perm" value="write"><span class="share-radio-txt"><span class="share-radio-t">Can edit</span><span class="share-radio-note">Change the file. Needs a Depot account, so invite them by email.</span></span></label>`
+    + `</div></div>`
+    + `<div class="share-q" id="share-q3"><div class="share-q-num">3</div><div class="share-q-body"><div class="share-q-title">How long and how locked</div>`
+    + `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`
+    + `<label class="share-toggle"><input type="checkbox" id="share-pw-on" onchange="shareToggle('pw')"> Require a password</label><input type="password" class="share-inline-input" id="share-pw" hidden placeholder="Password" autocomplete="new-password">`
+    + `</div></div>`
+    + `<div class="share-foot"><div class="share-link-out" id="share-link-out" hidden><input class="share-link-url" id="share-link-url" readonly><button class="file-library-tool" onclick="copyShareLink()">Copy link</button></div><button class="run-btn" id="share-primary" onclick="doShare()">Create link</button></div>`
+    + `</div>`
+    + `<details class="share-existing"><summary>Active links and people with access</summary><div class="file-share-list" id="file-share-list">${emptyState('Loading', 'Checking existing links.')}</div><div class="file-share-list" id="file-access-list"></div></details>`
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:12px"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div>`, modalClass: 'file-share-modal' });
   await loadShareLinks(f.id);
   await loadFileAccess(f.id);
 }
 
+function shareSetWho(mode) {
+  _shareWho = mode;
+  document.querySelectorAll('.share-seg-opt').forEach(b => b.classList.toggle('active', b.dataset.who === mode));
+  const people = document.getElementById('share-people'); if (people) people.hidden = mode !== 'people';
+  const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = mode !== 'link';
+  // "Edit" needs an account, so it only applies to invited people, never a public link.
+  const editOpt = document.getElementById('share-perm-edit');
+  const editRadio = editOpt?.querySelector('input');
+  if (editRadio) {
+    editRadio.disabled = mode === 'link';
+    editOpt.classList.toggle('is-disabled', mode === 'link');
+    if (mode === 'link' && editRadio.checked) { const v = document.querySelector('input[name="share-perm"][value="read"]'); if (v) v.checked = true; }
+  }
+  if (mode === 'people') setTimeout(() => document.getElementById('share-email-input')?.focus(), 0);
+  shareUpdateFoot();
+}
+function shareEmailKey(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const v = e.target.value.trim().replace(/,+$/, '').trim();
+    if (v && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) && !_shareEmails.includes(v)) { _shareEmails.push(v); e.target.value = ''; renderShareChips(); }
+  } else if (e.key === 'Backspace' && !e.target.value && _shareEmails.length) { _shareEmails.pop(); renderShareChips(); }
+}
+function renderShareChips() {
+  const el = document.getElementById('share-chips');
+  if (el) el.innerHTML = _shareEmails.map((m, i) => `<span class="share-chip">${esc(m)}<button type="button" aria-label="Remove ${esc(m)}" onclick="shareRemoveEmail(${i})">×</button></span>`).join('');
+  shareUpdateFoot();
+}
+function shareRemoveEmail(i) { _shareEmails.splice(i, 1); renderShareChips(); }
+function shareToggle(which) {
+  if (which === 'expiry') { const on = document.getElementById('share-expiry-on')?.checked; const d = document.getElementById('share-expiry-date'); if (d) d.hidden = !on; }
+  else { const on = document.getElementById('share-pw-on')?.checked; const p = document.getElementById('share-pw'); if (p) p.hidden = !on; }
+}
+function shareUpdateFoot() {
+  const primary = document.getElementById('share-primary'); if (!primary) return;
+  if (_shareWho === 'people') { primary.textContent = _shareEmails.length ? `Send invite to ${_shareEmails.length}` : 'Send invite'; primary.disabled = !_shareEmails.length; }
+  else { primary.textContent = 'Create link'; primary.disabled = false; }
+}
+async function doShare() {
+  const f = firstSelectedFile(); if (!f) return;
+  const permission = document.querySelector('input[name="share-perm"]:checked')?.value || 'read';
+  if (_shareWho === 'people') {
+    if (!_shareEmails.length) return;
+    let ok = 0;
+    for (const email of _shareEmails) { try { await apiPut('/files/' + f.id + '/access', { email, permission }); ok++; } catch (e) { /* keep going */ } }
+    _shareEmails = []; renderShareChips();
+    toast(ok ? `Invited ${ok} ${ok === 1 ? 'person' : 'people'}` : 'Invite failed');
+    await loadFileAccess(f.id);
+  } else {
+    const expiryOn = document.getElementById('share-expiry-on')?.checked;
+    const dateVal = document.getElementById('share-expiry-date')?.value;
+    const days = (expiryOn && dateVal) ? Math.max(1, Math.ceil((new Date(dateVal + 'T23:59:59').getTime() - Date.now()) / 86400000)) : 7;
+    const password = document.getElementById('share-pw-on')?.checked ? (document.getElementById('share-pw')?.value || '') : '';
+    try {
+      const data = await apiPost('/files/' + f.id + '/shares', { expiresInDays: String(days), neverExpires: !expiryOn, password });
+      const url = data.share?.url; const out = document.getElementById('share-link-out'); const input = document.getElementById('share-link-url');
+      if (url && out && input) {
+        input.value = url; out.hidden = false;
+        await copyText(url).catch(() => {});
+        const exp = (expiryOn && dateVal) ? ` Expires ${new Date(dateVal + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}.` : '';
+        toast('Link copied.' + exp);
+      }
+      await loadShareLinks(f.id);
+    } catch (e) { toast('Share failed: ' + e.message); }
+  }
+}
+function copyShareLink() { const i = document.getElementById('share-link-url'); if (i && i.value) { copyText(i.value); toast('Link copied'); } }
 function shareDate(value) {
   return value ? new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
 }
