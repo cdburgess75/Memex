@@ -18,18 +18,19 @@
   src: url('/vendor/fonts/inter-var.woff2') format('woff2');
 }
 :root {
-  /* Depot signature — light */
+  /* Command Deck — light (daylight translation of the neon cockpit) */
   --masthead-h: 56px; /* header height — kept in sync with the file-home layout calcs */
-  --paper: #FBFBFA;
+  --paper: #F4F2FA;
   --surface: #FFFFFF;
-  --surface-2: #F4F4F2;
-  --ink: #1B1B19;
-  --ink-soft: #5B5A56;
-  --ink-faint: #8E8C87;
-  --accent: #4A4FC0;
-  --accent-soft: #3B3FA5;
-  --accent-wash: #ECEDFB;
+  --surface-2: #ECE9F5;
+  --ink: #17131F;
+  --ink-soft: #6B6478;
+  --ink-faint: #9A93A8;
+  --accent: #E11048;
+  --accent-soft: #C40D3E;
+  --accent-wash: #FCE7EE;
   --accent-ink: #FFFFFF; /* readable text on --accent; recomputed by applyAccent() per luminance */
+  --accent-2: #7C3AED;   /* Command Deck secondary — violet, for crimson→violet gradients */
   --danger: #C0392B;        /* destructive actions, critical status */
   --danger-strong: #A93226; /* danger hover */
   --success: #2E7D32;
@@ -39,26 +40,27 @@
   --danger-fill: #C0392B;   /* filled controls carrying white text */
   --danger-fill-strong: #A93226;
   --success-fill: #2E7D32;
-  --rule: rgba(27,27,25,0.09);
-  --rule-soft: rgba(27,27,25,0.05);
-  --shadow: 0 1px 2px rgba(20,19,17,0.05), 0 0 0 1px rgba(20,19,17,0.04);
+  --rule: rgba(23,19,31,0.09);
+  --rule-soft: rgba(23,19,31,0.05);
+  --shadow: 0 1px 2px rgba(23,19,31,0.05), 0 0 0 1px rgba(23,19,31,0.04);
   --ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --display: var(--ui);
   --body: var(--ui);
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 html.dark {
-  /* Depot signature — dark */
-  --paper: #16151A;
-  --surface: #1D1C22;
-  --surface-2: #26242C;
-  --ink: #ECEAF0;
-  --ink-soft: #A9A6B2;
-  --ink-faint: #74717E;
-  --accent: #8C8FF2;
-  --accent-soft: #5B60D6;
-  --accent-wash: #23253A;
-  --accent-ink: #17162B; /* dark ink: the dark-mode accent #8C8FF2 is too light for white text */
+  /* Command Deck — dark (the canonical neon cockpit) */
+  --paper: #0C0912;
+  --surface: #17121F;
+  --surface-2: #221B2E;
+  --ink: #F1EDF6;
+  --ink-soft: #9A93A8;
+  --ink-faint: #6E6579;
+  --accent: #FF2D55;
+  --accent-soft: #E01843;
+  --accent-wash: #2A1420;
+  --accent-ink: #FFFFFF; /* crimson accent carries white text */
+  --accent-2: #A855F7;   /* Command Deck secondary — violet */
   --danger: #E5665A;
   --danger-strong: #F07D72;
   --success: #5DBB63;
@@ -68,9 +70,9 @@ html.dark {
   --danger-fill: #C0392B;   /* stays saturated: white labels need >= 4.5:1 */
   --danger-fill-strong: #A93226;
   --success-fill: #2E7D32;
-  --rule: rgba(236,234,240,0.11);
-  --rule-soft: rgba(236,234,240,0.06);
-  --shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05);
+  --rule: rgba(255,255,255,0.09);
+  --rule-soft: rgba(255,255,255,0.06);
+  --shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -1923,21 +1925,34 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 /* Command-bar Create/Upload sizing (moved from the masthead) */
 .file-library-command-left .masthead-upload-wrap { flex: 0 0 auto; }
 .file-library-command-left .masthead-upload { padding: 7px 12px; font-size: 13px; }
-.file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
+/* Chromeless at rest: row actions fade in on hover or keyboard focus, and stay
+   shown while the row is selected. Touch keeps them visible (see @media hover:none). */
+.file-library-actions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity 0.12s; }
+.file-library-table tbody tr:hover .file-library-actions,
+.file-library-table tbody tr:focus-within .file-library-actions,
+.file-library-table tbody tr.selected .file-library-actions { opacity: 1; }
 .file-library-icon-btn { border: 0; background: transparent; color: var(--ink-faint); border-radius: 7px; min-width: 30px; height: 30px; padding: 0 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
 .file-library-icon-btn.file-bell-btn.on { color: var(--accent); }
 /* Card grid view */
-.file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 6px 2px 12px; }
-.file-card { position: relative; border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 15px 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; transition: border-color .12s, box-shadow .12s, transform .12s; }
-.file-card:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(0,0,0,.07); transform: translateY(-2px); }
-.file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.file-card-icon { height: 58px; display: grid; place-items: center; }
-.file-card-icon svg { height: 100%; width: auto; display: block; }
-.file-card-name { font-weight: 600; font-size: 12.5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-card-sub { font-size: 11px; color: var(--ink-faint); }
-.file-card-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 1px; }
-.file-card-actions .file-library-icon-btn { min-width: 26px; height: 26px; color: var(--ink-faint); }
+/* Command Deck gallery — an asset wall of vivid file cards. Scoped under
+   .file-card-grid so it wins over the legacy .file-card list rule further down. */
+.file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; padding: 6px 2px 16px; }
+.file-card-grid .file-card { position: relative; border: 1px solid var(--rule); border-radius: 14px; background: var(--surface); padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; text-align: left; overflow: hidden; box-shadow: var(--shadow); transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.file-card-grid .file-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0,0,0,.16); }
+.file-card-grid .file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 12px 26px color-mix(in srgb, var(--accent) 26%, transparent); }
+.file-card-cover { height: 106px; position: relative; display: flex; align-items: flex-end; padding: 11px; }
+.file-card-cover .cover-type { position: absolute; top: 6px; right: 13px; font: 800 40px/1 var(--display); color: rgba(255,255,255,.30); letter-spacing: -.02em; }
+.file-card-cover .cover-chip { font: 700 10.5px var(--ui); color: #fff; background: rgba(0,0,0,.26); padding: 3px 9px; border-radius: 99px; }
+.file-card-cover--folder { align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.file-card-cover--folder .cover-folder-glyph { color: var(--accent); display: grid; place-items: center; }
+.file-card-body { padding: 11px 13px; min-width: 0; }
+.file-card-name { font-weight: 600; font-size: 13.5px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-card-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; font-family: var(--mono); }
+.file-card-grid .file-card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.file-card-grid .file-card:hover .file-card-actions, .file-card-grid .file-card:focus-within .file-card-actions { opacity: 1; }
+.file-card-grid .file-card-actions .file-library-icon-btn { min-width: 28px; height: 28px; color: #fff; background: rgba(0,0,0,.30); border-radius: 7px; }
+.file-card-grid .file-card-actions .file-library-icon-btn:hover { background: rgba(0,0,0,.48); color: #fff; }
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
@@ -1945,20 +1960,20 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .home-section-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 26px 0 14px; }
 .home-section-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
 .home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.home-kpi { border: 1px solid var(--rule); border-radius: 16px; background: var(--surface); padding: 18px 18px 16px; box-shadow: 0 1px 3px rgba(16,18,40,.05); }
+.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 18px 18px 16px; }
 .home-kpi-top { display: flex; align-items: center; justify-content: space-between; }
 .home-kpi-label { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
 .home-kpi-ic { color: var(--ink-faint); opacity: .55; display: flex; }
 .home-kpi-ic svg { width: 18px; height: 18px; }
 .home-kpi-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 14px; }
-.home-kpi-value { font-size: 30px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
+.home-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
 .home-kpi-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; }
 .home-kpi-delta { font-size: 12px; font-weight: 700; margin-top: 7px; display: inline-flex; align-items: center; gap: 3px; }
-.home-kpi-delta.up { color: #17935C; } .home-kpi-delta.down { color: #E5484D; }
+.home-kpi-delta.up { color: var(--success); } .home-kpi-delta.down { color: var(--danger); }
 .home-act-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
 .home-grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
 .home-grid2.single { grid-template-columns: 1fr; }
-.home-card { border: 1px solid var(--rule); border-radius: 16px; background: var(--surface); padding: 16px 18px; box-shadow: 0 1px 3px rgba(16,18,40,.05); }
+.home-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px 18px; }
 .home-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .home-card-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
 .home-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -1973,7 +1988,8 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .home-tbl-name { display: flex; align-items: center; gap: 11px; font-weight: 600; color: var(--ink); }
 .home-tbl-name .file-icon { width: 26px; height: 26px; flex: none; }
 .home-tbl-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.type-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; }
+/* One neutral chip, not a rainbow per file type — restraint reads as premium. */
+.type-pill { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--rule); white-space: nowrap; }
 .home-file { display: flex; align-items: center; gap: 11px; padding: 8px 4px; border-radius: 8px; cursor: pointer; }
 .home-file:hover { background: var(--rule); }
 .home-file-icon .file-icon { width: 30px; height: 30px; }
@@ -2846,7 +2862,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
 /* Touch, regardless of width: selection boxes are always visible (no hover to
    reveal them) and the small icon buttons grow to a comfortable tap size. */
 @media (hover: none) {
-  .file-library-select { opacity: 1; }
+  .file-library-select, .file-library-actions { opacity: 1; }
   .file-library-table tbody tr:hover { background: transparent; }
   .file-library-table tbody tr.selected, .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
 }
@@ -3911,7 +3927,7 @@ function applyAccent(hex, persist = true) {
   const dark = document.documentElement.classList.contains('dark');
   const accent = dark ? _mix(base, [255, 255, 255], 0.2) : base;
   const soft = dark ? base : _mix(base, [0, 0, 0], 0.18);
-  const wash = dark ? _mix([22, 21, 26], base, 0.16) : _mix([255, 255, 255], base, 0.1);
+  const wash = dark ? _mix([12, 9, 18], base, 0.16) : _mix([255, 255, 255], base, 0.1);
   root.setProperty('--accent', _rgbToHex(...accent));
   root.setProperty('--accent-soft', _rgbToHex(...soft));
   root.setProperty('--accent-wash', _rgbToHex(...wash));
@@ -6561,6 +6577,12 @@ function fileBreadcrumbHtml() {
   });
   return `<div class="file-library-breadcrumb">${crumbs.join('')}<button class="file-breadcrumb-toggle" type="button" title="Hide path" aria-label="Hide path" onclick="toggleBreadcrumbPath()">${EYE_OFF_SVG}</button></div>`;
 }
+function fileLayoutToggleHtml() {
+  const grid = fileLayoutMode === 'grid';
+  return `<div class="file-layout-toggle" role="group" aria-label="View">`
+    + `<button class="${grid ? '' : 'active'}" type="button" title="List view" aria-label="List view" onclick="setFileLayoutMode('list')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>`
+    + `<button class="${grid ? 'active' : ''}" type="button" title="Gallery view" aria-label="Gallery view" onclick="setFileLayoutMode('grid')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button></div>`;
+}
 function fileDensityToggleHtml() {
   const compact = fileDensity === 'compact';
   const next = compact ? 'comfortable' : 'compact';
@@ -6703,7 +6725,7 @@ function fileLibraryCommandBarHtml() {
   const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
   const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
   const filterControl = `<div class="file-filter-wrap"><button class="file-filter-btn${activeType.id !== 'all' ? ' filtered' : ''}" id="file-filter-btn" type="button" onclick="toggleFileFilterMenu(event)" aria-haspopup="true" title="Filter by file type"><svg class="file-filter-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span class="file-filter-label">${esc(activeType.id === 'all' ? 'All types' : activeType.label)}</span><span class="chev">⌄</span></button><div class="file-filter-menu" id="file-filter-menu">${items}</div></div>`;
-  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span>${filterControl}</div><div class="file-library-command-right">${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span>${filterControl}</div><div class="file-library-command-right">${fileLayoutToggleHtml()}${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
@@ -7868,7 +7890,7 @@ async function renderHome() {
     const filesSeries = (uploads14 && uploads14.length > 1) ? uploads14 : bucket(() => true);
     const sharedSeries = bucket(isSharedFile);
     const filesDelta = homeDelta(filesSeries), sharedDelta = homeDelta(sharedSeries);
-    const sparkColor = (d) => d ? (d.up ? '#17935C' : '#E5484D') : 'var(--accent)';
+    const sparkColor = (d) => d ? (d.up ? 'var(--success)' : 'var(--danger)') : 'var(--accent)';
     const deltaHtml = (d, label) => d ? `<div class="home-kpi-delta ${d.up ? 'up' : 'down'}">${d.up ? '▲' : '▼'} ${d.pct}%${label ? ` <span style="color:var(--ink-faint);font-weight:500">${label}</span>` : ''}</div>` : '';
 
     const IC_DB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>';
@@ -7883,7 +7905,7 @@ async function renderHome() {
       : kpi('Storage used', fileSizeLabel(usedBytes), IC_DB, `<div class="home-kpi-sub">across ${files.length.toLocaleString()} files</div>`, '');
 
     const recentRows = recentFiles.length
-      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = (isSharedFile(f) || f.share_count > 0 || f.is_shared) ? 'Shared' : 'Private'; return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill" style="background:${ti.color}">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
+      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = (isSharedFile(f) || f.share_count > 0 || f.is_shared) ? 'Shared' : 'Private'; return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
       : `<tr><td colspan="5">${emptyState('No files yet', 'Upload files to see them here.')}</td></tr>`;
     const recentCard = `<div class="home-card"><table class="home-tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Modified</th><th>Access</th></tr></thead><tbody>${recentRows}</tbody></table></div>`;
 
@@ -7963,24 +7985,28 @@ function fileCardHtml(f) {
   const sel = selectedFileIds.has(String(f.id));
   const name = fileDisplayName(f);
   const following = followedFileIds.has(String(f.id));
+  const ext = fileExt(name);
+  const ti = fileTypeInfo(ext);
+  const cover = `linear-gradient(145deg, ${ti.color}, color-mix(in srgb, ${ti.color} 70%, #000))`;
+  const word = esc((ext || 'file').slice(0, 4));
   return `<div class="file-card${sel ? ' selected' : ''}" data-fid="${fid}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">`
+    + `<div class="file-card-cover" style="background:${cover}"><span class="cover-type" aria-hidden="true">${word}</span><span class="cover-chip">${esc(ti.label)}</span>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${following ? ' on' : ''}" title="${following ? 'Following — click to stop' : 'Follow this file'}" data-fid="${fid}" onclick="event.stopPropagation();toggleFileFollow(this.dataset.fid, this)">${following ? ICON_BELL : ICON_BELL_OFF}</button>`
-    + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div>`
-    + `<div class="file-card-icon">${fileIconSvg(fileExt(name), 46)}</div>`
-    + `<div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
-    + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)}</div></div>`;
+    + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
+    + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`;
 }
 function folderCardHtml(folder) {
   const on = folderBellOn(folder.path);
   const p = esc(folder.path);
   return `<div class="file-card file-card--folder" data-folder="${p}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)">`
+    + `<div class="file-card-cover file-card-cover--folder"><span class="cover-folder-glyph">${folderIconSvg(40)}</span>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
-    + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div>`
-    + `<div class="file-card-icon">${folderIconSvg(46)}</div>`
-    + `<div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
-    + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div>`;
+    + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
+    + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div>`;
 }
 
 // Small inline-SVG viz for the Dashboard Home, colored with the workspace accent.
@@ -8001,9 +8027,11 @@ function homeSpark(vals, color, w, h) {
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const area = `${line} L${pts[n - 1][0].toFixed(1)} ${h} L${pts[0][0].toFixed(1)} ${h} Z`;
   const id = 'hsp' + (homeSpark._i = (homeSpark._i || 0) + 1);
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".24"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>`
-    + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
-    + `<circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.6" fill="${color}"/></svg>`;
+  // Color is applied via inline style (not the stroke/fill/stop-color attributes)
+  // so a CSS var like var(--success) resolves and follows the theme.
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${color}" stop-opacity=".24"/><stop offset="1" style="stop-color:${color}" stop-opacity="0"/></linearGradient></defs>`
+    + `<path d="${area}" fill="url(#${id})"/><path d="${line}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+    + `<circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.6" style="fill:${color}"/></svg>`;
 }
 // Human-readable type label + brand color for a file extension, for the Home type pills.
 const FIC_LABEL = { word:'Word document', excel:'Excel spreadsheet', sheet:'Spreadsheet', ppt:'PowerPoint', pdf:'PDF', email:'Email', image:'Image', video:'Video', audio:'Audio', archive:'Archive', text:'Text file', markdown:'Markdown', code:'Code', key:'Certificate', design:'Design', 'default':'File' };
