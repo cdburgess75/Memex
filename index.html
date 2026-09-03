@@ -18,65 +18,75 @@
   src: url('/vendor/fonts/inter-var.woff2') format('woff2');
 }
 :root {
-  /* Command Deck — light (daylight translation of the neon cockpit) */
+  color-scheme: light dark;
+  /* File Platform — "ledger, not gallery." Light. Cool zinc structure + one blue signal. */
   --masthead-h: 56px; /* header height — kept in sync with the file-home layout calcs */
-  --paper: #F4F2FA;
+  --paper: #FBFBFC;
   --surface: #FFFFFF;
-  --surface-2: #ECE9F5;
-  --ink: #17131F;
-  --ink-soft: #6B6478;
-  --ink-faint: #9A93A8;
-  --accent: #E11048;
-  --accent-soft: #C40D3E;
-  --accent-wash: #FCE7EE;
-  --accent-ink: #FFFFFF; /* readable text on --accent; recomputed by applyAccent() per luminance */
-  --accent-2: #7C3AED;   /* Command Deck secondary — violet, for crimson→violet gradients */
-  --viz-cyan: #0891B2;    /* KPI sparkline / data */
-  --viz-lime: #65A30D;    /* KPI bars / data */
-  --danger: #C0392B;        /* destructive actions, critical status */
-  --danger-strong: #A93226; /* danger hover */
-  --success: #2E7D32;
-  --warning: #B7791F;
-  --info: #0F6CBD;
-  --focus: #6AA9E9;         /* focus rings / active pills */
-  --danger-fill: #C0392B;   /* filled controls carrying white text */
-  --danger-fill-strong: #A93226;
-  --success-fill: #2E7D32;
-  --rule: rgba(23,19,31,0.09);
-  --rule-soft: rgba(23,19,31,0.05);
-  --shadow: 0 1px 2px rgba(23,19,31,0.05), 0 0 0 1px rgba(23,19,31,0.04);
+  --surface-2: #F4F4F6;        /* spec --surface-sunken: sidebar, table headers, wells, hover */
+  --surface-raised: #FFFFFF;
+  --ink: #17191D;
+  --ink-soft: #5C6069;
+  --ink-faint: #8B8F98;
+  --accent: #0E6FA8;           /* spec --signal: one action color */
+  --accent-soft: #0B587F;
+  --accent-wash: #E8F2F9;      /* spec --signal-bg */
+  --accent-ink: #FFFFFF;       /* spec --signal-fg; recomputed by applyAccent() per luminance */
+  --accent-2: var(--accent);   /* one accent only — legacy gradient alias collapses to signal */
+  --viz-cyan: var(--accent);   /* data uses the single signal, not a second hue */
+  --viz-lime: var(--ink-soft);
+  --line-strong: #CBCBD2;      /* spec --line-strong: focused/selected borders */
+  --state-shared: #0F7A5A;
+  --state-expiring: #9A6212;
+  --state-restricted: #A32C3C;
+  --state-processing: #5C6069;
+  --danger: #A32C3C;
+  --danger-strong: #8A2333;
+  --success: #0F7A5A;
+  --warning: #9A6212;
+  --info: #0E6FA8;
+  --focus: #0E6FA8;
+  --danger-fill: #A32C3C;
+  --danger-fill-strong: #8A2333;
+  --success-fill: #0F7A5A;
+  --rule: #E4E4E8;             /* spec --line: solid hairline */
+  --rule-soft: #EDEDF0;
+  --shadow: 0 4px 12px rgba(10,12,15,.10), 0 0 0 1px #E4E4E8;
   --ui: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --display: var(--ui);
   --body: var(--ui);
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 html.dark {
-  /* Command Deck — dark (the canonical neon cockpit) */
-  --paper: #0C0912;
-  --surface: #17121F;
-  --surface-2: #221B2E;
-  --ink: #F1EDF6;
-  --ink-soft: #9A93A8;
-  --ink-faint: #6E6579;
-  --accent: #FF2D55;
-  --accent-soft: #E01843;
-  --accent-wash: #2A1420;
-  --accent-ink: #FFFFFF; /* crimson accent carries white text */
-  --accent-2: #A855F7;   /* Command Deck secondary — violet */
-  --viz-cyan: #22D3EE;    /* KPI sparkline / data */
-  --viz-lime: #A3E635;    /* KPI bars / data */
-  --danger: #E5665A;
-  --danger-strong: #F07D72;
-  --success: #5DBB63;
+  /* File Platform — dark. Backgrounds recede darker than surfaces; elevation is lightness, not shadow. */
+  --paper: #0D0F12;
+  --surface: #15181D;
+  --surface-2: #0A0C0F;        /* sunken is darker than surface in dark mode */
+  --surface-raised: #1C2027;
+  --ink: #EDEEF1;
+  --ink-soft: #9AA0AB;
+  --ink-faint: #6B717C;
+  --accent: #3DA3DC;
+  --accent-soft: #2E86BC;
+  --accent-wash: #132A3A;
+  --accent-ink: #08131B;
+  --line-strong: #39414D;
+  --state-shared: #3FBF95;
+  --state-expiring: #D9A441;
+  --state-restricted: #E2707E;
+  --state-processing: #9AA0AB;
+  --danger: #E2707E;
+  --danger-strong: #EC8996;
+  --success: #3FBF95;
   --warning: #D9A441;
-  --info: #6AA9E9;
-  --focus: #6AA9E9;
-  --danger-fill: #C0392B;   /* stays saturated: white labels need >= 4.5:1 */
-  --danger-fill-strong: #A93226;
-  --success-fill: #2E7D32;
-  --rule: rgba(255,255,255,0.09);
-  --rule-soft: rgba(255,255,255,0.06);
-  --shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05);
+  --info: #3DA3DC;
+  --focus: #3DA3DC;
+  --danger-fill: #A32C3C;
+  --danger-fill-strong: #8A2333;
+  --success-fill: #0F7A5A;
+  --rule: #262B33;
+  --rule-soft: #1E2229;
+  --shadow: 0 4px 12px rgba(0,0,0,0.40), 0 0 0 1px #262B33;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -154,14 +164,13 @@ body {
   height: 34px;
   padding: 0 14px;
   border: 0;
-  border-radius: 8px;
-  background: linear-gradient(100deg, var(--accent), var(--accent-2));
-  color: #fff;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
   font: 600 13px var(--ui);
   cursor: pointer;
-  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent-2) 72%, transparent);
 }
-.masthead-upload:hover { filter: brightness(1.08); }
+.masthead-upload:hover { filter: brightness(1.06); }
 .masthead-upload .plus { font-size: 16px; line-height: 1; }
 .masthead-upload .chev { font-size: 11px; opacity: 0.85; }
 /* Upload is the secondary action next to the primary Create button. */
@@ -1461,7 +1470,6 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-nav-link { cursor: pointer; }
 .file-nav-link:hover, .file-nav-label:hover { background: var(--accent-wash); color: var(--ink); }
 .file-nav-link.active { color: var(--accent); background: var(--accent-wash); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
-html.dark .file-nav-link.active { box-shadow: inset 3px 0 0 var(--accent), 0 0 20px -9px var(--accent); }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
 .accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -1692,6 +1700,8 @@ html.dark .file-nav-link.active { box-shadow: inset 3px 0 0 var(--accent), 0 0 2
 .file-col-library { width: 150px; }
 .file-col-actions { width: 150px; }
 .file-col-actions-wide { width: 300px; } /* text-button action cells (Shared/search rows, connection mounts) */
+/* Ledger metadata: genuinely tabular columns in mono with lining figures. */
+.file-library-table td.file-col-size, .file-library-table td.file-col-modified { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); }
 .file-col-sort { border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0; }
 .file-col-sort:hover { color: var(--ink); }
 .file-col-sort.active { color: var(--accent); }
@@ -1941,24 +1951,24 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-library-icon-btn:hover { background: var(--rule); color: var(--ink); }
 .file-library-icon-btn.file-bell-btn.on { color: var(--accent); }
 /* Card grid view */
-/* Command Deck gallery — an asset wall of vivid file cards. Scoped under
-   .file-card-grid so it wins over the legacy .file-card list rule further down. */
-.file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; padding: 6px 2px 16px; }
-.file-card-grid .file-card { position: relative; border: 1px solid var(--rule); border-radius: 14px; background: var(--surface); padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; text-align: left; overflow: hidden; box-shadow: var(--shadow); transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
-.file-card-grid .file-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0,0,0,.16); }
-.file-card-grid .file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 12px 26px color-mix(in srgb, var(--accent) 26%, transparent); }
-.file-card-cover { height: 106px; position: relative; display: flex; align-items: flex-end; padding: 11px; }
-.file-card-cover .cover-type { position: absolute; top: 6px; right: 13px; font: 800 40px/1 var(--display); color: rgba(255,255,255,.30); letter-spacing: -.02em; }
-.file-card-cover .cover-chip { font: 700 10.5px var(--ui); color: #fff; background: rgba(0,0,0,.26); padding: 3px 9px; border-radius: 99px; }
-.file-card-cover--folder { align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
-.file-card-cover--folder .cover-folder-glyph { color: var(--accent); display: grid; place-items: center; }
-.file-card-body { padding: 11px 13px; min-width: 0; }
-.file-card-name { font-weight: 600; font-size: 13.5px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-card-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; font-family: var(--mono); }
-.file-card-grid .file-card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+/* File Platform card — real preview area on a sunken well, no per-type colour.
+   Radius encodes hierarchy (r-md); rows/cards are hairline-separated, no shadow.
+   Scoped under .file-card-grid so it wins over the legacy .file-card list rule. */
+.file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; padding: 4px 2px 16px; }
+.file-card-grid .file-card { position: relative; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; text-align: left; overflow: hidden; transition: border-color .09s; }
+.file-card-grid .file-card:hover { border-color: var(--line-strong); }
+.file-card-grid .file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.file-card-preview { aspect-ratio: 4 / 3; background: var(--surface-2); display: grid; place-items: center; position: relative; }
+.file-card-preview img { width: 100%; height: 100%; object-fit: cover; }
+.file-card-ext { font: 600 22px var(--mono); color: var(--ink-faint); letter-spacing: .02em; }
+.file-card-preview--folder .cover-folder-glyph { color: var(--ink-faint); display: grid; place-items: center; }
+.file-card-body { padding: 12px; min-width: 0; display: grid; gap: 3px; }
+.file-card-name { font-weight: 550; font-size: 14px; color: var(--ink); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-card-sub { font: 400 12px var(--mono); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.file-card-grid .file-card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; opacity: 0; transition: opacity .09s; }
 .file-card-grid .file-card:hover .file-card-actions, .file-card-grid .file-card:focus-within .file-card-actions { opacity: 1; }
-.file-card-grid .file-card-actions .file-library-icon-btn { min-width: 28px; height: 28px; color: #fff; background: rgba(0,0,0,.30); border-radius: 7px; }
-.file-card-grid .file-card-actions .file-library-icon-btn:hover { background: rgba(0,0,0,.48); color: #fff; }
+.file-card-grid .file-card-actions .file-library-icon-btn { min-width: 28px; height: 28px; color: var(--ink-soft); background: var(--surface-raised); border: 1px solid var(--rule); border-radius: 6px; }
+.file-card-grid .file-card-actions .file-library-icon-btn:hover { background: var(--surface-2); color: var(--ink); }
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
@@ -7994,15 +8004,10 @@ function fileCardHtml(f) {
   const fid = esc(String(f.id));
   const sel = selectedFileIds.has(String(f.id));
   const name = fileDisplayName(f);
-  const following = followedFileIds.has(String(f.id));
   const ext = fileExt(name);
-  const ti = fileTypeInfo(ext);
-  const cover = `linear-gradient(145deg, ${ti.color}, color-mix(in srgb, ${ti.color} 70%, #000))`;
-  const word = esc((ext || 'file').slice(0, 4));
   return `<div class="file-card${sel ? ' selected' : ''}" data-fid="${fid}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">`
-    + `<div class="file-card-cover" style="background:${cover}"><span class="cover-type" aria-hidden="true">${word}</span><span class="cover-chip">${esc(ti.label)}</span>`
+    + `<div class="file-card-preview"><span class="file-card-ext">${esc((ext || 'file').slice(0, 5))}</span>`
     + `<div class="file-card-actions">`
-    + `<button class="file-library-icon-btn file-bell-btn${following ? ' on' : ''}" title="${following ? 'Following — click to stop' : 'Follow this file'}" data-fid="${fid}" onclick="event.stopPropagation();toggleFileFollow(this.dataset.fid, this)">${following ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
     + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
     + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`;
@@ -8011,7 +8016,7 @@ function folderCardHtml(folder) {
   const on = folderBellOn(folder.path);
   const p = esc(folder.path);
   return `<div class="file-card file-card--folder" data-folder="${p}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)">`
-    + `<div class="file-card-cover file-card-cover--folder"><span class="cover-folder-glyph">${folderIconSvg(40)}</span>`
+    + `<div class="file-card-preview file-card-preview--folder"><span class="cover-folder-glyph">${folderIconSvg(40)}</span>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></div>`
