@@ -2036,6 +2036,11 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-card-preview img { width: 100%; height: 100%; object-fit: cover; }
 .file-card-thumb { opacity: 0; transition: opacity .18s ease; }
 .file-card-thumb.loaded { opacity: 1; }
+/* Row thumbnail: sits in the same slot as .file-icon (inherits its 34px / compact
+   24px box), but a neutral well holding a cover-fit preview that fades in. */
+.file-icon--thumb { position: relative; overflow: hidden; padding: 0; background: var(--surface-2); border: 1px solid var(--rule); }
+.file-icon--thumb .file-row-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .18s ease; }
+.file-icon--thumb .file-row-thumb.loaded { opacity: 1; }
 .file-card-ext { font: 600 22px var(--mono); color: var(--ink-faint); letter-spacing: .02em; }
 .file-card-preview--folder .cover-folder-glyph { color: var(--ink-faint); display: grid; place-items: center; }
 .file-card-body { padding: 12px; min-width: 0; display: grid; gap: 3px; }
@@ -2875,7 +2880,9 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   /* Files */
   .file-home-main { padding: 14px 12px 40px; }
   .file-home-title, .file-library-title { font-size: 19px; }
-  .file-library-command-right { display: none; } /* density + details pane: no use on a phone */
+  /* Keep the List/Gallery toggle reachable on phones — only the density and
+     details-pane controls are desktop-only. */
+  .file-library-command-right .file-library-tool { display: none; }
   .file-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .file-card-cover { height: 84px; }
   .file-card-cover .cover-type { font-size: 30px; }
@@ -6646,7 +6653,7 @@ function fileHomeRow(f) {
   const owner = fileOwner(f);
   const hit = f.search_headline ? `<div class="file-row-hit">${highlightSearchHeadline(f.search_headline)}</div>` : '';
   const folder = fileFolderPath(f);
-  return `<tr><td class="file-col-name"><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td class="file-col-modified">${fileDate(f.created_at)}</td><td class="file-col-owner"><span class="file-library-person">${esc(owner)}</span></td><td class="file-col-actions"><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
+  return `<tr><td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title" title="${esc(f.name)}">${esc(fileDisplayName(f))}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)} · ${esc(fileKind(ext))}${folder ? ` · ${esc(folder)}` : ''}</div>${hit}</div></div></td><td class="file-col-modified">${fileDate(f.created_at)}</td><td class="file-col-owner"><span class="file-library-person">${esc(owner)}</span></td><td class="file-col-actions"><div class="file-row-actions">${fileActionButtons(f)}</div></td></tr>`;
 }
 const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 const ICON_BELL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>';
@@ -6677,7 +6684,7 @@ function fileNameCellHtml(f) {
   if (!fileVisibleCols.has('type')) bits.push(esc(fileKind(ext)));
   if (folder) bits.push(esc(folder));
   const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
-  return `<td class="file-col-name"><div class="file-library-name">${fileIconHtml(ext)}<div><div class="file-row-title file-name-link" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
+  return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
 }
 // Click the file name → open/preview; clicking elsewhere on the row toggles selection.
 function openFileFromName(event, el) {
@@ -9298,6 +9305,17 @@ function thumbFailed(img) {
   img.remove();
   const label = well && well.querySelector('.file-card-ext');
   if (label) label.hidden = false;
+}
+// The list/commander rows get the same thumbnail in place of the type-badge icon
+// (this is where phones spend most of their time). Falls back to the normal icon
+// on any miss, so a non-previewable type or a render failure looks exactly as before.
+function fileRowIconHtml(f, ext) {
+  if (!fileHasThumb(ext)) return fileIconHtml(ext);
+  return `<span class="file-icon file-icon--thumb" data-ext="${esc(ext)}"><img class="file-row-thumb" loading="lazy" decoding="async" alt="" src="/api/files/${esc(String(f.id))}/thumbnail" onload="this.naturalWidth ? this.classList.add('loaded') : rowThumbFailed(this)" onerror="rowThumbFailed(this)"></span>`;
+}
+function rowThumbFailed(img) {
+  const wrap = img.parentElement;
+  if (wrap) wrap.outerHTML = fileIconHtml(wrap.dataset.ext || '');
 }
 const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'txt', 'md', 'csv', 'log', 'json', ...VIDEO_EXTS, ...AUDIO_EXTS];
 let recentOpensList = [];
