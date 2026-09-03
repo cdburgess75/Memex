@@ -3431,6 +3431,7 @@ async function initApp() {
 async function _afterLogin() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim').classList.remove('open');
+  ensureMediaTicket(); // warm the thumbnail ticket up front so every view has it (non-blocking)
   await loadFromServer();
   currentUser = await apiGet('/auth/me');
   // First-boot gate: on a not-yet-configured instance, route the admin into the Setup
@@ -7995,7 +7996,7 @@ async function renderDocumentLibrary(view = 'active') {
   if (quick) quick.innerHTML = quickAccessHtml();
   try {
     filesList = await apiGet(filesEndpoint());
-    await Promise.all([loadFollowState(), loadFolderNotifyState()]); // inline-bell state
+    await Promise.all([loadFollowState(), loadFolderNotifyState(), ensureMediaTicket()]); // inline-bell state + thumbnail ticket
     renderDocumentLibraryList();
   } catch (e) {
     const el = document.getElementById('file-list');
