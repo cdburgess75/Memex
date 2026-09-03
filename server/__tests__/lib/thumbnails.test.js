@@ -10,7 +10,7 @@ beforeEach(() => jest.clearAllMocks());
 
 describe('canThumbnail', () => {
   test('true for image / pdf / office / video', () => {
-    for (const ext of ['jpg', 'png', 'webp', 'tiff', 'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'csv', 'mp4', 'mov']) {
+    for (const ext of ['jpg', 'png', 'webp', 'tiff', 'heic', 'heif', 'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'csv', 'mp4', 'mov']) {
       expect(thumbs.canThumbnail(ext)).toBe(true);
     }
   });
