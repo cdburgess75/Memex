@@ -1776,6 +1776,24 @@ html.file-home-mode .masthead-actions { display: flex; }
 .share-foot .run-btn:disabled { opacity: .5; cursor: default; }
 .share-existing { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; }
 .share-existing summary { font: 500 13px var(--ui); color: var(--ink-soft); cursor: pointer; }
+/* Widget dashboard — modular start screen, two columns above 1024px */
+.wdash { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start; margin-top: 22px; }
+.wdash-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.wdash-w { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
+.wdash-h { font: 600 14px var(--ui); color: var(--ink); margin-bottom: 12px; }
+.wdash-feed { display: flex; flex-direction: column; }
+.wdash-hub, .wdash-attn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
+.wdash-hub + .wdash-hub, .wdash-attn + .wdash-attn { border-top: 1px solid var(--rule-soft); }
+.wdash-hub:hover, .wdash-attn:hover { background: var(--surface-2); }
+.wdash-hub-glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font: 600 13px var(--ui); }
+.wdash-hub-meta, .wdash-attn-txt { display: flex; flex-direction: column; min-width: 0; }
+.wdash-hub-name, .wdash-attn-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-hub-sub { font-size: 12px; color: var(--ink-faint); }
+.wdash-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: var(--state-expiring); }
+.wdash-attn-sub { font-size: 12px; color: var(--state-expiring); }
+.wdash-pins.file-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 0; }
+.wdash-empty { font-size: 13px; color: var(--ink-faint); padding: 4px 2px; }
+@media (max-width: 1024px) { .wdash { grid-template-columns: 1fr; } }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-media { margin: auto; max-width: 100%; max-height: 100%; background: #000; }
@@ -7949,6 +7967,13 @@ async function renderHome() {
     let activity = [];
     if (isAdmin) { try { activity = (await apiGet('/admin/activity?limit=8')).events || []; } catch { activity = []; } }
     const recentFiles = [...files].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
+    // Widget data: Pinned (favorites), Shared hubs (libraries), Needs attention (links expiring within 7 days).
+    const pinned = files.filter(f => favoriteFileIds.has(String(f.id))).slice(0, 8);
+    const hubs = (librariesList || []);
+    let shares = [];
+    try { const sd = await apiGet('/files/shares'); shares = sd.shares || (Array.isArray(sd) ? sd : []); } catch (e) { shares = []; }
+    const soon = Date.now() + 7 * 86400000;
+    const attention = shares.filter(s => { const t = s.expires_at ? new Date(s.expires_at).getTime() : 0; return t && t > Date.now() && t < soon && (s.status || 'active') !== 'revoked'; });
 
     const name = String(currentUser?.name || currentUser?.email || 'there').split(/[\s@]/)[0];
     const hr = new Date().getHours();
@@ -7988,17 +8013,25 @@ async function renderHome() {
     document.getElementById('home-view').innerHTML = `
       <h1 class="home-h1">${greet}, ${esc(name)}</h1>
       <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
-      <div class="home-section-h"><h2>Key metrics</h2><button class="home-link" onclick="setFileView('active')">Open library</button></div>
-      <div class="home-kpis">
-        ${storageTile}
-        ${kpi('Files', files.length.toLocaleString(), IC_FILES, deltaHtml(filesDelta, 'this week') || '<div class="home-kpi-sub">total files</div>', homeSpark(filesSeries, 'var(--viz-cyan)'))}
-        ${kpi('Shared files', shared.toLocaleString(), IC_SHARE, deltaHtml(sharedDelta, 'this week') || '<div class="home-kpi-sub">via links or grants</div>', homeSpark(sharedSeries, 'var(--viz-lime)'))}
-        ${isAdmin ? kpi('Active users', String(stats.activeUsers ?? '—'), IC_USERS, '<div class="home-kpi-sub">last 7 days</div>', '') : kpi('Libraries', libs.toLocaleString(), IC_LAYERS, '<div class="home-kpi-sub">you can access</div>', '')}
-      </div>
-      <div class="home-section-h"><h2>Recent &amp; activity</h2></div>
-      <div class="home-grid2${isAdmin ? '' : ' single'}">
-        ${recentCard}
-        ${activityCard}
+      <div class="wdash">
+        <div class="wdash-col">
+          <section class="wdash-w"><div class="wdash-h">Recent activity</div><div class="wdash-feed">${
+            activity.length
+              ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b>${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('')
+              : (recentFiles.length ? recentFiles.map(f => `<div class="home-act" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" style="cursor:pointer"><span class="home-act-avatar">${esc(initialsOf(currentUser?.email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(fileDisplayName(f))}</b> added</div></div><span class="home-act-time">${fileDate(f.created_at)}</span></div>`).join('') : emptyState('No recent activity', 'Activity will appear here as people work.'))
+          }</div></section>
+          <section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
+            hubs.length
+              ? hubs.map(l => `<button class="wdash-hub" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-sub">Shared library</span></span></button>`).join('')
+              : `<p class="wdash-empty">No shared libraries yet.</p>`
+          }</section>
+        </div>
+        <div class="wdash-col">
+          ${attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : ''}
+          <section class="wdash-w"><div class="wdash-h">Pinned</div>${
+            pinned.length ? `<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div>` : `<p class="wdash-empty">Star a file to pin it here.</p>`
+          }</section>
+        </div>
       </div>`;
   } catch (e) {
     const el = document.getElementById('home-view');
