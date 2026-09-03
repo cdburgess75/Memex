@@ -1,10 +1,10 @@
 'use strict';
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn() }));
-const { isCollaboraPath } = require('../../lib/collaboraProxy');
+const { isCollaboraPath, isServicePath } = require('../../lib/collaboraProxy');
 
 describe('isCollaboraPath', () => {
-  test('matches Collabora asset/endpoint prefixes', () => {
-    for (const p of ['/browser', '/browser/abc/cool.html', '/hosting/discovery', '/hosting/capabilities', '/cool/x/ws', '/lool/y']) {
+  test('matches Collabora editor asset/endpoint prefixes', () => {
+    for (const p of ['/browser', '/browser/abc/cool.html', '/cool/x/ws', '/cool/abc/media', '/cool/abc/clipboard', '/lool/y']) {
       expect(isCollaboraPath(p)).toBe(true);
     }
   });
@@ -12,6 +12,28 @@ describe('isCollaboraPath', () => {
     for (const p of ['/ws', '/api/files', '/api/notifications', '/u/token', '/vendor/x.js', '/', '/browserify', '/coolant']) {
       expect(isCollaboraPath(p)).toBe(false);
     }
+  });
+
+  test('never proxies server-to-server service endpoints (convert-to, discovery, …)', () => {
+    for (const p of [
+      '/cool/convert-to',
+      '/cool/convert-to/',
+      '/cool/convert-to?format=png',
+      '/lool/convert-to',
+      '/cool/extract-link-targets',
+      '/cool/extract-document-structure',
+      '/cool/render-search-result',
+      '/cool/get-thumbnail',
+      '/hosting/discovery',
+      '/hosting/capabilities',
+    ]) {
+      expect(isServicePath(p)).toBe(true);
+      expect(isCollaboraPath(p)).toBe(false);
+    }
+    // …while the editor itself and its live WebSocket still proxy
+    expect(isServicePath('/cool/abc123/ws')).toBe(false);
+    expect(isCollaboraPath('/cool/abc123/ws')).toBe(true);
+    expect(isCollaboraPath('/browser/de013a57f9/cool.html')).toBe(true);
   });
 
   test('never proxies the Collabora admin console / admin websocket', () => {
