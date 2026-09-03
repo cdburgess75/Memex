@@ -40,6 +40,9 @@ const MAX_SOURCE_BYTES = 100 * 1024 * 1024;
 const CONVERT_TIMEOUT_MS = 45000;
 
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'];
+// HEIC/HEIF (iPhone photos): sharp's prebuilt libvips can't decode HEVC, but the
+// bundled ffmpeg can — decode one frame to PNG, then size it like any image.
+const HEIC_EXTS = ['heic', 'heif'];
 const PDF_EXTS = ['pdf'];
 const OFFICE_EXTS = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv'];
 const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'm4v', 'mov'];
@@ -49,7 +52,7 @@ function extOf(doc) {
 }
 
 function canThumbnail(ext) {
-  return IMAGE_EXTS.includes(ext) || PDF_EXTS.includes(ext) || OFFICE_EXTS.includes(ext) || VIDEO_EXTS.includes(ext);
+  return IMAGE_EXTS.includes(ext) || HEIC_EXTS.includes(ext) || PDF_EXTS.includes(ext) || OFFICE_EXTS.includes(ext) || VIDEO_EXTS.includes(ext);
 }
 
 // Content-addressed when we have a hash (identical files share one thumbnail and
@@ -110,6 +113,16 @@ async function videoThumb(buffer, ext) {
   });
 }
 
+async function heicThumb(buffer, ext) {
+  return withTempFile(buffer, `.${ext}`, async (inPath, dir) => {
+    const outPath = path.join(dir, 'frame.png');
+    // No -ss: HEIC is a single still, so seeking would fail.
+    await execFileP('ffmpeg', ['-y', '-i', inPath, '-frames:v', '1', outPath], { timeout: CONVERT_TIMEOUT_MS });
+    const png = await fs.promises.readFile(outPath);
+    return fitWebp(png, 'attention');
+  });
+}
+
 // Office → PDF via the already-running Collabora, then the PDF path. Uses the
 // INTERNAL docker network only (never the public proxy). Returns null when
 // Collabora is disabled/unreachable, so Office simply falls back to a label.
@@ -135,6 +148,7 @@ async function officeThumb(buffer, ext) {
 
 async function render(buffer, ext) {
   if (IMAGE_EXTS.includes(ext)) return imageThumb(buffer);
+  if (HEIC_EXTS.includes(ext)) return heicThumb(buffer, ext);
   if (PDF_EXTS.includes(ext)) return pdfThumb(buffer);
   if (VIDEO_EXTS.includes(ext)) return videoThumb(buffer, ext);
   if (OFFICE_EXTS.includes(ext)) return officeThumb(buffer, ext);
@@ -174,6 +188,7 @@ module.exports = {
   thumbKey,
   extOf,
   IMAGE_EXTS,
+  HEIC_EXTS,
   PDF_EXTS,
   OFFICE_EXTS,
   VIDEO_EXTS,
