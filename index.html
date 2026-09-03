@@ -9290,7 +9290,7 @@ const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'm4v', 'mov'];
 const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'ogg', 'oga', 'aac', 'flac'];
 // Types the server can render a card thumbnail for (mirrors server/lib/thumbnails.js).
 // SVG is left off — it already renders fine as-is and needs no raster preview.
-const THUMB_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'pdf', 'mp4', 'webm', 'ogv', 'm4v', 'mov', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
+const THUMB_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'pdf', 'mp4', 'webm', 'ogv', 'm4v', 'mov', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
 function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
 // Inline media (thumbnail <img>) can't send the auth header, so it authenticates
 // with a short-lived ticket in the URL. Fetch it (once, refreshed well before its
