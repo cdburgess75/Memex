@@ -1798,6 +1798,25 @@ html.file-home-mode .masthead-actions { display: flex; }
 .wdash-attn-sub { font-size: 12px; color: var(--state-expiring); }
 .wdash-pins.file-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 0; }
 .wdash-empty { font-size: 13px; color: var(--ink-faint); padding: 4px 2px; }
+/* Home: quick-action bar */
+.home-quick { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 2px; }
+.home-quick-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 9px; padding: 10px 16px; font: 600 13.5px var(--ui); cursor: pointer; }
+.home-quick-btn:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.home-quick-ic { color: var(--accent); font-size: 15px; font-weight: 700; line-height: 1; }
+/* Home: notification / recent-file / share rows */
+.wdash-notif, .wdash-recent, .wdash-share { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
+.wdash-notif + .wdash-notif, .wdash-recent + .wdash-recent, .wdash-share + .wdash-share { border-top: 1px solid var(--rule-soft); }
+.wdash-notif:hover, .wdash-recent:hover, .wdash-share:hover { background: var(--surface-2); }
+.wdash-notif-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: transparent; margin-top: 5px; align-self: flex-start; }
+.wdash-notif.unread .wdash-notif-dot { background: var(--accent); }
+.wdash-notif-txt, .wdash-recent-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.wdash-notif-title, .wdash-recent-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-notif-body, .wdash-recent-sub, .wdash-share-sub { font-size: 12px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-notif-time { flex: 0 0 auto; font-size: 11px; color: var(--ink-faint); font-family: var(--mono); align-self: flex-start; margin-top: 2px; }
+.wdash-share { flex-direction: column; align-items: flex-start; gap: 2px; }
+.wdash-share-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.wdash-shares-sum { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 6px 10px; font: 600 13px var(--ui); color: var(--accent); cursor: pointer; }
+.wdash-shares-sum:hover { text-decoration: underline; }
 @media (max-width: 1024px) { .wdash { grid-template-columns: 1fr; } }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -8037,6 +8056,7 @@ async function renderHome() {
       apiGet('/files').catch(() => []),
       apiGet('/files/home-stats').catch(() => ({})),
       ensureMediaTicket(),
+      loadNotifications().catch(() => {}),
     ]);
     const files = (all || []).filter(f => !isFolderMarker(f));
     const totalSize = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
@@ -8058,6 +8078,7 @@ async function renderHome() {
     try { const sd = await apiGet('/files/shares'); shares = sd.shares || (Array.isArray(sd) ? sd : []); } catch (e) { shares = []; }
     const soon = Date.now() + 7 * 86400000;
     const attention = shares.filter(s => { const t = s.expires_at ? new Date(s.expires_at).getTime() : 0; return t && t > Date.now() && t < soon && (s.status || 'active') !== 'revoked'; });
+    const liveShares = shares.filter(s => (s.status || 'active') !== 'revoked' && (!s.expires_at || new Date(s.expires_at).getTime() > Date.now()));
 
     const name = String(currentUser?.name || '').trim() || String(currentUser?.email || 'there').split('@')[0];
     const hr = new Date().getHours();
@@ -8094,26 +8115,48 @@ async function renderHome() {
       ? `<div class="home-card">${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('') : emptyState('No recent activity', 'Activity across the workspace will appear here.')}</div>`
       : '';
 
+    const canCreate = currentUser && currentUser.role !== 'viewer';
+    const quickBar = canCreate ? `<div class="home-quick">`
+      + `<button class="home-quick-btn" type="button" onclick="chooseUpload('files')"><span class="home-quick-ic">↑</span>Upload files</button>`
+      + `<button class="home-quick-btn" type="button" onclick="createFolder()"><span class="home-quick-ic">+</span>New folder</button>`
+      + `<button class="home-quick-btn" type="button" onclick="createFile('docx')"><span class="home-quick-ic">+</span>New document</button>`
+      + `</div>` : '';
+
+    const hubsWidget = `<section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
+      hubs.length
+        ? hubs.map(l => `<button class="wdash-hub" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-sub">Shared library</span></span></button>`).join('')
+        : `<p class="wdash-empty">No shared libraries yet.</p>`
+    }</section>`;
+
+    const attentionWidget = attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
+
+    const notifWidget = `<section class="wdash-w"><div class="wdash-h">Notifications</div>${
+      notifList.length
+        ? notifList.slice(0, 6).map(n => { const unread = !n.read_at; const nav = (n.ref_type === 'document' && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
+        : `<p class="wdash-empty">You're all caught up.</p>`
+    }</section>`;
+
+    const favWidget = pinned.length ? `<section class="wdash-w"><div class="wdash-h">Favourites</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
+
+    const recentWidget = `<section class="wdash-w"><div class="wdash-h">Recent files</div>${
+      recentFiles.length
+        ? recentFiles.map(f => `<button class="wdash-recent" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)">${fileRowIconHtml(f, fileExt(fileDisplayName(f)))}<span class="wdash-recent-txt"><span class="wdash-recent-name">${esc(fileDisplayName(f))}</span><span class="wdash-recent-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</span></span></button>`).join('')
+        : `<p class="wdash-empty">No files yet — upload something to get started.</p>`
+    }</section>`;
+
+    const sharesWidget = `<section class="wdash-w"><div class="wdash-h">Active shares</div>${
+      liveShares.length
+        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} live link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
+        : `<p class="wdash-empty">No shared links yet.</p>`
+    }</section>`;
+
     document.getElementById('home-view').innerHTML = `
       <h1 class="home-h1">${greet}, ${esc(name)}</h1>
       <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
+      ${quickBar}
       <div class="wdash">
-        <div class="wdash-col">
-          ${pinned.length ? `<section class="wdash-w"><div class="wdash-h">Pinned</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : ''}
-          <section class="wdash-w"><div class="wdash-h">Recent activity</div><div class="wdash-feed">${
-            activity.length
-              ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b>${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('')
-              : (recentFiles.length ? recentFiles.map(f => `<div class="home-act" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" style="cursor:pointer"><span class="home-act-avatar">${esc(initialsOf(currentUser?.email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(fileDisplayName(f))}</b> added</div></div><span class="home-act-time">${fileDate(f.created_at)}</span></div>`).join('') : emptyState('No recent activity', 'Activity will appear here as people work.'))
-          }</div></section>
-        </div>
-        <div class="wdash-col">
-          ${attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : ''}
-          <section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
-            hubs.length
-              ? hubs.map(l => `<button class="wdash-hub" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-sub">Shared library</span></span></button>`).join('')
-              : `<p class="wdash-empty">No shared libraries yet.</p>`
-          }</section>
-        </div>
+        <div class="wdash-col">${hubsWidget}${attentionWidget}${notifWidget}</div>
+        <div class="wdash-col">${favWidget}${recentWidget}${sharesWidget}</div>
       </div>`;
   } catch (e) {
     const el = document.getElementById('home-view');
