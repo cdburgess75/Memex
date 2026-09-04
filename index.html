@@ -6296,7 +6296,7 @@ function systemSettingsHtml() {
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
       <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
-      <p class="settings-notice">Back up the database and documents on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
+      <p class="settings-notice">Back up the database and files on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
       <div id="backup-config">Loading…</div>
 
       <div class="settings-sub" style="margin-top:20px">Settings export</div>
@@ -6374,7 +6374,7 @@ function emailSettingsHtml() {
         <label class="email-event-row"><input type="checkbox" id="ev-share-granted" ${evOn('share_granted', true)}> <span><strong>A file is shared with a member</strong><em>Emails the person who was granted access.</em></span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-share-downloaded" ${evOn('share_downloaded', true)}> <span><strong>A share link is downloaded</strong><em>Emails the member who created the link.</em></span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-upload-received" ${evOn('upload_received', true)}> <span><strong>A file arrives via an upload link</strong><em>Emails the link owner (also respects the per-link checkbox).</em></span></label>
-        <label class="email-event-row"><input type="checkbox" id="ev-document-edited" ${evOn('document_edited', false)}> <span><strong>A document is edited in the browser</strong><em>Emails the owner. Off by default — Office autosaves often.</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="ev-document-edited" ${evOn('document_edited', false)}> <span><strong>A file is edited in the browser</strong><em>Emails the owner. Off by default — Office autosaves often.</em></span></label>
       </div>
       <div class="btn-row"><button class="ghost-btn" onclick="saveEmailSettings()">Save email settings</button><button class="ghost-btn" onclick="sendTestEmail()">Send test email</button></div>`;
 }
@@ -6392,7 +6392,7 @@ function activitySettingsHtml() {
       <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>
 
       <div class="settings-sub" style="margin-top:20px">Access review</div>
-      <p class="settings-notice">Every user, their role, library access, direct document shares, and last activity, for periodic review and sign-off.</p>
+      <p class="settings-notice">Every user, their role, library access, direct file shares, and last activity, for periodic review and sign-off.</p>
       <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
       <div id="access-review">${emptyState('Loading review', 'Building the access review.')}</div>`;
 }
@@ -6788,8 +6788,8 @@ function folderLibraryRow(folder) {
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
 }
-function fileLibraryCommandBar(title = 'Documents') {
-  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-breadcrumb-row" id="file-library-breadcrumb"></div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading documents', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
+function fileLibraryCommandBar(title = 'Files') {
+  return `<div class="file-library" id="file-library-view"><div class="file-upload-status" id="upload-status"></div><div id="file-library-commandbar">${fileLibraryCommandBarHtml()}</div><div class="file-library-breadcrumb-row" id="file-library-breadcrumb"></div><div class="file-library-layout" id="file-library-layout"><div id="file-list">${emptyState('Loading files', 'Preparing the latest files in this workspace.')}</div><aside class="file-details-pane" id="file-details-pane" style="display:none"></aside></div></div>`;
 }
 const EYE_OFF_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
 const EYE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -7124,7 +7124,7 @@ function searchScopes() {
   // Data-driven. "Auto" picks search-vs-ask from the query; "ask" only when AI is on.
   const list = [
     { id: 'auto', label: 'Auto', hint: aiOff() ? 'Smart search' : 'Search or ask — detected' },
-    { id: 'contents', label: 'Contents', hint: 'Names + document text' },
+    { id: 'contents', label: 'Contents', hint: 'Names + contents' },
     { id: 'names', label: 'File names', hint: 'Filename match in this library' },
   ];
   if (!aiOff()) list.push({ id: 'ask', label: 'Ask AI', hint: 'Answer from your files' });
@@ -7207,7 +7207,7 @@ async function runSearch(opts = {}) {
   if (!document.getElementById('file-library-view')) setFileView('active');
   if (scope === 'contents' && q) {
     const el = document.getElementById('file-list');
-    if (el) el.innerHTML = emptyState('Searching…', 'Looking through file names and document text.');
+    if (el) el.innerHTML = emptyState('Searching…', 'Looking through file names and contents.');
     try {
       const results = await apiGet('/files/search?q=' + encodeURIComponent(q));
       renderContentSearchResults(Array.isArray(results) ? results : [], q);
@@ -8101,7 +8101,7 @@ async function renderDocumentLibrary(view = 'active') {
     renderDocumentLibraryList();
   } catch (e) {
     const el = document.getElementById('file-list');
-    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load documents: ${esc(e.message)}</p>`;
+    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`;
   }
 }
 
@@ -8134,7 +8134,7 @@ async function renderHome() {
     let activity = [];
     if (isAdmin) { try { activity = (await apiGet('/admin/activity?limit=8')).events || []; } catch { activity = []; } }
     const recentFiles = [...files].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
-    // Widget data: Pinned (favorites), Shared hubs (libraries), Needs attention (links expiring within 7 days).
+    // Widget data: Favorites, Libraries, Needs attention (links expiring within 7 days).
     const pinned = files.filter(f => favoriteFileIds.has(String(f.id))).slice(0, 8);
     const hubs = (librariesList || []);
     let shares = [];
@@ -8194,12 +8194,12 @@ async function renderHome() {
       const stats = `${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'} · ${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileSizeLabel(size)}`;
       const m2 = [];
       if (lastTs) m2.push(`updated ${esc(fileDate(lastTs))}`);
-      if (links) m2.push(`<span class="wdash-hub-live">${links} live link${links === 1 ? '' : 's'}</span>`);
+      if (links) m2.push(`<span class="wdash-hub-live">${links} active link${links === 1 ? '' : 's'}</span>`);
       const foot = canCreate ? `<div class="wdash-hub-foot"><button class="wdash-hub-act" onclick="event.stopPropagation();hubUpload(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">↑</span> Upload files</button><button class="wdash-hub-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">+</span> New folder</button></div>` : '';
       return `<div class="wdash-hub-card" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><div class="wdash-hub-top"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><div class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-stats">${stats}</span>${m2.length ? `<span class="wdash-hub-stats2">${m2.join(' · ')}</span>` : ''}</div></div>${foot}</div>`;
     };
 
-    const hubsWidget = `<section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
+    const hubsWidget = `<section class="wdash-w"><div class="wdash-h">Libraries</div>${
       hubs.length ? hubs.map(hubCard).join('') : `<p class="wdash-empty">No shared libraries yet.</p>`
     }</section>`;
 
@@ -8211,7 +8211,7 @@ async function renderHome() {
         : `<p class="wdash-empty">You're all caught up.</p>`
     }</section>`;
 
-    const favWidget = pinned.length ? `<section class="wdash-w"><div class="wdash-h">Favourites</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
+    const favWidget = pinned.length ? `<section class="wdash-w"><div class="wdash-h">Favorites</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
 
     const recentWidget = `<section class="wdash-w"><div class="wdash-h">Recent files</div>${
       recentFiles.length
@@ -8219,10 +8219,10 @@ async function renderHome() {
         : `<p class="wdash-empty">No files yet — upload something to get started.</p>`
     }</section>`;
 
-    const sharesWidget = `<section class="wdash-w"><div class="wdash-h">Active shares</div>${
+    const sharesWidget = `<section class="wdash-w"><div class="wdash-h">Active links</div>${
       liveShares.length
-        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} live link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
-        : `<p class="wdash-empty">No shared links yet.</p>`
+        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} active link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
+        : `<p class="wdash-empty">No active links yet.</p>`
     }</section>`;
 
     document.getElementById('home-view').innerHTML = `
@@ -8380,8 +8380,8 @@ function renderDocumentLibraryList(opts = {}) {
   }
   const inner = (!folders.length && !rows.length)
     ? (q
-        ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
-        : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
+        ? emptyState('No matching files', 'Try a broader search or clear the current filter.')
+        : emptyState(currentFolderPath ? 'This folder is empty' : 'No files in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
     : fileViewSize >= 2
       ? (() => { const m = FILE_CARD_MIN[fileViewSize] || 184; return `<div class="file-card-grid" style="grid-template-columns:repeat(auto-fill,minmax(${m}px,1fr));gap:${m < 160 ? 12 : 16}px">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`; })()
       : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
@@ -8647,7 +8647,7 @@ function renderFileDetailsPane() {
   pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(fileDisplayName(f))}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
     <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || (isSharedFile(f) ? 'Shared with me' : 'My files'))}</span></div></div></section>
     <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
-    <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button></div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable document text.</div></section>
+    <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button></div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable file contents.</div></section>
     ${isAdmin ? `<section class="file-details-section"><div class="file-details-section-title">Editing & history</div><div class="file-details-actions"><button class="file-library-tool" onclick="openFileHistory('${f.id}')">Version history</button></div></section>` : ''}
     ${canEdit ? `<section class="file-details-section"><div class="file-details-section-title">Danger zone</div><div class="file-details-actions"><button class="file-library-tool danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Move to Trash</button></div></section>` : ''}`;
 }
@@ -8662,7 +8662,7 @@ function closeCollectionAsk() {
 
 function openCollectionAsk() {
   closeCollectionAsk();
-  openModal({ id: 'file-collection-ask-scrim', html: `<h2>Ask the collection</h2><p class="sub">Search across indexed documents and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
+  openModal({ id: 'file-collection-ask-scrim', html: `<h2>Ask the collection</h2><p class="sub">Search across indexed files and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
   setTimeout(() => document.getElementById('file-collection-question')?.focus(), 0);
 }
 
@@ -8692,7 +8692,7 @@ function openAskSelected() {
   if (!selected.length) return;
   closeAskSelected();
   const docs = selected.map(f => `<span class="file-ask-chip" title="${esc(f.name)}">${esc(f.name)}</span>`).join('');
-  openModal({ id: 'file-ask-scrim', html: `<h2>Ask selected documents</h2><p class="sub">Claude will answer only from the files you selected.</p><div class="file-ask-docs">${docs}</div><textarea class="file-ask-input" id="file-ask-question" placeholder="Ask a question about these documents"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" onclick="submitAskSelected()">Ask Claude</button><button class="ghost-btn" onclick="stopStream()">Stop</button><button class="ghost-btn" onclick="closeAskSelected()">Close</button></div><div class="file-ask-answer dim" id="file-ask-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
+  openModal({ id: 'file-ask-scrim', html: `<h2>Ask selected files</h2><p class="sub">Claude will answer only from the files you selected.</p><div class="file-ask-docs">${docs}</div><textarea class="file-ask-input" id="file-ask-question" placeholder="Ask a question about these files"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" onclick="submitAskSelected()">Ask Claude</button><button class="ghost-btn" onclick="stopStream()">Stop</button><button class="ghost-btn" onclick="closeAskSelected()">Close</button></div><div class="file-ask-answer dim" id="file-ask-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
   setTimeout(() => document.getElementById('file-ask-question')?.focus(), 0);
 }
 
@@ -8702,7 +8702,7 @@ async function submitAskSelected() {
   const selected = selectedFiles();
   if (!question || !answer || !selected.length) return;
   answer.className = 'file-ask-answer dim';
-  answer.textContent = 'Reading selected documents...';
+  answer.textContent = 'Reading selected files...';
   await streamFromApi('/files/ask', { ids: selected.map(f => f.id), question }, answer);
 }
 
@@ -9032,7 +9032,7 @@ async function renderFileList() {
   let searchableFiles = filesList;
   if (q) {
     const seq = ++fileSearchSeq;
-    el.innerHTML = emptyState('Searching document text', 'Looking through filenames, owners, and indexed content.');
+    el.innerHTML = emptyState('Searching file contents', 'Looking through filenames, owners, and indexed content.');
     try {
       searchableFiles = await apiGet('/files/search?q=' + encodeURIComponent(q));
       if (seq !== fileSearchSeq) return;
