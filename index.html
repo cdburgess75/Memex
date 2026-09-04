@@ -2055,6 +2055,10 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-card-grid .file-card:hover .file-card-actions, .file-card-grid .file-card:focus-within .file-card-actions { opacity: 1; }
 .file-card-grid .file-card-actions .file-library-icon-btn { min-width: 28px; height: 28px; color: var(--ink-soft); background: var(--surface-raised); border: 1px solid var(--rule); border-radius: 6px; }
 .file-card-grid .file-card-actions .file-library-icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+/* Favorite star — always visible (works on touch, no hover needed), gold when on. */
+.file-card-grid .file-card-star { position: absolute; top: 8px; left: 8px; z-index: 3; width: 28px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface-raised); color: var(--ink-faint); font-size: 15px; line-height: 1; cursor: pointer; display: grid; place-items: center; opacity: .9; transition: color .1s, border-color .1s, opacity .1s; }
+.file-card-grid .file-card-star:hover { color: var(--ink); opacity: 1; }
+.file-card-grid .file-card-star.on { color: #E8A317; border-color: #E8A317; opacity: 1; }
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
@@ -3336,19 +3340,29 @@ function _hasValidToken() {
   return !!tok && Date.now() < exp - 30_000;
 }
 
+let _refreshInFlight = null;
 async function _refreshToken() {
-  const refresh = localStorage.getItem('memex_refresh_token');
-  if (!refresh || !_kc) return false;
-  try {
-    const res = await fetch(`${_kcAuthUrl()}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: _kc.clientId, grant_type: 'refresh_token', refresh_token: refresh }),
-    });
-    if (!res.ok) { _clearTokens(); return false; }
-    _storeTokens(await res.json());
-    return true;
-  } catch { _clearTokens(); return false; }
+  // Dedupe concurrent refreshes. When the access token is expired and several
+  // requests fire at once (exactly what happens on load), each would POST the
+  // single-use refresh token; all but the winner get rejected and call
+  // _clearTokens(), wiping the tokens the winner just stored — a spurious logout.
+  // Share one in-flight refresh so every caller awaits the same result.
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = (async () => {
+    const refresh = localStorage.getItem('memex_refresh_token');
+    if (!refresh || !_kc) return false;
+    try {
+      const res = await fetch(`${_kcAuthUrl()}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: _kc.clientId, grant_type: 'refresh_token', refresh_token: refresh }),
+      });
+      if (!res.ok) { _clearTokens(); return false; }
+      _storeTokens(await res.json());
+      return true;
+    } catch { _clearTokens(); return false; }
+  })();
+  try { return await _refreshInFlight; } finally { _refreshInFlight = null; }
 }
 
 function _storeTokens(t) {
@@ -8156,10 +8170,12 @@ function folderIconSvg(px) {
 function fileCardHtml(f) {
   const fid = esc(String(f.id));
   const sel = selectedFileIds.has(String(f.id));
+  const fav = favoriteFileIds.has(String(f.id));
   const name = fileDisplayName(f);
   const ext = fileExt(name);
   return `<div class="file-card${sel ? ' selected' : ''}" data-fid="${fid}" onclick="openFileDefault(this.dataset.fid)" oncontextmenu="return openFileMenu(this.dataset.fid, event)">`
     + `<div class="file-card-preview">${fileCardThumbHtml(f, ext)}`
+    + `<button class="file-card-star${fav ? ' on' : ''}" data-fid="${fid}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
     + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
