@@ -2041,6 +2041,11 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-icon--thumb { position: relative; overflow: hidden; padding: 0; background: var(--surface-2); border: 1px solid var(--rule); }
 .file-icon--thumb .file-row-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .18s ease; }
 .file-icon--thumb .file-row-thumb.loaded { opacity: 1; }
+/* Hand-drawn type glyphs (rdp/dmg) — a quiet line icon in the row well and the card. */
+.file-icon--glyph { background: var(--surface-2); color: var(--ink-soft); }
+.file-icon--glyph svg { width: 20px; height: 20px; }
+.file-card-glyph { display: grid; place-items: center; color: var(--ink-faint); }
+.file-card-glyph svg { width: 54px; height: 54px; }
 .file-card-ext { font: 600 22px var(--mono); color: var(--ink-faint); letter-spacing: .02em; }
 .file-card-preview--folder .cover-folder-glyph { color: var(--ink-faint); display: grid; place-items: center; }
 .file-card-body { padding: 12px; min-width: 0; display: grid; gap: 3px; }
@@ -9294,8 +9299,19 @@ function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
 // Gallery cards can also show a drawn preview for text/email/archive types — legible
 // at card size. The tiny list rows keep the badge for those (fileHasThumb above),
 // since a page of text or a contents count is illegible at 34px.
-const CARD_THUMB_EXTS = new Set([...THUMB_EXTS, 'txt', 'md', 'markdown', 'log', 'html', 'htm', 'eml', 'zip', '7z', 'tar', 'tgz', 'gz', 'bz2', 'xz', 'rar', 'cab', 'iso', 'arj', 'wim', 'lzma', 'lzh', 'zst', 'tbz', 'tbz2', 'txz']);
+const CARD_THUMB_EXTS = new Set([...THUMB_EXTS,
+  'txt', 'md', 'markdown', 'log', 'html', 'htm', 'xml', 'json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env',
+  'cpp', 'cc', 'c', 'h', 'hpp', 'py', 'sh', 'bash', 'bat', 'ps1', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss',
+  'java', 'go', 'rs', 'rb', 'php', 'sql', 'ino', 'jinja', 'lock', 'map', 'skill', 'sample',
+  'eml', 'rdp',
+  'zip', '7z', 'tar', 'tgz', 'gz', 'bz2', 'xz', 'rar', 'cab', 'iso', 'arj', 'wim', 'lzma', 'lzh', 'zst', 'tbz', 'tbz2', 'txz']);
 function fileHasCardThumb(ext) { return CARD_THUMB_EXTS.has(ext); }
+// A few types get a hand-drawn glyph instead of the plain extension label — a
+// remote-desktop screen for .rdp, a disc for .dmg (binary, nothing to preview).
+const CUSTOM_FILE_ICONS = {
+  rdp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  dmg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/></svg>',
+};
 // Inline media (thumbnail <img>) can't send the auth header, so it authenticates
 // with a short-lived ticket in the URL. Fetch it (once, refreshed well before its
 // 60-min server TTL) before any thumbnail view renders; keep the URL stable so the
@@ -9312,9 +9328,11 @@ function thumbUrl(id) { return `/api/files/${encodeURIComponent(String(id))}/thu
 // thumbnail reveals it with no layout shift; the server returns 204 for anything
 // it can't render, which trips onerror.
 function fileCardThumbHtml(f, ext) {
-  const label = `<span class="file-card-ext"${fileHasCardThumb(ext) ? ' hidden' : ''}>${esc((ext || 'file').slice(0, 5))}</span>`;
-  if (!fileHasCardThumb(ext)) return label;
-  return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)">${label}`;
+  if (fileHasCardThumb(ext)) {
+    return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)"><span class="file-card-ext" hidden>${esc((ext || 'file').slice(0, 5))}</span>`;
+  }
+  if (CUSTOM_FILE_ICONS[ext]) return `<span class="file-card-glyph">${CUSTOM_FILE_ICONS[ext]}</span>`;
+  return `<span class="file-card-ext">${esc((ext || 'file').slice(0, 5))}</span>`;
 }
 function thumbFailed(img) {
   const well = img.parentElement;
@@ -9326,8 +9344,11 @@ function thumbFailed(img) {
 // (this is where phones spend most of their time). Falls back to the normal icon
 // on any miss, so a non-previewable type or a render failure looks exactly as before.
 function fileRowIconHtml(f, ext) {
-  if (!fileHasThumb(ext)) return fileIconHtml(ext);
-  return `<span class="file-icon file-icon--thumb" data-ext="${esc(ext)}"><img class="file-row-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : rowThumbFailed(this)" onerror="rowThumbFailed(this)"></span>`;
+  if (fileHasThumb(ext)) {
+    return `<span class="file-icon file-icon--thumb" data-ext="${esc(ext)}"><img class="file-row-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : rowThumbFailed(this)" onerror="rowThumbFailed(this)"></span>`;
+  }
+  if (CUSTOM_FILE_ICONS[ext]) return `<span class="file-icon file-icon--glyph">${CUSTOM_FILE_ICONS[ext]}</span>`;
+  return fileIconHtml(ext);
 }
 function rowThumbFailed(img) {
   const wrap = img.parentElement;
