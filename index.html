@@ -8040,7 +8040,7 @@ async function renderHome() {
     const soon = Date.now() + 7 * 86400000;
     const attention = shares.filter(s => { const t = s.expires_at ? new Date(s.expires_at).getTime() : 0; return t && t > Date.now() && t < soon && (s.status || 'active') !== 'revoked'; });
 
-    const name = String(currentUser?.name || currentUser?.email || 'there').split(/[\s@]/)[0];
+    const name = String(currentUser?.name || '').trim() || String(currentUser?.email || 'there').split('@')[0];
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
     const wsLabel = brandDefaults.name ? esc(brandDefaults.name) : 'your workspace';
@@ -8080,21 +8080,19 @@ async function renderHome() {
       <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
       <div class="wdash">
         <div class="wdash-col">
+          ${pinned.length ? `<section class="wdash-w"><div class="wdash-h">Pinned</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : ''}
           <section class="wdash-w"><div class="wdash-h">Recent activity</div><div class="wdash-feed">${
             activity.length
               ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b>${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('')
               : (recentFiles.length ? recentFiles.map(f => `<div class="home-act" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)" style="cursor:pointer"><span class="home-act-avatar">${esc(initialsOf(currentUser?.email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(fileDisplayName(f))}</b> added</div></div><span class="home-act-time">${fileDate(f.created_at)}</span></div>`).join('') : emptyState('No recent activity', 'Activity will appear here as people work.'))
           }</div></section>
+        </div>
+        <div class="wdash-col">
+          ${attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : ''}
           <section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
             hubs.length
               ? hubs.map(l => `<button class="wdash-hub" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-sub">Shared library</span></span></button>`).join('')
               : `<p class="wdash-empty">No shared libraries yet.</p>`
-          }</section>
-        </div>
-        <div class="wdash-col">
-          ${attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : ''}
-          <section class="wdash-w"><div class="wdash-h">Pinned</div>${
-            pinned.length ? `<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div>` : `<p class="wdash-empty">Star a file to pin it here.</p>`
           }</section>
         </div>
       </div>`;
@@ -9293,6 +9291,11 @@ const AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'ogg', 'oga', 'aac', 'flac'];
 // SVG is left off — it already renders fine as-is and needs no raster preview.
 const THUMB_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'pdf', 'mp4', 'webm', 'ogv', 'm4v', 'mov', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv']);
 function fileHasThumb(ext) { return THUMB_EXTS.has(ext); }
+// Gallery cards can also show a drawn preview for text/email/archive types — legible
+// at card size. The tiny list rows keep the badge for those (fileHasThumb above),
+// since a page of text or a contents count is illegible at 34px.
+const CARD_THUMB_EXTS = new Set([...THUMB_EXTS, 'txt', 'md', 'markdown', 'log', 'html', 'htm', 'eml', 'zip', '7z', 'tar', 'tgz', 'gz', 'bz2', 'xz', 'rar', 'cab', 'iso', 'arj', 'wim', 'lzma', 'lzh', 'zst', 'tbz', 'tbz2', 'txz']);
+function fileHasCardThumb(ext) { return CARD_THUMB_EXTS.has(ext); }
 // Inline media (thumbnail <img>) can't send the auth header, so it authenticates
 // with a short-lived ticket in the URL. Fetch it (once, refreshed well before its
 // 60-min server TTL) before any thumbnail view renders; keep the URL stable so the
@@ -9309,8 +9312,8 @@ function thumbUrl(id) { return `/api/files/${encodeURIComponent(String(id))}/thu
 // thumbnail reveals it with no layout shift; the server returns 204 for anything
 // it can't render, which trips onerror.
 function fileCardThumbHtml(f, ext) {
-  const label = `<span class="file-card-ext"${fileHasThumb(ext) ? ' hidden' : ''}>${esc((ext || 'file').slice(0, 5))}</span>`;
-  if (!fileHasThumb(ext)) return label;
+  const label = `<span class="file-card-ext"${fileHasCardThumb(ext) ? ' hidden' : ''}>${esc((ext || 'file').slice(0, 5))}</span>`;
+  if (!fileHasCardThumb(ext)) return label;
   return `<img class="file-card-thumb" loading="lazy" decoding="async" alt="" src="${thumbUrl(f.id)}" onload="this.naturalWidth ? this.classList.add('loaded') : thumbFailed(this)" onerror="thumbFailed(this)">${label}`;
 }
 function thumbFailed(img) {

@@ -9,13 +9,13 @@ const thumbs = require('../../lib/thumbnails');
 beforeEach(() => jest.clearAllMocks());
 
 describe('canThumbnail', () => {
-  test('true for image / pdf / office / video', () => {
-    for (const ext of ['jpg', 'png', 'webp', 'tiff', 'heic', 'heif', 'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'csv', 'mp4', 'mov']) {
+  test('true for image / pdf / office / video / text / email / archive', () => {
+    for (const ext of ['jpg', 'png', 'webp', 'tiff', 'heic', 'heif', 'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'csv', 'mp4', 'mov', 'txt', 'md', 'html', 'htm', 'eml', 'zip', '7z', 'tar', 'gz', 'rar']) {
       expect(thumbs.canThumbnail(ext)).toBe(true);
     }
   });
   test('false for everything else', () => {
-    for (const ext of ['zip', 'exe', 'txt', 'md', 'json', 'mp3', 'svg', '']) {
+    for (const ext of ['exe', 'json', 'mp3', 'svg', 'dmg', '']) {
       expect(thumbs.canThumbnail(ext)).toBe(false);
     }
   });
@@ -51,7 +51,7 @@ describe('getThumbnail', () => {
   });
 
   test('null (and no storage access) for a non-previewable type', async () => {
-    const out = await thumbs.getThumbnail({ id: 'd2', name: 'a.zip', size: 1000, storage_path: 'documents/z' });
+    const out = await thumbs.getThumbnail({ id: 'd2', name: 'a.exe', size: 1000, storage_path: 'documents/z' });
     expect(out).toBeNull();
     expect(storage.download).not.toHaveBeenCalled();
   });
