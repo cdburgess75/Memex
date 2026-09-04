@@ -1693,6 +1693,16 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-layout-toggle button { border: 0; padding: 7px 12px; background: var(--surface); color: var(--ink-faint); font: 500 12.5px var(--ui); cursor: pointer; }
 .file-layout-toggle button + button { border-left: 1px solid var(--rule); }
 .file-layout-toggle button.active { background: var(--accent-wash); color: var(--accent); }
+/* View-size slider (notched) — the single file-view control. Drag or tap a notch. */
+.file-view-slider { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-faint); }
+.file-view-slider .fvs-end { flex: 0 0 auto; }
+.file-view-slider .fvs-track { position: relative; width: 104px; height: 20px; display: inline-flex; align-items: center; }
+.file-view-slider .fvs-notches { position: absolute; left: 2px; right: 2px; top: 50%; transform: translateY(-50%); display: flex; justify-content: space-between; pointer-events: none; }
+.file-view-slider .fvs-notches i { width: 3px; height: 3px; border-radius: 999px; background: var(--ink-faint); opacity: .55; }
+.file-view-slider .fvs-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; margin: 0; background: var(--rule); border-radius: 999px; outline: none; position: relative; z-index: 2; cursor: pointer; }
+.file-view-slider .fvs-range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 999px; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); cursor: pointer; }
+.file-view-slider .fvs-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 999px; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); cursor: pointer; }
+.file-view-slider .fvs-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .file-library-table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
 .file-library-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 760px; }
 .file-library-table th { text-align: left; color: var(--ink-faint); font: 600 11.5px var(--ui); letter-spacing: 0.03em; text-transform: uppercase; padding: 11px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
@@ -2048,6 +2058,8 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
    Radius encodes hierarchy (r-md); rows/cards are hairline-separated, no shadow.
    Scoped under .file-card-grid so it wins over the legacy .file-card list rule. */
 .file-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; padding: 4px 2px 16px; }
+/* Tiles stop (slider = 2): smaller card wells than the full Gallery stop (3). */
+.file-card-grid--sm { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
 .file-card-grid .file-card { position: relative; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; text-align: left; overflow: hidden; transition: border-color .09s; }
 .file-card-grid .file-card:hover { border-color: var(--line-strong); }
 .file-card-grid .file-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -3161,8 +3173,9 @@ let detailsPaneOpen = false;
 let fileLayoutMode = localStorage.getItem('memex_file_layout_v2') || 'commander';
 let fileDensity = localStorage.getItem('memex_file_density') === 'compact' ? 'compact' : 'comfortable';
 // Reflect density on <html> so the CSS applies immediately, even before the
-// first file list renders.
-document.documentElement.setAttribute('data-density', fileDensity);
+// first file list renders. Density now follows the view-size slider (stop 0 =
+// compact); read it straight from storage since fileViewSize is declared later.
+document.documentElement.setAttribute('data-density', parseInt(localStorage.getItem('memex_file_view_size'), 10) === 0 ? 'compact' : 'comfortable');
 let currentFolderPath = '';
 // Redesign state: pinned libraries (rail shortcuts), collapse/toggle prefs, and
 // per-device file favorites. All client-persisted (localStorage) — see plan.
@@ -3270,11 +3283,13 @@ const FILE_COLUMN_DEFS = [
   { id: 'owner', label: 'Owner', width: '210px', sort: (a, b) => fileOwner(a).localeCompare(fileOwner(b)) },
   { id: 'library', label: 'Library', width: '150px', sort: (a, b) => fileLibraryName(a).localeCompare(fileLibraryName(b)) },
 ];
-const FILE_COLS_DEFAULT = ['name', 'modified', 'owner'];
-let fileVisibleCols = (() => {
-  try { const v = JSON.parse(localStorage.getItem('memex_file_cols')); if (Array.isArray(v) && v.length) return new Set(['name', ...v.filter(id => id !== 'name')]); } catch { /* ignore */ }
-  return new Set(FILE_COLS_DEFAULT);
-})();
+// Columns are a fixed, clean set now — the view-size slider replaced the old
+// list/grid, density, AND per-column show/hide toggles, so there's no column menu.
+const FILE_COLS_DEFAULT = ['name', 'size', 'modified'];
+let fileVisibleCols = new Set(FILE_COLS_DEFAULT);
+// Single Windows-Explorer-style view-size control: 0 Compact list · 1 List ·
+// 2 Tiles · 3 Gallery. 0-1 render as rows, 2-3 as cards.
+let fileViewSize = (() => { const v = parseInt(localStorage.getItem('memex_file_view_size'), 10); return (v >= 0 && v <= 3) ? v : 1; })();
 let fileSort = (() => {
   try { const v = JSON.parse(localStorage.getItem('memex_file_sort')); if (v && v.col) return v; } catch { /* ignore */ }
   return { col: 'name', dir: 1 };
@@ -3319,7 +3334,7 @@ function fileTableHeadHtml(selectAllClass) {
   }).join('');
   const sel = selectAllClass === null ? '<th class="file-col-select"></th>'
     : `<th class="file-col-select"><button class="file-library-select file-select-all${selectAllClass}" title="Select all" aria-label="Select all" onclick="toggleSelectAllFiles()"></button></th>`;
-  return `<thead><tr>${sel}${cols}<th class="file-col-actions" style="text-align:right;position:relative"><button class="file-col-chooser" title="Choose columns" onclick="toggleFileColumnsMenu(event)">⋮</button><div class="file-cols-menu" id="file-cols-menu"></div></th></tr></thead>`;
+  return `<thead><tr>${sel}${cols}<th class="file-col-actions"></th></tr></thead>`;
 }
 function toggleFileColumnsMenu(event) {
   event?.stopPropagation();
@@ -3852,7 +3867,7 @@ async function loadFromServer() {
       try { history.replaceState(null, '', location.pathname + location.search + deepHash); } catch (e) {}
     }
     const deep = hashToNav(deepHash);
-    if (deep) await navApply(deep); else await setTab('files');
+    if (deep) await navApply(deep); else await setTab('files', 'home'); // login lands on Home
   } catch (e) {
     toast('Could not load: ' + e.message);
   }
@@ -4757,13 +4772,13 @@ function applyInline(s) {
 }
 
 /* ---------- tabs / routing ---------- */
-async function setTab(tab) {
+async function setTab(tab, sub) {
   if (tab !== 'admin') tab = 'files'; // knowledge tabs removed — everything else is Files
   state.tab = tab;
   document.documentElement.classList.add('file-home-mode');
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   if (tab === 'admin') await renderAdmin();
-  else await renderFiles();
+  else await renderFiles(sub);
   navPush();
 }
 
@@ -6720,7 +6735,6 @@ function fileNameCellHtml(f) {
   // Don't repeat Size/Type in the subtitle when those columns are visible.
   const bits = [];
   if (!fileVisibleCols.has('size')) bits.push(fileSizeLabel(f.size || 0));
-  if (!fileVisibleCols.has('type')) bits.push(esc(fileKind(ext)));
   if (folder) bits.push(esc(folder));
   const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
   return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
@@ -6793,6 +6807,26 @@ function setFileLayoutMode(mode) {
   fileLayoutMode = ['commander', 'grid', 'list'].includes(mode) ? mode : 'list';
   localStorage.setItem('memex_file_layout_v2', fileLayoutMode);
   renderDocumentLibraryList();
+}
+// The single view-size control. 0 Compact list · 1 List · 2 Tiles · 3 Gallery.
+const FILE_VIEW_STOPS = ['Compact list', 'List', 'Tiles', 'Gallery'];
+function setFileViewSize(v) {
+  fileViewSize = Math.max(0, Math.min(3, parseInt(v, 10) || 0));
+  localStorage.setItem('memex_file_view_size', String(fileViewSize));
+  document.documentElement.setAttribute('data-density', fileViewSize === 0 ? 'compact' : 'comfortable');
+  // rowsOnly: re-render just the list, NOT the command bar — otherwise the slider
+  // element gets rebuilt mid-drag and the drag breaks.
+  renderDocumentLibraryList({ rowsOnly: true });
+}
+// A notched slider (drag OR tap a notch) — Windows-Explorer feel, touch-friendly.
+function fileViewSliderHtml() {
+  const s = fileViewSize;
+  return `<div class="file-view-slider" title="View: ${FILE_VIEW_STOPS[s]}">`
+    + `<svg class="fvs-end" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>`
+    + `<span class="fvs-track"><span class="fvs-notches" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
+    + `<input type="range" class="fvs-range" min="0" max="3" step="1" value="${s}" aria-label="View size (${FILE_VIEW_STOPS[s]})" oninput="setFileViewSize(this.value)"></span>`
+    + `<svg class="fvs-end" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>`
+    + `</div>`;
 }
 function openFolder(path = '', push = true) {
   currentFolderPath = normalizeFilePath(path);
@@ -6917,7 +6951,7 @@ function fileLibraryCommandBarHtml() {
   const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
   const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
   const filterControl = `<div class="file-filter-wrap"><button class="file-filter-btn${activeType.id !== 'all' ? ' filtered' : ''}" id="file-filter-btn" type="button" onclick="toggleFileFilterMenu(event)" aria-haspopup="true" title="Filter by file type"><svg class="file-filter-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg><span class="file-filter-label">${esc(activeType.id === 'all' ? 'All types' : activeType.label)}</span><span class="chev">⌄</span></button><div class="file-filter-menu" id="file-filter-menu">${items}</div></div>`;
-  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span>${filterControl}</div><div class="file-library-command-right">${fileLayoutToggleHtml()}${fileDensityToggleHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+  return `<div class="file-library-commandbar"><div class="file-library-command-left">${fileCommandCreateUploadHtml()}<span class="file-library-sep"></span>${filterControl}</div><div class="file-library-command-right">${fileViewSliderHtml()}<button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
 }
 // Bucket a timestamp into a human "recency" group.
 function timeBucket(ts) {
@@ -7981,8 +8015,9 @@ function wrapPanelInFileHome(activeWorkspace) {
   if (quick) quick.innerHTML = quickAccessHtml();
 }
 
-async function renderFiles() {
+async function renderFiles(sub) {
   currentFolderPath = '';
+  if (sub === 'home') { setFileView('home'); return; } // land straight on Home (login default)
   await renderDocumentLibrary('active');
 }
 
@@ -8276,6 +8311,7 @@ function homeDelta(series) {
 }
 
 function renderDocumentLibraryList(opts = {}) {
+  document.documentElement.setAttribute('data-density', fileViewSize === 0 ? 'compact' : 'comfortable');
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
   selectedFileIds = new Set([...selectedFileIds].filter(id => filesList.some(f => String(f.id) === id)));
@@ -8307,8 +8343,8 @@ function renderDocumentLibraryList(opts = {}) {
     ? (q
         ? emptyState('No matching documents', 'Try a broader search or clear the current filter.')
         : emptyState(currentFolderPath ? 'This folder is empty' : 'No documents in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
-    : fileLayoutMode === 'grid'
-      ? `<div class="file-card-grid">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`
+    : fileViewSize >= 2
+      ? `<div class="file-card-grid${fileViewSize === 2 ? ' file-card-grid--sm' : ''}">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`
       : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
   // The folder tree now lives in the rail, so the main pane is always the flat
   // list (folders + files) for the current folder.
