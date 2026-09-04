@@ -47,10 +47,14 @@ const PDF_EXTS = ['pdf'];
 const OFFICE_EXTS = ['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'rtf', 'csv'];
 const VIDEO_EXTS = ['mp4', 'webm', 'ogv', 'm4v', 'mov'];
 // Rendered as a "page of text" card (first lines drawn onto a document). HTML is
-// reduced to its readable text first.
-const TEXT_EXTS = ['txt', 'md', 'markdown', 'log', 'html', 'htm'];
+// reduced to its readable text first. Covers plain text, docs, and source/config.
+const TEXT_EXTS = ['txt', 'md', 'markdown', 'log', 'html', 'htm', 'xml', 'json', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env',
+  'cpp', 'cc', 'c', 'h', 'hpp', 'py', 'sh', 'bash', 'bat', 'ps1', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss',
+  'java', 'go', 'rs', 'rb', 'php', 'sql', 'ino', 'jinja', 'lock', 'map', 'skill', 'sample'];
 // Rendered as an email card: sender · subject · snippet.
 const EML_EXTS = ['eml'];
+// Rendered as a connection card: the key remote-desktop settings (server, user).
+const RDP_EXTS = ['rdp'];
 // Rendered as a contents summary: N files · M folders · unpacked size. p7zip's
 // `7z l` lists nearly every archive format, so one path covers the whole family.
 const ARCHIVE_EXTS = ['zip', '7z', 'tar', 'tgz', 'gz', 'bz2', 'xz', 'rar', 'cab', 'iso', 'arj', 'wim', 'lzma', 'lzh', 'zst', 'tbz', 'tbz2', 'txz'];
@@ -62,7 +66,8 @@ function extOf(doc) {
 function canThumbnail(ext) {
   return IMAGE_EXTS.includes(ext) || HEIC_EXTS.includes(ext) || PDF_EXTS.includes(ext)
     || OFFICE_EXTS.includes(ext) || VIDEO_EXTS.includes(ext)
-    || TEXT_EXTS.includes(ext) || EML_EXTS.includes(ext) || ARCHIVE_EXTS.includes(ext);
+    || TEXT_EXTS.includes(ext) || EML_EXTS.includes(ext) || ARCHIVE_EXTS.includes(ext)
+    || RDP_EXTS.includes(ext);
 }
 
 // Content-addressed when we have a hash (identical files share one thumbnail and
@@ -194,6 +199,17 @@ async function svgToWebp(svg) {
 const MONO = 'DejaVu Sans Mono, ui-monospace, monospace';
 const SANS = 'DejaVu Sans, -apple-system, Segoe UI, sans-serif';
 
+// Decode a text buffer as UTF-8 or UTF-16 (Windows .rdp and some text files are
+// UTF-16LE, often with a BOM) so we don't render NUL-laced garbage.
+function decodeText(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) return buffer.toString('utf16le', 2);
+  if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) { const b = Buffer.from(buffer.subarray(2)); b.swap16(); return b.toString('utf16le'); }
+  const probe = buffer.subarray(0, 400);
+  let nul = 0; for (const c of probe) if (c === 0) nul++;
+  if (nul > probe.length / 4) return buffer.toString('utf16le');
+  return buffer.toString('utf8');
+}
+
 function htmlToText(html) {
   return String(html)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -206,7 +222,7 @@ function htmlToText(html) {
 }
 
 async function textThumb(buffer, ext) {
-  let text = buffer.slice(0, 12000).toString('utf8');
+  let text = decodeText(buffer.subarray(0, 40000)).slice(0, 12000);
   if (ext === 'html' || ext === 'htm') text = htmlToText(text);
   const rows = text.replace(/\r/g, '').replace(/\t/g, '  ').split('\n').slice(0, 15).map((ln) => {
     let s = ln.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
@@ -229,7 +245,7 @@ function decodeMimeWords(s) {
   }).replace(/\s+/g, ' ').trim();
 }
 function parseEml(buffer) {
-  const s = buffer.toString('utf8', 0, 24000);
+  const s = decodeText(buffer.subarray(0, 24000));
   const sep = s.indexOf('\r\n\r\n') >= 0 ? '\r\n\r\n' : '\n\n';
   const idx = s.indexOf(sep);
   const head = idx >= 0 ? s.slice(0, idx) : s;
@@ -295,12 +311,41 @@ async function archiveThumb(buffer, ext) {
   return svgToWebp(svg);
 }
 
+// .rdp is a plain-text key:value config — surface the settings that matter
+// (which machine, which user) rather than the raw file.
+function parseRdp(buffer) {
+  const text = decodeText(buffer.subarray(0, 16000));
+  const get = (key) => { const m = text.match(new RegExp('^' + key + ':[a-z]:(.*)$', 'im')); return m ? m[1].trim() : ''; };
+  return { server: get('full address'), user: get('username'), gateway: get('gatewayhostname'), width: get('desktopwidth'), height: get('desktopheight') };
+}
+async function rdpThumb(buffer) {
+  const r = parseRdp(buffer);
+  const rows = [];
+  if (r.server) rows.push(['Computer', r.server]);
+  if (r.user) rows.push(['User', r.user]);
+  if (r.gateway) rows.push(['Gateway', r.gateway]);
+  if (r.width && r.height) rows.push(['Display', `${r.width} × ${r.height}`]);
+  if (!rows.length) rows.push(['Remote desktop', 'connection settings']);
+  const body = rows.map(([k, v], i) => {
+    const y = 118 + i * 46;
+    return `<text x="26" y="${y}" font-family="${SANS}" font-size="13" fill="#8b8f98">${svgEscape(k)}</text>`
+      + `<text x="26" y="${y + 22}" font-family="${MONO}" font-size="16" fill="#17191d">${svgEscape(String(v).slice(0, 40))}</text>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">`
+    + `<rect width="480" height="360" fill="#ffffff"/><rect width="480" height="66" fill="#3B5566"/>`
+    + `<g transform="translate(26,20)" fill="none" stroke="#ffffff" stroke-width="2.4"><rect x="0" y="0" width="30" height="21" rx="2"/><path d="M11 27h8M15 21v6"/></g>`
+    + `<text x="70" y="41" font-family="${SANS}" font-size="16" font-weight="700" fill="#ffffff" letter-spacing="1">REMOTE DESKTOP</text>`
+    + body + `</svg>`;
+  return svgToWebp(svg);
+}
+
 async function render(buffer, ext) {
   if (IMAGE_EXTS.includes(ext)) return imageThumb(buffer);
   if (HEIC_EXTS.includes(ext)) return heicThumb(buffer, ext);
   if (PDF_EXTS.includes(ext)) return pdfThumb(buffer);
   if (VIDEO_EXTS.includes(ext)) return videoThumb(buffer, ext);
   if (OFFICE_EXTS.includes(ext)) return officeThumb(buffer, ext);
+  if (RDP_EXTS.includes(ext)) return rdpThumb(buffer);
   if (TEXT_EXTS.includes(ext)) return textThumb(buffer, ext);
   if (EML_EXTS.includes(ext)) return emlThumb(buffer);
   if (ARCHIVE_EXTS.includes(ext)) return archiveThumb(buffer, ext);
@@ -348,4 +393,5 @@ module.exports = {
   TEXT_EXTS,
   EML_EXTS,
   ARCHIVE_EXTS,
+  RDP_EXTS,
 };
