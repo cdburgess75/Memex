@@ -1634,7 +1634,6 @@ router.get('/:id/url', auth, async (req, res) => {
 // authed channel; the resulting ticket lets <img>/<video> requests, which can't
 // send the Authorization header, still be attributed to this user.
 router.get('/media-ticket', auth, (req, res) => {
-  console.log('[thumbdiag] media-ticket issued for', req.user.email); // TEMP diagnostic
   res.json(mediaTickets.issue(req.user));
 });
 
@@ -1649,7 +1648,6 @@ router.get('/media-ticket', auth, (req, res) => {
 router.get('/:id/thumbnail', async (req, res) => {
   try {
     const user = mediaTickets.resolve(req.query.t);
-    console.log('[thumbdiag] thumbnail id=%s hasTicket=%s resolved=%s', req.params.id, req.query.t ? 'y' : 'n', user ? user.email : 'NONE'); // TEMP diagnostic
     if (!user) return res.status(401).end();
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,

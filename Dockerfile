@@ -7,9 +7,10 @@ LABEL org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 
 # pg_dump (matching the Postgres 16 server) for in-app database backups.
-# poppler-utils (pdftoppm) + ffmpeg render PDF and video card thumbnails; sharp
-# (a dependency) bundles its own libvips, so no image lib is needed here.
-RUN apk add --no-cache postgresql16-client poppler-utils ffmpeg
+# Thumbnail toolchain: poppler-utils (pdftoppm) for PDF, ffmpeg for video + HEIC,
+# p7zip (`7z`) to list archive contents, and ttf-dejavu so libvips can render text
+# in the drawn text/email/archive cards. sharp bundles its own libvips.
+RUN apk add --no-cache postgresql16-client poppler-utils ffmpeg p7zip ttf-dejavu
 
 # Install production dependencies before copying source so this layer is cached
 COPY server/package*.json ./server/
