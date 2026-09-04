@@ -1804,6 +1804,20 @@ html.file-home-mode .masthead-actions { display: flex; }
 .wdash-hub-meta, .wdash-attn-txt { display: flex; flex-direction: column; min-width: 0; }
 .wdash-hub-name, .wdash-attn-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wdash-hub-sub { font-size: 12px; color: var(--ink-faint); }
+/* Shared hub workspace card (Layout A): stats up top, scoped actions in a footer. */
+.wdash-hub-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); overflow: hidden; cursor: pointer; transition: border-color .1s; }
+.wdash-hub-card + .wdash-hub-card { margin-top: 10px; }
+.wdash-hub-card:hover { border-color: var(--line-strong); }
+.wdash-hub-top { display: flex; align-items: center; gap: 12px; padding: 13px 14px 11px; min-width: 0; }
+.wdash-hub-top .wdash-hub-glyph { width: 38px; height: 38px; }
+.wdash-hub-card .wdash-hub-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.wdash-hub-stats { font: 400 12.5px var(--mono); color: var(--ink-faint); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-hub-stats2 { font: 400 12px var(--ui); color: var(--ink-faint); }
+.wdash-hub-live { color: var(--state-expiring); }
+.wdash-hub-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); flex-wrap: wrap; }
+.wdash-hub-act { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: 600 12.5px var(--ui); cursor: pointer; }
+.wdash-hub-act:hover { background: var(--surface-2); border-color: var(--line-strong); }
+.wdash-hub-act .ic { color: var(--accent); font-size: 14px; font-weight: 700; line-height: 1; }
 .wdash-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: var(--state-expiring); }
 .wdash-attn-sub { font-size: 12px; color: var(--state-expiring); }
 .wdash-pins.file-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 0; }
@@ -7351,6 +7365,9 @@ function switchLibrary(id) {
   else localStorage.removeItem('memex_library_id');
   setFileView('active');
 }
+// Home Shared-Hub actions: switch into the hub, then run the action there.
+function hubUpload(libId) { switchLibrary(libId); setTimeout(() => chooseUpload('files'), 60); }
+function hubNewFolder(libId) { switchLibrary(libId); setTimeout(() => createFolder(), 60); }
 async function createLibraryFlow(name) {
   const trimmed = (name || '').trim();
   if (!trimmed) return;
@@ -8162,16 +8179,28 @@ async function renderHome() {
       : '';
 
     const canCreate = currentUser && currentUser.role !== 'viewer';
-    const quickBar = canCreate ? `<div class="home-quick">`
-      + `<button class="home-quick-btn" type="button" onclick="chooseUpload('files')"><span class="home-quick-ic">↑</span>Upload files</button>`
-      + `<button class="home-quick-btn" type="button" onclick="createFolder()"><span class="home-quick-ic">+</span>New folder</button>`
-      + `<button class="home-quick-btn" type="button" onclick="createFile('docx')"><span class="home-quick-ic">+</span>New document</button>`
-      + `</div>` : '';
+    // Each Shared Hub is a workspace card (Layout A): stats up top, its own
+    // Upload / New folder in a footer. The old global quick-action bar is gone.
+    const libKey = (x) => String(x == null ? '' : x);
+    const docLib = new Map(files.map(f => [String(f.id), libKey(f.library_id)]));
+    const hubCard = (l) => {
+      const hid = libKey(l.id);
+      const hf = files.filter(f => libKey(f.library_id) === hid && !isFolderMarker(f));
+      const fileCount = hf.length;
+      const folderCount = allFoldersForFiles(hf).length;
+      const size = hf.reduce((a, f) => a + (Number(f.size) || 0), 0);
+      const lastTs = hf.reduce((mx, f) => Math.max(mx, new Date(f.created_at || 0).getTime()), 0);
+      const links = liveShares.filter(s => docLib.get(String(s.document_id)) === hid).length;
+      const stats = `${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'} · ${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileSizeLabel(size)}`;
+      const m2 = [];
+      if (lastTs) m2.push(`updated ${esc(fileDate(lastTs))}`);
+      if (links) m2.push(`<span class="wdash-hub-live">${links} live link${links === 1 ? '' : 's'}</span>`);
+      const foot = canCreate ? `<div class="wdash-hub-foot"><button class="wdash-hub-act" onclick="event.stopPropagation();hubUpload(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">↑</span> Upload files</button><button class="wdash-hub-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">+</span> New folder</button></div>` : '';
+      return `<div class="wdash-hub-card" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><div class="wdash-hub-top"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><div class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-stats">${stats}</span>${m2.length ? `<span class="wdash-hub-stats2">${m2.join(' · ')}</span>` : ''}</div></div>${foot}</div>`;
+    };
 
     const hubsWidget = `<section class="wdash-w"><div class="wdash-h">Shared hubs</div>${
-      hubs.length
-        ? hubs.map(l => `<button class="wdash-hub" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-sub">Shared library</span></span></button>`).join('')
-        : `<p class="wdash-empty">No shared libraries yet.</p>`
+      hubs.length ? hubs.map(hubCard).join('') : `<p class="wdash-empty">No shared libraries yet.</p>`
     }</section>`;
 
     const attentionWidget = attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
@@ -8199,7 +8228,6 @@ async function renderHome() {
     document.getElementById('home-view').innerHTML = `
       <h1 class="home-h1">${greet}, ${esc(name)}</h1>
       <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
-      ${quickBar}
       <div class="wdash">
         <div class="wdash-col">${hubsWidget}${attentionWidget}${notifWidget}</div>
         <div class="wdash-col">${favWidget}${recentWidget}${sharesWidget}</div>
