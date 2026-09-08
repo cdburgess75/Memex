@@ -1647,7 +1647,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .wdash { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start; margin-top: 22px; }
 .wdash-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .wdash-w { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
-.wdash-h { font: 600 14px var(--ui); color: var(--ink); margin-bottom: 12px; }
+.wdash-h { font: 600 14px var(--ui); color: var(--ink); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.wdash-h-ic { flex: 0 0 auto; width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-faint); }
+.wdash-h-ic svg { width: 15px; height: 15px; display: block; }
 .wdash-feed { display: flex; flex-direction: column; }
 .wdash-hub, .wdash-attn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
 .wdash-hub + .wdash-hub, .wdash-attn + .wdash-attn { border-top: 1px solid var(--rule-soft); }
@@ -6639,11 +6641,22 @@ const NAV_ICON_PATHS = {
   admin: 'M4 7.2h9.4M17.4 7.2h2.6M4 16.8h3.4M11.4 16.8h8.6M15.4 5v4.4M9.4 14.6V19',
   sharepoint: 'M7.2 18.4h9.3a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.5-1.3 4 4 0 0 0-.2 8.3z',
   smb: 'M3.8 6.2h16.4v4.2H3.8zM3.8 13.6h16.4v4.2H3.8zM7.2 8.3h.02M7.2 15.7h.02',
+  libraries: 'M12 3.6 3.6 8l8.4 4.4L20.4 8zM3.6 12.4 12 16.8l8.4-4.4M3.6 16.6 12 21l8.4-4.4',
+  attention: 'M12 9.2v4.2M12 16.6h.02M10.4 4.6 3.1 17.2a1.9 1.9 0 0 0 1.6 2.8h14.6a1.9 1.9 0 0 0 1.6-2.8L13.6 4.6a1.9 1.9 0 0 0-3.2 0z',
+  notifications: 'M17.8 8.9a5.8 5.8 0 1 0-11.6 0c0 5.8-2.4 7.2-2.4 7.2h16.4s-2.4-1.4-2.4-7.2M13.6 19.3a1.9 1.9 0 0 1-3.2 0',
+  recent: 'M12 20.4a8.4 8.4 0 1 0 0-16.8 8.4 8.4 0 0 0 0 16.8M12 7.4V12l3.1 1.9',
 };
-function navIcon(name) {
+function navIcon(name, cls = 'file-nav-icon') {
   const d = NAV_ICON_PATHS[name];
   if (!d) return '';
-  return `<span class="file-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></span>`;
+  return `<span class="${cls}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></span>`;
+}
+/* Dashboard widget heading. The icon is a quieter relative of the nav's — a
+   section header is a label, not a destination — so it sits at --ink-faint and
+   a size down. Favorites and Active links deliberately reuse the nav glyphs, so
+   a widget and the view it leads to read as the same thing. */
+function wdashHead(label, icon) {
+  return `<div class="wdash-h">${navIcon(icon, 'wdash-h-ic')}${label}</div>`;
 }
 function fileNavButton(label, icon, action, active) {
   return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
@@ -7798,27 +7811,27 @@ async function renderHome() {
       return `<div class="wdash-hub-card" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><div class="wdash-hub-top"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><div class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-stats">${stats}</span>${m2.length ? `<span class="wdash-hub-stats2">${m2.join(' · ')}</span>` : ''}</div></div>${foot}</div>`;
     };
 
-    const hubsWidget = `<section class="wdash-w"><div class="wdash-h">Libraries</div>${
+    const hubsWidget = `<section class="wdash-w">${wdashHead('Libraries','libraries')}${
       hubs.length ? hubs.map(hubCard).join('') : `<p class="wdash-empty">No shared libraries yet.</p>`
     }</section>`;
 
-    const attentionWidget = attention.length ? `<section class="wdash-w"><div class="wdash-h">Needs attention</div>${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
+    const attentionWidget = attention.length ? `<section class="wdash-w">${wdashHead('Needs attention','attention')}${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
 
-    const notifWidget = `<section class="wdash-w"><div class="wdash-h">Notifications</div>${
+    const notifWidget = `<section class="wdash-w">${wdashHead('Notifications','notifications')}${
       notifList.length
         ? notifList.slice(0, 6).map(n => { const unread = !n.read_at; const nav = (n.ref_type === 'document' && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
         : `<p class="wdash-empty">You're all caught up.</p>`
     }</section>`;
 
-    const favWidget = pinned.length ? `<section class="wdash-w"><div class="wdash-h">Favorites</div><div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
+    const favWidget = pinned.length ? `<section class="wdash-w">${wdashHead('Favorites','favorites')}<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
 
-    const recentWidget = `<section class="wdash-w"><div class="wdash-h">Recent files</div>${
+    const recentWidget = `<section class="wdash-w">${wdashHead('Recent files','recent')}${
       recentFiles.length
         ? recentFiles.map(f => `<button class="wdash-recent" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)">${fileRowIconHtml(f, fileExt(fileDisplayName(f)))}<span class="wdash-recent-txt"><span class="wdash-recent-name">${esc(fileDisplayName(f))}</span><span class="wdash-recent-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</span></span></button>`).join('')
         : `<p class="wdash-empty">No files yet — upload something to get started.</p>`
     }</section>`;
 
-    const sharesWidget = `<section class="wdash-w"><div class="wdash-h">Active links</div>${
+    const sharesWidget = `<section class="wdash-w">${wdashHead('Active links','links')}${
       liveShares.length
         ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} active link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
         : `<p class="wdash-empty">No active links yet.</p>`
