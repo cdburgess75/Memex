@@ -39,7 +39,7 @@ It stands out because it is genuinely self-contained: a Docker Compose stack you
 | **File requests** | Inbound upload links: collect files from people with no account, straight into a chosen library and folder. |
 | **Notifications** | In-app bell plus email. Email via Microsoft Graph (app-only sendMail) or SMTP, with per-event admin toggles. |
 | **Calls** | Member-to-member video and audio (WebRTC) with configurable STUN / TURN and an optional ScreenConnect link. |
-| **Branding** | Admin-set workspace name, logo, and default accent, applied everywhere including the sign-in screen. |
+| **Branding** | Admin-set workspace name, logo and color scheme (five curated schemes, each with a designed light and dark face), applied everywhere including the sign-in screen; members can choose their own scheme and light/auto/dark mode. |
 | **Audit and compliance** | Tamper-evident (hash-chained) activity log with integrity verify, access-review CSV export, and a readiness view across SOC 2, HIPAA, GDPR, PCI-DSS, ISO 27001, and CMMC with live probes and admin attestations. |
 | **Security** | Keycloak OIDC (PKCE), role-based access (admin / contributor / viewer), rate limiting, baseline security headers, AES-256-GCM encryption at rest, configurable CORS and reverse-proxy trust. |
 | **Operations** | One-command installer, prebuilt multi-arch images, scheduled backups with off-box destinations, settings export, and an auto update check. |

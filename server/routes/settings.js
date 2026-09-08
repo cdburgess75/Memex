@@ -107,6 +107,15 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       }
     }
 
+    // brand_scheme must be one of the curated ids as a plain string ('' or null clears
+    // it). Checked as-is, not coerced, so an array like ["linen"] cannot slip past.
+    if ('brand_scheme' in req.body) {
+      const v = req.body.brand_scheme;
+      if (v !== '' && v !== null && !(typeof v === 'string' && settings.SCHEME_IDS.includes(v))) {
+        return res.status(400).json({ error: 'Unknown scheme' });
+      }
+    }
+
     const changed = [];
     for (const [key, value] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;

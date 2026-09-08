@@ -8,6 +8,7 @@ const MASKED = '●●●●●●●●';
 const MOCK_ENV_MAP = {
   anthropic_api_key:      'ANTHROPIC_API_KEY',
   anthropic_model:        'ANTHROPIC_MODEL',
+  brand_scheme:           'BRAND_SCHEME',
   storage_provider:       'STORAGE_PROVIDER',
   storage_encryption_key: 'STORAGE_ENCRYPTION_KEY',
   backup_destinations:    'BACKUP_DESTINATIONS',
@@ -15,6 +16,7 @@ const MOCK_ENV_MAP = {
 
 jest.mock('../../lib/settings', () => ({
   ENV_MAP:    MOCK_ENV_MAP,
+  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember'],
   getOrEnv:   jest.fn(),
   set:        jest.fn().mockResolvedValue(undefined),
   refresh:    jest.fn().mockResolvedValue(undefined),
@@ -85,6 +87,16 @@ describe('PUT /api/admin/settings', () => {
       .send({ anthropic_model: 'claude-opus-4-8' });
     expect(res.status).toBe(200);
     expect(settings.set).toHaveBeenCalledWith('anthropic_model', 'claude-opus-4-8', 'u1');
+  });
+
+  test('accepts a curated brand_scheme and rejects anything else', async () => {
+    const ok = await request(makeApp()).put('/api/admin/settings').send({ brand_scheme: 'linen' });
+    expect(ok.status).toBe(200);
+    expect(settings.set).toHaveBeenCalledWith('brand_scheme', 'linen', 'u1');
+    settings.set.mockClear();
+    const bad = await request(makeApp()).put('/api/admin/settings').send({ brand_scheme: '#C2603D' });
+    expect(bad.status).toBe(400);
+    expect(settings.set).not.toHaveBeenCalled();
   });
 
   test('records a settings_changed audit event listing the changed keys (not values)', async () => {

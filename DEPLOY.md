@@ -94,7 +94,7 @@ Settings, Workspace:
 
 - Workspace name (shown in the header and on the sign-in screen).
 - Logo (PNG/SVG up to 256 KB; transparent looks best).
-- Default accent color.
+- Workspace scheme (Ledger, Graphite, Linen, Harbor or Ember; Ledger unless the customer asks). Members can pick their own under Settings → Appearance, and new devices follow the OS light/dark setting until they choose.
 
 This is server-set and applies to everyone, including the sign-in page.
 
@@ -179,7 +179,7 @@ banner within a few minutes.
 - [ ] First login, changed the seeded password, promoted the customer admin
 - [ ] Set App URL (public)
 - [ ] Verified Office editing loads
-- [ ] Workspace branding (name, logo, accent)
+- [ ] Workspace branding (name, logo, scheme)
 - [ ] Email provider configured + test email sent (optional)
 - [ ] Scheduled backups on
 - [ ] Backed up this deployment's `.env` (encryption key!)

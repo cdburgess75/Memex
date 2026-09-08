@@ -54,7 +54,7 @@ router.get('/status', auth, async (req, res) => {
         tenantId: (await g('tenant_id')) || '',
         contactEmail: (await g('tenant_contact_email')) || '',
         logo: (await g('brand_logo')) || '',
-        accent: (await g('brand_accent')) || '',
+        scheme: (await g('brand_scheme')) || '',
       },
       integrations: {
         aiConfigured: !!(await g('anthropic_api_key')),
@@ -82,15 +82,21 @@ router.get('/status', auth, async (req, res) => {
 // POST /api/setup/tenant — customer identity.
 router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req, res) => {
   try {
+    // Validate before the first write so a 400 means nothing changed.
+    const scheme = req.body.scheme;
+    if (scheme !== undefined && scheme !== '' && scheme !== null && !(typeof scheme === 'string' && settings.SCHEME_IDS.includes(scheme))) {
+      return res.status(400).json({ error: 'Unknown scheme' });
+    }
     await settings.set('brand_name', trimmedOrNull(req.body.orgName), req.user.id);
     // Keycloak hosts the sign-in page — keep its heading on the workspace brand.
     // Best-effort: branding must save even if the identity server is unreachable.
     try { await kcAdmin.setRealmDisplayName(req.body.orgName); } catch { /* non-fatal */ }
     await settings.set('tenant_id', trimmedOrNull(req.body.tenantId), req.user.id);
     await settings.set('tenant_contact_email', trimmedOrNull(req.body.contactEmail), req.user.id);
-    // Branding: accent set when provided; logo set on a data URI, removed on '' (empty),
-    // left untouched when the field is absent (the client only sends it when changed).
-    if (req.body.accent) await settings.set('brand_accent', String(req.body.accent), req.user.id);
+    // Branding: scheme set when provided (one of the curated ids); logo set on a data
+    // URI, removed on '' (empty), left untouched when the field is absent (the client
+    // only sends it when changed).
+    if (scheme) await settings.set('brand_scheme', scheme, req.user.id);
     if (req.body.logo !== undefined) await settings.set('brand_logo', req.body.logo === '' ? null : String(req.body.logo), req.user.id);
     res.json({ ok: true });
   } catch (e) { serverError(res, e); }
