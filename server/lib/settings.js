@@ -95,7 +95,7 @@ const ENV_MAP = {
   email_ev_document_edited:       'EMAIL_EV_DOCUMENT_EDITED',
   brand_name:                     'BRAND_NAME',
   brand_logo:                     'BRAND_LOGO',
-  brand_accent:                   'BRAND_ACCENT',
+  brand_scheme:                   'BRAND_SCHEME',
   tenant_id:                      'TENANT_ID',
   tenant_contact_email:           'TENANT_CONTACT_EMAIL',
   // NOTE: license config (LICENSE_PUBLIC_KEY / LICENSE_PUBLIC_KEY_PATH / LICENSE_FILE)
@@ -154,4 +154,7 @@ async function set(key, value, userId) {
 
 function _reset() { cache.clear(); lastFetch = 0; }
 
-module.exports = { get, getOrEnv, set, refresh, ENV_MAP, _reset };
+// The curated color schemes the client ships; brand_scheme must be one of these.
+const SCHEME_IDS = ['ledger', 'graphite', 'linen', 'harbor', 'ember'];
+
+module.exports = { get, getOrEnv, set, refresh, ENV_MAP, SCHEME_IDS, _reset };

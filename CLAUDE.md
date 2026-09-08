@@ -70,7 +70,7 @@ Server side (`server/middleware/auth.js`): extract the Bearer JWT, verify RS256 
 
 ### Frontend state (index.html)
 
-Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appConfig`, `filesList`, `librariesList`, `fileView`, `currentFolderPath`, `selectedFileIds` / `selectedFolderPaths` (Sets), `fileFilter`, plus localStorage-backed prefs (`memex_accent`, layout, pinned libraries). Views render by assigning `innerHTML` from template-literal builders; mutations call the matching `render*` function. The accent theme is computed at runtime by `applyAccent(hex)` (derives `--accent`/`--accent-soft`/`--accent-wash`/`--accent-ink` from the brand or device-override color).
+Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appConfig`, `filesList`, `librariesList`, `fileView`, `currentFolderPath`, `selectedFileIds` / `selectedFolderPaths` (Sets), `fileFilter`, plus localStorage-backed prefs (`memex_theme`, `memex_scheme`, layout, pinned libraries). Views render by assigning `innerHTML` from template-literal builders; mutations call the matching `render*` function. Color comes from five curated schemes, never a free color: Ledger's tokens live on `:root` / `html.dark`, the other four on `html[data-scheme="…"]` (light) and `html[data-scheme="…"].dark`. `applyScheme(id)` sets that one attribute (device choice in `memex_scheme`, else the admin's `brand_scheme` from `/api/config`); `setTheme('light'|'auto'|'dark')` toggles `html.dark`. The accent is reserved for actions, selection, focus and links; everything else takes ink or surface tokens.
 
 ### Storage
 

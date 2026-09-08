@@ -17,9 +17,15 @@
   font-display: swap;
   src: url('/vendor/fonts/inter-var.woff2') format('woff2');
 }
-:root {
+/* ---- Schemes. Depot ships five curated schemes, each a complete light AND dark
+   palette set by hand. Ledger is the default and lives on :root / html.dark; the
+   other four are html[data-scheme="…"] blocks below, selected by setScheme().
+   The .scheme-swatch aliases let the picker's preview tiles render from the same
+   tokens as the app. Rule: a scheme's dark block defines exactly the token set its
+   light block does, so no light value can leak into dark through source order. ---- */
+:root, .scheme-swatch[data-scheme="ledger"] {
   color-scheme: light dark;
-  /* File Platform — "ledger, not gallery." Light. Cool zinc structure + one blue signal. */
+  /* Ledger — "ledger, not gallery." Light. Cool zinc structure + one blue signal. */
   --masthead-h: 56px; /* header height — kept in sync with the file-home layout calcs */
   --paper: #FBFBFC;
   --surface: #FFFFFF;
@@ -31,7 +37,7 @@
   --accent: #0E6FA8;           /* spec --signal: one action color */
   --accent-soft: #0B587F;
   --accent-wash: #E8F2F9;      /* spec --signal-bg */
-  --accent-ink: #FFFFFF;       /* spec --signal-fg; recomputed by applyAccent() per luminance */
+  --accent-ink: #FFFFFF;       /* spec --signal-fg: text on the accent, set per scheme */
   --accent-2: var(--accent);   /* one accent only — legacy gradient alias collapses to signal */
   --viz-cyan: var(--accent);   /* data uses the single signal, not a second hue */
   --viz-lime: var(--ink-soft);
@@ -57,8 +63,8 @@
   --body: var(--ui);
   --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
-html.dark {
-  /* File Platform — dark. Backgrounds recede darker than surfaces; elevation is lightness, not shadow. */
+html.dark, .scheme-swatch[data-scheme="ledger"].dark {
+  /* Ledger — dark. Backgrounds recede darker than surfaces; elevation is lightness, not shadow. */
   --paper: #0D0F12;
   --surface: #15181D;
   --surface-2: #0A0C0F;        /* sunken is darker than surface in dark mode */
@@ -87,6 +93,68 @@ html.dark {
   --rule: #262B33;
   --rule-soft: #1E2229;
   --shadow: 0 4px 12px rgba(0,0,0,0.40), 0 0 0 1px #262B33;
+}
+/* Graphite — monochrome. The accent is the ink itself: black on white by day,
+   white on black by night. Selection is a quiet grey. */
+html[data-scheme="graphite"], .scheme-swatch[data-scheme="graphite"] {
+  --paper: #F6F6F4; --surface: #FFFFFF; --surface-2: #EEEEEB; --surface-raised: #FFFFFF;
+  --ink: #161616; --ink-soft: #5A5A57; --ink-faint: #8A8A86;
+  --accent: #161616; --accent-soft: #000000; --accent-wash: #EAEAE6; --accent-ink: #FFFFFF; --focus: #161616;
+  --line-strong: #C6C6C1; --rule: #E2E2DE; --rule-soft: #ECECE8;
+  --shadow: 0 4px 12px rgba(10,10,10,.10), 0 0 0 1px #E2E2DE;
+}
+html[data-scheme="graphite"].dark, .scheme-swatch[data-scheme="graphite"].dark {
+  --paper: #0B0B0B; --surface: #151515; --surface-2: #060606; --surface-raised: #1C1C1C;
+  --ink: #F0F0EE; --ink-soft: #9C9C98; --ink-faint: #6E6E6A;
+  --accent: #F0F0EE; --accent-soft: #FFFFFF; --accent-wash: #202020; --accent-ink: #0B0B0B; --focus: #F0F0EE;
+  --line-strong: #3A3A3A; --rule: #262626; --rule-soft: #1F1F1F;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #262626;
+}
+/* Linen — warm neutrals with a forest-green signal; warm charcoal and sage at night. */
+html[data-scheme="linen"], .scheme-swatch[data-scheme="linen"] {
+  --paper: #F5F3EE; --surface: #FCFBF8; --surface-2: #ECE9E1; --surface-raised: #FFFFFF;
+  --ink: #1E1B16; --ink-soft: #5F5A51; --ink-faint: #8F897E;
+  --accent: #2C6A4C; --accent-soft: #235540; --accent-wash: #E4EDE6; --accent-ink: #FFFFFF; --focus: #2C6A4C;
+  --line-strong: #C9C3B6; --rule: #E1DDD3; --rule-soft: #EAE6DD;
+  --shadow: 0 4px 12px rgba(30,27,22,.10), 0 0 0 1px #E1DDD3;
+}
+html[data-scheme="linen"].dark, .scheme-swatch[data-scheme="linen"].dark {
+  --paper: #121110; --surface: #1A1917; --surface-2: #0C0B0A; --surface-raised: #22201D;
+  --ink: #ECE8E0; --ink-soft: #A39D91; --ink-faint: #726C62;
+  --accent: #78B896; --accent-soft: #5E9F7C; --accent-wash: #172620; --accent-ink: #0B1A12; --focus: #78B896;
+  --line-strong: #3E3B35; --rule: #2A2825; --rule-soft: #232120;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2A2825;
+}
+/* Harbor — navy on cool white by day; the surfaces turn navy and the signal turns
+   brass at night, because navy on navy would vanish. One identity, two faces. */
+html[data-scheme="harbor"], .scheme-swatch[data-scheme="harbor"] {
+  --paper: #F7F8FA; --surface: #FFFFFF; --surface-2: #EDF0F4; --surface-raised: #FFFFFF;
+  --ink: #121A27; --ink-soft: #4C5563; --ink-faint: #838D9B;
+  --accent: #1E3A66; --accent-soft: #162D52; --accent-wash: #E5EBF5; --accent-ink: #FFFFFF; --focus: #1E3A66;
+  --line-strong: #BEC6D3; --rule: #DDE2EA; --rule-soft: #E8ECF2;
+  --shadow: 0 4px 12px rgba(18,26,39,.10), 0 0 0 1px #DDE2EA;
+}
+html[data-scheme="harbor"].dark, .scheme-swatch[data-scheme="harbor"].dark {
+  --paper: #0A111D; --surface: #10192A; --surface-2: #060B14; --surface-raised: #162238;
+  --ink: #E6ECF5; --ink-soft: #9BA7B8; --ink-faint: #687487;
+  --accent: #E2A94D; --accent-soft: #C9922F; --accent-wash: #2A2314; --accent-ink: #1A1204; --focus: #E2A94D;
+  --line-strong: #2E3E58; --rule: #1E2B40; --rule-soft: #172233;
+  --shadow: 0 4px 12px rgba(0,0,0,.50), 0 0 0 1px #1E2B40;
+}
+/* Ember — neutral zinc with a burnt-orange signal that lifts to a true ember at night. */
+html[data-scheme="ember"], .scheme-swatch[data-scheme="ember"] {
+  --paper: #FAFAF8; --surface: #FFFFFF; --surface-2: #F1F1EE; --surface-raised: #FFFFFF;
+  --ink: #1A1917; --ink-soft: #5D5B56; --ink-faint: #8D8A84;
+  --accent: #B6461C; --accent-soft: #973914; --accent-wash: #F8E8E1; --accent-ink: #FFFFFF; --focus: #B6461C;
+  --line-strong: #C9C7C1; --rule: #E4E3DF; --rule-soft: #ECEBE7;
+  --shadow: 0 4px 12px rgba(26,25,23,.10), 0 0 0 1px #E4E3DF;
+}
+html[data-scheme="ember"].dark, .scheme-swatch[data-scheme="ember"].dark {
+  --paper: #0F0E0D; --surface: #171614; --surface-2: #0A0908; --surface-raised: #1E1C1A;
+  --ink: #EEECE7; --ink-soft: #A09C95; --ink-faint: #6F6B64;
+  --accent: #EA7C4C; --accent-soft: #D3652F; --accent-wash: #2D1B12; --accent-ink: #1C0D06; --focus: #EA7C4C;
+  --line-strong: #3D3A36; --rule: #292826; --rule-soft: #211F1D;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #292826;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -117,8 +185,8 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--ink);
+  color: var(--paper);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -152,9 +220,9 @@ body {
 }
 .masthead-search:focus-within { border-color: var(--rule); background: var(--surface); box-shadow: 0 1px 8px rgba(0,0,0,0.07); }
 .masthead-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 14.5px var(--ui); color: var(--ink); }
-.search-spark { display: inline-flex; align-items: center; color: var(--accent); flex: 0 0 auto; }
+.search-spark { display: inline-flex; align-items: center; color: var(--ink-faint); flex: 0 0 auto; }
 .search-go { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-faint); cursor: pointer; flex: 0 0 auto; }
-.search-go:hover { background: var(--surface-2); color: var(--accent); }
+.search-go:hover { background: var(--surface-2); color: var(--ink); }
 .masthead-search:focus-within .search-go:hover { background: var(--surface-2); }
 .masthead-upload-wrap { position: relative; }
 .masthead-upload {
@@ -174,8 +242,8 @@ body {
 .masthead-upload .plus { font-size: 16px; line-height: 1; }
 .masthead-upload .chev { font-size: 11px; opacity: 0.85; }
 /* Upload is the secondary action next to the primary Create button. */
-.masthead-upload.masthead-upload-secondary { background: var(--surface); color: var(--accent); border: 1px solid var(--accent); }
-.masthead-upload.masthead-upload-secondary:hover { background: var(--accent-wash); filter: none; }
+.masthead-upload.masthead-upload-secondary { background: var(--surface); color: var(--ink-soft); border: 1px solid var(--rule); }
+.masthead-upload.masthead-upload-secondary:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line-strong); filter: none; }
 html.dark .masthead-upload.masthead-upload-secondary { background: transparent; }
 .app-menu-version {
   font-size: 11.5px;
@@ -293,201 +361,6 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 .security-status-card { border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); padding: 14px 16px; }
 .security-status-card strong { display: block; color: var(--ink); margin-bottom: 4px; }
 .security-status-card span { color: var(--ink-soft); font-size: 14px; }
-.theme-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  background: var(--surface-2);
-  box-shadow: var(--shadow);
-}
-.theme-switcher.top-theme-switcher {
-  max-width: min(52vw, 420px);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.theme-switcher.top-theme-switcher::-webkit-scrollbar { display: none; }
-.theme-option {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--ink-faint);
-  padding: 6px 9px;
-  cursor: pointer;
-  text-transform: uppercase;
-  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.theme-option:hover { color: var(--ink); background: var(--surface); }
-.theme-option.active {
-  color: var(--ink);
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--rule-soft), 0 1px 2px rgba(0,0,0,0.04);
-}
-.theme-swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
-  background: var(--swatch, var(--accent));
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.65);
-}
-.theme-swatch.office { --swatch: linear-gradient(135deg, #0078D4 0 50%, #FFFFFF 50% 100%); }
-.theme-swatch.drive { --swatch: linear-gradient(135deg, #1A73E8 0 44%, #34A853 44% 72%, #FFFFFF 72% 100%); }
-.theme-swatch.dropbox { --swatch: linear-gradient(135deg, #0061FF 0 58%, #EEF4FF 58% 100%); }
-.theme-swatch.graphite { --swatch: linear-gradient(135deg, #111315 0 52%, #7CC7B7 52% 100%); }
-.theme-swatch.dark { --swatch: linear-gradient(135deg, #1A1916 0 55%, #D97757 55% 100%); }
-html.office body { background-image: none; }
-html.office .masthead { border-bottom-color: var(--rule); }
-html.office .brand h1 { font-family: var(--display); font-weight: 600; }
-html.office .colophon::before {
-  content: '';
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  margin-right: 8px;
-  vertical-align: -4px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, var(--info) 0 35%, #2AA0FF 35% 52%, #3BCEAC 52% 68%, #F7634D 68% 84%, #F2C94C 84% 100%);
-  box-shadow: 0 2px 5px rgba(0,120,212,0.22);
-}
-html.office .tab.active,
-html.office .run-btn,
-html.office .provider-btn:hover,
-html.office .page-link.active {
-  background: var(--accent-wash);
-  border-color: rgba(0,120,212,0.28);
-}
-html.office .run-btn {
-  background: #0078D4;
-  color: #FFFFFF;
-  border-color: #0078D4;
-}
-html.office .run-btn:hover { background: #005A9E; border-color: #005A9E; }
-html.office .theme-option,
-html.office .icon-btn,
-html.office .user-chip,
-html.office .run-btn,
-html.office .ghost-btn,
-html.office .edit-btn,
-html.office .delete-btn,
-html.office .provider-btn,
-html.office .field-label,
-html.office .mode-tab,
-html.office .file-action-btn,
-html.office .upload-progress {
-  font-family: var(--body);
-  letter-spacing: 0;
-  text-transform: none;
-}
-html.office .field-label,
-html.office .mode-tab,
-html.office .upload-progress {
-  font-weight: 600;
-}
-html.office .file-icon.docx, html.office .file-icon.doc { background: #E8F3FF; color: #185ABD; }
-html.office .file-icon.xlsx, html.office .file-icon.xls, html.office .file-icon.csv { background: #EAF7EA; color: var(--success); }
-html.office .file-icon.pptx, html.office .file-icon.ppt { background: #FFF0EA; color: #C43E1C; }
-html.office .file-icon.pdf { background: #FDECEC; color: #D13438; }
-html.office-dark body,
-html.drive body,
-html.dropbox body,
-html.graphite body { background-image: none; }
-html.office-dark .masthead,
-html.drive .masthead,
-html.dropbox .masthead,
-html.graphite .masthead { border-bottom-color: var(--rule); }
-html.office-dark .theme-option,
-html.office-dark .icon-btn,
-html.office-dark .user-chip,
-html.office-dark .run-btn,
-html.office-dark .ghost-btn,
-html.office-dark .edit-btn,
-html.office-dark .delete-btn,
-html.office-dark .provider-btn,
-html.office-dark .field-label,
-html.office-dark .mode-tab,
-html.office-dark .file-action-btn,
-html.office-dark .upload-progress,
-html.drive .theme-option,
-html.drive .icon-btn,
-html.drive .user-chip,
-html.drive .run-btn,
-html.drive .ghost-btn,
-html.drive .edit-btn,
-html.drive .delete-btn,
-html.drive .provider-btn,
-html.drive .field-label,
-html.drive .mode-tab,
-html.drive .file-action-btn,
-html.drive .upload-progress,
-html.dropbox .theme-option,
-html.dropbox .icon-btn,
-html.dropbox .user-chip,
-html.dropbox .run-btn,
-html.dropbox .ghost-btn,
-html.dropbox .edit-btn,
-html.dropbox .delete-btn,
-html.dropbox .provider-btn,
-html.dropbox .field-label,
-html.dropbox .mode-tab,
-html.dropbox .file-action-btn,
-html.dropbox .upload-progress,
-html.graphite .theme-option,
-html.graphite .icon-btn,
-html.graphite .user-chip,
-html.graphite .run-btn,
-html.graphite .ghost-btn,
-html.graphite .edit-btn,
-html.graphite .delete-btn,
-html.graphite .provider-btn,
-html.graphite .field-label,
-html.graphite .mode-tab,
-html.graphite .file-action-btn,
-html.graphite .upload-progress {
-  font-family: var(--body);
-  letter-spacing: 0;
-  text-transform: none;
-}
-html.office-dark .run-btn,
-html.drive .run-btn,
-html.dropbox .run-btn,
-html.graphite .run-btn {
-  background: var(--accent);
-  color: #FFFFFF;
-  border-color: var(--accent);
-}
-html.drive .run-btn,
-html.dropbox .run-btn { color: #FFFFFF; }
-html.graphite .run-btn { color: #0B1614; }
-html.office-dark .run-btn:hover,
-html.drive .run-btn:hover,
-html.dropbox .run-btn:hover,
-html.graphite .run-btn:hover { background: var(--accent-soft); border-color: var(--accent-soft); color: #FFFFFF; }
-html.office-dark .file-icon.docx, html.office-dark .file-icon.doc { background: #102A44; color: #8EC8FF; }
-html.office-dark .file-icon.xlsx, html.office-dark .file-icon.xls, html.office-dark .file-icon.csv { background: #0E3023; color: #7BE0A8; }
-html.office-dark .file-icon.pptx, html.office-dark .file-icon.ppt { background: #3A2217; color: #FFAD7A; }
-html.office-dark .file-icon.pdf { background: #3A171D; color: #FF9AA7; }
-html.drive .file-icon.docx, html.drive .file-icon.doc,
-html.dropbox .file-icon.docx, html.dropbox .file-icon.doc { background: #E8F0FE; color: #1A73E8; }
-html.drive .file-icon.xlsx, html.drive .file-icon.xls, html.drive .file-icon.csv,
-html.dropbox .file-icon.xlsx, html.dropbox .file-icon.xls, html.dropbox .file-icon.csv { background: #E6F4EA; color: #188038; }
-html.drive .file-icon.pptx, html.drive .file-icon.ppt,
-html.dropbox .file-icon.pptx, html.dropbox .file-icon.ppt { background: #FEF7E0; color: #B06000; }
-html.drive .file-icon.pdf,
-html.dropbox .file-icon.pdf { background: #FCE8E6; color: #C5221F; }
-html.graphite .file-icon.docx, html.graphite .file-icon.doc { background: #18243A; color: #8DBBFF; }
-html.graphite .file-icon.xlsx, html.graphite .file-icon.xls, html.graphite .file-icon.csv { background: #18312E; color: #7CC7B7; }
-html.graphite .file-icon.pptx, html.graphite .file-icon.ppt { background: #352716; color: #F0B35A; }
-html.graphite .file-icon.pdf { background: #351A20; color: #FF9AA7; }
 .icon-btn {
   font-family: var(--ui);
   font-size: 13px;
@@ -522,8 +395,9 @@ html.graphite .file-icon.pdf { background: #351A20; color: #FF9AA7; }
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  color: var(--ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -828,6 +702,10 @@ select {
 textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
 textarea { min-height: 120px; line-height: 1.55; }
 select { cursor: pointer; }
+/* The masthead search is a bare input inside a pill; the generic input[type=search]
+   rule above ties with .masthead-search input on specificity and wins on source
+   order, which painted a bordered white field inside the pill. Re-assert it here. */
+.masthead-search input[type=search] { border: 0; background: transparent; padding: 0; border-radius: 0; font-size: 14.5px; }
 
 .run-btn {
   font-family: var(--body);
@@ -861,7 +739,7 @@ select { cursor: pointer; }
   transition: all 0.15s;
   min-height: 40px;
 }
-.ghost-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+.ghost-btn:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-2); }
 .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .result {
@@ -950,7 +828,7 @@ html.dark .chip { color: var(--accent-soft); }
   border: 0; border-radius: 7px; background: transparent; color: var(--ink-soft);
   font-size: 20px; line-height: 1; cursor: pointer;
 }
-.modal-x:hover { background: var(--accent-wash); color: var(--ink); }
+.modal-x:hover { background: var(--surface-2); color: var(--ink); }
 .modal-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Shared confirm/prompt dialogs (askConfirm / askPrompt) — replace the browser-native
    confirm()/prompt() boxes so deleting, renaming and naming look like the rest of Depot. */
@@ -1003,25 +881,17 @@ html.dark .chip { color: var(--accent-soft); }
 
 /* login screen */
 .login-modal { text-align: center; max-width: 440px; padding: 24px 34px 34px; }
-.login-theme-switcher {
-  justify-content: center;
-  max-width: 100%;
-  overflow-x: auto;
-  margin: 0 auto 24px;
-  scrollbar-width: none;
-}
-.login-theme-switcher::-webkit-scrollbar { display: none; }
 .login-mark {
   width: 48px;
   height: 48px;
   margin: 0 auto 14px;
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
-  color: var(--accent-ink);
+  background: var(--ink);
+  color: var(--paper);
   display: grid;
   place-items: center;
   font: 700 22px var(--ui);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 12px 28px rgba(0,0,0,.18);
 }
 /* When an admin uploads a workspace logo, drop the letter tile's fill/gradient
    so the image (often a transparent PNG) shows on its own. */
@@ -1064,32 +934,7 @@ html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rota
   gap: 10px;
   box-shadow: var(--shadow);
 }
-.provider-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
-html.office .modal {
-  border-color: rgba(17,24,39,0.12);
-  border-radius: 8px;
-  box-shadow: 0 24px 72px rgba(17,24,39,0.22), 0 0 0 1px rgba(0,120,212,0.06);
-}
-html.office .login-modal h2 {
-  font-size: 32px;
-  font-weight: 650;
-  color: #111827;
-}
-html.office .login-modal .sub {
-  color: #475467;
-  line-height: 1.45;
-}
-html.office .provider-btn {
-  color: var(--ink);
-  border-color: #D0D5DD;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(16,24,40,0.05);
-}
-html.office .provider-btn:hover {
-  color: var(--accent);
-  border-color: #8FC7F4;
-  background: var(--accent-wash);
-}
+.provider-btn:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-2); }
 
 .toast {
   position: fixed;
@@ -1341,7 +1186,7 @@ html.office .provider-btn:hover {
   color: var(--ink-soft); background: var(--surface); border: 1px solid var(--rule);
 }
 .pill.ok   { color: var(--success); background: color-mix(in srgb, var(--success) 10%, var(--paper)); border-color: color-mix(in srgb, var(--success) 30%, var(--rule)); }
-.pill.warn { color: #a4441b; background: color-mix(in srgb, #a4441b 10%, var(--paper)); border-color: color-mix(in srgb, #a4441b 30%, var(--rule)); }
+.pill.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
 
 /* usage / admin data tables */
 .usage-section { margin-bottom: 32px; }
@@ -1413,7 +1258,7 @@ html.office .provider-btn:hover {
 .cmp-checks { display: grid; gap: 5px; }
 .cmp-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); }
 .cmp-tick { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; display: inline-block; }
-.cmp-tick.ok { background: var(--success); } .cmp-tick.no { background: var(--surface-2); border: 1px solid var(--rule); } .cmp-tick.partial { background: #E6B94E; }
+.cmp-tick.ok { background: var(--success); } .cmp-tick.no { background: var(--surface-2); border: 1px solid var(--rule); } .cmp-tick.partial { background: var(--warning); }
 .cmp-check { align-items: flex-start; }
 .cmp-tick { margin-top: 2px; }
 .cmp-check-body { flex: 1; min-width: 0; }
@@ -1460,8 +1305,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
 .file-create-btn { width: 100%; min-height: 36px; border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; color: var(--ink); background: var(--surface); font: 700 14px var(--body); display: flex; align-items: center; gap: 9px; justify-content: flex-start; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
-.file-create-btn:hover { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent-soft); box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 10%, transparent); }
-.file-create-btn .plus { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; font-weight: 500; color: var(--accent); background: transparent; flex: 0 0 auto; }
+.file-create-btn:hover { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); }
+.file-create-btn .plus { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; font-weight: 500; color: var(--ink); background: transparent; flex: 0 0 auto; }
 .file-create-btn .chev { margin-left: auto; font-size: 12px; line-height: 1; color: var(--ink-soft); }
 .file-create-btn span:not(.plus):not(.chev) { white-space: nowrap; }
 .file-upload-menu, .file-search-menu { display: none; position: absolute; z-index: 20; top: calc(100% + 8px); left: 0; min-width: 152px; padding: 6px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow), 0 8px 22px rgba(0,0,0,0.10); }
@@ -1470,23 +1315,33 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-create-menu { min-width: 198px; }
 .file-upload-menu .menu-rule { height: 1px; background: var(--rule-soft); margin: 5px 6px; }
 .file-upload-menu button, .file-search-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; color: var(--ink); padding: 9px 10px; text-align: left; font: 700 14px var(--body); cursor: pointer; }
-.file-upload-menu button:hover, .file-search-menu button:hover { background: var(--accent-wash); color: var(--accent); }
+.file-upload-menu button:hover, .file-search-menu button:hover { background: var(--surface-2); color: var(--ink); }
 .file-nav-link, .file-nav-label { width: 100%; border: 0; background: transparent; color: var(--ink); display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font: 500 15px var(--body); text-align: left; }
 .file-nav-link { cursor: pointer; }
-.file-nav-link:hover, .file-nav-label:hover { background: var(--accent-wash); color: var(--ink); }
-.file-nav-link.active { color: var(--accent); background: var(--accent-wash); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+.file-nav-link:hover, .file-nav-label:hover { background: color-mix(in srgb, var(--surface) 65%, transparent); color: var(--ink); }
+/* The active item is a raised surface on the sunken rail, not an accent bar: the
+   accent marks actions and selection, and a nav location is neither. */
+.file-nav-link.active { color: var(--ink); background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px var(--rule); }
 .file-nav-icon { width: 22px; display: inline-flex; justify-content: center; color: currentColor; font-size: 18px; }
 .file-nav-symbol { display: none; }
-.accent-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-.accent-swatch { width: 26px; height: 26px; border-radius: 50%; background: var(--sw); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--rule); cursor: pointer; padding: 0; transition: transform 0.1s; }
-.accent-swatch:hover { transform: scale(1.1); }
-.accent-swatch.active { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--sw); }
-.accent-custom { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: 500 13px var(--ui); color: var(--ink-soft); }
-.accent-custom input[type=color] { width: 26px; height: 26px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: none; cursor: pointer; }
+/* Scheme picker: each card previews the scheme's light and dark faces from the real
+   token blocks (the .scheme-swatch aliases), so the tile is a true preview. */
+.scheme-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; margin-top: 8px; }
+.scheme-card { position: relative; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 0 0 9px; text-align: left; cursor: pointer; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; color: var(--ink); font-family: var(--ui); transition: border-color .12s, box-shadow .12s; }
+.scheme-card:hover { border-color: var(--line-strong); }
+.scheme-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.scheme-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.scheme-swatch { display: block; height: 58px; background: var(--paper); position: relative; overflow: hidden; }
+.scheme-swatch .sw-card { position: absolute; left: 10px; top: 10px; right: 10px; height: 44px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.scheme-swatch .sw-ink { position: absolute; left: 18px; top: 19px; width: 40%; height: 5px; border-radius: 3px; background: var(--ink); }
+.scheme-swatch .sw-accent { position: absolute; left: 18px; top: 32px; width: 26px; height: 9px; border-radius: 3px; background: var(--accent); }
+.scheme-card-name { grid-column: 1 / -1; font: 600 13px var(--ui); padding: 8px 11px 0; }
+.scheme-card-note { grid-column: 1 / -1; font: 400 11.5px var(--ui); color: var(--ink-faint); padding: 1px 11px 0; }
+@media (prefers-reduced-motion: reduce) { .scheme-card { transition: none; } }
 .file-library-nav { display: grid; gap: 8px; }
 .file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 10px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
-.file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--accent-wash); color: var(--accent); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
+.file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
 .file-library-heading-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .file-library-heading-name { font: 600 13.5px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-library-heading-sub { font-size: 11.5px; color: var(--ink-faint); }
@@ -1498,7 +1353,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ai-model-wrap { position: relative; }
 .ai-model-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink-soft); font: 500 13px var(--ui); cursor: pointer; }
 .ai-model-btn:hover { background: var(--surface-2); color: var(--ink); }
-.ai-model-btn svg { color: var(--accent); flex: 0 0 auto; }
+.ai-model-btn svg { color: var(--ink-faint); flex: 0 0 auto; }
 .ai-model-btn #ai-model-label { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
 .ai-model-btn .chev { font-size: 11px; color: var(--ink-faint); }
 .ai-model-menu { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 240px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
@@ -1506,7 +1361,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ai-model-group { font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 8px 4px; }
 .ai-model-item { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 7px; font: 500 13px var(--ui); cursor: pointer; }
 .ai-model-item:hover { background: var(--surface-2); }
-.ai-model-item.active { color: var(--accent); font-weight: 600; }
+.ai-model-item.active { color: var(--ink); font-weight: 600; background: var(--surface-2); }
 .ai-model-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
 /* settings hub — fixed-size popout; only the tab body scrolls */
 .settings-modal {
@@ -1537,13 +1392,13 @@ html.file-home-mode .masthead-actions { display: flex; }
 .settings-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); margin: 14px 0 16px; }
 .settings-tab { border: 0; background: transparent; color: var(--ink-soft); font: 600 13px var(--ui); padding: 8px 12px; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
 .settings-tab:hover { color: var(--ink); }
-.settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.settings-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
 .ai-endpoint-card { border: 1px solid var(--rule-soft); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
 .ai-endpoint-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .ai-endpoint-head .ep-label { flex: 1 1 auto; font-weight: 600; }
 .ai-endpoint-head .ep-remove { flex: 0 0 auto; padding: 5px 12px; color: var(--accent); border-color: transparent; }
 .profile-row { display: flex; align-items: center; gap: 16px; }
-.profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font: 700 22px var(--ui); overflow: hidden; flex: 0 0 auto; }
+.profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink); display: flex; align-items: center; justify-content: center; font: 700 22px var(--ui); overflow: hidden; flex: 0 0 auto; }
 .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .user-chip-avatar.has-img { background: transparent; }
 .user-chip-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
@@ -1587,7 +1442,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-home-overview { display: grid; gap: 22px; }
 .file-home-insights { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; }
 .file-home-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); min-width: 0; }
-.file-home-card-label { color: var(--ink-soft); font: 700 12px var(--body); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.file-home-card-label { color: var(--ink-soft); font: 600 12.5px var(--body); margin-bottom: 8px; }
 .file-home-card-value { color: var(--ink); font: 700 24px var(--body); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-home-card-note { color: var(--ink-soft); font-size: 13px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-home-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -1600,7 +1455,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-rec-activity { font-size: 15px; color: var(--ink); line-height: 1.35; }
 .file-rec-activity strong { color: var(--ink); }
 .file-rec-date { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 13px; }
-.file-preview { height: 90px; border: 1px solid var(--rule); border-radius: 7px; background: linear-gradient(135deg, var(--surface-2), #F0F4FA); overflow: hidden; position: relative; }
+.file-preview { height: 90px; border: 1px solid var(--rule); border-radius: 7px; background: var(--surface-2); overflow: hidden; position: relative; }
 .file-preview::before { content: ''; position: absolute; inset: 13px 12px; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent) 0 22%, transparent 22% 100%), repeating-linear-gradient(0deg, rgba(50,50,50,0.11) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, rgba(50,50,50,0.08) 0 1px, transparent 1px 18px); }
 .file-preview.pdf::before { background: repeating-linear-gradient(0deg, rgba(209,52,56,0.18) 0 2px, transparent 2px 13px); }
 .file-preview.docx::before, .file-preview.doc::before { background: repeating-linear-gradient(0deg, rgba(24,90,189,0.18) 0 2px, transparent 2px 13px); }
@@ -1619,7 +1474,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-table-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
 .file-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .file-table th { text-align: left; color: var(--ink-soft); font: 700 15px var(--body); padding: 13px 18px; border-bottom: 1px solid var(--rule); }
-.file-table td { padding: 13px 18px; border-bottom: 1px solid #F0F0F0; color: var(--ink-soft); vertical-align: middle; font-size: 15px; }
+.file-table td { padding: 13px 18px; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); vertical-align: middle; font-size: 15px; }
 .file-table tr:last-child td { border-bottom: 0; }
 .file-table th:nth-child(4), .file-table td:nth-child(4) { width: 22%; overflow: hidden; }
 .file-table th:nth-child(5), .file-table td:nth-child(5) { width: 244px; }
@@ -1651,8 +1506,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-upload-status:empty { display: none; }
 .file-upload-status .upload-line { display: grid; gap: 6px; color: var(--accent); }
 .file-upload-status .upload-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink); }
-.file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: #DDEEFF; overflow: hidden; border: 1px solid #BBD7F0; }
-.file-upload-status .upload-fill { height: 100%; width: var(--pct, 0%); background: linear-gradient(90deg, var(--accent), #5B5FC7); transition: width 120ms ease; }
+.file-upload-status .upload-bar { height: 8px; border-radius: 999px; background: var(--accent-wash); overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--rule)); }
+.file-upload-status .upload-fill { height: 100%; width: var(--pct, 0%); background: var(--accent); transition: width 120ms ease; }
 .upload-staging { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: var(--accent-wash); border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); }
 .upload-staging-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .upload-staging-actions .ghost-btn, .upload-staging-actions .run-btn { padding: 5px 12px; font-size: 13px; }
@@ -1714,7 +1569,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-library-table td.file-col-size, .file-library-table td.file-col-modified { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-soft); }
 .file-col-sort { border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 0; }
 .file-col-sort:hover { color: var(--ink); }
-.file-col-sort.active { color: var(--accent); }
+.file-col-sort.active { color: var(--ink); }
 .file-col-chooser { border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 7px; border-radius: 6px; }
 .file-col-chooser:hover { background: var(--surface-2); color: var(--ink); }
 .file-cols-menu { display: none; position: absolute; right: 8px; z-index: 25; margin-top: 6px; min-width: 152px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); text-align: left; }
@@ -1725,7 +1580,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-cols-item.disabled { color: var(--ink-faint); cursor: default; }
 .file-row-menu { position: fixed; z-index: 60; min-width: 204px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow), 0 12px 32px rgba(0,0,0,0.16); }
 .file-menu-item { display: block; width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 6px; font: 500 13.5px var(--ui); cursor: pointer; }
-.file-menu-item:hover { background: var(--accent-wash); color: var(--accent); }
+.file-menu-item:hover { background: var(--surface-2); color: var(--ink); }
 .file-menu-item.danger { color: var(--danger); }
 .file-menu-item.danger:hover { background: rgba(192,57,43,0.08); color: var(--danger); }
 .file-menu-label { font: 700 10px var(--ui); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 10px 3px; }
@@ -1795,7 +1650,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .wdash-hub, .wdash-attn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
 .wdash-hub + .wdash-hub, .wdash-attn + .wdash-attn { border-top: 1px solid var(--rule-soft); }
 .wdash-hub:hover, .wdash-attn:hover { background: var(--surface-2); }
-.wdash-hub-glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font: 600 13px var(--ui); }
+.wdash-hub-glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--ink-soft); display: grid; place-items: center; font: 600 13px var(--ui); }
 .wdash-hub-meta, .wdash-attn-txt { display: flex; flex-direction: column; min-width: 0; }
 .wdash-hub-name, .wdash-attn-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wdash-hub-sub { font-size: 12px; color: var(--ink-faint); }
@@ -1812,7 +1667,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 .wdash-hub-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); flex-wrap: wrap; }
 .wdash-hub-act { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: 600 12.5px var(--ui); cursor: pointer; }
 .wdash-hub-act:hover { background: var(--surface-2); border-color: var(--line-strong); }
-.wdash-hub-act .ic { color: var(--accent); font-size: 14px; font-weight: 700; line-height: 1; }
+.wdash-hub-act .ic { color: var(--ink-soft); font-size: 14px; font-weight: 700; line-height: 1; }
 .wdash-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: var(--state-expiring); }
 .wdash-attn-sub { font-size: 12px; color: var(--state-expiring); }
 .wdash-pins.file-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 0; }
@@ -1846,7 +1701,7 @@ html.file-home-mode .masthead-actions { display: flex; }
 /* member calls */
 .notif-wrap { position: relative; }
 .notif-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
-.notif-btn:hover { color: var(--accent); border-color: var(--accent); }
+.notif-btn:hover { color: var(--ink); border-color: var(--line-strong); }
 .update-cta { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--accent-ink); font: 600 12px var(--ui); cursor: pointer; }
 .update-cta:hover { filter: brightness(1.06); }
 .update-cta-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-ink); box-shadow: 0 0 0 3px rgba(255,255,255,0.35); animation: update-pulse 2s ease-in-out infinite; }
@@ -2000,7 +1855,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-folder-row { cursor: pointer; }
 .file-folder-row .file-row-title { font-weight: 600; }
 .cell-empty { color: var(--ink-faint); }
-.file-folder-icon { position: relative; width: 34px; height: 34px; border-radius: 8px; background: var(--accent-wash); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; }
+.file-folder-icon { position: relative; width: 34px; height: 34px; border-radius: 8px; background: var(--surface-2); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; }
 .file-folder-icon::after { content: ''; width: 16px; height: 13px; border-radius: 0 2px 2px 2px; border: 2px solid currentColor; border-top-width: 5px; }
 .file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); gap: 14px; }
 .file-commander-folders { border: 1px solid var(--rule); border-radius: 10px; padding: 10px; overflow: auto; background: var(--surface); }
@@ -2106,7 +1961,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 /* Favorite star — always visible (works on touch, no hover needed), gold when on. */
 .file-card-grid .file-card-star { position: absolute; top: 8px; left: 8px; z-index: 3; width: 28px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface-raised); color: var(--ink-faint); font-size: 15px; line-height: 1; cursor: pointer; display: grid; place-items: center; opacity: .9; transition: color .1s, border-color .1s, opacity .1s; }
 .file-card-grid .file-card-star:hover { color: var(--ink); opacity: 1; }
-.file-card-grid .file-card-star.on { color: #E8A317; border-color: #E8A317; opacity: 1; }
+.file-card-grid .file-card-star.on { color: var(--warning); border-color: var(--warning); opacity: 1; }
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
@@ -2162,7 +2017,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-library-person { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-library-selected-count { color: var(--ink); font: 700 15px var(--body); display: inline-flex; align-items: center; gap: 8px; }
 .file-library-close { border: 0; background: transparent; color: var(--ink); cursor: pointer; border-radius: 6px; width: 34px; height: 34px; font-size: 22px; line-height: 1; }
-.file-library-close:hover { background: #F0F4FF; }
+.file-library-close:hover { background: var(--surface-2); }
 .file-library-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .file-library-layout.details-open { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); align-items: start; }
 .file-details-pane { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.035); position: sticky; top: 18px; }
@@ -2309,313 +2164,6 @@ html.dark .file-preview::before { opacity: 0.65; }
 html.dark .file-link-status { background: #172638; color: #D9ECFF; }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
-html.office-dark.file-home-mode body,
-html.drive.file-home-mode body,
-html.graphite.file-home-mode body { background: var(--paper); background-image: none; }
-html.office-dark .file-home-shell,
-html.drive .file-home-shell,
-html.graphite .file-home-shell { background: var(--paper); color: var(--ink); }
-html.office-dark .file-home-nav,
-html.drive .file-home-nav,
-html.graphite .file-home-nav { background: var(--surface); border-color: var(--rule); }
-html.office-dark .file-home-shell.dragging,
-html.drive .file-home-shell.dragging,
-html.graphite .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--accent); }
-html.office-dark .file-create-btn,
-html.drive .file-create-btn,
-html.graphite .file-create-btn { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--ink); box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 12%, transparent); }
-html.office-dark .file-create-btn:hover,
-html.drive .file-create-btn:hover,
-html.graphite .file-create-btn:hover { border-color: var(--accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 18%, transparent); filter: brightness(1.03); }
-html.office-dark .file-create-btn .plus,
-html.drive .file-create-btn .plus,
-html.graphite .file-create-btn .plus { background: color-mix(in srgb, var(--surface) 56%, transparent); color: var(--accent); }
-html.office-dark .file-create-btn .chev,
-html.drive .file-create-btn .chev,
-html.graphite .file-create-btn .chev { color: var(--ink-soft); }
-html.office-dark .file-upload-menu,
-html.office-dark .file-search-menu,
-html.office-dark .file-home-search,
-html.office-dark .file-library-search,
-html.office-dark .file-share-grid input,
-html.office-dark .file-share-grid select,
-html.office-dark .file-access-form input,
-html.office-dark .file-access-form select,
-html.office-dark .file-share-url,
-html.drive .file-upload-menu,
-html.drive .file-search-menu,
-html.drive .file-home-search,
-html.drive .file-library-search,
-html.drive .file-share-grid input,
-html.drive .file-share-grid select,
-html.drive .file-access-form input,
-html.drive .file-access-form select,
-html.drive .file-share-url,
-html.graphite .file-upload-menu,
-html.graphite .file-search-menu,
-html.graphite .file-home-search,
-html.graphite .file-library-search,
-html.graphite .file-share-grid input,
-html.graphite .file-share-grid select,
-html.graphite .file-access-form input,
-html.graphite .file-access-form select,
-html.graphite .file-share-url { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
-html.office-dark .file-upload-menu button,
-html.office-dark .file-search-menu button,
-html.drive .file-upload-menu button,
-html.drive .file-search-menu button,
-html.graphite .file-upload-menu button,
-html.graphite .file-search-menu button { color: var(--ink); }
-html.office-dark .file-upload-menu button:hover,
-html.office-dark .file-search-menu button:hover,
-html.drive .file-upload-menu button:hover,
-html.drive .file-search-menu button:hover,
-html.graphite .file-upload-menu button:hover,
-html.graphite .file-search-menu button:hover { background: var(--accent-wash); }
-html.office-dark .file-library-heading,
-html.office-dark .file-nav-section,
-html.office-dark .file-pinned-header,
-html.office-dark .file-home-title,
-html.office-dark .file-section-title,
-html.office-dark .file-home-card-value,
-html.office-dark .file-library-title,
-html.office-dark .file-details-title,
-html.office-dark .file-details-section-title,
-html.office-dark .file-link-title,
-html.office-dark .file-share-grid label,
-html.office-dark .file-library-selected-count,
-html.drive .file-library-heading,
-html.drive .file-nav-section,
-html.drive .file-pinned-header,
-html.drive .file-home-title,
-html.drive .file-section-title,
-html.drive .file-home-card-value,
-html.drive .file-library-title,
-html.drive .file-details-title,
-html.drive .file-details-section-title,
-html.drive .file-link-title,
-html.drive .file-share-grid label,
-html.drive .file-library-selected-count,
-html.graphite .file-library-heading,
-html.graphite .file-nav-section,
-html.graphite .file-pinned-header,
-html.graphite .file-home-title,
-html.graphite .file-section-title,
-html.graphite .file-home-card-value,
-html.graphite .file-library-title,
-html.graphite .file-details-title,
-html.graphite .file-details-section-title,
-html.graphite .file-link-title,
-html.graphite .file-share-grid label,
-html.graphite .file-library-selected-count { color: var(--ink); }
-html.office-dark .file-nav-link,
-html.office-dark .file-nav-label,
-html.office-dark .file-library-tool,
-html.office-dark .file-library-close,
-html.office-dark .file-library-icon-btn,
-html.drive .file-nav-link,
-html.drive .file-nav-label,
-html.drive .file-library-tool,
-html.drive .file-library-close,
-html.drive .file-library-icon-btn,
-html.graphite .file-nav-link,
-html.graphite .file-nav-label,
-html.graphite .file-library-tool,
-html.graphite .file-library-close,
-html.graphite .file-library-icon-btn { color: var(--ink-soft); }
-html.office-dark .file-nav-link:hover,
-html.office-dark .file-nav-label:hover,
-html.office-dark .file-library-tool:hover,
-html.office-dark .file-library-close:hover,
-html.office-dark .file-library-icon-btn:hover,
-html.drive .file-nav-link:hover,
-html.drive .file-nav-label:hover,
-html.drive .file-library-tool:hover,
-html.drive .file-library-close:hover,
-html.drive .file-library-icon-btn:hover,
-html.graphite .file-nav-link:hover,
-html.graphite .file-nav-label:hover,
-html.graphite .file-library-tool:hover,
-html.graphite .file-library-close:hover,
-html.graphite .file-library-icon-btn:hover { background: var(--accent-wash); color: var(--ink); }
-html.office-dark .file-nav-link.active,
-html.office-dark .file-filter-chip.active,
-html.office-dark .file-library-pill.active,
-html.drive .file-nav-link.active,
-html.drive .file-filter-chip.active,
-html.drive .file-library-pill.active,
-html.graphite .file-nav-link.active,
-html.graphite .file-filter-chip.active,
-html.graphite .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent); }
-html.office-dark .file-quick-pill,
-html.office-dark .file-home-card-label,
-html.office-dark .file-home-card-note,
-html.office-dark .file-details-kind,
-html.office-dark .file-row-sub,
-html.office-dark .file-row-hit,
-html.office-dark .file-row-activity span,
-html.office-dark .file-library-table td,
-html.office-dark .file-link-meta,
-html.office-dark .file-share-meta,
-html.office-dark .file-details-row,
-html.drive .file-quick-pill,
-html.drive .file-home-card-label,
-html.drive .file-home-card-note,
-html.drive .file-details-kind,
-html.drive .file-row-sub,
-html.drive .file-row-hit,
-html.drive .file-row-activity span,
-html.drive .file-library-table td,
-html.drive .file-link-meta,
-html.drive .file-share-meta,
-html.drive .file-details-row,
-html.graphite .file-quick-pill,
-html.graphite .file-home-card-label,
-html.graphite .file-home-card-note,
-html.graphite .file-details-kind,
-html.graphite .file-row-sub,
-html.graphite .file-row-hit,
-html.graphite .file-row-activity span,
-html.graphite .file-library-table td,
-html.graphite .file-link-meta,
-html.graphite .file-share-meta,
-html.graphite .file-details-row { color: var(--ink-soft); }
-html.office-dark .file-rec-card,
-html.office-dark .file-home-card,
-html.office-dark .file-table-wrap,
-html.office-dark .file-library-commandbar.has-selection,
-html.office-dark .file-library-table-wrap,
-html.office-dark .file-details-pane,
-html.office-dark .file-ask-answer,
-html.office-dark .file-ask-input,
-html.office-dark .file-share-item,
-html.office-dark .file-share-section,
-html.office-dark .file-link-card,
-html.office-dark .file-empty-home,
-html.drive .file-rec-card,
-html.drive .file-home-card,
-html.drive .file-table-wrap,
-html.drive .file-library-commandbar.has-selection,
-html.drive .file-library-table-wrap,
-html.drive .file-details-pane,
-html.drive .file-ask-answer,
-html.drive .file-ask-input,
-html.drive .file-share-item,
-html.drive .file-share-section,
-html.drive .file-link-card,
-html.drive .file-empty-home,
-html.graphite .file-rec-card,
-html.graphite .file-home-card,
-html.graphite .file-table-wrap,
-html.graphite .file-library-commandbar.has-selection,
-html.graphite .file-library-table-wrap,
-html.graphite .file-details-pane,
-html.graphite .file-ask-answer,
-html.graphite .file-ask-input,
-html.graphite .file-share-item,
-html.graphite .file-share-section,
-html.graphite .file-link-card,
-html.graphite .file-empty-home { background: var(--surface); border-color: var(--rule); color: var(--ink-soft); box-shadow: var(--shadow); }
-html.office-dark .file-rec-head,
-html.office-dark .file-library-head,
-html.office-dark .file-details-section,
-html.office-dark .file-table th,
-html.office-dark .file-table td,
-html.office-dark .file-library-table th,
-html.office-dark .file-library-table td,
-html.drive .file-rec-head,
-html.drive .file-library-head,
-html.drive .file-details-section,
-html.drive .file-table th,
-html.drive .file-table td,
-html.drive .file-library-table th,
-html.drive .file-library-table td,
-html.graphite .file-rec-head,
-html.graphite .file-library-head,
-html.graphite .file-details-section,
-html.graphite .file-table th,
-html.graphite .file-table td,
-html.graphite .file-library-table th,
-html.graphite .file-library-table td { border-color: var(--rule-soft); }
-html.office-dark .file-rec-title,
-html.office-dark .file-rec-activity strong,
-html.office-dark .file-row-title,
-html.office-dark .file-empty-title,
-html.office-dark .file-library-table th,
-html.office-dark .file-details-row strong,
-html.drive .file-rec-title,
-html.drive .file-rec-activity strong,
-html.drive .file-row-title,
-html.drive .file-empty-title,
-html.drive .file-library-table th,
-html.drive .file-details-row strong,
-html.graphite .file-rec-title,
-html.graphite .file-rec-activity strong,
-html.graphite .file-row-title,
-html.graphite .file-empty-title,
-html.graphite .file-library-table th,
-html.graphite .file-details-row strong { color: var(--ink); }
-html.office-dark .file-empty-text,
-html.drive .file-empty-text,
-html.graphite .file-empty-text { color: var(--ink-soft); }
-html.office-dark .file-rec-activity,
-html.office-dark .file-rec-date,
-html.drive .file-rec-activity,
-html.drive .file-rec-date,
-html.graphite .file-rec-activity,
-html.graphite .file-rec-date { color: var(--ink-soft); }
-html.office-dark .file-rec-open,
-html.office-dark .file-filter-chip,
-html.office-dark .file-library-pill,
-html.drive .file-rec-open,
-html.drive .file-filter-chip,
-html.drive .file-library-pill,
-html.graphite .file-rec-open,
-html.graphite .file-filter-chip,
-html.graphite .file-library-pill { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
-html.office-dark .file-rec-open:hover,
-html.office-dark .file-filter-chip:hover,
-html.office-dark .file-library-pill:hover,
-html.drive .file-rec-open:hover,
-html.drive .file-filter-chip:hover,
-html.drive .file-library-pill:hover,
-html.graphite .file-rec-open:hover,
-html.graphite .file-filter-chip:hover,
-html.graphite .file-library-pill:hover { border-color: var(--accent); color: var(--ink); }
-html.office-dark .file-library-table tbody tr:hover,
-html.drive .file-library-table tbody tr:hover,
-html.graphite .file-library-table tbody tr:hover { background: color-mix(in srgb, var(--accent-wash) 60%, transparent); }
-html.office-dark .file-library-table tbody tr.selected,
-html.office-dark .file-library-table tbody tr.selected:hover,
-html.drive .file-library-table tbody tr.selected,
-html.drive .file-library-table tbody tr.selected:hover,
-html.graphite .file-library-table tbody tr.selected,
-html.graphite .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
-html.office-dark .file-library-select,
-html.drive .file-library-select,
-html.graphite .file-library-select { background: var(--surface-2); border-color: var(--ink-faint); color: var(--ink); }
-html.office-dark .file-library-select.selected,
-html.drive .file-library-select.selected,
-html.graphite .file-library-select.selected { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
-html.graphite .file-library-select.selected { color: #0B1614; }
-html.office-dark .file-library-person,
-html.drive .file-library-person,
-html.graphite .file-library-person { background: var(--surface-2); color: var(--ink-soft); }
-html.office-dark .file-preview,
-html.drive .file-preview,
-html.graphite .file-preview { background: linear-gradient(135deg, var(--surface-2), var(--surface)); border-color: var(--rule); }
-html.office-dark .file-preview::before,
-html.drive .file-preview::before,
-html.graphite .file-preview::before { opacity: 0.72; }
-html.office-dark .file-link-status,
-html.drive .file-link-status,
-html.graphite .file-link-status { background: var(--accent-wash); color: var(--accent); }
-html.office-dark .file-link-status.expired,
-html.office-dark .file-link-status.revoked,
-html.drive .file-link-status.expired,
-html.drive .file-link-status.revoked,
-html.graphite .file-link-status.expired,
-html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
@@ -2723,8 +2271,8 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  background: var(--accent-wash);
-  color: var(--accent);
+  background: var(--surface-2);
+  color: var(--ink-soft);
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -2736,7 +2284,7 @@ html.graphite .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 /* SVG per-extension icon variant: no badge background; the sheet color comes
    from theme-aware CSS vars so it reads on light and dark grounds. */
 :root { --fic-sheet: #FFFFFF; --fic-edge: #D8D9E6; --fic-line: #EDEEF6; }
-html.dark, html.office-dark { --fic-sheet: #2A2C39; --fic-edge: #3C3E50; --fic-line: rgba(255,255,255,.07); }
+html.dark { --fic-sheet: #2A2C39; --fic-edge: #3C3E50; --fic-line: rgba(255,255,255,.07); }
 .file-icon.file-icon--doc { background: transparent; color: inherit; border-radius: 0; }
 .file-icon.file-icon--doc svg { height: 100%; width: auto; display: block; }
 .file-icon.pdf  { background: #FCEAE8; color: var(--danger); }
@@ -3166,7 +2714,7 @@ let state = { tab: 'files', log: [] };
 let _kc = null; // Keycloak config { url, realm, clientId }
 let currentUser = null; // { id, email, role, name }
 let appConfig = null;   // /api/config response (version, editingEnabled, …) — set in initApp
-let brandDefaults = { name: '', logo: '', accent: '' }; // admin-set workspace branding from /api/config
+let brandDefaults = { name: '', logo: '', scheme: '' }; // admin-set workspace branding from /api/config
 
 // ingest mode state
 let ingestMode = 'paste';
@@ -3451,8 +2999,10 @@ async function handleOAuthCallback(code, returnedState) {
 
 /* ---------- bootstrap ---------- */
 async function initApp() {
-  const savedTheme = localStorage.getItem('memex_theme');
-  setTheme(savedTheme || 'light');
+  // A device that chose a raw accent color before schemes existed simply follows
+  // the workspace scheme now; the old key is dropped so it can never resurface.
+  localStorage.removeItem('memex_accent');
+  setTheme(localStorage.getItem('memex_theme') || 'auto');
 
   let config;
   try {
@@ -3461,7 +3011,7 @@ async function initApp() {
     applyBranding(config.brand); // brand the login card + header before anything renders
   } catch (e) {
     document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">D</div><h2>Depot is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
-    setTheme(localStorage.getItem('memex_theme') || 'light');
+    setTheme(localStorage.getItem('memex_theme') || 'auto');
     return;
   }
 
@@ -3667,7 +3217,7 @@ function setupStepHtml(step, s) {
         <button class="ghost-btn" type="button" id="setup-logo-remove" onclick="setupClearLogo()" style="${setupHasLogo(s) ? '' : 'display:none'}">Remove</button>
       </div>
     </div>
-    <div class="setup-field"><label>Accent color</label><input type="color" id="setup-accent" value="${esc(s.tenant?.accent || '#E11048')}" style="width:56px;height:34px;padding:2px;cursor:pointer"></div>`;
+    <div class="setup-field"><label>Scheme <span class="setup-hint">everyone's default · members can pick their own</span></label><div id="setup-scheme">${schemeCardsHtml(setupSchemeDraft || s.tenant?.scheme || DEFAULT_SCHEME, 'pickSetupScheme')}</div></div>`;
   if (step === 2) return `
     <h3 class="setup-h3">AI (Anthropic)</h3>
     <div class="setup-field setup-inline"><input id="setup-ai-key" type="password" autocomplete="new-password" placeholder="Anthropic API key (sk-ant-…)"><button class="ghost-btn" type="button" onclick="setupTestAi()">Test</button></div>
@@ -3784,7 +3334,7 @@ async function setupSaveStep(step) {
       orgName: document.getElementById('setup-org')?.value || '',
       tenantId: document.getElementById('setup-tenant-id')?.value || '',
       contactEmail: document.getElementById('setup-contact')?.value || '',
-      accent: document.getElementById('setup-accent')?.value || '',
+      scheme: setupSchemeDraft || document.querySelector('#setup-scheme .scheme-card.active')?.dataset.scheme || DEFAULT_SCHEME,
     };
     if (brandLogoDraft !== null) body.logo = brandLogoDraft; // only send when changed
     return apiPost('/setup/tenant', body);
@@ -4066,63 +3616,65 @@ async function streamFromApi(path, body, el) {
   return { text, saved };
 }
 
-/* ---------- theme ---------- */
-const ACCENT_PRESETS = [
-  { name: 'Terracotta', hex: '#C2603D' },
-  { name: 'Clay',       hex: '#B6532E' },
-  { name: 'Amber',      hex: '#C2902B' },
-  { name: 'Forest',     hex: '#3E7C5A' },
-  { name: 'Teal',       hex: '#2F8C8C' },
-  { name: 'Ocean',      hex: '#2F6FB0' },
-  { name: 'Indigo',     hex: '#5A5BC4' },
-  { name: 'Plum',       hex: '#8A4E9E' },
-  { name: 'Rose',       hex: '#C2548A' },
-  { name: 'Slate',      hex: '#5B6470' },
+/* ---------- theme: curated schemes + light / auto / dark ---------- */
+// Five hand-built schemes. The token blocks live in the stylesheet under
+// html[data-scheme]; this list only names them for the pickers. Ledger is the
+// default and needs no attribute at all.
+const SCHEMES = [
+  { id: 'ledger',   name: 'Ledger',   note: 'Cool zinc, one blue signal' },
+  { id: 'graphite', name: 'Graphite', note: 'Monochrome' },
+  { id: 'linen',    name: 'Linen',    note: 'Warm neutrals, forest green' },
+  { id: 'harbor',   name: 'Harbor',   note: 'Navy by day, brass by night' },
+  { id: 'ember',    name: 'Ember',    note: 'Zinc with burnt orange' },
 ];
-function _hexToRgb(h) { h = String(h).replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-function _rgbToHex(r, g, b) { return '#' + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join(''); }
-function _mix(a, b, t) { return a.map((v, i) => v + (b[i] - v) * t); }
-// WCAG relative luminance, and a readable ink (white, or a dark tint of the hue)
-// for text sitting on top of an arbitrary accent — so a light brand accent doesn't
-// end up with unreadable white labels on its CTAs.
-function _relLum(rgb) { const a = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
-function _accentInk(rgb) { const L = _relLum(rgb); const cWhite = 1.05 / (L + 0.05); const cBlack = (L + 0.05) / 0.05; return cWhite >= cBlack ? [255, 255, 255] : _mix(rgb, [0, 0, 0], 0.86); }
-// persist=true records the choice as this device's override. The admin-set
-// brand accent is applied with persist=false so it acts as a default the user
-// can still override locally without being written as their own choice.
-function applyAccent(hex, persist = true) {
-  const root = document.documentElement.style;
-  if (!hex) {
-    root.removeProperty('--accent'); root.removeProperty('--accent-soft'); root.removeProperty('--accent-wash'); root.removeProperty('--accent-ink');
-    if (persist) localStorage.removeItem('memex_accent');
-    // Fall back to the workspace brand accent when the device override is cleared.
-    if (brandDefaults.accent) applyAccent(brandDefaults.accent, false);
-    return;
+const DEFAULT_SCHEME = 'ledger';
+function schemeOf(id) { return SCHEMES.find(s => s.id === id) || null; }
+let setupSchemeDraft = null;  // setup wizard: the card picked before Save
+let brandSchemeDraft = null;  // Admin → Workspace: the card picked before Save
+// persist=true records the choice as this device's override; the workspace scheme
+// is applied with persist=false so it stays a default a member can override.
+// An empty id with persist=true clears the override and falls back to the workspace.
+function applyScheme(id, persist = true) {
+  if (persist) {
+    if (id && schemeOf(id)) localStorage.setItem('memex_scheme', id); else localStorage.removeItem('memex_scheme');
   }
-  const base = _hexToRgb(hex);
-  const dark = document.documentElement.classList.contains('dark');
-  const accent = dark ? _mix(base, [255, 255, 255], 0.2) : base;
-  const soft = dark ? base : _mix(base, [0, 0, 0], 0.18);
-  const wash = dark ? _mix([12, 9, 18], base, 0.16) : _mix([255, 255, 255], base, 0.1);
-  root.setProperty('--accent', _rgbToHex(...accent));
-  root.setProperty('--accent-soft', _rgbToHex(...soft));
-  root.setProperty('--accent-wash', _rgbToHex(...wash));
-  root.setProperty('--accent-ink', _rgbToHex(..._accentInk(accent)));
-  if (persist) localStorage.setItem('memex_accent', hex);
+  const wanted = (persist ? (localStorage.getItem('memex_scheme') || brandDefaults.scheme) : id) || DEFAULT_SCHEME;
+  const scheme = schemeOf(wanted) ? wanted : DEFAULT_SCHEME;
+  if (scheme === DEFAULT_SCHEME) delete document.documentElement.dataset.scheme;
+  else document.documentElement.dataset.scheme = scheme;
 }
+function currentScheme() { return document.documentElement.dataset.scheme || DEFAULT_SCHEME; }
+// The picker shared by Appearance, Admin → Workspace and the setup wizard. Each
+// card previews both faces of a scheme from the real token blocks.
+function schemeCardsHtml(selectedId, onPick) {
+  const faces = (id) => ['', ' dark'].map(d => `<span class="scheme-swatch${d}" data-scheme="${id}" aria-hidden="true"><i class="sw-card"></i><i class="sw-ink"></i><i class="sw-accent"></i></span>`).join('');
+  return `<div class="scheme-cards" role="radiogroup" aria-label="Scheme">${SCHEMES.map(s => {
+    const on = s.id === selectedId;
+    return `<button type="button" role="radio" aria-checked="${on}" class="scheme-card${on ? ' active' : ''}" data-scheme="${s.id}" onclick="${onPick}(this.dataset.scheme)">${faces(s.id)}<span class="scheme-card-name">${esc(s.name)}</span><span class="scheme-card-note">${esc(s.note)}</span></button>`;
+  }).join('')}</div>`;
+}
+function pickDeviceScheme(id) { applyScheme(id, true); switchSettingsTab('profile'); }
+function pickBrandScheme(id) { brandSchemeDraft = id; switchSettingsTab('system'); }
+function pickSetupScheme(id) {
+  setupSchemeDraft = id;
+  applyScheme(id, false); // preview it live; Save makes it the workspace default
+  document.querySelectorAll('#setup-scheme .scheme-card').forEach(b => { const on = b.dataset.scheme === id; b.classList.toggle('active', on); b.setAttribute('aria-checked', String(on)); });
+}
+// theme ∈ light | dark | auto. Auto follows the OS and re-resolves when it changes.
+let _autoThemeMq = null;
 function setTheme(theme) {
   if (typeof theme === 'boolean') theme = theme ? 'dark' : 'light';
-  // Depot has one signature look + dark mode; migrate any legacy theme name to light.
-  theme = theme === 'dark' ? 'dark' : 'light';
-  document.documentElement.classList.remove('dark', 'office', 'office-dark', 'drive', 'dropbox', 'aurora', 'graphite');
-  if (theme === 'dark') document.documentElement.classList.add('dark');
-  const toggleItem = document.getElementById('theme-toggle-item');
-  if (toggleItem) toggleItem.textContent = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  renderThemeToggle(theme);
+  theme = theme === 'dark' || theme === 'auto' ? theme : 'light';
   localStorage.setItem('memex_theme', theme);
-  // Re-apply accent for the new theme: the device override if set, else the
-  // workspace brand accent (never re-persist on a theme switch).
-  applyAccent(localStorage.getItem('memex_accent') || brandDefaults.accent || '', false);
+  if (!_autoThemeMq) {
+    _autoThemeMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : { matches: false, addEventListener() {} };
+    _autoThemeMq.addEventListener('change', () => { if (localStorage.getItem('memex_theme') === 'auto') setTheme('auto'); });
+  }
+  const dark = theme === 'dark' || (theme === 'auto' && _autoThemeMq.matches);
+  document.documentElement.classList.toggle('dark', dark);
+  const toggleItem = document.getElementById('theme-toggle-item');
+  if (toggleItem) toggleItem.textContent = dark ? 'Switch to light mode' : 'Switch to dark mode';
+  renderThemeToggle(dark ? 'dark' : 'light');
 }
 
 // Header quick-toggle icon: a moon in light mode (click to go dark), a sun in
@@ -4143,7 +3695,7 @@ function applyBranding(brand) {
   brandDefaults = {
     name: (brand && brand.name || '').trim(),
     logo: (brand && brand.logo || '').trim(),
-    accent: (brand && brand.accent || '').trim(),
+    scheme: (brand && brand.scheme || '').trim(),
   };
   const name = brandDefaults.name || 'Depot';
   document.title = name;
@@ -4156,11 +3708,13 @@ function applyBranding(brand) {
   // With a real logo, give it room and drop the wordmark; the letter-tile + name
   // stay only when no custom logo is set.
   document.querySelectorAll('.brand').forEach(b => b.classList.toggle('brand--has-logo', !!brandDefaults.logo));
-  // Brand accent is the default only when the user has no device override.
-  if (brandDefaults.accent && !localStorage.getItem('memex_accent')) applyAccent(brandDefaults.accent, false);
+  // The workspace scheme is the default; a device choice under Appearance wins.
+  applyScheme(localStorage.getItem('memex_scheme') || brandDefaults.scheme || DEFAULT_SCHEME, false);
 }
+// The masthead toggle flips the resolved mode, so from Auto it lands on the opposite
+// of whatever the OS chose rather than doing nothing.
 function toggleTheme() {
-  setTheme(localStorage.getItem('memex_theme') === 'dark' ? 'light' : 'dark');
+  setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
 }
 
 function toggleAppMenu(event) {
@@ -5293,7 +4847,7 @@ function clearBrandLogo() { brandLogoDraft = ''; switchSettingsTab('system'); }
 async function saveBrandingSettings() {
   const body = {
     brand_name:   document.getElementById('cfg-brand-name')?.value.trim() || '',
-    brand_accent: document.getElementById('cfg-brand-accent')?.value || '',
+    brand_scheme: brandSchemeDraft !== null ? brandSchemeDraft : ((settingsSys && settingsSys.brand_scheme) || DEFAULT_SCHEME),
   };
   // Only send the logo when it changed this session (avoid re-uploading the
   // whole data URL on every save, and preserve the stored one otherwise).
@@ -5302,9 +4856,10 @@ async function saveBrandingSettings() {
     await apiPut('/admin/settings', body);
     settingsSys = await apiGet('/admin/settings');
     brandLogoDraft = null;
+    brandSchemeDraft = null;
     // Apply immediately so the header/login reflect the change without a reload.
-    applyBranding({ name: settingsSys.brand_name, logo: settingsSys.brand_logo, accent: settingsSys.brand_accent });
-    if (appConfig) appConfig.brand = { name: settingsSys.brand_name, logo: settingsSys.brand_logo, accent: settingsSys.brand_accent };
+    applyBranding({ name: settingsSys.brand_name, logo: settingsSys.brand_logo, scheme: settingsSys.brand_scheme });
+    if (appConfig) appConfig.brand = { name: settingsSys.brand_name, logo: settingsSys.brand_logo, scheme: settingsSys.brand_scheme };
     switchSettingsTab('system');
     toast('Branding saved');
   } catch (e) { toast('Save failed: ' + e.message); }
@@ -6103,34 +5658,34 @@ async function saveProfile() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 function appearanceSettingsHtml() {
-  const dark = document.documentElement.classList.contains('dark');
-  const current = (localStorage.getItem('memex_accent') || '').toLowerCase();
-  const swatches = ACCENT_PRESETS.map(p => `<button class="accent-swatch${current === p.hex.toLowerCase() ? ' active' : ''}" title="${p.name}" style="--sw:${p.hex}" onclick="applyAccent('${p.hex}');switchSettingsTab('profile')"></button>`).join('');
-  return `<div class="settings-sub">Theme</div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <button class="${dark ? 'ghost-btn' : 'run-btn'}" onclick="setTheme('light');switchSettingsTab('profile')">Light</button>
-      <button class="${dark ? 'run-btn' : 'ghost-btn'}" onclick="setTheme('dark');switchSettingsTab('profile')">Dark</button>
-    </div>
-    <div class="settings-sub" style="margin-top:16px">Accent color</div>
-    <div class="accent-swatches">${swatches}</div>
+  const mode = localStorage.getItem('memex_theme') || 'auto';
+  const device = localStorage.getItem('memex_scheme') || '';
+  const workspace = schemeOf(brandDefaults.scheme) ? brandDefaults.scheme : DEFAULT_SCHEME;
+  const modes = [['light', 'Light'], ['auto', 'Auto'], ['dark', 'Dark']];
+  return `<div class="settings-sub">Mode</div>
+    <div class="share-seg" role="radiogroup" aria-label="Mode" style="margin-top:6px">${modes.map(([m, label]) => `<button type="button" role="radio" aria-checked="${mode === m}" class="share-seg-opt${mode === m ? ' active' : ''}" onclick="setTheme('${m}');switchSettingsTab('profile')">${label}</button>`).join('')}</div>
+    <p class="settings-notice" style="margin-top:8px">Auto follows this device's system setting.</p>
+    <div class="settings-sub" style="margin-top:16px">Scheme</div>
+    ${schemeCardsHtml(device || workspace, 'pickDeviceScheme')}
     <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
-      <label class="accent-custom"><input type="color" value="${current || '#E11048'}" onchange="applyAccent(this.value);switchSettingsTab('profile')"><span>Custom…</span></label>
-      <button class="ghost-btn" onclick="applyAccent('');switchSettingsTab('profile')">Reset to default</button>
-    </div>
-    <p class="settings-notice" style="margin-top:10px">Theme and accent are saved on this device.</p>`;
+      ${device
+        ? `<button class="ghost-btn" type="button" onclick="pickDeviceScheme('')">Use the workspace scheme (${esc(schemeOf(workspace).name)})</button>`
+        : `<span class="settings-notice">Using the workspace scheme. Pick another to change it on this device only.</span>`}
+    </div>`;
 }
 function workspaceSettingsHtml() {
   const s = settingsSys || {};
   const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
   const brandName = s.brand_name || '';
+  const scheme = brandSchemeDraft !== null ? brandSchemeDraft : (s.brand_scheme || DEFAULT_SCHEME);
   const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'D').toUpperCase());
   return `<div class="settings-sub">Workspace branding</div>
-      <p class="settings-notice">Sets the name, logo, and default accent shown to everyone — including on the sign-in screen. Individuals can still pick their own accent on their device.</p>
+      <p class="settings-notice">Sets the name, logo and scheme everyone sees, including on the sign-in screen. Members can pick a different scheme for themselves under Appearance.</p>
       <div class="settings-grid">
         <label>Workspace name</label>
         <input type="text" class="sans" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Depot">
-        <label>Default accent</label>
-        <label class="accent-custom" style="justify-self:start"><input type="color" id="cfg-brand-accent" value="${esc(s.brand_accent||'#C2603D')}"><span>Pick a color</span></label>
+        <label>Scheme</label>
+        <div>${schemeCardsHtml(scheme, 'pickBrandScheme')}</div>
         <label>Logo</label>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="brand-logo${logo ? ' has-logo' : ''}" id="brand-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px">${logoInner}</span>

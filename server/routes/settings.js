@@ -107,6 +107,10 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       }
     }
 
+    if (req.body.brand_scheme && !settings.SCHEME_IDS.includes(String(req.body.brand_scheme))) {
+      return res.status(400).json({ error: 'Unknown scheme' });
+    }
+
     const changed = [];
     for (const [key, value] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
