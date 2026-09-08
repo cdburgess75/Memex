@@ -7223,8 +7223,11 @@ function closeModalEl(scrim) {
 }
 function closeModal(id) { closeModalEl(document.getElementById(id)); }
 function closeTopModal() {
+  // Setup joins login and editor as non-dismissable: the wizard must run to
+  // completion, and its scheme cards preview live, so an Escape here would both
+  // strand the instance mid-setup and leave the previewed scheme applied.
   const scrims = [...document.querySelectorAll('.scrim.open')]
-    .filter(sc => sc.id !== 'login-scrim' && sc.id !== 'editor-scrim');
+    .filter(sc => sc.id !== 'login-scrim' && sc.id !== 'editor-scrim' && sc.id !== 'setup-scrim');
   if (!scrims.length) return false;
   closeModalEl(scrims[scrims.length - 1]);
   return true;
