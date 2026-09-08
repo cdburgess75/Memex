@@ -82,6 +82,11 @@ router.get('/status', auth, async (req, res) => {
 // POST /api/setup/tenant — customer identity.
 router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req, res) => {
   try {
+    // Validate before the first write so a 400 means nothing changed.
+    const scheme = req.body.scheme;
+    if (scheme !== undefined && scheme !== '' && scheme !== null && !(typeof scheme === 'string' && settings.SCHEME_IDS.includes(scheme))) {
+      return res.status(400).json({ error: 'Unknown scheme' });
+    }
     await settings.set('brand_name', trimmedOrNull(req.body.orgName), req.user.id);
     // Keycloak hosts the sign-in page — keep its heading on the workspace brand.
     // Best-effort: branding must save even if the identity server is unreachable.
@@ -91,10 +96,7 @@ router.post('/tenant', auth, requireRole('admin'), requireIncomplete, async (req
     // Branding: scheme set when provided (one of the curated ids); logo set on a data
     // URI, removed on '' (empty), left untouched when the field is absent (the client
     // only sends it when changed).
-    if (req.body.scheme) {
-      if (!settings.SCHEME_IDS.includes(String(req.body.scheme))) return res.status(400).json({ error: 'Unknown scheme' });
-      await settings.set('brand_scheme', String(req.body.scheme), req.user.id);
-    }
+    if (scheme) await settings.set('brand_scheme', scheme, req.user.id);
     if (req.body.logo !== undefined) await settings.set('brand_logo', req.body.logo === '' ? null : String(req.body.logo), req.user.id);
     res.json({ ok: true });
   } catch (e) { serverError(res, e); }

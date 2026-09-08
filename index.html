@@ -19,7 +19,7 @@
 }
 /* ---- Schemes. Depot ships five curated schemes, each a complete light AND dark
    palette set by hand. Ledger is the default and lives on :root / html.dark; the
-   other four are html[data-scheme="…"] blocks below, selected by setScheme().
+   other four are html[data-scheme="…"] blocks below, selected by applyScheme().
    The .scheme-swatch aliases let the picker's preview tiles render from the same
    tokens as the app. Rule: a scheme's dark block defines exactly the token set its
    light block does, so no light value can leak into dark through source order. ---- */
@@ -113,7 +113,7 @@ html[data-scheme="graphite"].dark, .scheme-swatch[data-scheme="graphite"].dark {
 /* Linen — warm neutrals with a forest-green signal; warm charcoal and sage at night. */
 html[data-scheme="linen"], .scheme-swatch[data-scheme="linen"] {
   --paper: #F5F3EE; --surface: #FCFBF8; --surface-2: #ECE9E1; --surface-raised: #FFFFFF;
-  --ink: #1E1B16; --ink-soft: #5F5A51; --ink-faint: #8F897E;
+  --ink: #1E1B16; --ink-soft: #5F5A51; --ink-faint: #7F7A70;
   --accent: #2C6A4C; --accent-soft: #235540; --accent-wash: #E4EDE6; --accent-ink: #FFFFFF; --focus: #2C6A4C;
   --line-strong: #C9C3B6; --rule: #E1DDD3; --rule-soft: #EAE6DD;
   --shadow: 0 4px 12px rgba(30,27,22,.10), 0 0 0 1px #E1DDD3;
@@ -167,6 +167,8 @@ body {
   min-height: 100vh;
 }
 ::selection { background: var(--accent-wash); }
+/* Dark washes sit within ~1.2:1 of their surface, too close to show a selection. */
+html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--surface)); color: var(--ink); }
 
 .masthead {
   border-bottom: 1px solid var(--rule);
@@ -1961,7 +1963,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 /* Favorite star — always visible (works on touch, no hover needed), gold when on. */
 .file-card-grid .file-card-star { position: absolute; top: 8px; left: 8px; z-index: 3; width: 28px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface-raised); color: var(--ink-faint); font-size: 15px; line-height: 1; cursor: pointer; display: grid; place-items: center; opacity: .9; transition: color .1s, border-color .1s, opacity .1s; }
 .file-card-grid .file-card-star:hover { color: var(--ink); opacity: 1; }
-.file-card-grid .file-card-star.on { color: var(--warning); border-color: var(--warning); opacity: 1; }
+.file-card-grid .file-card-star.on { color: #E8A317; border-color: #E8A317; opacity: 1; } /* gold is the star's own meaning; deliberately literal, same in every scheme */
 /* Dashboard Home */
 .home-view { padding: 8px 4px 20px; max-width: 1000px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
@@ -2038,7 +2040,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-ask-docs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 16px; }
 .file-ask-chip { border: 1px solid var(--rule); background: var(--accent-wash); color: var(--ink); border-radius: 999px; padding: 5px 10px; font-size: 13px; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-ask-input { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font: 15px var(--body); color: var(--ink); background: var(--surface); }
-.file-ask-input:focus { outline: 2px solid rgba(91,95,199,0.18); border-color: #5B5FC7; }
+.file-ask-input:focus { outline: 2px solid color-mix(in srgb, var(--focus) 18%, transparent); border-color: var(--focus); }
 .file-ask-answer { min-height: 120px; white-space: pre-wrap; margin-top: 14px; padding: 16px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface-2); color: var(--ink); line-height: 1.5; }
 .file-ask-answer.dim { color: var(--ink-soft); font-style: italic; }
 .file-share-modal { width: min(760px, 96vw); max-height: min(760px, 92dvh); overflow: auto; }
@@ -2060,15 +2062,17 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-link-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
 .file-link-title { color: var(--ink); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-link-meta { color: var(--ink-soft); font-size: 13px; line-height: 1.45; margin-top: 4px; }
-.file-link-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); background: #EAF3FF; color: var(--accent); }
+.file-link-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); background: var(--accent-wash); color: var(--accent); }
 .file-link-status.expired, .file-link-status.revoked { background: #FDE7E9; color: #A4262C; }
 html.dark.file-home-mode body { background: var(--paper); background-image: none; }
 html.dark .file-home-shell { background: var(--paper); color: var(--ink); }
 html.dark .file-home-nav { background: var(--surface); border-color: var(--rule); }
-html.dark .file-home-shell.dragging { background: #182433; outline-color: var(--focus); }
-html.dark .file-create-btn { background: #172638; border-color: #2E5E8A; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
-html.dark .file-create-btn:hover { background: #1D3046; border-color: #4F88BD; }
-html.dark .file-create-btn .plus { background: rgba(106,169,233,0.14); color: #8EC8FF; }
+/* The rail is --surface in dark, so the active item steps up to --surface-raised. */
+html.dark .file-nav-link.active { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--line-strong); }
+html.dark .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--focus); }
+html.dark .file-create-btn { background: var(--surface-raised); border-color: var(--rule); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+html.dark .file-create-btn:hover { background: var(--surface-2); border-color: var(--line-strong); }
+html.dark .file-create-btn .plus { background: transparent; color: var(--ink); }
 html.dark .file-create-btn .chev { color: var(--ink-soft); }
 html.dark .file-upload-menu,
 html.dark .file-search-menu,
@@ -2082,7 +2086,7 @@ html.dark .file-share-url { background: var(--surface-2); border-color: var(--ru
 html.dark .file-upload-menu button,
 html.dark .file-search-menu button { color: var(--ink); }
 html.dark .file-upload-menu button:hover,
-html.dark .file-search-menu button:hover { background: #172638; }
+html.dark .file-search-menu button:hover { background: var(--surface-raised); }
 html.dark .file-library-heading,
 html.dark .file-nav-section,
 html.dark .file-pinned-header,
@@ -2105,9 +2109,8 @@ html.dark .file-nav-label:hover,
 html.dark .file-library-tool:hover,
 html.dark .file-library-close:hover,
 html.dark .file-library-icon-btn:hover { background: var(--surface-2); color: var(--ink); }
-html.dark .file-nav-link.active,
 html.dark .file-filter-chip.active,
-html.dark .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+html.dark .file-library-pill.active { background: var(--accent-wash); border-color: var(--accent); color: var(--accent); }
 html.dark .file-quick-pill,
 html.dark .file-home-card-label,
 html.dark .file-home-card-note,
@@ -2152,16 +2155,16 @@ html.dark .file-filter-chip,
 html.dark .file-library-pill { background: var(--surface-2); border-color: var(--rule); color: var(--ink); }
 html.dark .file-rec-open:hover,
 html.dark .file-filter-chip:hover,
-html.dark .file-library-pill:hover { border-color: var(--focus); color: #D9ECFF; }
+html.dark .file-library-pill:hover { border-color: var(--focus); color: var(--ink); }
 html.dark .file-library-table tbody tr:hover { background: rgba(255,255,255,0.035); }
 html.dark .file-library-table tbody tr.selected,
-html.dark .file-library-table tbody tr.selected:hover { background: #172638; }
+html.dark .file-library-table tbody tr.selected:hover { background: var(--accent-wash); }
 html.dark .file-library-select { background: var(--surface-2); border-color: var(--ink-faint); color: #FFFFFF; }
 html.dark .file-library-select.selected { background: var(--focus); border-color: var(--focus); color: #101820; }
 html.dark .file-library-person { background: var(--surface-2); color: var(--ink-soft); }
-html.dark .file-preview { background: linear-gradient(135deg, #202630, #181A1E); border-color: var(--rule); }
+html.dark .file-preview { background: var(--surface-2); border-color: var(--rule); }
 html.dark .file-preview::before { opacity: 0.65; }
-html.dark .file-link-status { background: #172638; color: #D9ECFF; }
+html.dark .file-link-status { background: var(--accent-wash); color: var(--accent); }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 @media (max-width: 1100px) {
@@ -2188,7 +2191,7 @@ html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
   .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main { display: contents; }
   .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree { display: none; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; padding: 6px 13px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
-  .file-nav-link.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
+  .file-nav-link.active { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; }
   .file-nav-link > span > span:last-child:not(:first-child) { display: none; } /* connection pills: name only */
   .file-home-main { padding: 22px 16px 34px; }
   .file-home-title-row { align-items: flex-start; flex-direction: column; }
@@ -2283,8 +2286,10 @@ html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 }
 /* SVG per-extension icon variant: no badge background; the sheet color comes
    from theme-aware CSS vars so it reads on light and dark grounds. */
-:root { --fic-sheet: #FFFFFF; --fic-edge: #D8D9E6; --fic-line: #EDEEF6; }
-html.dark { --fic-sheet: #2A2C39; --fic-edge: #3C3E50; --fic-line: rgba(255,255,255,.07); }
+/* Derived from scheme tokens so the sheet stays neutral in every scheme; the dark
+   sheet is lifted a step above the raised surface so the icon still reads as paper. */
+:root { --fic-sheet: var(--surface-raised); --fic-edge: var(--line-strong); --fic-line: var(--rule-soft); }
+html.dark { --fic-sheet: color-mix(in srgb, var(--surface-raised) 86%, var(--ink)); --fic-edge: var(--line-strong); --fic-line: var(--rule-soft); }
 .file-icon.file-icon--doc { background: transparent; color: inherit; border-radius: 0; }
 .file-icon.file-icon--doc svg { height: 100%; width: auto; display: block; }
 .file-icon.pdf  { background: #FCEAE8; color: var(--danger); }
@@ -3003,6 +3008,9 @@ async function initApp() {
   // the workspace scheme now; the old key is dropped so it can never resurface.
   localStorage.removeItem('memex_accent');
   setTheme(localStorage.getItem('memex_theme') || 'auto');
+  // The device's own scheme applies before the server answers, so even the
+  // offline card wears it; applyBranding re-runs this with the workspace fallback.
+  applyScheme(localStorage.getItem('memex_scheme') || '', false);
 
   let config;
   try {
@@ -3639,7 +3647,9 @@ function applyScheme(id, persist = true) {
     if (id && schemeOf(id)) localStorage.setItem('memex_scheme', id); else localStorage.removeItem('memex_scheme');
   }
   const wanted = (persist ? (localStorage.getItem('memex_scheme') || brandDefaults.scheme) : id) || DEFAULT_SCHEME;
-  const scheme = schemeOf(wanted) ? wanted : DEFAULT_SCHEME;
+  // A stale or unknown id (a scheme renamed in a later release) falls back to the
+  // workspace scheme, not to Ledger, so the admin's choice still wins.
+  const scheme = schemeOf(wanted) ? wanted : (schemeOf(brandDefaults.scheme) ? brandDefaults.scheme : DEFAULT_SCHEME);
   if (scheme === DEFAULT_SCHEME) delete document.documentElement.dataset.scheme;
   else document.documentElement.dataset.scheme = scheme;
 }
@@ -3648,17 +3658,22 @@ function currentScheme() { return document.documentElement.dataset.scheme || DEF
 // card previews both faces of a scheme from the real token blocks.
 function schemeCardsHtml(selectedId, onPick) {
   const faces = (id) => ['', ' dark'].map(d => `<span class="scheme-swatch${d}" data-scheme="${id}" aria-hidden="true"><i class="sw-card"></i><i class="sw-ink"></i><i class="sw-accent"></i></span>`).join('');
-  return `<div class="scheme-cards" role="radiogroup" aria-label="Scheme">${SCHEMES.map(s => {
+  return `<div class="scheme-cards" role="group" aria-label="Scheme">${SCHEMES.map(s => {
     const on = s.id === selectedId;
-    return `<button type="button" role="radio" aria-checked="${on}" class="scheme-card${on ? ' active' : ''}" data-scheme="${s.id}" onclick="${onPick}(this.dataset.scheme)">${faces(s.id)}<span class="scheme-card-name">${esc(s.name)}</span><span class="scheme-card-note">${esc(s.note)}</span></button>`;
+    return `<button type="button" aria-pressed="${on}" class="scheme-card${on ? ' active' : ''}" data-scheme="${s.id}" onclick="${onPick}(this.dataset.scheme)">${faces(s.id)}<span class="scheme-card-name">${esc(s.name)}</span><span class="scheme-card-note">${esc(s.note)}</span></button>`;
   }).join('')}</div>`;
 }
+// Mark one card selected without re-rendering the panel around it, so unsaved
+// edits elsewhere on the same tab survive a click on a scheme.
+function markSchemeCard(containerId, id) {
+  document.querySelectorAll(`#${containerId} .scheme-card`).forEach(b => { const on = b.dataset.scheme === id; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+}
 function pickDeviceScheme(id) { applyScheme(id, true); switchSettingsTab('profile'); }
-function pickBrandScheme(id) { brandSchemeDraft = id; switchSettingsTab('system'); }
+function pickBrandScheme(id) { brandSchemeDraft = id; markSchemeCard('brand-scheme', id); }
 function pickSetupScheme(id) {
   setupSchemeDraft = id;
   applyScheme(id, false); // preview it live; Save makes it the workspace default
-  document.querySelectorAll('#setup-scheme .scheme-card').forEach(b => { const on = b.dataset.scheme === id; b.classList.toggle('active', on); b.setAttribute('aria-checked', String(on)); });
+  markSchemeCard('setup-scheme', id);
 }
 // theme ∈ light | dark | auto. Auto follows the OS and re-resolves when it changes.
 let _autoThemeMq = null;
@@ -3672,8 +3687,6 @@ function setTheme(theme) {
   }
   const dark = theme === 'dark' || (theme === 'auto' && _autoThemeMq.matches);
   document.documentElement.classList.toggle('dark', dark);
-  const toggleItem = document.getElementById('theme-toggle-item');
-  if (toggleItem) toggleItem.textContent = dark ? 'Switch to light mode' : 'Switch to dark mode';
   renderThemeToggle(dark ? 'dark' : 'light');
 }
 
@@ -3689,7 +3702,7 @@ function renderThemeToggle(theme) {
   if (label) label.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
 }
 
-// Apply admin-set workspace branding (name, logo, accent) from /api/config.
+// Apply admin-set workspace branding (name, logo, scheme) from /api/config.
 // Runs before the login card is shown so the org's identity is visible pre-auth.
 function applyBranding(brand) {
   brandDefaults = {
@@ -5069,6 +5082,8 @@ async function openSettings() {
   document.getElementById('settings-scrim').classList.add('open');
   settingsTab = 'profile';
   settingsAvatarDraft = null;
+  brandSchemeDraft = null; // unsaved picks from a previous visit must not ride into the next Save
+  brandLogoDraft = null;
   renderSettingsTabs();
   document.getElementById('settings-body').innerHTML = '<p class="sub">Loading…</p>';
   try { settingsProfile = await apiGet('/auth/profile'); } catch { settingsProfile = { display_name: '', avatar: '' }; }
@@ -5663,7 +5678,7 @@ function appearanceSettingsHtml() {
   const workspace = schemeOf(brandDefaults.scheme) ? brandDefaults.scheme : DEFAULT_SCHEME;
   const modes = [['light', 'Light'], ['auto', 'Auto'], ['dark', 'Dark']];
   return `<div class="settings-sub">Mode</div>
-    <div class="share-seg" role="radiogroup" aria-label="Mode" style="margin-top:6px">${modes.map(([m, label]) => `<button type="button" role="radio" aria-checked="${mode === m}" class="share-seg-opt${mode === m ? ' active' : ''}" onclick="setTheme('${m}');switchSettingsTab('profile')">${label}</button>`).join('')}</div>
+    <div class="share-seg" role="group" aria-label="Mode" style="margin-top:6px">${modes.map(([m, label]) => `<button type="button" aria-pressed="${mode === m}" class="share-seg-opt${mode === m ? ' active' : ''}" onclick="setTheme('${m}');switchSettingsTab('profile')">${label}</button>`).join('')}</div>
     <p class="settings-notice" style="margin-top:8px">Auto follows this device's system setting.</p>
     <div class="settings-sub" style="margin-top:16px">Scheme</div>
     ${schemeCardsHtml(device || workspace, 'pickDeviceScheme')}
@@ -5685,7 +5700,7 @@ function workspaceSettingsHtml() {
         <label>Workspace name</label>
         <input type="text" class="sans" id="cfg-brand-name" value="${esc(brandName)}" autocomplete="off" placeholder="Depot">
         <label>Scheme</label>
-        <div>${schemeCardsHtml(scheme, 'pickBrandScheme')}</div>
+        <div id="brand-scheme">${schemeCardsHtml(scheme, 'pickBrandScheme')}</div>
         <label>Logo</label>
         <div style="display:flex;align-items:center;gap:12px">
           <span class="brand-logo${logo ? ' has-logo' : ''}" id="brand-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px">${logoInner}</span>
