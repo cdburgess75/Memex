@@ -112,13 +112,13 @@ app.get('/api/config', async (req, res) => {
       || !!(await settings.getOrEnv('collabora_url'));
   } catch { /* default off */ }
   // Workspace branding (admin-set). Public so the login card — shown before
-  // auth — can render the org's name/logo/accent.
-  let brand = { name: '', logo: '', accent: '' };
+  // auth — can render the org's name/logo/scheme.
+  let brand = { name: '', logo: '', scheme: '' };
   try {
     brand = {
       name: (await settings.getOrEnv('brand_name')) || '',
       logo: (await settings.getOrEnv('brand_logo')) || '',
-      accent: (await settings.getOrEnv('brand_accent')) || '',
+      scheme: (await settings.getOrEnv('brand_scheme')) || '',
     };
   } catch { /* defaults */ }
   // Upload guardrails, so the client can warn/cap before sending (server still enforces).

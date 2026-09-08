@@ -87,3 +87,12 @@ describe('refresh', () => {
     expect(await settings.getOrEnv('anthropic_api_key')).toBe('fallback');
   });
 });
+
+// The scheme ids are shared by contract with SCHEMES in index.html and the two
+// route validators; a rename on either side must fail here before it fails a customer.
+test('exposes the curated scheme ids and the brand_scheme setting, not the retired accent', () => {
+  const real = jest.requireActual('../../lib/settings');
+  expect(real.SCHEME_IDS).toEqual(['ledger', 'graphite', 'linen', 'harbor', 'ember']);
+  expect(real.ENV_MAP.brand_scheme).toBe('BRAND_SCHEME');
+  expect(real.ENV_MAP.brand_accent).toBeUndefined();
+});

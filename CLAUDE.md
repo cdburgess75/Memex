@@ -64,13 +64,13 @@ Server side (`server/middleware/auth.js`): extract the Bearer JWT, verify RS256 
 
 ### Config & settings
 
-`/api/config` (public, pre-auth) returns branding (`name`, `logo`, `accent`), Keycloak coords (`keycloakUrl`, `keycloakRealm`, `keycloakClientId`), and `version` — consumed by `initApp()` in `index.html`.
+`/api/config` (public, pre-auth) returns branding (`name`, `logo`, `scheme` — one of `settings.SCHEME_IDS`), Keycloak coords (`keycloakUrl`, `keycloakRealm`, `keycloakClientId`), and `version` — consumed by `initApp()` in `index.html`.
 
 `server/lib/settings.js` is the config source of truth: **DB-first** (the `system_settings` table: `key, value, updated_at, updated_by`) with an **env-var fallback** via `ENV_MAP`, behind a **30-second in-memory cache**. Use `settings.getOrEnv(key)`. A raw `UPDATE system_settings …` takes effect within the cache TTL, no restart. To make a setting admin-editable, add it to `ENV_MAP` — `routes/settings.js` exposes every `ENV_MAP` key through the admin GET/PUT (license-trust and updater keys are deliberately excluded so a customer admin can't forge entitlements or turn the updater into an RCE).
 
 ### Frontend state (index.html)
 
-Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appConfig`, `filesList`, `librariesList`, `fileView`, `currentFolderPath`, `selectedFileIds` / `selectedFolderPaths` (Sets), `fileFilter`, plus localStorage-backed prefs (`memex_accent`, layout, pinned libraries). Views render by assigning `innerHTML` from template-literal builders; mutations call the matching `render*` function. The accent theme is computed at runtime by `applyAccent(hex)` (derives `--accent`/`--accent-soft`/`--accent-wash`/`--accent-ink` from the brand or device-override color).
+Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appConfig`, `filesList`, `librariesList`, `fileView`, `currentFolderPath`, `selectedFileIds` / `selectedFolderPaths` (Sets), `fileFilter`, plus localStorage-backed prefs (`memex_theme`, `memex_scheme`, layout, pinned libraries). Views render by assigning `innerHTML` from template-literal builders; mutations call the matching `render*` function. Color comes from five curated schemes, never a free color: Ledger's tokens live on `:root` / `html.dark`, the other four on `html[data-scheme="…"]` (light) and `html[data-scheme="…"].dark`. `applyScheme(id)` sets that one attribute (device choice in `memex_scheme`, else the admin's `brand_scheme` from `/api/config`); `setTheme('light'|'auto'|'dark')` toggles `html.dark`. The accent is reserved for actions, selection, focus and links; everything else takes ink or surface tokens.
 
 ### Storage
 

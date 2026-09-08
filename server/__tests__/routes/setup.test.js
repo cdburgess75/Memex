@@ -6,6 +6,7 @@ const MOCK_ENV_MAP = { anthropic_api_key: 'ANTHROPIC_API_KEY', tenant_id: 'TENAN
 
 jest.mock('../../lib/settings', () => ({
   ENV_MAP: MOCK_ENV_MAP,
+  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember'],
   get: jest.fn().mockResolvedValue(null),
   getOrEnv: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),
@@ -67,10 +68,16 @@ describe('setup route', () => {
     expect(settings.set).toHaveBeenCalledWith('tenant_contact_email', 'it@acme.com', 'u1');
   });
 
-  test('POST /tenant saves branding (accent + logo data URI)', async () => {
-    await request(app).post('/api/setup/tenant').send({ orgName: 'Acme', accent: '#123456', logo: 'data:image/png;base64,AAA' });
-    expect(settings.set).toHaveBeenCalledWith('brand_accent', '#123456', 'u1');
+  test('POST /tenant saves branding (scheme + logo data URI)', async () => {
+    await request(app).post('/api/setup/tenant').send({ orgName: 'Acme', scheme: 'harbor', logo: 'data:image/png;base64,AAA' });
+    expect(settings.set).toHaveBeenCalledWith('brand_scheme', 'harbor', 'u1');
     expect(settings.set).toHaveBeenCalledWith('brand_logo', 'data:image/png;base64,AAA', 'u1');
+  });
+
+  test('POST /tenant rejects a scheme that is not one of the curated ids', async () => {
+    const r = await request(app).post('/api/setup/tenant').send({ orgName: 'Acme', scheme: '#123456' });
+    expect(r.status).toBe(400);
+    expect(settings.set).not.toHaveBeenCalledWith('brand_scheme', expect.anything(), expect.anything());
   });
 
   test('POST /tenant with logo="" clears the logo; absent logo leaves it', async () => {
