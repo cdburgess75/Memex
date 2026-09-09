@@ -902,6 +902,10 @@ html.dark .chip { color: var(--accent-soft); }
    survive our surface. A square-ish upload fills it; anything else gets the
    monogram over a tint sampled from the logo (see classifyBrandMark). */
 .brand-logo { overflow: hidden; background: var(--brand-tint, var(--ink)); }
+/* A real mark sits on a stable white tile in both themes, the app-icon convention:
+   marks are usually transparent PNGs, and a ground that flipped with the theme
+   would show through differently in each. Opaque marks cover it and never see it. */
+.brand-logo.has-logo { background: #FFFFFF; }
 .brand-logo.has-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 /* The sign-in screen is where a wide lockup belongs — it has the room, and it is
    the first thing anyone sees. In dark mode it keeps a light plaque, because here
