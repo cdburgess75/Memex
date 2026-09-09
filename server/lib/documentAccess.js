@@ -31,10 +31,22 @@ function userParams(user, required = 'read') {
   ];
 }
 
+// The org-shared clause deliberately takes no parameter: it reads only the
+// document's own library_id, so every existing call site keeps its startIndex and
+// its parameter array unchanged. It is also unfiltered by `required` — an
+// org-shared library grants the same rights as the owner, so it satisfies read,
+// write and admin alike. That is a product decision, not an oversight: anyone
+// signed in can edit and delete what lives in such a library.
 function condition(alias = 'd', startIndex = 1) {
   return `(
     $${startIndex} = 'admin'
     OR ${alias}.uploaded_by = $${startIndex + 1}
+    OR EXISTS (
+      SELECT 1
+      FROM libraries lib
+      WHERE lib.id = ${alias}.library_id
+        AND lib.org_shared
+    )
     OR EXISTS (
       SELECT 1
       FROM document_acl da

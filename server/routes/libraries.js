@@ -26,6 +26,28 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
   }
 });
 
+// PUT /api/libraries/:id/org-shared — open a library to the whole workspace, or
+// close it again (admin). This is the one library setting that changes who can
+// reach the documents inside, so it is chained rather than left to the settings
+// audit, and the event records the library by name as well as id.
+router.put('/:id/org-shared', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const shared = req.body?.org_shared;
+    if (typeof shared !== 'boolean') return res.status(400).json({ error: 'org_shared must be true or false' });
+    const row = await libraries.setOrgShared(req.params.id, shared);
+    if (!row) return res.status(404).json({ error: 'library not found' });
+    await require('../lib/auditLog').append({
+      eventType: shared ? 'library_shared_org' : 'library_unshared_org',
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      detail: `${row.name} (${row.id}) ${shared ? 'opened to' : 'closed to'} everyone in the workspace`,
+    }).catch(() => {});
+    res.json(row);
+  } catch (e) {
+    serverError(res, e);
+  }
+});
+
 // GET /api/libraries/:id/members — list members (admin)
 router.get('/:id/members', auth, requireRole('admin'), async (req, res) => {
   try {

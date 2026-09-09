@@ -4,11 +4,19 @@
 // migrations/0004_runtime_ensure_tables.sql, applied before the server listens.
 const db = require('./db');
 
-// Open-by-default access: admins see all; a library with no members is open to
-// everyone; otherwise only listed members (+admins) can access it.
+// Open-by-default access: admins see all; a library explicitly marked org_shared
+// is open to everyone; a library with no members is open to everyone; otherwise
+// only listed members (+admins) can access it.
+//
+// org_shared and the empty-member case both resolve to "everyone" today, so this
+// clause looks redundant — it is not. The empty-member case makes openness an
+// accident of an empty table, and removing a library's last member silently
+// un-restricts it. org_shared is the deliberate version, and it is the one that
+// also grants access to the documents inside (see lib/documentAccess.js).
 function accessCondition(roleIdx, emailIdx, alias = 'l') {
   return `(
     $${roleIdx} = 'admin'
+    OR ${alias}.org_shared
     OR NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = ${alias}.id)
     OR EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = ${alias}.id AND lower(m.subject_email) = lower($${emailIdx}))
   )`;
@@ -51,7 +59,7 @@ async function defaultLibraryId() {
 
 async function listLibraries(user) {
   return db.query(
-    `SELECT l.id, l.name, l.created_by_email, l.created_at
+    `SELECT l.id, l.name, l.created_by_email, l.created_at, l.org_shared
      FROM libraries l
      WHERE ${accessCondition(1, 2, 'l')}
      ORDER BY l.created_at ASC`,
@@ -62,7 +70,7 @@ async function listLibraries(user) {
 async function createLibrary({ name, user }) {
   return db.queryOne(
     `INSERT INTO libraries (name, created_by, created_by_email)
-     VALUES ($1, $2, $3) RETURNING id, name, created_by_email, created_at`,
+     VALUES ($1, $2, $3) RETURNING id, name, created_by_email, created_at, org_shared`,
     [name, user?.id || null, user?.email || null]
   );
 }
@@ -80,4 +88,14 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, listLibraries, createLibrary, resolveLibraryId, canAccessLibrary, listMembers, addMember, removeMember, info };
+// Marking a library org-shared changes who can reach every document inside it, so
+// it is admin-only at the route and recorded in the audit chain by the caller.
+async function setOrgShared(libraryId, shared) {
+  return db.queryOne(
+    `UPDATE libraries SET org_shared = $2 WHERE id = $1
+     RETURNING id, name, created_by_email, created_at, org_shared`,
+    [libraryId, !!shared]
+  );
+}
+
+module.exports = { defaultLibraryId, listLibraries, createLibrary, setOrgShared, resolveLibraryId, canAccessLibrary, listMembers, addMember, removeMember, info };
