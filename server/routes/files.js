@@ -774,12 +774,18 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     if (!ids.length || !libraryId) return res.status(400).json({ error: 'ids and libraryId required' });
     if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
 
-    // Restrict to documents the caller can access.
+    // Moving is a mutation and relocating into an org-shared library now publishes
+    // the document to the whole workspace, so a move needs 'write' — with only
+    // 'read' a read-only grantee could push someone else's private file into a
+    // shared library. Copying produces a new document owned by the caller and
+    // grants nobody else anything, so it stays at 'read': the caller could achieve
+    // the same by downloading and re-uploading.
+    const required = mode === 'move' ? 'write' : 'read';
     const accessible = await db.query(
       `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path
        FROM documents d
        WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
-      [...documentAccess.userParams(req.user, 'read'), ids]
+      [...documentAccess.userParams(req.user, required), ids]
     );
 
     if (mode === 'move') {

@@ -90,12 +90,43 @@ async function info(libraryId) {
 
 // Marking a library org-shared changes who can reach every document inside it, so
 // it is admin-only at the route and recorded in the audit chain by the caller.
+//
+// Closing a library has to undo what being open allowed, or the setting is a
+// one-way door: while it was open every member held 'write', which is the bar for
+// minting a public share link, and those links are redeemed at an unauthenticated
+// route that never consults the library. So on close, revoke exactly the links
+// whose creator could not mint them again now — not the owner's, not an admin's,
+// not anyone holding a real write grant.
 async function setOrgShared(libraryId, shared) {
-  return db.queryOne(
+  const row = await db.queryOne(
     `UPDATE libraries SET org_shared = $2 WHERE id = $1
      RETURNING id, name, created_by_email, created_at, org_shared`,
     [libraryId, !!shared]
   );
+  if (!row || shared) return row ? { ...row, revoked_links: 0 } : row;
+  const revoked = await db.query(
+    `UPDATE document_share_links sl
+        SET revoked_at = NOW()
+       FROM documents d
+      WHERE sl.document_id = d.id
+        AND d.library_id = $1
+        AND sl.revoked_at IS NULL
+        AND sl.created_by IS DISTINCT FROM d.uploaded_by
+        AND NOT EXISTS (
+          SELECT 1 FROM user_roles ur
+           WHERE ur.user_id = sl.created_by AND ur.role = 'admin'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM document_acl da
+           WHERE da.document_id = d.id
+             AND da.subject_type = 'user'
+             AND lower(da.subject_id) IN (lower(sl.created_by::text), lower(coalesce(sl.created_by_email, '')))
+             AND da.permission IN ('write', 'admin')
+        )
+      RETURNING sl.id`,
+    [libraryId]
+  );
+  return { ...row, revoked_links: revoked.length };
 }
 
 module.exports = { defaultLibraryId, listLibraries, createLibrary, setOrgShared, resolveLibraryId, canAccessLibrary, listMembers, addMember, removeMember, info };
