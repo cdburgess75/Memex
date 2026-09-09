@@ -93,6 +93,17 @@ describe('folder operations are scoped to one library', () => {
     }
   });
 
+  test('move refuses a destination library the caller cannot reach', async () => {
+    const libraries = require('../../lib/libraries');
+    libraries.canAccessLibrary.mockResolvedValueOnce(false);
+    const res = await request(makeApp())
+      .post('/api/files/folder/move')
+      .send({ path: 'Clients/Acme', library_id: '00000000-0000-0000-0000-000000000000' });
+    expect(res.status).toBe(403);
+    // and nothing was rewritten
+    expect(seen.some(q => /UPDATE documents d SET library_id/.test(q.sql))).toBe(false);
+  });
+
   test('a folder present in two libraries is refused rather than silently spanning both', async () => {
     const db = require('../../lib/db');
     db.query.mockImplementationOnce(async () => [{ library_id: 'lib-1' }, { library_id: 'lib-2' }]);
