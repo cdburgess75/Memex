@@ -69,10 +69,27 @@ describe('documentAccess', () => {
   test('condition uses no bind parameter beyond the five userParams supplies', () => {
     for (const start of [1, 2, 3, 4, 6]) {
       const sql = access.condition('d', start);
-      const used = [...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])).sort((a, b) => a - b);
-      // exactly $start..$start+4, each once, and nothing higher
+      // The set matters, not the count: the org-shared branch legitimately reads the
+      // role and the permissions array again to decide what it may grant.
+      const used = [...new Set([...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])))].sort((a, b) => a - b);
       expect(used).toEqual([start, start + 1, start + 2, start + 3, start + 4]);
     }
+  });
+
+  // The whole point of the re-scope: a library can hand out read and write, but
+  // never the admin level that governs the ACL itself, and never write to a viewer.
+  test.each([
+    ['admin', 'read', true], ['admin', 'write', true], ['admin', 'admin', false],
+    ['contributor', 'read', true], ['contributor', 'write', true], ['contributor', 'admin', false],
+    ['viewer', 'read', true], ['viewer', 'write', false], ['viewer', 'admin', false],
+  ])('org-shared branch for a %s asking %s -> %s', (role, required, expected) => {
+    // Mirrors the SQL: 'read' = ANY(perms) OR ('write' = ANY(perms) AND role IN (admin, contributor))
+    const perms = access.permissionsFor(required);
+    const granted = perms.includes('read') || (perms.includes('write') && ['admin', 'contributor'].includes(role));
+    expect(granted).toBe(expected);
+    const sql = access.condition('d', 1);
+    expect(sql).toContain("'read' = ANY($5::text[])");
+    expect(sql).toContain("$1 IN ('admin', 'contributor')");
   });
 
   test('condition honours the alias for both the ACL and the library clause', () => {

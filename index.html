@@ -7155,7 +7155,7 @@ async function openLibraryMembers() {
   const libName = currentLibraryName();
   const lib = (librariesList || []).find(l => String(l.id) === String(libId)) || {};
   const m = openModal({ id: 'library-members-scrim', html: `<h2>Access · ${esc(libName)}</h2>
-    <label class="lib-share-all"><input type="checkbox" id="lib-org-shared"${lib.org_shared ? ' checked' : ''}><span><b>Shared with everyone in the workspace</b><i>Every signed-in member can open, edit, upload and delete everything in this library — the same rights as the person who uploaded it. Turn this off to fall back to the member list below.</i></span></label>
+    <label class="lib-share-all"><input type="checkbox" id="lib-org-shared"${lib.org_shared ? ' checked' : ''}><span><b>Shared with everyone in the workspace</b><i>Every signed-in member can open, edit, upload and delete everything in this library, and share it by link. Managing who else can reach a file stays with its owner and admins. Turning this off also revokes links members created while it was on.</i></span></label>
     <div id="lib-members-block"><p class="sub" style="margin-top:16px">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div></div>
     <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div>` });
   const scrim = m.el;
@@ -8613,11 +8613,20 @@ async function loadFileAccess(fileId = firstSelectedFile()?.id) {
   try {
     const data = await apiGet('/files/' + fileId + '/access');
     const grants = data.grants || [];
-    if (!grants.length) {
+    // A file in a library shared with the whole workspace is reachable by everyone
+    // without any grant row, so an empty list here would otherwise read as "private".
+    const lib = (librariesList || []).find(l => String(l.id) === String(currentLibraryId));
+    if (lib && lib.org_shared) {
+      const shared = `Everyone in the workspace can open and edit this file, because "${esc(lib.name)}" is shared with the whole workspace. Grants below are in addition to that.`;
+      if (!grants.length) { list.innerHTML = emptyState('Shared with everyone', shared); return; }
+      list.innerHTML = `<p class="file-share-hint">${shared}</p>`;
+    } else if (!grants.length) {
       list.innerHTML = emptyState('No additional workspace access', 'The owner and admins can manage this file.');
       return;
+    } else {
+      list.innerHTML = '';
     }
-    list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${permissionLabel(g.permission)} · Granted ${shareDate(g.created_at)}</div></div><button class="file-library-tool" data-grant="${g.id}" onclick="revokeFileAccess(this.dataset.grant)">Revoke</button></div>`).join('');
+    list.insertAdjacentHTML('beforeend', grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${permissionLabel(g.permission)} · Granted ${shareDate(g.created_at)}</div></div><button class="file-library-tool" data-grant="${g.id}" onclick="revokeFileAccess(this.dataset.grant)">Revoke</button></div>`).join(''));
   } catch (e) {
     list.innerHTML = emptyState('Could not load access', e.message || 'Try opening the share dialog again.');
   }

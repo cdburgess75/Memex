@@ -24,8 +24,15 @@ function assemble({ roles, profiles, memberships, libraries, lastActivity, share
     if (!memByEmail.has(k)) memByEmail.set(k, []);
     memByEmail.get(k).push(libName.get(String(m.library_id)) || String(m.library_id));
   }
-  // A library with no explicit members is "open": any signed-in user can reach it.
-  const openLibraries = (libraries || []).filter(l => !memberedLibIds.has(String(l.id))).map(l => l.name);
+  // Two different things make a library reachable by everyone, and the report has
+  // to show both or it understates access. A library flagged org_shared is open by
+  // an admin's explicit decision AND grants the documents inside it; a library with
+  // no members is open only in the weaker sense that it appears in everyone's
+  // switcher. Marking which is which keeps the distinction legible to an auditor.
+  const openLibraries = (libraries || [])
+    .filter(l => l.org_shared || !memberedLibIds.has(String(l.id)))
+    .map(l => (l.org_shared ? `${l.name} (shared with everyone — includes file access)` : l.name));
+  const orgSharedNames = (libraries || []).filter(l => l.org_shared).map(l => l.name).sort();
 
   const users = (roles || []).map(r => {
     const k = lc(r.email);
@@ -34,13 +41,16 @@ function assemble({ roles, profiles, memberships, libraries, lastActivity, share
       name: nameByEmail.get(k) || '',
       role: r.role,
       roleAssignedAt: r.assigned_at || null,
-      libraries: r.role === 'admin' ? ['all (admin)'] : (memByEmail.get(k) || []).sort(),
+      // Everyone reaches an org-shared library's files regardless of membership.
+      libraries: r.role === 'admin'
+        ? ['all (admin)']
+        : [...new Set([...(memByEmail.get(k) || []), ...orgSharedNames])].sort(),
       directShares: shareByEmail.get(k) || 0,
       lastActivity: lastByEmail.get(k) || null,
     };
   });
 
-  return { generatedAt: now.toISOString(), userCount: users.length, openLibraries, users };
+  return { generatedAt: now.toISOString(), userCount: users.length, openLibraries, orgSharedLibraries: orgSharedNames, users };
 }
 
 async function build() {
@@ -48,7 +58,7 @@ async function build() {
     db.query('SELECT user_id, email, role, assigned_at FROM user_roles ORDER BY email'),
     db.query('SELECT email, display_name FROM user_profiles'),
     db.query('SELECT subject_email, library_id FROM library_members'),
-    db.query('SELECT id, name FROM libraries'),
+    db.query('SELECT id, name, org_shared FROM libraries'),
     db.query('SELECT user_email, MAX(created_at) AS last FROM activity_log GROUP BY user_email'),
     db.query("SELECT subject_email, COUNT(*) AS n FROM document_acl WHERE subject_email IS NOT NULL GROUP BY subject_email"),
   ]);
