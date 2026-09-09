@@ -55,6 +55,32 @@ describe('documentAccess', () => {
     expect(db.queryOne.mock.calls[0][0]).toContain('FROM document_acl da');
   });
 
+  // The org-shared clause reads only d.library_id and takes no bind parameter, so
+  // all 18 call sites keep their startIndex and parameter arrays. If someone gives
+  // it a parameter, every one of those call sites silently misaligns and starts
+  // comparing the wrong values — these two tests are the guard against that.
+  test('condition grants access to any document in an org-shared library', () => {
+    const sql = access.condition('d', 1);
+    expect(sql).toContain('FROM libraries lib');
+    expect(sql).toContain('lib.id = d.library_id');
+    expect(sql).toContain('lib.org_shared');
+  });
+
+  test('condition uses no bind parameter beyond the five userParams supplies', () => {
+    for (const start of [1, 2, 3, 4, 6]) {
+      const sql = access.condition('d', start);
+      const used = [...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])).sort((a, b) => a - b);
+      // exactly $start..$start+4, each once, and nothing higher
+      expect(used).toEqual([start, start + 1, start + 2, start + 3, start + 4]);
+    }
+  });
+
+  test('condition honours the alias for both the ACL and the library clause', () => {
+    const sql = access.condition('documents', 2);
+    expect(sql).toContain('lib.id = documents.library_id');
+    expect(sql).toContain('da.document_id = documents.id');
+  });
+
   test('grantOwnerAdmin upserts an owner admin grant', async () => {
     await access.grantOwnerAdmin('doc-1', user);
 

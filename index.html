@@ -1440,6 +1440,11 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
+.lib-share-all { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; padding: 12px 13px; border: 1px solid var(--rule); border-radius: 9px; background: var(--surface-2); cursor: pointer; }
+.lib-share-all input { margin: 2px 0 0; accent-color: var(--accent); flex: 0 0 auto; width: 16px; height: 16px; }
+.lib-share-all b { display: block; font: 600 13.5px var(--ui); color: var(--ink); }
+.lib-share-all i { display: block; margin-top: 3px; font: 400 12.5px var(--ui); font-style: normal; color: var(--ink-soft); line-height: 1.45; }
+#lib-members-block.is-moot { opacity: .45; pointer-events: none; }
 .library-pick-list { display: grid; gap: 2px; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
@@ -7148,10 +7153,31 @@ async function openLibraryMembers() {
   const libId = currentLibraryId;
   if (!libId) { toast('This library has no server id yet.'); return; }
   const libName = currentLibraryName();
-  const m = openModal({ id: 'library-members-scrim', html: `<h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div>` });
+  const lib = (librariesList || []).find(l => String(l.id) === String(libId)) || {};
+  const m = openModal({ id: 'library-members-scrim', html: `<h2>Access · ${esc(libName)}</h2>
+    <label class="lib-share-all"><input type="checkbox" id="lib-org-shared"${lib.org_shared ? ' checked' : ''}><span><b>Shared with everyone in the workspace</b><i>Every signed-in member can open, edit, upload and delete everything in this library — the same rights as the person who uploaded it. Turn this off to fall back to the member list below.</i></span></label>
+    <div id="lib-members-block"><p class="sub" style="margin-top:16px">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div>` });
   const scrim = m.el;
   const close = () => m.close();
   scrim.querySelector('#lib-members-close').onclick = close;
+  // The member list only decides who *sees* the library; while it is shared with
+  // everyone that distinction is moot, so dim it rather than imply it still applies.
+  const orgBox = scrim.querySelector('#lib-org-shared');
+  const membersBlock = scrim.querySelector('#lib-members-block');
+  const syncOrgShared = () => membersBlock.classList.toggle('is-moot', orgBox.checked);
+  orgBox.onchange = async () => {
+    const want = orgBox.checked;
+    orgBox.disabled = true;
+    try {
+      await apiPut(`/libraries/${libId}/org-shared`, { org_shared: want });
+      await loadLibraries();
+      syncOrgShared();
+      toast(want ? 'Shared with everyone in the workspace' : 'No longer shared with everyone');
+    } catch (e) { orgBox.checked = !want; toast('Could not change sharing: ' + e.message); }
+    finally { orgBox.disabled = false; }
+  };
+  syncOrgShared();
   const emailInput = scrim.querySelector('#lib-member-email');
   const render = async () => {
     const listEl = scrim.querySelector('#lib-members-list');
