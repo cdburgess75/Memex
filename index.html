@@ -902,10 +902,12 @@ html.dark .chip { color: var(--accent-soft); }
    survive our surface. A square-ish upload fills it; anything else gets the
    monogram over a tint sampled from the logo (see classifyBrandMark). */
 .brand-logo { overflow: hidden; background: var(--brand-tint, var(--ink)); }
-/* A real mark sits on a stable white tile in both themes, the app-icon convention:
-   marks are usually transparent PNGs, and a ground that flipped with the theme
-   would show through differently in each. Opaque marks cover it and never see it. */
-.brand-logo.has-logo { background: #FFFFFF; }
+/* A real mark gets a deep ground mixed from its own dominant colour, fixed across
+   both themes. Marks are usually transparent PNGs, so a ground that flipped with
+   the theme would show through differently in each; and a deep ground is what makes
+   a metallic or jewel-toned mark read, where white flattens it. Opaque marks cover
+   it and never see it. */
+.brand-logo.has-logo { background: var(--mark-ground, #17191D); }
 .brand-logo.has-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 /* The sign-in screen is where a wide lockup belongs — it has the room, and it is
    the first thing anyone sees. In dark mode it keeps a light plaque, because here
@@ -3742,7 +3744,10 @@ function classifyBrandMark(src) {
     img.onload = () => {
       const ratio = img.naturalWidth / (img.naturalHeight || 1);
       const mark = { src, shape: ratio >= 0.8 && ratio <= 1.25 ? 'square' : 'wide', tint: null };
-      if (mark.shape === 'wide') mark.tint = dominantTint(img);
+      // A wide logo's tint carries white monogram text, so it only needs 3.5:1.
+      // A square mark's tint is a ground behind artwork, so it goes much deeper —
+      // enough to sit under gold or silver without competing with it.
+      mark.tint = dominantTint(img, mark.shape === 'square' ? 13 : 3.5);
       _markCache.set(src, mark);
       try { localStorage.setItem(lsKey, JSON.stringify({ shape: mark.shape, tint: mark.tint })); } catch { /* private mode */ }
       resolve(mark);
@@ -3753,7 +3758,7 @@ function classifyBrandMark(src) {
 // The logo's most common saturated colour, darkened until white text on it clears
 // ~3.5:1. Greys, near-black and near-white are ignored, so a monochrome wordmark
 // yields null and the tile falls back to --ink.
-function dominantTint(img) {
+function dominantTint(img, minContrast = 3.5) {
   const n = 40;
   const c = document.createElement('canvas');
   c.width = n; c.height = n;
@@ -3779,7 +3784,7 @@ function dominantTint(img) {
   let r = Math.round(best.r / best.n), g = Math.round(best.g / best.n), b = Math.round(best.b / best.n);
   const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   const contrast = () => 1.05 / (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) + 0.05);
-  for (let i = 0; i < 24 && contrast() < 3.5; i++) { r = Math.round(r * 0.9); g = Math.round(g * 0.9); b = Math.round(b * 0.9); }
+  for (let i = 0; i < 40 && contrast() < minContrast; i++) { r = Math.round(r * 0.9); g = Math.round(g * 0.9); b = Math.round(b * 0.9); }
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 // Apply admin-set workspace branding (name, logo, scheme) from /api/config.
@@ -3802,6 +3807,7 @@ function applyBranding(brand) {
   document.querySelectorAll('.brand-logo').forEach(el => {
     el.classList.remove('has-logo');
     el.style.removeProperty('--brand-tint');
+    el.style.removeProperty('--mark-ground');
     el.textContent = letter; // monogram first; the mark replaces it once classified
   });
   if (brandDefaults.logo) {
@@ -3811,6 +3817,7 @@ function applyBranding(brand) {
         if (mark.shape === 'square') {
           el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`;
           el.classList.add('has-logo');
+          if (mark.tint) el.style.setProperty('--mark-ground', mark.tint);
         } else if (mark.tint) {
           el.style.setProperty('--brand-tint', mark.tint);
         }
