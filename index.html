@@ -909,6 +909,13 @@ html.dark .chip { color: var(--accent-soft); }
    it and never see it. */
 .brand-logo.has-logo { background: var(--mark-ground, #17191D); }
 .brand-logo.has-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+/* A mark carrying both dark and light of its own reads on either surface, so it is
+   let out of the tile entirely and sits on the masthead — a shaped mark like a crest
+   looks boxed-in inside a second rounded square. `contain` because there is no tile
+   left to fill and its silhouette is the point. Marks that are all-dark or all-light
+   keep the ground above; without it they would disappear into one theme. */
+.brand-logo.has-logo.mark-float { background: none; overflow: visible; }
+.brand-logo.has-logo.mark-float img { object-fit: contain; border-radius: 0; }
 /* The sign-in screen is where a wide lockup belongs — it has the room, and it is
    the first thing anyone sees. In dark mode it keeps a light plaque, because here
    there is no tile to sit on and a dark wordmark would vanish. */
@@ -3743,13 +3750,22 @@ function classifyBrandMark(src) {
     img.onerror = () => reject(new Error('logo failed to load'));
     img.onload = () => {
       const ratio = img.naturalWidth / (img.naturalHeight || 1);
-      const mark = { src, shape: ratio >= 0.8 && ratio <= 1.25 ? 'square' : 'wide', tint: null };
+      const mark = { src, shape: ratio >= 0.8 && ratio <= 1.25 ? 'square' : 'wide', tint: null, mfloat: false };
       // A wide logo's tint carries white monogram text, so it only needs 3.5:1.
       // A square mark's tint is a ground behind artwork, so it goes much deeper —
       // enough to sit under gold or silver without competing with it.
       mark.tint = dominantTint(img, mark.shape === 'square' ? 13 : 3.5);
+      if (mark.shape === 'square') {
+        const tone = markTone(img);
+        // Carries its own dark and light, so it stands on either surface unaided.
+        mark.mfloat = !!tone && tone.dark >= 0.20 && tone.light >= 0.035;
+        // Otherwise the ground has to oppose the mark, not match it: a mark that is
+        // almost entirely dark needs a light tile, or it vanishes into dark mode
+        // exactly as it would have with no tile at all.
+        if (tone && !mark.mfloat) mark.tint = tone.dark > 0.6 ? '#FFFFFF' : (mark.tint || '#17191D');
+      }
       _markCache.set(src, mark);
-      try { localStorage.setItem(lsKey, JSON.stringify({ shape: mark.shape, tint: mark.tint })); } catch { /* private mode */ }
+      try { localStorage.setItem(lsKey, JSON.stringify({ shape: mark.shape, tint: mark.tint, mfloat: mark.mfloat })); } catch { /* private mode */ }
       resolve(mark);
     };
     img.src = src;
@@ -3787,6 +3803,38 @@ function dominantTint(img, minContrast = 3.5) {
   for (let i = 0; i < 40 && contrast() < minContrast; i++) { r = Math.round(r * 0.9); g = Math.round(g * 0.9); b = Math.round(b * 0.9); }
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
+/* Can this mark sit on the masthead with no tile behind it? Only if it carries
+   enough of its own dark AND its own light: the surface under it is near-white in
+   one theme and near-black in the other, so an all-dark mark disappears in dark
+   mode and an all-light one in light mode. A crest with a black outline and gold
+   detail passes; a solid black glyph does not, and keeps its ground. */
+function markTone(img) {
+  const n = 40;
+  const c = document.createElement('canvas');
+  c.width = n; c.height = n;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  if (!x) return null;
+  x.drawImage(img, 0, 0, n, n);
+  let px;
+  try { px = x.getImageData(0, 0, n, n).data; } catch { return null; }
+  const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  // Thresholds are asymmetric on purpose. On the dark surface a mark only needs
+  // enough bright detail to draw its silhouette — a crest reads by its metallic
+  // edge, not its body — so a small fraction well above the surface is enough. On
+  // the light surface the mark needs real mass below mid-grey, which any mark with
+  // an outline has. Measured against ParaTech's shield: 4.7% above 0.22, 99% below
+  // 0.45 (median 0.040), which is the shape this is tuned to admit.
+  let opaque = 0, dark = 0, light = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < 160) continue;
+    opaque++;
+    const L = 0.2126 * lin(px[i]) + 0.7152 * lin(px[i + 1]) + 0.0722 * lin(px[i + 2]);
+    if (L < 0.45) dark++;
+    if (L > 0.22) light++;
+  }
+  if (opaque < 40) return null;
+  return { dark: dark / opaque, light: light / opaque };
+}
 // Apply admin-set workspace branding (name, logo, scheme) from /api/config.
 // Runs before the login card is shown so the org's identity is visible pre-auth.
 function applyBranding(brand) {
@@ -3805,7 +3853,7 @@ function applyBranding(brand) {
     else { el.textContent = letter; el.classList.remove('has-logo', 'login-mark--wide'); }
   });
   document.querySelectorAll('.brand-logo').forEach(el => {
-    el.classList.remove('has-logo');
+    el.classList.remove('has-logo', 'mark-float');
     el.style.removeProperty('--brand-tint');
     el.style.removeProperty('--mark-ground');
     el.textContent = letter; // monogram first; the mark replaces it once classified
@@ -3817,7 +3865,8 @@ function applyBranding(brand) {
         if (mark.shape === 'square') {
           el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`;
           el.classList.add('has-logo');
-          if (mark.tint) el.style.setProperty('--mark-ground', mark.tint);
+          el.classList.toggle('mark-float', !!mark.mfloat);
+          if (mark.tint && !mark.mfloat) el.style.setProperty('--mark-ground', mark.tint);
         } else if (mark.tint) {
           el.style.setProperty('--brand-tint', mark.tint);
         }
