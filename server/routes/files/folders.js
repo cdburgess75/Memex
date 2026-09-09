@@ -30,6 +30,41 @@ const FOLDER_ZIP_MAX_BYTES = 500 * 1024 * 1024;
 // so a pathological folder can't tie up the event loop (or disk) unbounded.
 const FOLDER_COPY_MAX_FILES = 5000;
 
+/* Which library does this folder path live in?
+ *
+ * A folder is not a row — it is a name prefix on documents — and a name is only
+ * unique within a library, so "Clients/Acme" can exist in several at once. Every
+ * folder query below is therefore scoped to one library id; without that, a single
+ * rename, delete or member-grant reaches across every library the caller can read.
+ *
+ * The caller may name the library explicitly (x-library-id header, or
+ * source_library_id). Otherwise it is inferred from the folder itself, so existing
+ * clients keep working: one candidate is used, several is an ambiguity the caller
+ * must settle, none lets the handler 404 as it did before. This deliberately does
+ * NOT read body.library_id — on /move and /copy that is the *target* library.
+ */
+async function folderLibraryId(req, folderPath, user) {
+  const explicit = req.headers['x-library-id'] || req.body?.source_library_id || req.query?.source_library_id;
+  if (explicit) return String(explicit);
+  const rows = await db.query(
+    `SELECT DISTINCT d.library_id FROM documents d
+     WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 2)}`,
+    [folderPath, ...documentAccess.userParams(user, 'read')]
+  );
+  if (rows.length > 1) {
+    const e = new Error('That folder name exists in more than one library. Re-send with source_library_id.');
+    e.status = 409;
+    throw e;
+  }
+  return rows.length ? rows[0].library_id : null;
+}
+
+// Surface that ambiguity as a 409 rather than a generic 500.
+function folderScopeError(res, e) {
+  if (e && e.status === 409) { res.status(409).json({ error: e.message }); return true; }
+  return false;
+}
+
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
@@ -45,7 +80,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     res.json({ ok: true, path: folderPath });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/rename — rename a folder (re-prefix every file under it)
@@ -59,16 +94,18 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     const newName = rawName.replace(/[^a-zA-Z0-9._ -]/g, '_');
     const parent = oldPath.split('/').slice(0, -1).join('/');
     const newPath = parent ? `${parent}/${newName}` : newName;
+    const libraryId = await folderLibraryId(req, oldPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
+      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/delete — move a whole folder's contents to Trash
@@ -76,16 +113,18 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
   try {
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write')]
+      [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
@@ -98,16 +137,18 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
+    const srcLibraryId = await folderLibraryId(req, oldPath, req.user);
+    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write')]
+      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
     );
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/move — move a folder's contents to another library
@@ -116,16 +157,18 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET library_id = $2
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 3)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
        RETURNING d.id`,
-      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write')]
+      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
     );
     await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // GET /api/files/folder/zip?path=... — download a folder's files as a compressed zip
@@ -133,11 +176,13 @@ router.get('/zip', auth, async (req, res) => {
   try {
     const folderPath = safeDocName(req.query.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.name, d.storage_path, d.size FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}
        ORDER BY d.name`,
-      [folderPath, ...documentAccess.userParams(req.user, 'read')]
+      [folderPath, ...documentAccess.userParams(req.user, 'read'), libraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
     const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
@@ -181,7 +226,7 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
       adminAll ? [folderPath] : [folderPath, req.user.id]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/links — mint a public download link for a folder.
@@ -192,10 +237,12 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
     // Snapshot exactly the files the CREATOR may re-publish under this folder.
     // Requires 'write' (not 'read') to mint a public link — same bar the per-file
     // share (POST /:id/shares) enforces, so a read-only grantee can't re-expose files.
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.size FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}`,
-      [folderPath, ...documentAccess.userParams(req.user, 'write')]
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
+      [folderPath, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder to share' });
     const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
@@ -219,7 +266,7 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
     await logEvent(`folder share create · ${folderPath} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_share_created', req.user.id, req.user.email, `${folderPath} (${docs.length})`);
     res.json({ share: folderShareClientShape(share, url) });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // DELETE /api/files/folder/links/:shareId — revoke a folder download link.
@@ -237,7 +284,7 @@ router.delete('/links/:shareId', auth, requireRole('admin', 'contributor'), asyn
     await logEvent(`folder share revoke · ${share.folder_path}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_share_revoked', req.user.id, req.user.email, share.folder_path);
     res.json({ success: true });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // GET /api/files/folder/share/:token — public, revocable, expiring folder ZIP download.
@@ -303,6 +350,8 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     // Only surface grants on files the caller can administer, and collapse the
     // per-file rows into one line per person (with how many files they can reach).
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `SELECT acl.subject_id,
               max(acl.subject_email) AS subject_email,
@@ -311,14 +360,14 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
               max(acl.created_at) AS created_at
        FROM document_acl acl
        JOIN documents d ON d.id = acl.document_id
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 2)}
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 2)}
          AND lower(acl.subject_id) <> lower($${2 + documentAccess.userParams(req.user, 'admin').length})
        GROUP BY acl.subject_id
        ORDER BY subject_email`,
-      [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase()]
+      [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase(), libraryId]
     );
     res.json({ grants: rows.map(r => ({ ...r, doc_count: Number(r.doc_count) })) });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/members — grant one person access to every file in a folder.
@@ -333,16 +382,18 @@ router.post('/members', auth, requireRole('admin', 'contributor'), async (req, r
     const permission = req.body?.permission || 'read';
     if (!documentAccess.validPermission(permission)) return res.status(400).json({ error: 'Permission must be read, write, or admin' });
     // Only files the caller administers; skip the folder marker.
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
        SELECT d.id, 'user', $2, $2, $3, $4, $5 FROM documents d
        WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep'
-         AND ${documentAccess.condition('d', 6)}
+         AND d.library_id = $11 AND ${documentAccess.condition('d', 6)}
        ON CONFLICT (document_id, subject_type, subject_id)
        DO UPDATE SET permission = EXCLUDED.permission, subject_email = EXCLUDED.subject_email,
                      granted_by = EXCLUDED.granted_by, granted_by_email = EXCLUDED.granted_by_email
        RETURNING document_id`,
-      [folderPath, email, permission, req.user.id, String(req.user.email || '').toLowerCase(), ...documentAccess.userParams(req.user, 'admin')]
+      [folderPath, email, permission, req.user.id, String(req.user.email || '').toLowerCase(), ...documentAccess.userParams(req.user, 'admin'), libraryId]
     );
     if (!rows.length) return res.status(404).json({ error: 'No files you manage in this folder' });
     await logEvent(`folder access grant · ${folderPath} · ${email} · ${permission} (${rows.length})`, req.user.id, req.user.email);
@@ -365,7 +416,7 @@ router.post('/members', auth, requireRole('admin', 'contributor'), async (req, r
       }).catch(() => {});
     }
     res.json({ ok: true, count: rows.length, permission });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // DELETE /api/files/folder/members — revoke a person's access across a folder.
@@ -375,17 +426,19 @@ router.delete('/members', auth, requireRole('admin', 'contributor'), async (req,
     const email = documentAccess.normalizeEmail(req.body?.email);
     if (!folderPath || !email) return res.status(400).json({ error: 'path and email required' });
     if (email === String(req.user.email || '').toLowerCase()) return res.status(400).json({ error: "You can't revoke your own access" });
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `DELETE FROM document_acl acl USING documents d
        WHERE acl.document_id = d.id AND acl.subject_type = 'user' AND lower(acl.subject_id) = lower($2)
-         AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 3)}
+         AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
        RETURNING acl.document_id`,
-      [folderPath, email, ...documentAccess.userParams(req.user, 'admin')]
+      [folderPath, email, ...documentAccess.userParams(req.user, 'admin'), libraryId]
     );
     await logEvent(`folder access revoke · ${folderPath} · ${email} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_access_revoked', req.user.id, req.user.email, `${folderPath} · ${email} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/copy — duplicate a folder's files into another library.
@@ -395,10 +448,12 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
     if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
+    const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND ${documentAccess.condition('d', 2)}`,
-      [folderPath, ...documentAccess.userParams(req.user, 'read')]
+       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
+      [folderPath, ...documentAccess.userParams(req.user, 'read'), srcLibraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
     if (docs.length > FOLDER_COPY_MAX_FILES) return res.status(413).json({ error: `Too many files to copy at once (over ${FOLDER_COPY_MAX_FILES})` });
