@@ -895,17 +895,22 @@ html.dark .chip { color: var(--accent-soft); }
   font: 700 22px var(--ui);
   box-shadow: 0 12px 28px rgba(0,0,0,.18);
 }
-/* When an admin uploads a workspace logo, drop the letter tile's fill/gradient
-   so the image (often a transparent PNG) shows on its own. */
-.brand-logo.has-logo, .login-mark.has-logo { background: none; box-shadow: none; }
-.brand-logo.has-logo img, .login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
-/* Masthead with a real logo: give it a taller, natural-width slot and drop the wordmark. */
-.brand--has-logo h1 { display: none; }
-.brand--has-logo .brand-logo.has-logo { width: auto; height: 46px; min-width: 0; border-radius: 6px; }
-.brand--has-logo .brand-logo.has-logo img { width: auto; height: 46px; max-width: 300px; }
-/* Dark mode: no plate — lighten the logo in place so its dark text and tagline
-   read on the dark header, keeping roughly the original hues (invert + hue-rotate). */
-html.dark .brand--has-logo .brand-logo.has-logo img { filter: invert(1) hue-rotate(180deg); }
+/* The masthead mark is a fixed tile, never the customer's full lockup: lockups
+   differ wildly in aspect and colour, so rendering them raw made every customer's
+   masthead a different width and forced a dark-mode filter that falsified any
+   coloured logo. The tile is a ground we paint ourselves, so the art never has to
+   survive our surface. A square-ish upload fills it; anything else gets the
+   monogram over a tint sampled from the logo (see classifyBrandMark). */
+.brand-logo { overflow: hidden; background: var(--brand-tint, var(--ink)); }
+.brand-logo.has-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+/* The sign-in screen is where a wide lockup belongs — it has the room, and it is
+   the first thing anyone sees. In dark mode it keeps a light plaque, because here
+   there is no tile to sit on and a dark wordmark would vanish. */
+.login-mark.has-logo { background: none; box-shadow: none; }
+.login-mark.has-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
+.login-mark.login-mark--wide { width: auto; max-width: 280px; height: auto; min-height: 56px; border-radius: 10px; padding: 10px 14px; background: #FFFFFF; box-shadow: 0 6px 18px rgba(0,0,0,.10); }
+.login-mark.login-mark--wide img { width: auto; height: auto; max-width: 252px; max-height: 52px; object-fit: contain; }
+html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: none; padding: 0; }
 .login-modal h2 { font-size: 32px; line-height: 1.08; margin-bottom: 8px; }
 .login-modal .sub { margin: 0 auto 22px; max-width: 320px; font-size: 15px; }
 .login-providers { display: flex; flex-direction: column; gap: 10px; }
@@ -2463,8 +2468,6 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   }
   .masthead-left { grid-area: brand; min-width: 0; }
   .brand { flex-wrap: nowrap; max-width: 100%; }
-  .brand--has-logo .brand-logo.has-logo, .brand--has-logo .brand-logo.has-logo img { height: 38px; }
-  .brand--has-logo .brand-logo.has-logo img { max-width: 220px; }
   .masthead-search { grid-area: search; width: auto; max-width: none; margin: 0; }
   .masthead-actions, html.file-home-mode .masthead-actions { grid-area: actions; width: auto; max-width: none; overflow: visible; padding: 0; justify-content: flex-end; flex-wrap: nowrap; }
   .user-chip { max-width: 180px; }
@@ -2480,8 +2483,6 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   .masthead, html.file-home-mode .masthead { gap: 6px 8px; padding: 6px 12px 8px; padding-top: max(6px, env(safe-area-inset-top)); }
   .brand-logo { width: 30px; height: 30px; font-size: 17px; border-radius: 8px; }
   .brand h1 { font-size: 19px; }
-  .brand--has-logo .brand-logo.has-logo, .brand--has-logo .brand-logo.has-logo img { height: 30px; }
-  .brand--has-logo .brand-logo.has-logo img { max-width: 140px; }
   .masthead-actions, html.file-home-mode .masthead-actions { gap: 5px; }
   #theme-btn { display: none; } /* lives in the account menu on phones (.phone-only) */
   .mast-icon-btn { width: 34px; height: 34px; border-radius: 8px; }
@@ -3230,7 +3231,7 @@ function setupStepHtml(step, s) {
     <div class="setup-field"><label>Company / organization name</label><input id="setup-org" value="${esc(s.tenant?.orgName || '')}" placeholder="Acme Corporation"></div>
     <div class="setup-field"><label>Tenant ID <span class="setup-hint">short unique slug</span></label><input id="setup-tenant-id" value="${esc(s.tenant?.tenantId || '')}" placeholder="acme"></div>
     <div class="setup-field"><label>Primary technical contact email</label><input id="setup-contact" type="email" value="${esc(s.tenant?.contactEmail || '')}" placeholder="it@acme.com"></div>
-    <div class="setup-field"><label>Logo <span class="setup-hint">optional · any image, resized automatically</span></label>
+    <div class="setup-field"><label>Logo <span class="setup-hint">optional · a square mark works best; a wide wordmark is used on the sign-in screen</span></label>
       <div class="setup-brand-row">
         <span class="brand-logo${setupHasLogo(s) ? ' has-logo' : ''}" id="setup-logo-preview" style="width:40px;height:40px;border-radius:10px;font-size:20px;flex:0 0 auto">${setupLogoInner(s)}</span>
         <input type="file" id="setup-logo-file" accept="image/*" style="display:none" onchange="setupOnLogoPick(event)">
@@ -3715,6 +3716,68 @@ function renderThemeToggle(theme) {
   if (label) label.textContent = theme === 'dark' ? 'Light mode' : 'Dark mode';
 }
 
+/* Decide how a workspace logo becomes a 36px masthead mark. A square-ish upload
+   is a mark and fills the tile; anything else is a lockup, so the tile shows the
+   monogram over the logo's own dominant colour instead of a squashed wordmark.
+   Runs on a 40x40 canvas, and the answer is cached per device — the alternative
+   is storing it server-side, which would need a migration for existing logos. */
+const _markCache = new Map();
+function classifyBrandMark(src) {
+  if (_markCache.has(src)) return Promise.resolve(_markCache.get(src));
+  let key = 0;
+  const probe = src.length + '|' + src.slice(0, 64) + src.slice(-64);
+  for (let i = 0; i < probe.length; i++) key = ((key << 5) - key + probe.charCodeAt(i)) | 0;
+  const lsKey = 'memex_mark_' + (key >>> 0).toString(36);
+  try {
+    const hit = JSON.parse(localStorage.getItem(lsKey) || 'null');
+    if (hit && hit.shape) { const m = { ...hit, src }; _markCache.set(src, m); return Promise.resolve(m); }
+  } catch { /* fall through and recompute */ }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('logo failed to load'));
+    img.onload = () => {
+      const ratio = img.naturalWidth / (img.naturalHeight || 1);
+      const mark = { src, shape: ratio >= 0.8 && ratio <= 1.25 ? 'square' : 'wide', tint: null };
+      if (mark.shape === 'wide') mark.tint = dominantTint(img);
+      _markCache.set(src, mark);
+      try { localStorage.setItem(lsKey, JSON.stringify({ shape: mark.shape, tint: mark.tint })); } catch { /* private mode */ }
+      resolve(mark);
+    };
+    img.src = src;
+  });
+}
+// The logo's most common saturated colour, darkened until white text on it clears
+// ~3.5:1. Greys, near-black and near-white are ignored, so a monochrome wordmark
+// yields null and the tile falls back to --ink.
+function dominantTint(img) {
+  const n = 40;
+  const c = document.createElement('canvas');
+  c.width = n; c.height = n;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  if (!x) return null;
+  x.drawImage(img, 0, 0, n, n);
+  let px;
+  try { px = x.getImageData(0, 0, n, n).data; } catch { return null; }
+  const buckets = new Map();
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    if (px[i + 3] < 160) continue;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx < 28 || mn > 232 || (mx - mn) / (mx || 1) < 0.28) continue;
+    const k = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+    const e = buckets.get(k) || { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += g; e.b += b;
+    buckets.set(k, e);
+  }
+  let best = null;
+  for (const e of buckets.values()) if (!best || e.n > best.n) best = e;
+  if (!best || best.n < 6) return null;
+  let r = Math.round(best.r / best.n), g = Math.round(best.g / best.n), b = Math.round(best.b / best.n);
+  const lin = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const contrast = () => 1.05 / (0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) + 0.05);
+  for (let i = 0; i < 24 && contrast() < 3.5; i++) { r = Math.round(r * 0.9); g = Math.round(g * 0.9); b = Math.round(b * 0.9); }
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
 // Apply admin-set workspace branding (name, logo, scheme) from /api/config.
 // Runs before the login card is shown so the org's identity is visible pre-auth.
 function applyBranding(brand) {
@@ -3727,13 +3790,30 @@ function applyBranding(brand) {
   document.title = name;
   document.querySelectorAll('.brand h1, .login-modal h2').forEach(el => { el.textContent = name; });
   const letter = (name.trim()[0] || 'D').toUpperCase();
-  document.querySelectorAll('.brand-logo, .login-mark').forEach(el => {
+  // Sign-in keeps the full lockup; the masthead gets the tile.
+  document.querySelectorAll('.login-mark').forEach(el => {
     if (brandDefaults.logo) { el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`; el.classList.add('has-logo'); }
-    else { el.textContent = letter; el.classList.remove('has-logo'); }
+    else { el.textContent = letter; el.classList.remove('has-logo', 'login-mark--wide'); }
   });
-  // With a real logo, give it room and drop the wordmark; the letter-tile + name
-  // stay only when no custom logo is set.
-  document.querySelectorAll('.brand').forEach(b => b.classList.toggle('brand--has-logo', !!brandDefaults.logo));
+  document.querySelectorAll('.brand-logo').forEach(el => {
+    el.classList.remove('has-logo');
+    el.style.removeProperty('--brand-tint');
+    el.textContent = letter; // monogram first; the mark replaces it once classified
+  });
+  if (brandDefaults.logo) {
+    classifyBrandMark(brandDefaults.logo).then(mark => {
+      if (brandDefaults.logo !== mark.src) return; // branding changed while we were reading
+      document.querySelectorAll('.brand-logo').forEach(el => {
+        if (mark.shape === 'square') {
+          el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`;
+          el.classList.add('has-logo');
+        } else if (mark.tint) {
+          el.style.setProperty('--brand-tint', mark.tint);
+        }
+      });
+      document.querySelectorAll('.login-mark.has-logo').forEach(el => el.classList.toggle('login-mark--wide', mark.shape !== 'square'));
+    }).catch(() => { /* keep the monogram */ });
+  }
   // The workspace scheme is the default; a device choice under Appearance wins.
   applyScheme(localStorage.getItem('memex_scheme') || brandDefaults.scheme || DEFAULT_SCHEME, false);
 }
@@ -5722,7 +5802,7 @@ function workspaceSettingsHtml() {
           ${logo ? `<button class="ghost-btn" type="button" onclick="clearBrandLogo()">Remove</button>` : ''}
         </div>
       </div>
-      <p class="settings-notice">Any image format — large images are resized automatically. A transparent PNG or SVG looks best.</p>
+      <p class="settings-notice">A <b>square mark</b> works best — it fills the tile beside the workspace name. A wide wordmark still appears in full on the sign-in screen, and the tile shows the initial over a colour taken from the logo. Any image format; large images are resized automatically, and a transparent PNG or SVG looks best.</p>
       <button class="ghost-btn" style="margin-bottom:4px" onclick="saveBrandingSettings()">Save branding</button>`;
 }
 function systemSettingsHtml() {
