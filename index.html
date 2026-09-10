@@ -1440,6 +1440,19 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
+/* Groups (Settings → Groups) */
+.group-create, .group-add { display: flex; gap: 8px; margin: 12px 0 6px; }
+.group-create input, .group-add input { flex: 1 1 auto; min-width: 0; }
+.group-back { margin: 4px 0 12px; }
+.group-head { margin: 0 0 4px; }
+.group-title { font: 600 16px var(--ui); color: var(--ink); }
+.group-members { margin-top: 4px; }
+.group-member { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.group-member-name { color: var(--ink); overflow-wrap: anywhere; }
+.group-member-email { color: var(--ink-faint); font-size: 12.5px; overflow-wrap: anywhere; }
+.group-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule-soft); }
+.ghost-btn.danger { color: var(--danger); }
+.ghost-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 .library-pick-list { display: grid; gap: 2px; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
@@ -5249,7 +5262,8 @@ function closeSettings() { document.getElementById('settings-scrim').classList.r
 function settingsTabsList() {
   // Consolidated tabs: Profile holds profile + appearance; Notifications holds
   // notification prefs (+ admin-only email config); System folds in Workspace branding.
-  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }];
+  // Groups is for everyone, not admins: whoever creates a group manages it.
+  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }, { id: 'groups', label: 'Groups' }];
   if (currentUser?.role === 'admin') tabs.push(
     { id: 'ai', label: 'AI' },
     { id: 'connections', label: 'Connections' },
@@ -5270,6 +5284,7 @@ function switchSettingsTab(tab) {
   if (tab === 'profile') body.innerHTML = profileSettingsHtml() + appearanceSettingsHtml();
   else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml() + (admin ? emailSettingsHtml() : ''); loadNotifications(); }
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
+  else if (tab === 'groups') { body.innerHTML = groupsSettingsHtml(); loadGroups(); }
   else if (tab === 'connections') { body.innerHTML = connectionsSettingsHtml(); loadConnections(); }
   else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
   else if (tab === 'system') { body.innerHTML = workspaceSettingsHtml() + systemSettingsHtml(); loadBackupConfig(); }
@@ -5291,6 +5306,174 @@ let connBrowsing = null; // null = list view; { id, name, path, entries } = brow
 let connMounts = [];
 let connMountsLoaded = false;
 let mountView = null;   // { id, name, kind, path, entries } when browsing in the Files area
+
+/* ---------- Groups ----------
+   Named lists of people. Whoever creates a group manages it; admins can manage any.
+   A group grants nothing on its own yet — that arrives when libraries can be shared
+   with a group — so the tab says so rather than letting someone build a group and
+   then wonder why nobody in it can see anything. Every id reaches a handler through
+   a data-* attribute, never spliced into script, and every name or address is
+   escaped. */
+let groupsList = [];
+let groupOpenId = null;
+let groupMembersList = [];
+
+function groupsSettingsHtml() {
+  return `<div class="settings-sub">Groups</div>
+    <p class="settings-notice">A group is a named list of people — your team, a client's staff, a project. Whoever creates a group manages who is in it, and people from outside the company can be added. Groups don't give anyone access to anything yet: once libraries can be shared with a group, this is where you'll manage who's in it.</p>
+    <div id="groups-body"><p class="settings-notice">Loading…</p></div>`;
+}
+
+async function loadGroups() {
+  try {
+    groupsList = await apiGet('/groups');
+    if (groupOpenId && !groupsList.some(g => g.id === groupOpenId)) groupOpenId = null;
+    if (groupOpenId) await openGroup(groupOpenId, true); else renderGroups();
+  } catch (e) {
+    const el = document.getElementById('groups-body');
+    if (el) el.innerHTML = `<p class="settings-notice">Couldn't load groups: ${esc(e.message)}</p>`;
+  }
+}
+
+function groupRowHtml(g) {
+  const count = `${g.member_count} ${g.member_count === 1 ? 'member' : 'members'}`;
+  const owner = g.can_manage && String(g.owner_id || '') === String(currentUser?.id || '')
+    ? 'owned by you' : `owned by ${esc(g.owner_email || 'an admin')}`;
+  return `<div class="conn-row">
+    <div class="conn-main">
+      <div class="conn-name">${esc(g.name)}</div>
+      <div class="conn-meta">${count} · ${owner}</div>
+    </div>
+    <div class="conn-actions"><button class="ghost-btn" type="button" data-gid="${escAttr(g.id)}" onclick="openGroup(this.dataset.gid)">Open</button></div>
+  </div>`;
+}
+
+function renderGroups() {
+  const el = document.getElementById('groups-body');
+  if (!el) return;
+  const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const mine = groupsList.filter(g => g.can_manage);
+  const theirs = groupsList.filter(g => !g.can_manage);
+  const create = canCreate ? `<div class="group-create">
+      <input type="text" id="group-new-name" maxlength="80" placeholder="New group name — e.g. Accounting" autocomplete="off" onkeydown="if(event.key==='Enter')createGroup()">
+      <button class="run-btn" type="button" onclick="createGroup()">Create group</button>
+    </div>` : '';
+  if (!groupsList.length) {
+    el.innerHTML = create + `<p class="settings-notice">${canCreate ? "You're not in any groups yet. Create one above." : "You're not in any groups yet."}</p>`;
+    return;
+  }
+  el.innerHTML = create
+    + (mine.length ? `<div class="settings-sub">${currentUser?.role === 'admin' ? 'Groups you can manage' : 'Groups you manage'}</div>${mine.map(groupRowHtml).join('')}` : '')
+    + (theirs.length ? `<div class="settings-sub">Groups you're in</div>${theirs.map(groupRowHtml).join('')}` : '');
+}
+
+async function createGroup() {
+  const input = document.getElementById('group-new-name');
+  const name = (input?.value || '').trim();
+  if (!name) { input?.focus(); return; }
+  try {
+    const g = await apiPost('/groups', { name });
+    toast(`Created "${g.name}"`);
+    groupOpenId = g.id;
+    await loadGroups();
+  } catch (e) { toast(e.message || 'Could not create the group'); }
+}
+
+async function openGroup(id, silent) {
+  const el = document.getElementById('groups-body');
+  if (!el) return;
+  groupOpenId = id;
+  try { groupMembersList = await apiGet(`/groups/${encodeURIComponent(id)}/members`); }
+  catch (e) { if (!silent) toast(e.message || 'Could not open the group'); groupOpenId = null; renderGroups(); return; }
+  const g = groupsList.find(x => x.id === id);
+  if (!g) { groupOpenId = null; renderGroups(); return; }
+  const manage = !!g.can_manage;
+  const members = groupMembersList.length
+    ? groupMembersList.map(m => {
+        const who = m.display_name
+          ? `<span class="group-member-name">${esc(m.display_name)}</span> <span class="group-member-email">${esc(m.member_email)}</span>`
+          : `<span class="group-member-name">${esc(m.member_email)}</span>`;
+        const pending = m.has_signed_in ? '' : '<span class="pill">Hasn’t signed in</span>';
+        const remove = manage ? `<button class="file-library-tool" type="button" data-mid="${escAttr(m.id)}" data-email="${escAttr(m.member_email)}" onclick="removeGroupMember(this.dataset.mid, this.dataset.email)">Remove</button>` : '';
+        return `<div class="lib-member-row"><span class="group-member">${who}${pending}</span>${remove}</div>`;
+      }).join('')
+    : `<p class="settings-notice">Nobody is in this group yet.</p>`;
+  const addForm = manage ? `<div class="group-add">
+      <input type="email" id="group-add-email" placeholder="name@company.com" autocomplete="off" onkeydown="if(event.key==='Enter')addGroupMember()">
+      <button class="run-btn" type="button" onclick="addGroupMember()">Add</button>
+    </div>` : '';
+  const actions = manage ? `<div class="group-actions">
+      <button class="ghost-btn" type="button" onclick="renameGroupPrompt()">Rename</button>
+      <button class="ghost-btn" type="button" onclick="transferGroupPrompt()">Change owner</button>
+      <button class="ghost-btn danger" type="button" onclick="deleteGroupConfirm()">Delete group</button>
+    </div>` : `<p class="settings-notice">Only the group's owner or an admin can change who's in it.</p>`;
+  el.innerHTML = `<button class="ghost-btn group-back" type="button" onclick="closeGroup()">← All groups</button>
+    <div class="group-head">
+      <div class="group-title">${esc(g.name)}</div>
+      <div class="conn-meta">Owner: ${esc(g.owner_email || 'an admin')}</div>
+    </div>
+    <div class="settings-sub">Members (${groupMembersList.length})</div>
+    <div class="group-members">${members}</div>
+    ${addForm}
+    ${actions}`;
+}
+
+function closeGroup() { groupOpenId = null; groupMembersList = []; renderGroups(); }
+
+async function addGroupMember() {
+  const input = document.getElementById('group-add-email');
+  const email = (input?.value || '').trim();
+  if (!email || !groupOpenId) { input?.focus(); return; }
+  try {
+    const r = await apiPost(`/groups/${encodeURIComponent(groupOpenId)}/members`, { email });
+    toast(r.already_member ? `${r.member_email} is already in this group` : `Added ${r.member_email}`);
+    await loadGroups();
+    document.getElementById('group-add-email')?.focus();
+  } catch (e) { toast(e.message || 'Could not add that person'); }
+}
+
+async function removeGroupMember(memberId, email) {
+  if (!groupOpenId) return;
+  if (!(await askConfirm(`Remove ${email} from this group?`, { okLabel: 'Remove', danger: true }))) return;
+  try {
+    await apiDelete(`/groups/${encodeURIComponent(groupOpenId)}/members/${encodeURIComponent(memberId)}`);
+    toast(`Removed ${email}`);
+    await loadGroups();
+  } catch (e) { toast(e.message || 'Could not remove that person'); }
+}
+
+async function renameGroupPrompt() {
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  const name = await askPrompt('New name for this group', g.name, { okLabel: 'Rename', title: 'Rename group' });
+  if (name === null || !name.trim() || name.trim() === g.name) return;
+  try { await apiPut(`/groups/${encodeURIComponent(g.id)}`, { name: name.trim() }); toast('Group renamed'); await loadGroups(); }
+  catch (e) { toast(e.message || 'Could not rename the group'); }
+}
+
+async function transferGroupPrompt() {
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  const email = await askPrompt('Email of the new owner. They must have signed in to Depot before.', '', { okLabel: 'Change owner', title: 'Change owner', placeholder: 'name@company.com' });
+  if (email === null || !email.trim()) return;
+  try {
+    const r = await apiPut(`/groups/${encodeURIComponent(g.id)}/owner`, { email: email.trim() });
+    toast(`${r.owner_email} now owns "${g.name}"`);
+    await loadGroups();
+  } catch (e) { toast(e.message || 'Could not change the owner'); }
+}
+
+async function deleteGroupConfirm() {
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  if (!(await askConfirm(`Delete "${g.name}"? Everyone is removed from it. This can't be undone.`, { okLabel: 'Delete group', danger: true, title: 'Delete group' }))) return;
+  try {
+    await apiDelete(`/groups/${encodeURIComponent(g.id)}`);
+    toast(`Deleted "${g.name}"`);
+    groupOpenId = null;
+    await loadGroups();
+  } catch (e) { toast(e.message || 'Could not delete the group'); }
+}
 
 function connectionsSettingsHtml() {
   return `<div class="settings-sub">Connections</div>
