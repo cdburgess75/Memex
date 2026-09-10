@@ -41,7 +41,7 @@ const {
 } = require('../lib/shareLinks');
 const {
   DOCUMENT_COLUMNS, TEXT_EXTRACTION_MAX_BYTES, fileSizeLabelForEvent,
-  safeDocName, recordUploadNotify, createDocumentRecord,
+  safeDocName, destinationFolder, recordUploadNotify, createDocumentRecord,
 } = require('../lib/documents');
 
 // Uploads are gated by an extension blocklist so the workspace can't become a
@@ -1810,11 +1810,18 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
       id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active',
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    // Sanitize the new name the same way uploads are (strip HTML-significant and
-    // control characters, neutralize traversal segments) so a rename cannot store a
-    // name the upload path would never have accepted.
-    const name = cleanDisplayName(req.body?.name).slice(0, 400);
-    if (!name) return res.status(400).json({ error: 'name required' });
+    // The name is a folder path plus a file name. A folder that already exists is kept
+    // exactly as stored, so renaming a file inside "Smith & Co (2025)" -- or moving it
+    // there -- keeps it in that folder; new folders and the file name are cleaned the
+    // way uploads are (HTML-significant and control characters stripped, traversal
+    // neutralized), so a rename cannot invent a name an upload could never have stored.
+    const raw = String(req.body?.name || '').replace(/\\/g, '/');
+    const cut = raw.lastIndexOf('/');
+    const base = cleanDisplayName(raw.slice(cut + 1)).slice(0, 255);
+    if (!base) return res.status(400).json({ error: 'name required' });
+    const folder = cut >= 0 ? await destinationFolder(raw.slice(0, cut), doc.library_id, req.user) : '';
+    if (folder === null) return res.status(400).json({ error: 'invalid folder' });
+    const name = folder ? `${folder}/${base}` : base;
     const updated = await db.queryOne('UPDATE documents SET name = $2 WHERE id = $1 RETURNING *', [req.params.id, name]);
     await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
     res.json({ success: true, name: updated.name });

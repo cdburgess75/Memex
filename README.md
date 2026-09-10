@@ -147,7 +147,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/i
 
 1. Open the app at the URL the installer prints.
 2. Sign in with the seeded account `admin@memex.local` / `memex-admin` (you are forced to change the password on first login).
-3. Sign out, then sign in as your real admin email so that account receives the admin role. Manage everything else from the UI.
+3. Sign out, then sign in as your real admin email so that account receives the admin role. The address must be verified in Keycloak: if you create that account in the Keycloak admin console, tick **Email verified** (it is off by default), or it signs in as a contributor. Manage everything else from the UI.
 
 For a full per-customer runbook (domain, branding, email, backups, checklist), see [DEPLOY.md](DEPLOY.md).
 

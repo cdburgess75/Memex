@@ -42,19 +42,23 @@ CREATE TABLE IF NOT EXISTS library_grants (
        (subject_type = 'user' AND group_id IS NULL AND subject_email IS NOT NULL
         AND subject_email = lower(btrim(subject_email)) AND char_length(subject_email) BETWEEN 3 AND 254)
     OR (subject_type = 'group' AND group_id IS NOT NULL AND subject_email IS NULL)),
-  -- a folder path in the one canonical shape the folder code produces: no leading,
-  -- trailing or doubled slash, no backslash, no . or .. segment, no control character,
-  -- no segment starting or ending in whitespace. 400 characters matches the document
-  -- name cap; 1024 bytes keeps the widest unique-index key under the btree row limit
-  -- even when every character takes four bytes.
+  -- a folder path in the one canonical shape canonicalFolderPath (lib/documents.js)
+  -- produces: no leading, trailing or doubled slash, no backslash, no . or .. segment,
+  -- no control character (JavaScript's \p{Cc}), no segment starting or ending in
+  -- whitespace (JavaScript's \s). Both character sets are spelled out rather than
+  -- written [[:cntrl:]] / [[:space:]], whose meaning depends on the database locale, so
+  -- the database never refuses a path the code accepted. 400 characters matches the
+  -- document name cap; 1024 bytes keeps the widest unique-index key under the btree row
+  -- limit even when every character takes four bytes.
   CONSTRAINT library_grants_path_shape CHECK (
        folder_path = ''
     OR (char_length(folder_path) <= 400 AND octet_length(folder_path) <= 1024
         AND left(folder_path, 1) <> '/' AND right(folder_path, 1) <> '/'
         AND position('//' IN folder_path) = 0 AND strpos(folder_path, chr(92)) = 0
         AND folder_path !~ '(^|/)[.][.]?(/|$)'
-        AND folder_path !~ '[[:cntrl:]]'
-        AND folder_path !~ '(^|/)[[:space:]]' AND folder_path !~ '[[:space:]](/|$)'))
+        AND folder_path !~ '[\x01-\x1f\x7f-\x9f]'
+        AND folder_path !~ '(^|/)[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+        AND folder_path !~ '[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff](/|$)'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS library_grants_user_uniq  ON library_grants (library_id, folder_path, subject_email) WHERE subject_type = 'user';
 CREATE UNIQUE INDEX IF NOT EXISTS library_grants_group_uniq ON library_grants (library_id, folder_path, group_id)      WHERE subject_type = 'group';

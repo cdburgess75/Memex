@@ -14,6 +14,8 @@
 // Without MEMEX_TEST_PG_URL the whole suite is skipped (normal CI / sandbox).
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
+// Migrations and the first connection can outlast Jest's 5 s default on a slow runner.
+if (PG) jest.setTimeout(30000);
 
 // Everything the migrations create, plus the base tables this test seeds, so reruns
 // start clean.

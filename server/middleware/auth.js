@@ -33,14 +33,26 @@ function emailVerifiedClaim(payload) {
   return null;
 }
 
-// A token with no email_verified claim means shares will not match that account. Say so
-// once per account per process, so a misconfigured realm shows up in the logs without
-// flooding them.
-const _warnedMissingClaim = new Set();
-function noteMissingClaim(userId) {
-  if (_warnedMissingClaim.has(userId) || _warnedMissingClaim.size > 10000) return;
-  _warnedMissingClaim.add(userId);
-  console.warn(`auth: token for user ${userId} carries no email_verified claim; address-keyed shares will not match it`);
+// Say once per account per process when a token does not vouch for its address, so a
+// misconfigured realm or an account created without "Email verified" shows up in the
+// logs without flooding them.
+//  - No claim at all: the realm is not sending it (the client lost its "email" scope).
+//    The address is never treated as verified, so it cannot bootstrap an admin.
+//  - Claim false: Keycloak says the address is unverified. Files shared to that address
+//    will not open for this account until "Email verified" is ticked for it.
+//  - An ADMIN_EMAILS address that is not verified is not made an admin.
+const _warnedUnverified = new Set();
+function noteUnverified(userId, email, claim) {
+  const key = `${userId}:${claim}`;
+  if (_warnedUnverified.has(key) || _warnedUnverified.size > 10000) return;
+  _warnedUnverified.add(key);
+  if (claim === 'admin') {
+    console.warn(`auth: ${JSON.stringify(email)} is listed in ADMIN_EMAILS but Keycloak does not mark it verified, so it is not made an admin; tick "Email verified" for the account in Keycloak and sign in again`);
+  } else if (claim === null) {
+    console.warn(`auth: token for user ${userId} carries no email_verified claim; its address is not treated as verified (check the client's "email" scope in Keycloak)`);
+  } else {
+    console.warn(`auth: Keycloak marks the address ${JSON.stringify(email)} of user ${userId} unverified; files shared to that address will not open for it until "Email verified" is ticked for the account in Keycloak`);
+  }
 }
 
 module.exports = async function auth(req, res, next) {
@@ -64,13 +76,16 @@ module.exports = async function auth(req, res, next) {
 
   let roleRow = await db.queryOne('SELECT role, verified_email FROM user_roles WHERE user_id = $1', [userId]);
 
+  // ADMIN_EMAILS bootstraps the first admin by address, so it must be an address the
+  // identity provider has verified — otherwise anyone able to put that address on an
+  // unverified account would be made an admin on first sign-in. The seeded install
+  // admin is created verified (keycloak/memex-realm.json).
+  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const listedAdmin = !!userEmail && adminEmails.includes(userEmail);
+  if (listedAdmin && !verifiedEmail) noteUnverified(userId, userEmail, 'admin');
+
   if (!roleRow) {
-    // ADMIN_EMAILS bootstraps the first admin by address, so it must be an address the
-    // identity provider has verified — otherwise anyone able to put that address on an
-    // unverified account would be made an admin on first sign-in. The seeded install
-    // admin is created verified (keycloak/memex-realm.json).
-    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    const assignedRole = verifiedEmail && adminEmails.includes(verifiedEmail) ? 'admin' : 'contributor';
+    const assignedRole = verifiedEmail && listedAdmin ? 'admin' : 'contributor';
     roleRow = await db.queryOne(
       `INSERT INTO user_roles (user_id, email, role, verified_email, email_verified_at)
        VALUES ($1, $2, $3, $4::text, CASE WHEN $4::text IS NULL THEN NULL ELSE NOW() END)
@@ -85,6 +100,26 @@ module.exports = async function auth(req, res, next) {
       eventType: 'user_provisioned', actorId: userId, actorEmail: userEmail,
       detail: `auto-assigned role ${assignedRole}`,
     }).catch(() => {});
+  } else if (roleRow.role === 'contributor' && verifiedEmail && listedAdmin) {
+    // The account was first seen before its address was verified, so it was made a
+    // contributor. If the install still has no admin at all, the bootstrap never
+    // happened: finish it now. Once any admin exists, roles are theirs to manage.
+    try {
+      const promoted = await db.queryOne(
+        `UPDATE user_roles SET role = 'admin'
+          WHERE user_id = $1 AND role = 'contributor'
+            AND NOT EXISTS (SELECT 1 FROM user_roles WHERE role = 'admin')
+          RETURNING role`,
+        [userId]
+      );
+      if (promoted) {
+        roleRow = { ...roleRow, role: promoted.role };
+        require('../lib/auditLog').append({
+          eventType: 'user_provisioned', actorId: userId, actorEmail: userEmail,
+          detail: 'bootstrap admin from ADMIN_EMAILS once the address was verified',
+        }).catch(() => {});
+      }
+    } catch (e) { console.error('auth: admin bootstrap failed:', e.message); }
   }
 
   // Keep the stored verified address in step with the latest token. Written only when
@@ -100,7 +135,7 @@ module.exports = async function auth(req, res, next) {
       );
     } catch (e) { console.error('auth: recording verified email failed:', e.message); }
   }
-  if (emailVerified === null) noteMissingClaim(userId);
+  if (emailVerified !== true) noteUnverified(userId, userEmail, emailVerified);
 
   req.user = {
     id: userId,

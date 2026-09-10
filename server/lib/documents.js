@@ -43,30 +43,73 @@ function safeDocName(folder, base) {
   return segs.join('/').slice(0, 400) || null;
 }
 
-// The path of an EXISTING folder, exactly as its files are named -- for looking a
-// folder up, never for naming a new one (that is safeDocName, which rewrites unusual
-// characters to '_'). A folder created by an outside upload can be called "Tax & Co" or
-// "Cafe" with an accent; rewriting that on the way in would miss it entirely, and a
-// folder share keyed on the path must match the stored bytes exactly.
+// Folder paths are matched exactly against stored names, never rewritten: a folder
+// created by an outside upload can be called "Tax & Co" or "Cafe" with an accent, and
+// rewriting that on the way in would miss it. Only the separators are tidied
+// (backslashes become '/', repeated slashes collapse, slashes at either end go).
 //
-// Only the separators are tidied: backslashes become '/', repeated slashes collapse,
-// slashes at either end go. Anything that could not be a real folder path is refused
-// (null): a '.' or '..' segment, a control character, a segment that starts or ends in
-// whitespace (names are trimmed when stored), or more than 400 characters / 1024 bytes.
-// The same shape is enforced on library_grants.folder_path (migration 0007).
+// folderLookupPath -- the path of an EXISTING folder, for finding it. It refuses only
+//   what no stored name can contain: a '.' or '..' segment, a C0 control character, or
+//   more than 1000 characters. Anything an upload could have stored stays reachable,
+//   so a folder with an odd name can at least be renamed.
+// canonicalFolderPath -- the stricter shape a folder must have to be SHARED; it is the
+//   key of library_grants.folder_path, whose CHECK (migration 0007) spells out the
+//   same rules. On top of the above: no control character at all (C1 and DEL too), no
+//   segment that starts or ends in whitespace (names are trimmed when stored), and at
+//   most 400 characters / 1024 bytes.
+const FOLDER_LOOKUP_MAX_CHARS = 1000;
 const FOLDER_PATH_MAX_CHARS = 400;
 const FOLDER_PATH_MAX_BYTES = 1024;
-function canonicalFolderPath(raw) {
-  if (typeof raw !== 'string') return null;
-  const path = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
-  if (!path) return null;
-  if (/\p{Cc}/u.test(path)) return null;
-  if (Array.from(path).length > FOLDER_PATH_MAX_CHARS || Buffer.byteLength(path, 'utf8') > FOLDER_PATH_MAX_BYTES) return null;
-  for (const seg of path.split('/')) {
-    if (seg === '.' || seg === '..') return null;
-    if (/^\s|\s$/u.test(seg)) return null;
-  }
+function tidyFolderPath(raw) {
+  return typeof raw === 'string' ? raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '') : '';
+}
+function folderLookupPath(raw) {
+  const path = tidyFolderPath(raw);
+  if (!path || /[\x00-\x1f]/.test(path) || Array.from(path).length > FOLDER_LOOKUP_MAX_CHARS) return null;
+  if (path.split('/').some(seg => seg === '.' || seg === '..')) return null;
   return path;
+}
+function canonicalFolderPath(raw) {
+  const path = folderLookupPath(raw);
+  if (!path || /\p{Cc}/u.test(path)) return null;
+  if (Array.from(path).length > FOLDER_PATH_MAX_CHARS || Buffer.byteLength(path, 'utf8') > FOLDER_PATH_MAX_BYTES) return null;
+  if (path.split('/').some(seg => /^\s|\s$/u.test(seg))) return null;
+  return path;
+}
+
+// Where something moved or renamed INTO a folder path lands. The longest leading part
+// of the path that is already a folder the caller can see in this library is kept
+// exactly as stored; only the rest -- folders this move brings into being -- is cleaned
+// the way any new folder name is (safeDocName). So a folder dropped on
+// "Smith & Co (2025)" lands inside it rather than beside it in a rewritten
+// "Smith _ Co _2025_", and a file and a folder moved together into a new "R&D" both
+// land in the same "R_D". Returns '' for the root, or null for a path that can't name
+// a folder (a '..' segment, nothing left once cleaned).
+async function destinationFolder(raw, libraryId, user) {
+  const segs = tidyFolderPath(raw).split('/').map(seg => seg.trim()).filter(Boolean);
+  if (!segs.length) return '';
+  const prefixes = [];
+  for (let n = segs.length; n >= 1; n--) {
+    const prefix = folderLookupPath(segs.slice(0, n).join('/'));
+    if (prefix) prefixes.push(prefix);
+  }
+  let keep = 0;
+  if (prefixes.length) {
+    const found = await db.queryOne(
+      `SELECT p FROM unnest($1::text[]) AS p
+       WHERE EXISTS (SELECT 1 FROM documents d
+                     WHERE d.deleted_at IS NULL AND d.library_id = $2 AND starts_with(d.name, p || '/')
+                       AND ${documentAccess.condition('d', 3)})
+       ORDER BY char_length(p) DESC LIMIT 1`,
+      [prefixes, libraryId, ...documentAccess.userParams(user, 'read')]
+    );
+    if (found) keep = found.p.split('/').length;
+  }
+  const kept = segs.slice(0, keep).join('/');
+  if (keep === segs.length) return kept;
+  const made = safeDocName(segs.slice(keep).join('/'), '');
+  if (!made) return null;
+  return kept ? `${kept}/${made}` : made;
 }
 
 function recordUploadNotify(user, displayName, libraryId) {
@@ -142,6 +185,8 @@ module.exports = {
   fileSizeLabelForEvent,
   safeDocName,
   canonicalFolderPath,
+  folderLookupPath,
+  destinationFolder,
   recordUploadNotify,
   createDocumentRecord,
 };

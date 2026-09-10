@@ -21,7 +21,7 @@ const emailEvents = require('../../lib/emailEvents');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
-const { safeDocName, canonicalFolderPath, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
+const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
@@ -45,13 +45,21 @@ const FOLDER_COPY_MAX_FILES = 5000;
  * NOT read body.library_id — on /move and /copy that is the *target* library.
  *
  * An explicit id that is not a uuid is a 400: passed on, Postgres would refuse it with
- * a cast error that surfaces as a 500.
+ * a cast error that surfaces as a 500. An explicit id is also checked against the
+ * folder: one that doesn't hold it (for this caller) is the same 404 as a folder that
+ * can't be found, not a 200 that quietly touched nothing.
  */
 async function folderLibraryId(req, folderPath, user) {
   const explicit = req.headers['x-library-id'] || req.body?.source_library_id || req.query?.source_library_id;
   if (explicit) {
     if (!isUuid(explicit)) { const e = new Error('Bad library id'); e.status = 400; throw e; }
-    return String(explicit);
+    const held = await db.queryOne(
+      `SELECT 1 FROM documents d
+       WHERE d.deleted_at IS NULL AND d.library_id = $1 AND starts_with(d.name, $2 || '/') AND ${documentAccess.condition('d', 3)}
+       LIMIT 1`,
+      [String(explicit), folderPath, ...documentAccess.userParams(user, 'read')]
+    );
+    return held ? String(explicit) : null;
   }
   const rows = await db.query(
     `SELECT DISTINCT d.library_id FROM documents d
@@ -73,11 +81,12 @@ function folderScopeError(res, e) {
   return false;
 }
 
-// Folder paths that name an EXISTING folder are matched exactly (canonicalFolderPath);
-// only the path of a folder being created goes through safeDocName. Matching uses
-// starts_with rather than LIKE, so '_' and '%' in a folder name are ordinary
-// characters: "Q1_A" no longer also reaches "Q1-A", nor "50%" reach "500".
-function existingFolder(raw) { return canonicalFolderPath(typeof raw === 'string' ? raw : ''); }
+// Folder paths that name an EXISTING folder are matched exactly (folderLookupPath);
+// only the path of a folder being created goes through safeDocName, and a destination
+// that may be partly new goes through destinationFolder. Matching uses starts_with
+// rather than LIKE, so '_' and '%' in a folder name are ordinary characters: "Q1_A"
+// no longer also reaches "Q1-A", nor "50%" reach "500".
+function existingFolder(raw) { return folderLookupPath(raw); }
 
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
@@ -147,16 +156,18 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
 router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const oldPath = existingFolder(req.body?.path);
-    const rawTarget = typeof req.body?.target === 'string' ? req.body.target : '';
-    const target = rawTarget.replace(/[\\/]/g, '') ? existingFolder(rawTarget) : ''; // '' = move to root
     if (!oldPath) return res.status(400).json({ error: 'path required' });
+    const srcLibraryId = await folderLibraryId(req, oldPath, req.user);
+    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
+    // The target may be an existing folder (kept exactly), a new one (the folder
+    // picker's "+ New folder..."), or an existing folder with new ones under it; the
+    // new part is named the way the files moved alongside it are ('' = the root).
+    const target = await destinationFolder(req.body?.target, srcLibraryId, req.user);
     if (target === null) return res.status(400).json({ error: 'invalid target' });
     const base = oldPath.split('/').pop();
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
-    const srcLibraryId = await folderLibraryId(req, oldPath, req.user);
-    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
@@ -242,14 +253,18 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
     const folderPath = existingFolder(req.query.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const adminAll = (req.user.role === 'admin');
+    // Links made before folder paths were matched exactly were stored under the
+    // rewritten name ("Tax _ Co" for "Tax & Co"); list those too, or a live link would
+    // drop out of the only place it can be seen and revoked.
+    const keys = [...new Set([folderPath, safeDocName(folderPath, '')].filter(Boolean))];
     const rows = await db.query(
       `SELECT id, folder_path, document_ids, expires_at, revoked_at, created_at,
               created_by_email, last_accessed_at, access_count, password_hash
        FROM folder_share_links
-       WHERE folder_path = $1 ${adminAll ? '' : 'AND created_by = $2'}
+       WHERE folder_path = ANY($1::text[]) ${adminAll ? '' : 'AND created_by = $2'}
        ORDER BY revoked_at IS NULL DESC, created_at DESC
        LIMIT 100`,
-      adminAll ? [folderPath] : [folderPath, req.user.id]
+      adminAll ? [keys] : [keys, req.user.id]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }

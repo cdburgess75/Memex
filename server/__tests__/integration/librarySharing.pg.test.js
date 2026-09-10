@@ -17,6 +17,8 @@ const path = require('path');
 
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
+// Migrations and the first connection can outlast Jest's 5 s default on a slow runner.
+if (PG) jest.setTimeout(30000);
 
 jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa', () => ({ JwksClient: jest.fn(() => ({ getSigningKey: async () => ({ getPublicKey: () => 'k' }) })) }));
@@ -44,14 +46,15 @@ suite('library sharing groundwork against real Postgres', () => {
     for (const f of migrations.migrationFiles()) if (f < '0007') fs.copyFileSync(path.join(migrations.DIR, f), path.join(early, f));
     await migrations.run({ dir: early });
     await db.query(`INSERT INTO libraries (id, name, created_by, created_by_email) VALUES
-      ('aaaaaaaa-0000-4000-8000-000000000001', 'Clients', $1, 'Richard@PTechLLC.com')`, [RICHARD.id]);
+      ('aaaaaaaa-0000-4000-8000-000000000001', 'Clients', $1, 'Richard@PTechLLC.com'),
+      ('aaaaaaaa-0000-4000-8000-000000000002', 'Legacy', NULL, 'Old@Example.com')`, [RICHARD.id]);
     request = require('supertest');
     const express = require('express');
     app = express();
     app.use(express.json());
     // The real auth middleware runs in front of the real routes; only token
     // verification is stubbed, so each request is whoever jwt.verify says it is.
-    app.use('/api/files/folder', require('../../routes/files/folders'));
+    app.use('/api/files', require('../../routes/files'));
   });
 
   afterAll(async () => {
@@ -65,8 +68,9 @@ suite('library sharing groundwork against real Postgres', () => {
     expect((await migrations.run()).applied).toEqual([]);
     await db.query(fs.readFileSync(path.join(migrations.DIR, '0007_library_sharing.sql'), 'utf8'));
     expect(await one("SELECT owner_id, owner_email FROM libraries WHERE name = 'Clients'")).toEqual({ owner_id: RICHARD.id, owner_email: 'richard@ptechllc.com' });
-    // the library seeded at install has no creator, so it stays ownerless until piece 5
-    expect(await one("SELECT count(*)::int AS n FROM libraries WHERE created_by IS NULL AND owner_id IS NOT NULL")).toEqual({ n: 0 });
+    // an owner is an account: a library with an address but no creator id (like the one
+    // seeded at install) stays ownerless, address and all, until piece 5 gives it one
+    expect(await one("SELECT owner_id, owner_email FROM libraries WHERE name = 'Legacy'")).toEqual({ owner_id: null, owner_email: null });
   });
 
   describe('library_grants refuses anything but a well-formed read or write share', () => {
@@ -87,6 +91,28 @@ suite('library sharing groundwork against real Postgres', () => {
       'a malformed folder path (%j) is refused', async (p) => {
         expect(await ins('subject_type, subject_email, permission, folder_path', ['user', 'p@q.com', 'read', p])).toBe('23514');
       });
+    // The CHECK spells out JavaScript's \p{Cc} and \s rather than [[:cntrl:]] and
+    // [[:space:]], whose meaning depends on the database's locale; this proves the two
+    // agree, so a path the code accepts is never refused later as a 500.
+    test('the database accepts exactly the folder paths canonicalFolderPath accepts', async () => {
+      const { canonicalFolderPath } = require('../../lib/documents');
+      const c = (cp) => String.fromCodePoint(cp);
+      const odd = [0x09, 0x0b, 0x1f, 0x7f, 0x80, 0x85, 0x9f, 0xa0, 0x1680, 0x2000, 0x2007, 0x200a, 0x200b,
+        0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff, 0xfff9, 0xfffb, 0x1F4C1];
+      const paths = ['Tax & Co', 'Caf' + c(0xe9), '...', '.hidden/x', c(0x4E2D).repeat(341), c(0x4E2D).repeat(342),
+        'x'.repeat(400), 'x'.repeat(401), c(0x1F4C1).repeat(255), c(0x1F4C1).repeat(257)];
+      for (const cp of odd) paths.push(`a${c(cp)}b`, `${c(cp)}ab`, `ab${c(cp)}`, `x/${c(cp)}y`, `x${c(cp)}/y`);
+      const disagree = [];
+      let n = 0;
+      for (const p of paths) {
+        const js = canonicalFolderPath(p) === p;
+        const pg = (await ins('subject_type, subject_email, permission, folder_path', ['user', `agree${n++}@q.com`, 'read', p])) === 'ok';
+        if (js !== pg) disagree.push({ path: [...p].map(ch => ch.codePointAt(0).toString(16)).join(' ').slice(0, 60), js, pg });
+      }
+      expect(disagree).toEqual([]);
+      expect(n).toBeGreaterThan(100);
+    });
+
     test('the same subject can hold one share per path, and a deleted library takes its shares with it', async () => {
       expect(await ins('subject_type, subject_email, permission', ['user', 'tim@dts-tax.com', 'write'])).toBe('23505');
       const g = await one("INSERT INTO groups (name) VALUES ('Acctg') RETURNING id");
@@ -167,6 +193,71 @@ suite('library sharing groundwork against real Postgres', () => {
 
     test('a malformed library id is a 400, not a cast error', async () => {
       expect((await post('/api/files/folder/delete', { path: '500', source_library_id: 'lib-1' })).status).toBe(400);
+    });
+
+    test('a library that does not hold the folder is a 404 that touches nothing', async () => {
+      const before = await live();
+      const other = 'aaaaaaaa-0000-4000-8000-000000000002';
+      expect((await post('/api/files/folder/delete', { path: '500', source_library_id: other })).status).toBe(404);
+      expect(await live()).toEqual(before);
+    });
+  });
+
+  // Moving into a folder keeps an existing one exactly and names only the new part;
+  // files (PUT /:id/rename) and folders (/folder/reparent) land in the same place.
+  describe('destinations and old folder links, through the real routes', () => {
+    const L = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const TAMMY = { id: '44444444-4444-4444-8444-444444444444', email: 'tammy2@ptechllc.com' };
+    let reportId;
+    const add = async (name, owner) => (await one(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id)
+       VALUES ($1, 1, 'text/plain', $2, $3, $4, $5) RETURNING id`, [name, 'p/' + name, owner.id, owner.email, L])).id;
+    // sorted here, not by ORDER BY, so the expected order doesn't depend on the collation
+    const names = async () => (await db.query(
+      'SELECT name FROM documents WHERE deleted_at IS NULL AND library_id = $1 AND uploaded_by = $2', [L, TAMMY.id])).map(r => r.name).sort();
+    beforeAll(async () => {
+      await db.query("INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, 'contributor', $2)", [TAMMY.id, TAMMY.email]);
+      await add('Smith & Co (2025)/old.txt', TAMMY);
+      await add('Hidden & Co/secret.txt', RICHARD); // exists, but not for Tammy
+      await add('Inbox/Sub/n.txt', TAMMY);
+      reportId = await add('Inbox/report.pdf', TAMMY);
+      const jwt = require('jsonwebtoken');
+      jwt.verify.mockReturnValue({ sub: TAMMY.id, email: TAMMY.email, email_verified: true });
+    });
+    const post = (url, body) => request(app).post(url).set('Authorization', 'Bearer t').send({ source_library_id: L, ...body });
+    const renameFile = (name) => request(app).put(`/api/files/${reportId}/rename`).set('Authorization', 'Bearer t').send({ name });
+
+    test('a new "R&D" is named the same for the folder and the file moved with it', async () => {
+      expect((await renameFile('R&D/report.pdf')).body.name).toBe('R_D/report.pdf');
+      expect((await post('/api/files/folder/reparent', { path: 'Inbox/Sub', target: 'R&D' })).body.path).toBe('R_D/Sub');
+      expect(await names()).toEqual(['R_D/Sub/n.txt', 'R_D/report.pdf', 'Smith & Co (2025)/old.txt']);
+    });
+
+    test('an existing "Smith & Co (2025)" is kept exactly, with any new part under it named as new', async () => {
+      expect((await renameFile('Smith & Co (2025)/New & Sub/report.pdf')).body.name).toBe('Smith & Co (2025)/New _ Sub/report.pdf');
+      expect((await post('/api/files/folder/reparent', { path: 'R_D/Sub', target: 'Smith & Co (2025)/New & Sub' })).body.path)
+        .toBe('Smith & Co (2025)/New _ Sub/Sub');
+      expect(await names()).toEqual(['Smith & Co (2025)/New _ Sub/Sub/n.txt', 'Smith & Co (2025)/New _ Sub/report.pdf', 'Smith & Co (2025)/old.txt']);
+    });
+
+    test('a folder only someone else can see is not a destination', async () => {
+      expect((await post('/api/files/folder/reparent', { path: 'Smith & Co (2025)/New _ Sub/Sub', target: 'Hidden & Co' })).body.path).toBe('Hidden _ Co/Sub');
+      expect((await one("SELECT count(*)::int AS n FROM documents WHERE name LIKE 'Hidden & Co/%' AND uploaded_by = $1", [TAMMY.id])).n).toBe(0);
+    });
+
+    test('markup never reaches a stored name', async () => {
+      await post('/api/files/folder/reparent', { path: 'Hidden _ Co/Sub', target: '<img src=x onerror=alert(1)>' });
+      await renameFile('<b>x</b>/report.pdf');
+      for (const n of await names()) expect(n).not.toMatch(/[<>"]/);
+    });
+
+    test('a folder link stored under the old rewritten key is still listed, and can be revoked', async () => {
+      const link = await one(`INSERT INTO folder_share_links (folder_path, document_ids, token_hash, created_by, created_by_email)
+                              VALUES ('Tax _ Co', '{}', 'legacy-hash', $1, $2) RETURNING id`, [TAMMY.id, TAMMY.email]);
+      const list = await request(app).get('/api/files/folder/links').query({ path: 'Tax & Co' }).set('Authorization', 'Bearer t');
+      expect(list.status).toBe(200);
+      expect(list.body.shares.map(x => x.id)).toEqual([link.id]);
+      expect((await request(app).delete(`/api/files/folder/links/${link.id}`).set('Authorization', 'Bearer t')).status).toBe(200);
     });
   });
 });
