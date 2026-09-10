@@ -15,7 +15,7 @@ const { logEvent, logDocumentEvent } = require('./fileEvents');
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, uploaded_by,
   uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
-  restored_at, restored_by, restored_by_email
+  restored_at, restored_by, restored_by_email, library_id
 `;
 
 // Text extraction downloads the whole file into memory, so its size gate is capped
@@ -41,6 +41,32 @@ function safeDocName(folder, base) {
   const segs = [...f.split('/'), b].map(s => s.trim().replace(/[^a-zA-Z0-9._ -]/g, '_')).filter(Boolean);
   if (segs.some(s => s === '..' || s === '.')) return null;
   return segs.join('/').slice(0, 400) || null;
+}
+
+// The path of an EXISTING folder, exactly as its files are named -- for looking a
+// folder up, never for naming a new one (that is safeDocName, which rewrites unusual
+// characters to '_'). A folder created by an outside upload can be called "Tax & Co" or
+// "Cafe" with an accent; rewriting that on the way in would miss it entirely, and a
+// folder share keyed on the path must match the stored bytes exactly.
+//
+// Only the separators are tidied: backslashes become '/', repeated slashes collapse,
+// slashes at either end go. Anything that could not be a real folder path is refused
+// (null): a '.' or '..' segment, a control character, a segment that starts or ends in
+// whitespace (names are trimmed when stored), or more than 400 characters / 1024 bytes.
+// The same shape is enforced on library_grants.folder_path (migration 0007).
+const FOLDER_PATH_MAX_CHARS = 400;
+const FOLDER_PATH_MAX_BYTES = 1024;
+function canonicalFolderPath(raw) {
+  if (typeof raw !== 'string') return null;
+  const path = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!path) return null;
+  if (/\p{Cc}/u.test(path)) return null;
+  if (Array.from(path).length > FOLDER_PATH_MAX_CHARS || Buffer.byteLength(path, 'utf8') > FOLDER_PATH_MAX_BYTES) return null;
+  for (const seg of path.split('/')) {
+    if (seg === '.' || seg === '..') return null;
+    if (/^\s|\s$/u.test(seg)) return null;
+  }
+  return path;
 }
 
 function recordUploadNotify(user, displayName, libraryId) {
@@ -115,6 +141,7 @@ module.exports = {
   TEXT_EXTRACTION_MAX_BYTES,
   fileSizeLabelForEvent,
   safeDocName,
+  canonicalFolderPath,
   recordUploadNotify,
   createDocumentRecord,
 };

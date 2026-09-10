@@ -8,7 +8,12 @@ test('issue returns an opaque ticket + ttl; resolve returns the captured user', 
   expect(typeof ticket).toBe('string');
   expect(ticket.length).toBeGreaterThan(20);
   expect(ttl).toBe(3600);
-  expect(mt.resolve(ticket)).toEqual({ id: 'u1', email: 'A@X.com', role: 'admin' });
+  expect(mt.resolve(ticket)).toEqual({ id: 'u1', email: 'A@X.com', role: 'admin', emailVerified: null });
+});
+
+test('a ticket keeps whether the address was verified, so file access decided through it matches the session', () => {
+  expect(mt.resolve(mt.issue({ id: 'u1', email: 'a@x.com', role: 'viewer', emailVerified: false }).ticket).emailVerified).toBe(false);
+  expect(mt.resolve(mt.issue({ id: 'u1', email: 'a@x.com', role: 'viewer', emailVerified: true }).ticket).emailVerified).toBe(true);
 });
 
 test('resolve rejects unknown, empty, and non-string tokens', () => {

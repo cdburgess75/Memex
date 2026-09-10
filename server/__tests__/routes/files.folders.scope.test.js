@@ -1,5 +1,5 @@
 'use strict';
-// Every folder operation matches documents by name prefix (`d.name LIKE $1 || '/%'`),
+// Every folder operation matches documents by name prefix (`starts_with(d.name, $1 || '/')`),
 // and a folder name is only unique within a library. Without a library predicate one
 // rename or member-grant reaches across every library the caller can read.
 //
@@ -81,7 +81,7 @@ describe('folder operations are scoped to one library', () => {
 
   test.each(ROUTES)('%s constrains documents to a single library', async (_name, call) => {
     await call(makeApp());
-    const prefixQueries = seen.filter(q => /d\.name LIKE \$1 \|\| '\/%'/.test(q.sql));
+    const prefixQueries = seen.filter(q => /starts_with\(d\.name, \$1 \|\| '\/'\)/.test(q.sql));
     expect(prefixQueries.length).toBeGreaterThan(0);
     for (const q of prefixQueries) {
       // folderLibraryId's own lookup is the one query that legitimately spans
@@ -113,13 +113,86 @@ describe('folder operations are scoped to one library', () => {
   });
 
   test('an explicit source library skips the lookup and is the one bound', async () => {
+    const LIB9 = '99999999-9999-4999-8999-999999999999';
     await request(makeApp())
       .post('/api/files/folder/delete')
-      .set('x-library-id', 'lib-9')
+      .set('x-library-id', LIB9)
       .send({ path: 'Clients/Acme' });
     expect(seen.some(q => /SELECT DISTINCT d\.library_id/.test(q.sql))).toBe(false);
     const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
     const m = upd.sql.match(/d\.library_id = \$(\d+)/);
-    expect(upd.params[Number(m[1]) - 1]).toBe('lib-9');
+    expect(upd.params[Number(m[1]) - 1]).toBe(LIB9);
+  });
+
+  test('the source library can come in the body, as the app now sends it', async () => {
+    const LIB9 = '99999999-9999-4999-8999-999999999999';
+    await request(makeApp()).post('/api/files/folder/delete').send({ path: 'Clients/Acme', source_library_id: LIB9 });
+    const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
+    expect(upd.params[Number(upd.sql.match(/d\.library_id = \$(\d+)/)[1]) - 1]).toBe(LIB9);
+  });
+
+  test('a malformed source library id is a 400, never a database cast error', async () => {
+    for (const bad of ['lib-9', '1 OR 1=1', "x'; DROP TABLE documents; --"]) {
+      seen.length = 0;
+      const res = await request(makeApp()).post('/api/files/folder/delete').set('x-library-id', bad).send({ path: 'Clients/Acme' });
+      expect(res.status).toBe(400);
+      expect(seen).toHaveLength(0);
+    }
+    const zip = await request(makeApp()).get('/api/files/folder/zip').query({ path: 'Clients/Acme', source_library_id: 'nope' });
+    expect(zip.status).toBe(400);
+  });
+});
+
+// A folder is found by its exact stored name. Unusual characters are NOT rewritten on
+// the way in (that was safeDocName, which turned "Tax & Co" into "Tax _ Co" and so
+// could never find it), and '_' / '%' are not wildcards.
+describe('folders are matched exactly', () => {
+  const E = String.fromCodePoint(0x1F4C1);  // a four-byte character, two UTF-16 units
+  test.each([
+    ['Tax & Co'],
+    ['50%'],
+    ['Q1_A'],
+    ['Caf' + String.fromCharCode(0xE9)],
+    ['Clients/' + E + ' Files'],
+  ])('%s is bound exactly as given', async (path) => {
+    await request(makeApp()).post('/api/files/folder/delete').send({ path });
+    const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
+    expect(upd).toBeDefined();
+    expect(upd.params[0]).toBe(path);
+    expect(upd.sql).toMatch(/starts_with\(d\.name, \$1 \|\| '\/'\)/);
+    expect(upd.sql).not.toMatch(/d\.name LIKE \$1/);
+  });
+
+  test('separators are tidied but nothing else is', async () => {
+    await request(makeApp()).post('/api/files/folder/delete').send({ path: '/Clients//Tax & Co/' });
+    const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
+    expect(upd.params[0]).toBe('Clients/Tax & Co');
+  });
+
+  test.each([['../etc'], ['a/./b'], ['a/ b'], [''], ['x'.repeat(401)]])('%s is refused before any query', async (path) => {
+    const res = await request(makeApp()).post('/api/files/folder/delete').send({ path });
+    expect(res.status).toBe(400);
+    expect(seen).toHaveLength(0);
+  });
+
+  test('a rename counts the old path in characters, as Postgres substring() does', async () => {
+    const oldPath = 'Clients/' + E + ' Files';
+    await request(makeApp()).post('/api/files/folder/rename').send({ path: oldPath, name: 'Renamed' });
+    const upd = seen.find(q => /UPDATE documents d SET name/.test(q.sql));
+    expect(upd.params[2]).toBe(Array.from(oldPath).length + 1);
+    expect(upd.params[2]).toBe(oldPath.length); // one less than the UTF-16 count would give
+  });
+
+  test('a reparent into an exactly-named folder binds that folder unchanged', async () => {
+    await request(makeApp()).post('/api/files/folder/reparent').send({ path: 'Clients/Acme', target: 'Tax & Co' });
+    const upd = seen.find(q => /UPDATE documents d SET name/.test(q.sql));
+    expect(upd.params[1]).toBe('Tax & Co/Acme');
+  });
+
+  test('a reparent to the root still works, and a malformed target is refused', async () => {
+    await request(makeApp()).post('/api/files/folder/reparent').send({ path: 'Clients/Acme', target: '' });
+    expect(seen.find(q => /UPDATE documents d SET name/.test(q.sql)).params[1]).toBe('Acme');
+    seen.length = 0;
+    expect((await request(makeApp()).post('/api/files/folder/reparent').send({ path: 'Clients/Acme', target: '../x' })).status).toBe(400);
   });
 });

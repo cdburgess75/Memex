@@ -59,11 +59,15 @@ async function listLibraries(user) {
   );
 }
 
+// The creator owns the library (by user id, as with groups). Ownership is what lets
+// someone share it once sharing arrives; recording it from the day the column exists
+// means no library made from now on has to be adopted later.
 async function createLibrary({ name, user }) {
+  const email = String(user?.email || '').toLowerCase() || null;
   return db.queryOne(
-    `INSERT INTO libraries (name, created_by, created_by_email)
-     VALUES ($1, $2, $3) RETURNING id, name, created_by_email, created_at`,
-    [name, user?.id || null, user?.email || null]
+    `INSERT INTO libraries (name, created_by, created_by_email, owner_id, owner_email)
+     VALUES ($1, $2, $3, $2, $3) RETURNING id, name, created_by_email, owner_id, owner_email, created_at`,
+    [name, user?.id || null, email]
   );
 }
 

@@ -91,3 +91,83 @@ test('uses existing DB role without inserting again', async () => {
   expect(req.user.role).toBe('admin');
   expect(db.queryOne).toHaveBeenCalledTimes(1);
 });
+
+// Whether the identity provider vouches for the address. Shares are about to match by
+// address, so only a verified one may count, and ADMIN_EMAILS may only bootstrap one.
+describe('verified email', () => {
+  const token = (extra) => jwt.verify.mockReturnValue({ sub: 'user-abc', email: 'User@Test.com', name: 'Test User', ...extra });
+  const updates = () => db.query.mock.calls.filter(([sql]) => /UPDATE user_roles SET verified_email/.test(sql));
+  beforeEach(() => { db.query.mockReset(); db.query.mockResolvedValue([]); db.queryOne.mockReset(); });
+
+  test('a verified address is recorded lower-cased, and the request says so', async () => {
+    token({ email_verified: true });
+    db.queryOne.mockResolvedValueOnce({ role: 'contributor', verified_email: null });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    expect(req.user).toMatchObject({ email: 'user@test.com', emailVerified: true, verifiedEmail: 'user@test.com' });
+    expect(updates()).toHaveLength(1);
+    expect(updates()[0][1]).toEqual(['user-abc', 'user@test.com']);
+  });
+
+  test('nothing is written when the stored value already matches', async () => {
+    token({ email_verified: true });
+    db.queryOne.mockResolvedValueOnce({ role: 'contributor', verified_email: 'user@test.com' });
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(updates()).toHaveLength(0);
+  });
+
+  test('an address the provider says is NOT verified is cleared, and never matched', async () => {
+    token({ email_verified: false });
+    db.queryOne.mockResolvedValueOnce({ role: 'contributor', verified_email: 'user@test.com' });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    expect(req.user).toMatchObject({ emailVerified: false, verifiedEmail: null });
+    expect(updates()[0][1]).toEqual(['user-abc', null]);
+  });
+
+  test('a token that says nothing counts as unverified for shares, and is logged once', async () => {
+    // its own account id: the warning is once per account per process, and earlier
+    // tests in this file have already signed in as user-abc without the claim
+    token({ sub: 'user-says-nothing' });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    db.queryOne.mockResolvedValue({ role: 'contributor', verified_email: null });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(req.user).toMatchObject({ emailVerified: null, verifiedEmail: null });
+    expect(updates()).toHaveLength(0);
+    expect(warn.mock.calls.filter(([m]) => /no email_verified claim/.test(m))).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  test.each([['yes'], [1], ['true'], [null]])('a non-boolean claim (%p) is treated as not said', async (claim) => {
+    token({ email_verified: claim });
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    db.queryOne.mockResolvedValueOnce({ role: 'contributor', verified_email: null });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    expect(req.user.verifiedEmail).toBeNull();
+    console.warn.mockRestore();
+  });
+
+  const inserted = () => db.queryOne.mock.calls.find(([sql]) => /INSERT INTO user_roles/.test(sql));
+  test('ADMIN_EMAILS makes a first sign-in an admin only when the address is verified', async () => {
+    process.env.ADMIN_EMAILS = 'user@test.com';
+    token({ email_verified: true });
+    db.queryOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ role: 'admin', verified_email: 'user@test.com' });
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(inserted()[1]).toEqual(['user-abc', 'user@test.com', 'admin', 'user@test.com']);
+  });
+
+  test.each([[false], [undefined]])('with email_verified %p, an ADMIN_EMAILS address is provisioned as a contributor', async (claim) => {
+    process.env.ADMIN_EMAILS = 'user@test.com';
+    token(claim === undefined ? {} : { email_verified: claim });
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    db.queryOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ role: 'contributor', verified_email: null });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    expect(inserted()[1]).toEqual(['user-abc', 'user@test.com', 'contributor', null]);
+    expect(req.user.role).toBe('contributor');
+    console.warn.mockRestore();
+  });
+});
