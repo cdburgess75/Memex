@@ -10,15 +10,46 @@ const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const auditLog = require('../lib/auditLog');
 const docFollows = require('../lib/docFollows');
+const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 
-function validateFileToken(req, res) {
+function tokenEntry(req) {
   const entry = validateToken(req.query.access_token);
-  if (!entry || String(entry.fileId) !== String(req.params.fileId)) {
-    res.status(401).json({ error: 'Invalid or expired access token' });
-    return null;
+  return entry && String(entry.fileId) === String(req.params.fileId) ? entry : null;
+}
+
+// A WOPI token proves who opened the editor and for which file; it does NOT decide what
+// they may do now. Tokens live for an hour and Collabora keeps calling for as long as
+// the document is open, so every call re-checks access live: reading the file needs
+// read access, saving or taking a lock needs write. Removing someone's access, taking
+// them out of a group or demoting them therefore takes effect on their next save, not
+// an hour later -- and a read-only session can't lock the file against real editors.
+// Write also needs the token to have been minted for editing and the account to be an
+// admin or contributor. A file trashed meanwhile is gone (404).
+async function authorizeWopi(req, res, required) {
+  const entry = tokenEntry(req);
+  if (!entry) { res.status(401).json({ error: 'Invalid or expired access token' }); return null; }
+  const actor = await documentAccess.resolveActor(entry.userId);
+  const doc = actor && await documentAccess.getAccessibleDocument({
+    id: entry.fileId, user: actor, required: 'read', columns: 'd.*', deleted: 'active',
+  });
+  if (!doc) { res.status(404).json({ error: 'Document not found' }); return null; }
+  let canWrite = false;
+  if (entry.canWrite && (actor.role === 'admin' || actor.role === 'contributor')) {
+    canWrite = !!(await documentAccess.getAccessibleDocument({
+      id: entry.fileId, user: actor, required: 'write', columns: 'd.id', deleted: 'active',
+    }));
   }
-  return entry;
+  if (required === 'write' && !canWrite) { res.status(403).json({ error: 'No write permission for this document' }); return null; }
+  return { entry, actor, doc, canWrite };
+}
+
+// PutFile's body is buffered (up to 50 MB) by express.raw; reject a missing or wrong
+// token before that happens, so an unauthenticated caller can't make the server hold
+// 50 MB per request. The full, live check still runs in the handler.
+function tokenBeforeBody(req, res, next) {
+  if (!tokenEntry(req)) return res.status(401).json({ error: 'Invalid or expired access token' });
+  next();
 }
 
 async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
@@ -43,12 +74,10 @@ async function saveDocumentVersion(doc, entry, source = 'wopi_save') {
 
 // GET /wopi/files/:fileId — CheckFileInfo
 router.get('/files/:fileId', async (req, res) => {
-  const entry = validateFileToken(req, res);
-  if (!entry) return;
-
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const ok = await authorizeWopi(req, res, 'read');
+    if (!ok) return;
+    const { entry, doc, canWrite } = ok;
 
     res.json({
       BaseFileName: doc.name,
@@ -57,7 +86,7 @@ router.get('/files/:fileId', async (req, res) => {
       OwnerId: doc.uploaded_by,
       UserId: entry.userId,
       UserFriendlyName: entry.userEmail,
-      UserCanWrite: !!entry.canWrite,
+      UserCanWrite: canWrite,
       SupportsUpdate: true,
       SupportsLock: true,
       SupportsGetLock: true,
@@ -69,12 +98,10 @@ router.get('/files/:fileId', async (req, res) => {
 
 // GET /wopi/files/:fileId/contents — GetFile
 router.get('/files/:fileId/contents', async (req, res) => {
-  const entry = validateFileToken(req, res);
-  if (!entry) return;
-
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const ok = await authorizeWopi(req, res, 'read');
+    if (!ok) return;
+    const { doc } = ok;
 
     const buffer = await storage.download(doc.storage_path);
     res.setHeader('Content-Type', doc.mime_type);
@@ -86,18 +113,13 @@ router.get('/files/:fileId/contents', async (req, res) => {
 });
 
 // POST /wopi/files/:fileId/contents — PutFile
-router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
-  const entry = validateFileToken(req, res);
-  if (!entry) return;
-  // Defense in depth: the token already carries the user's real write permission
-  // (set at mint time) and Collabora opens read-only for viewers, but refuse the
-  // save server-side too so a crafted PutFile from a read-only session cannot
-  // overwrite the document.
-  if (!entry.canWrite) return res.status(403).json({ error: 'No write permission for this document' });
-
+router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
   try {
-    const doc = await db.queryOne('SELECT * FROM documents WHERE id = $1', [req.params.fileId]);
-    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    // Checked live: a crafted PutFile from a read-only session, or from someone whose
+    // access ended after they opened the editor, cannot overwrite the document.
+    const ok = await authorizeWopi(req, res, 'write');
+    if (!ok) return;
+    const { entry, doc } = ok;
 
     const currentLock = getLock(req.params.fileId);
     const requestedLock = req.headers['x-wopi-lock'];
@@ -125,7 +147,13 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
     await auditLog.append({ documentId: doc.id, eventType: 'updated', actorId: entry.userId, actorEmail: entry.userEmail, detail: `Office save · ${buffer.length} bytes` });
     // Notify the owner that a collaborator edited their file. Office editors
     // autosave often, so dedupe to at most one ping per 30 min per document.
-    if (doc.uploaded_by_email && doc.uploaded_by_email.toLowerCase() !== String(entry.userEmail || '').toLowerCase()) {
+    // Only while the uploader can still read the file: once their access has ended
+    // (their share on the library removed, say), telling them who edited it, and what
+    // it is called, would leak both.
+    const ownerCanRead = doc.uploaded_by_email
+      ? (await documentAccess.readersAmong([doc.id], [doc.uploaded_by_email])).get(doc.uploaded_by_email.toLowerCase())?.has(String(doc.id))
+      : false;
+    if (ownerCanRead && doc.uploaded_by_email.toLowerCase() !== String(entry.userEmail || '').toLowerCase()) {
       try {
         await notifications.create({
           userId: doc.uploaded_by || null,
@@ -164,10 +192,14 @@ router.post('/files/:fileId/contents', express.raw({ type: '*/*', limit: '50mb' 
 
 // POST /wopi/files/:fileId — Operations (Lock, Unlock, etc.)
 router.post('/files/:fileId', async (req, res) => {
-  const entry = validateFileToken(req, res);
-  if (!entry) return;
-
   const override = req.headers['x-wopi-override'];
+  // Reading the lock is harmless; taking, refreshing or releasing one is an edit --
+  // otherwise a read-only session could lock the file and block everyone's saves.
+  let ok;
+  try { ok = await authorizeWopi(req, res, override === 'GET_LOCK' ? 'read' : 'write'); }
+  catch (e) { return serverError(res, e); }
+  if (!ok) return;
+
   const requestedLock = req.headers['x-wopi-lock'];
   const fileId = req.params.fileId;
 

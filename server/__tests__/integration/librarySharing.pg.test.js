@@ -22,7 +22,13 @@ if (PG) jest.setTimeout(30000);
 
 jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa', () => ({ JwksClient: jest.fn(() => ({ getSigningKey: async () => ({ getPublicKey: () => 'k' }) })) }));
-jest.mock('../../lib/storage', () => ({ upload: jest.fn(async () => {}), download: jest.fn(async () => Buffer.alloc(0)), copy: jest.fn(async () => {}), del: jest.fn(async () => {}) }));
+jest.mock('../../lib/storage', () => ({
+  upload: jest.fn(async () => {}), download: jest.fn(async () => Buffer.alloc(0)), copy: jest.fn(async () => {}), del: jest.fn(async () => {}),
+  downloadStream: jest.fn(async () => ({ stream: require('stream').Readable.from([Buffer.from('bytes')]), length: 5 })),
+  isLocalProvider: jest.fn(async () => true), getUrl: jest.fn(), localBase: jest.fn(), validateLocalToken: jest.fn(),
+}));
+jest.mock('../../lib/notifications', () => ({ create: jest.fn(async () => ({})) }));
+jest.mock('../../lib/emailEvents', () => ({ send: jest.fn(async () => ({})) }));
 
 const ADMIN = { id: '22222222-2222-4222-8222-222222222222', email: 'dave@ptechllc.com', role: 'admin' };
 const RICHARD = { id: '11111111-1111-4111-8111-111111111111', email: 'richard@ptechllc.com', role: 'contributor' };
@@ -261,6 +267,93 @@ suite('library sharing groundwork against real Postgres', () => {
       expect(list.status).toBe(200);
       expect(list.body.shares.map(x => x.id)).toEqual([link.id]);
       expect((await request(app).delete(`/api/files/folder/links/${link.id}`).set('Authorization', 'Bearer t')).status).toBe(200);
+    });
+  });
+  // ---- release 2: everything acting on someone's behalf checks their access live ----
+  describe('side channels check access live (real SQL)', () => {
+    const documentAccess = require('../../lib/documentAccess');
+    const { tokenHash } = require('../../lib/shareLinks');
+    const L = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const TIM = { id: '44444444-4444-4444-8444-444444444444', email: 'tim@dts-tax.com' };
+    const VIEW = { id: '55555555-5555-4555-8555-555555555555', email: 'viewer@ptechllc.com' };
+    let mine, theirs, emailShared;
+
+    beforeAll(async () => {
+      await db.query(`INSERT INTO user_roles (user_id, email, role, verified_email) VALUES
+        ($1, $2, 'contributor', $2), ($3, $4, 'contributor', NULL), ($5, $6, 'viewer', $6)
+        ON CONFLICT (user_id) DO NOTHING`, [RICHARD.id, RICHARD.email, TIM.id, TIM.email, VIEW.id, VIEW.email]);
+      const ins = async (name, by, byEmail) => (await db.queryOne(
+        `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id)
+         VALUES ($1, 5, 'application/pdf', $2, $3, $4, $5) RETURNING id`, [name, 'p/' + name, by, byEmail, L])).id;
+      mine = await ins('Links/mine.pdf', RICHARD.id, RICHARD.email);
+      theirs = await ins('Links/theirs.pdf', ADMIN.id, ADMIN.email);
+      emailShared = await ins('Links/shared-by-email.pdf', ADMIN.id, ADMIN.email);
+      await db.query(`INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission) VALUES ($1, 'user', $2, $3, 'admin')`, [mine, RICHARD.id, RICHARD.email]);
+      // Tim (address unverified) and the viewer each hold an address-keyed write grant
+      await db.query(`INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission) VALUES
+        ($1, 'user', $2, $2, 'write'), ($1, 'user', $3, $3, 'write')`, [emailShared, TIM.email, VIEW.email]);
+    });
+
+    test('resolveActor reads the live account; an unverified address matches nothing by address', async () => {
+      expect(await documentAccess.resolveActor(RICHARD.id)).toMatchObject({ role: 'contributor', email: RICHARD.email, emailVerified: true });
+      const tim = await documentAccess.resolveActor(TIM.id);
+      expect(tim).toMatchObject({ emailVerified: false });
+      expect(await documentAccess.getAccessibleDocument({ id: emailShared, user: tim, required: 'read' })).toBeNull();
+      expect(await documentAccess.resolveActor('66666666-6666-4666-8666-666666666666')).toBeNull();
+    });
+
+    test('readersAmong: owners read their own, address grants count only when verified, strangers read nothing', async () => {
+      const r = await documentAccess.readersAmong([mine, theirs, emailShared], [RICHARD.email, TIM.email, VIEW.email, 'nobody@x.com']);
+      expect([...r.get(RICHARD.email)]).toEqual([mine]);
+      expect([...r.get(TIM.email)]).toEqual([]);            // his account's address isn't verified
+      expect([...r.get(VIEW.email)]).toEqual([emailShared]); // verified, read via the write grant
+      expect([...r.get('nobody@x.com')]).toEqual([]);
+    });
+
+    const link = async (docId, createdBy, createdByEmail) => {
+      const token = require('crypto').randomBytes(16).toString('hex');
+      await db.query(`INSERT INTO document_share_links (document_id, token_hash, created_by, created_by_email, allow_upload)
+                      VALUES ($1, $2, $3, $4, true)`, [docId, tokenHash(token), createdBy, createdByEmail]);
+      return token;
+    };
+
+    test("a link works while its creator can edit the file, and stops the moment they can't", async () => {
+      const token = await link(mine, RICHARD.id, RICHARD.email);
+      expect((await request(app).get(`/api/files/share/${token}/info`)).status).toBe(200);
+      expect((await request(app).get(`/api/files/share/${token}`)).status).toBe(200);
+      await db.query("UPDATE user_roles SET role = 'viewer' WHERE user_id = $1", [RICHARD.id]);
+      try {
+        expect((await request(app).get(`/api/files/share/${token}/info`)).status).toBe(404);
+        expect((await request(app).get(`/api/files/share/${token}`)).status).toBe(404);
+      } finally { await db.query("UPDATE user_roles SET role = 'contributor' WHERE user_id = $1", [RICHARD.id]); }
+    });
+
+    test('a link whose creator only ever reached the file through an unverified address is dead', async () => {
+      const token = await link(emailShared, TIM.id, TIM.email);
+      expect((await request(app).get(`/api/files/share/${token}/info`)).status).toBe(404);
+    });
+
+    test('a link made by a viewer never works, even with a write grant behind it', async () => {
+      const token = await link(emailShared, VIEW.id, VIEW.email);
+      expect((await request(app).get(`/api/files/share/${token}/info`)).status).toBe(404);
+    });
+
+    test('a folder link serves only the files its creator can still edit', async () => {
+      const token = require('crypto').randomBytes(16).toString('hex');
+      await db.query(`INSERT INTO folder_share_links (folder_path, document_ids, token_hash, created_by, created_by_email)
+                      VALUES ('Links', $1::uuid[], $2, $3, $4)`, [[mine, theirs], tokenHash(token), RICHARD.id, RICHARD.email]);
+      const res = await request(app).get(`/api/files/folder/share/${token}`).buffer(true).parse((r, cb) => { const c = []; r.on('data', d => c.push(d)); r.on('end', () => cb(null, Buffer.concat(c))); });
+      expect(res.status).toBe(200);
+      const zip = res.body.toString('latin1');
+      expect(zip).toContain('mine.pdf');
+      expect(zip).not.toContain('theirs.pdf');
+    });
+
+    test('followers who can no longer read a file are not told about it', async () => {
+      const docFollows = require('../../lib/docFollows');
+      await docFollows.follow(mine, RICHARD.email);
+      await docFollows.follow(mine, VIEW.email);
+      expect(await docFollows.followersOf(mine, 'someone-else@x.com')).toEqual([RICHARD.email]);
     });
   });
 });
