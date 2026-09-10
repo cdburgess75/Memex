@@ -1440,6 +1440,20 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 13.5px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
+/* Groups (Settings → Groups) */
+.group-create, .group-add { display: flex; gap: 8px; margin: 12px 0 6px; }
+.group-create input, .group-add input { flex: 1 1 auto; min-width: 0; }
+.group-create .run-btn, .group-add .run-btn { flex: 0 0 auto; white-space: nowrap; }
+.group-back { margin: 4px 0 12px; }
+.group-head { margin: 0 0 4px; }
+.group-title { font: 600 16px var(--ui); color: var(--ink); }
+.group-members { margin-top: 4px; }
+.group-member { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.group-member-name { color: var(--ink); overflow-wrap: anywhere; }
+.group-member-email { color: var(--ink-faint); font-size: 12.5px; overflow-wrap: anywhere; }
+.group-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule-soft); }
+.ghost-btn.danger { color: var(--danger); }
+.ghost-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 .library-pick-list { display: grid; gap: 2px; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
@@ -5249,7 +5263,8 @@ function closeSettings() { document.getElementById('settings-scrim').classList.r
 function settingsTabsList() {
   // Consolidated tabs: Profile holds profile + appearance; Notifications holds
   // notification prefs (+ admin-only email config); System folds in Workspace branding.
-  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }];
+  // Groups is for everyone, not admins: whoever creates a group manages it.
+  const tabs = [{ id: 'profile', label: 'Profile' }, { id: 'notifications', label: 'Notifications' }, { id: 'groups', label: 'Groups' }];
   if (currentUser?.role === 'admin') tabs.push(
     { id: 'ai', label: 'AI' },
     { id: 'connections', label: 'Connections' },
@@ -5270,6 +5285,7 @@ function switchSettingsTab(tab) {
   if (tab === 'profile') body.innerHTML = profileSettingsHtml() + appearanceSettingsHtml();
   else if (tab === 'notifications') { body.innerHTML = notificationsSettingsHtml() + (admin ? emailSettingsHtml() : ''); loadNotifications(); }
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
+  else if (tab === 'groups') { body.innerHTML = groupsSettingsHtml(); loadGroups(); }
   else if (tab === 'connections') { body.innerHTML = connectionsSettingsHtml(); loadConnections(); }
   else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
   else if (tab === 'system') { body.innerHTML = workspaceSettingsHtml() + systemSettingsHtml(); loadBackupConfig(); }
@@ -5291,6 +5307,283 @@ let connBrowsing = null; // null = list view; { id, name, path, entries } = brow
 let connMounts = [];
 let connMountsLoaded = false;
 let mountView = null;   // { id, name, kind, path, entries } when browsing in the Files area
+
+/* ---------- Groups ----------
+   Named lists of people. Whoever creates a group manages it; admins can manage any.
+   A group grants nothing on its own yet — that arrives when libraries can be shared
+   with a group — so the tab says so rather than letting someone build a group and
+   then wonder why nobody in it can see anything. Every id reaches a handler through
+   a data-* attribute, never spliced into script, and every name or address is
+   escaped.
+
+   Replies can arrive out of order: open one group, then another (or go back) before
+   the first answer lands, or have two list reloads in flight at once. Every load
+   carries a sequence number and a reply that is no longer the latest is dropped, so
+   it never paints over what the person is now looking at. */
+let groupsList = [];
+let groupOpenId = null;
+let groupMembersList = [];
+let groupsLoadSeq = 0;
+let groupOpenSeq = 0;
+// One change at a time: a double-click or Enter-plus-click must not send it twice.
+let groupBusy = false;
+
+// The server answers { error: "..." }; apiError keeps the raw response text as the
+// message, so read the parsed body or the toast shows a JSON blob (or an HTML error
+// page from the proxy). A server fault's own text ("Internal error") helps nobody, so
+// it gets the fallback, which says what to do.
+function groupErr(e, fallback) {
+  if (!e || !e.body || !e.body.error || (e.status && e.status >= 500)) return fallback;
+  return e.body.error;
+}
+
+// A 403, 404 or 409 on a change means the group moved under us — deleted, handed to
+// someone else, renamed by someone else, or the person already removed — so reload
+// rather than keep offering controls and names that no longer apply.
+function groupFail(e, fallback) {
+  toast(groupErr(e, fallback));
+  if (e && (e.status === 403 || e.status === 404 || e.status === 409)) loadGroups();
+}
+
+// Clicks while a change is still being saved are dropped (the flag above), but say so,
+// so a slow save doesn't look like a dead button.
+function groupStillBusy() {
+  if (!groupBusy) return false;
+  toast('Still saving your last change…');
+  return true;
+}
+
+// Enter submits, except while an input method is composing (Japanese, Chinese, Korean
+// keyboards use Enter to confirm a character, not to send the form).
+function groupEnter(event) { return event.key === 'Enter' && !event.repeat && !event.isComposing && event.keyCode !== 229; }
+
+function groupOwnedByMe(g) {
+  return !!g.owner_id && !!currentUser?.id && String(g.owner_id).toLowerCase() === String(currentUser.id).toLowerCase();
+}
+
+// A group with no recorded owner is managed by admins only; one whose owner has no
+// address on record still has an owner, it is just not known who.
+function groupOwnerText(g) {
+  if (g.owner_email) return g.owner_email;
+  return g.owner_id ? 'unknown' : 'no one (admins manage it)';
+}
+
+function groupsSettingsHtml() {
+  return `<div class="settings-sub">Groups</div>
+    <p class="settings-notice">A group is a named list of people — your team, a client's staff, a project. Whoever creates a group manages who is in it, and people from outside the company can be added. Groups don't give anyone access to anything yet: once libraries can be shared with a group, this is where you'll manage who's in it.</p>
+    <div id="groups-body"><p class="settings-notice">Loading…</p></div>`;
+}
+
+async function loadGroups() {
+  const seq = ++groupsLoadSeq;
+  let list;
+  try { list = await apiGet('/groups'); }
+  catch (e) {
+    if (seq !== groupsLoadSeq) return;
+    const el = document.getElementById('groups-body');
+    if (el) el.innerHTML = `<p class="settings-notice">${esc(groupErr(e, "Couldn't load your groups. Check your connection, then try again."))}</p>
+      <div class="group-actions"><button class="ghost-btn" type="button" onclick="loadGroups()">Try again</button></div>`;
+    return;
+  }
+  if (seq !== groupsLoadSeq) return;
+  groupsList = list;
+  if (groupOpenId && !groupsList.some(g => g.id === groupOpenId)) groupOpenId = null;
+  if (groupOpenId) await openGroup(groupOpenId, true); else renderGroups();
+}
+
+function groupRowHtml(g) {
+  const count = `${g.member_count} ${g.member_count === 1 ? 'member' : 'members'}`;
+  const owner = groupOwnedByMe(g) ? 'owned by you' : `owned by ${esc(groupOwnerText(g))}`;
+  return `<div class="conn-row">
+    <div class="conn-main">
+      <div class="conn-name">${esc(g.name)}</div>
+      <div class="conn-meta">${count} · ${owner}</div>
+    </div>
+    <div class="conn-actions"><button class="ghost-btn" type="button" data-gid="${escAttr(g.id)}" onclick="openGroup(this.dataset.gid)">Open</button></div>
+  </div>`;
+}
+
+function renderGroups() {
+  const el = document.getElementById('groups-body');
+  if (!el) return;
+  const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const mine = groupsList.filter(g => g.can_manage);
+  const theirs = groupsList.filter(g => !g.can_manage);
+  const create = canCreate ? `<div class="group-create">
+      <input type="text" id="group-new-name" maxlength="80" placeholder="New group name — e.g. Accounting" autocomplete="off" onkeydown="if(groupEnter(event))createGroup()">
+      <button class="run-btn" type="button" onclick="createGroup()">Create group</button>
+    </div>` : '';
+  if (!groupsList.length) {
+    el.innerHTML = create + `<p class="settings-notice">${canCreate ? "You're not in any groups yet. Create one above." : "You're not in any groups yet."}</p>`;
+    return;
+  }
+  el.innerHTML = create
+    + (mine.length ? `<div class="settings-sub">${currentUser?.role === 'admin' ? 'Groups you can manage' : 'Groups you manage'}</div>${mine.map(groupRowHtml).join('')}` : '')
+    + (theirs.length ? `<div class="settings-sub">Groups you're in</div>${theirs.map(groupRowHtml).join('')}` : '');
+}
+
+async function createGroup() {
+  if (groupStillBusy()) return;
+  const input = document.getElementById('group-new-name');
+  const name = (input?.value || '').trim();
+  if (!name) { input?.focus(); return; }
+  groupBusy = true;
+  const openBefore = groupOpenId;
+  try {
+    const g = await apiPost('/groups', { name });
+    toast(`Created "${g.name}"`);
+    // Open the new group — unless the person opened another one while this was saving.
+    if (groupOpenId === openBefore) groupOpenId = g.id;
+    await loadGroups();
+  } catch (e) { groupFail(e, "Couldn't create the group. Try again."); }
+  finally { groupBusy = false; }
+}
+
+async function openGroup(id, silent) {
+  if (!document.getElementById('groups-body')) return;
+  groupOpenId = id;
+  const seq = ++groupOpenSeq;
+  let members;
+  try { members = await apiGet(`/groups/${encodeURIComponent(id)}/members`); }
+  catch (e) {
+    if (seq !== groupOpenSeq) return;
+    groupOpenId = null; groupMembersList = [];
+    // A click always explains; the quiet reopen after a change explains too, unless the
+    // group is simply gone (then the refreshed list says it all).
+    if (!silent || !(e && e.status === 404)) toast(groupErr(e, "Couldn't open that group. Try again."));
+    // Gone, or you were taken out of it: refresh the list so it stops offering the
+    // group. Only on a click — the silent reopen runs inside loadGroups already, and
+    // reloading from there could loop if the list and the group ever disagreed.
+    if (!silent && e && e.status === 404) { loadGroups(); return; }
+    renderGroups();
+    return;
+  }
+  if (seq !== groupOpenSeq || groupOpenId !== id) return;
+  const el = document.getElementById('groups-body');
+  if (!el) return;
+  const g = groupsList.find(x => x.id === id);
+  if (!g) { groupOpenId = null; renderGroups(); return; }
+  groupMembersList = members;
+  const manage = !!g.can_manage;
+  const rows = groupMembersList.length
+    ? groupMembersList.map(m => {
+        const who = m.display_name
+          ? `<span class="group-member-name">${esc(m.display_name)}</span> <span class="group-member-email">${esc(m.member_email)}</span>`
+          : `<span class="group-member-name">${esc(m.member_email)}</span>`;
+        // Only managers get has_signed_in; for everyone else it is absent, not false.
+        const pending = manage && m.has_signed_in === false ? '<span class="pill">Hasn’t signed in</span>' : '';
+        const remove = manage ? `<button class="file-library-tool" type="button" data-mid="${escAttr(m.id)}" data-email="${escAttr(m.member_email)}" onclick="removeGroupMember(this.dataset.mid, this.dataset.email)">Remove</button>` : '';
+        return `<div class="lib-member-row"><span class="group-member">${who}${pending}</span>${remove}</div>`;
+      }).join('')
+    : `<p class="settings-notice">Nobody is in this group yet.</p>`;
+  const addForm = manage ? `<div class="group-add">
+      <input type="email" id="group-add-email" maxlength="254" placeholder="name@company.com" autocomplete="off" onkeydown="if(groupEnter(event))addGroupMember()">
+      <button class="run-btn" type="button" onclick="addGroupMember()">Add</button>
+    </div>` : '';
+  const actions = manage ? `<div class="group-actions">
+      <button class="ghost-btn" type="button" onclick="renameGroupPrompt()">Rename</button>
+      <button class="ghost-btn" type="button" onclick="transferGroupPrompt()">Change owner</button>
+      <button class="ghost-btn danger" type="button" onclick="deleteGroupConfirm()">Delete group</button>
+    </div>` : groupOwnedByMe(g)
+      ? `<p class="settings-notice">You own this group, but your account can only view files now, so an admin manages it. Ask an admin to hand it to someone who can.</p>`
+      : `<p class="settings-notice">Only the group's owner or an admin can change who's in it.</p>`;
+  el.innerHTML = `<button class="ghost-btn group-back" type="button" onclick="closeGroup()">← All groups</button>
+    <div class="group-head">
+      <div class="group-title">${esc(g.name)}</div>
+      <div class="conn-meta">Owner: ${esc(groupOwnerText(g))}</div>
+    </div>
+    <div class="settings-sub">Members (${groupMembersList.length})</div>
+    <div class="group-members">${rows}</div>
+    ${addForm}
+    ${actions}`;
+}
+
+// Bumping the sequence drops any open still in flight, so a slow reply cannot pull
+// the person back into the group they just left.
+function closeGroup() { groupOpenSeq++; groupOpenId = null; groupMembersList = []; renderGroups(); }
+
+async function addGroupMember() {
+  if (groupStillBusy()) return;
+  const input = document.getElementById('group-add-email');
+  const email = (input?.value || '').trim();
+  if (!email || !groupOpenId) { input?.focus(); return; }
+  groupBusy = true;
+  try {
+    const r = await apiPost(`/groups/${encodeURIComponent(groupOpenId)}/members`, { email });
+    toast(r.already_member ? `${r.member_email} is already in this group` : `Added ${r.member_email}`);
+    await loadGroups();
+    document.getElementById('group-add-email')?.focus();
+  } catch (e) { groupFail(e, "Couldn't add that person. Try again."); }
+  finally { groupBusy = false; }
+}
+
+async function removeGroupMember(memberId, email) {
+  if (!groupOpenId || groupStillBusy()) return;
+  const gid = groupOpenId;
+  if (!(await askConfirm(`Remove ${email} from this group?`, { okLabel: 'Remove', danger: true }))) return;
+  groupBusy = true;
+  try {
+    await apiDelete(`/groups/${encodeURIComponent(gid)}/members/${encodeURIComponent(memberId)}`);
+    toast(`Removed ${email}`);
+    await loadGroups();
+  } catch (e) { groupFail(e, "Couldn't remove that person. Try again."); }
+  finally { groupBusy = false; }
+}
+
+async function renameGroupPrompt() {
+  if (groupStillBusy()) return;
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  const name = await askPrompt('New name for this group', g.name, { okLabel: 'Rename', title: 'Rename group' });
+  if (name === null || !name.trim() || name.trim() === g.name) return;
+  groupBusy = true;
+  try { await apiPut(`/groups/${encodeURIComponent(g.id)}`, { name: name.trim() }); toast('Group renamed'); await loadGroups(); }
+  catch (e) { groupFail(e, "Couldn't rename the group. Try again."); }
+  finally { groupBusy = false; }
+}
+
+// Handing a group over is the one change a non-admin owner cannot take back on their
+// own, so it is confirmed with the group's name and what the owner stands to lose.
+async function transferGroupPrompt() {
+  if (groupStillBusy()) return;
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  const entered = await askPrompt(`Who should own "${g.name}"? Enter their email address. They must have signed in to Depot at least once.`, '', { okLabel: 'Next', title: 'Change owner', placeholder: 'name@company.com' });
+  if (entered === null || !entered.trim()) return;
+  const email = entered.trim();
+  if (g.owner_email && email.toLowerCase() === g.owner_email.toLowerCase()) { toast(`${g.owner_email} already owns "${g.name}"`); return; }
+  const isAdmin = currentUser?.role === 'admin';
+  // Groups are visible to their owner, their members and admins, so a non-admin owner
+  // who is not also a member stops seeing the group at all once it is handed over.
+  const consequence = isAdmin
+    ? 'They will manage who is in it. As an admin you can still change it.'
+    : g.is_member
+      ? "They will manage who is in it, and you won't be able to change the group any more unless they hand it back or an admin does it for you."
+      : "They will manage who is in it. You aren't a member, so the group will disappear from your list, and only they or an admin can change it after that.";
+  if (!(await askConfirm(`Make ${email} the owner of "${g.name}"? ${consequence}`, { okLabel: 'Change owner', danger: !isAdmin, title: 'Change owner' }))) return;
+  groupBusy = true;
+  try {
+    const r = await apiPut(`/groups/${encodeURIComponent(g.id)}/owner`, { email });
+    toast(`${r.owner_email} now owns "${g.name}"`);
+    await loadGroups();
+  } catch (e) { groupFail(e, "Couldn't change the owner. Try again."); }
+  finally { groupBusy = false; }
+}
+
+async function deleteGroupConfirm() {
+  if (groupStillBusy()) return;
+  const g = groupsList.find(x => x.id === groupOpenId);
+  if (!g) return;
+  if (!(await askConfirm(`Delete "${g.name}"? Everyone is removed from it. This can't be undone.`, { okLabel: 'Delete group', danger: true, title: 'Delete group' }))) return;
+  groupBusy = true;
+  try {
+    await apiDelete(`/groups/${encodeURIComponent(g.id)}`);
+    toast(`Deleted "${g.name}"`);
+    if (groupOpenId === g.id) groupOpenId = null;
+    await loadGroups();
+  } catch (e) { groupFail(e, "Couldn't delete the group. Try again."); }
+  finally { groupBusy = false; }
+}
 
 function connectionsSettingsHtml() {
   return `<div class="settings-sub">Connections</div>
@@ -7438,7 +7731,9 @@ function askConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', title = '
     cancel.onclick = () => { finish(false); m.close(); };
     ok.onclick = () => { finish(true); m.close(); };
     // Enter = OK, unless focus is on Cancel (then the button's own click handles it).
-    m.el.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && document.activeElement !== cancel) { e.preventDefault(); finish(true); m.close(); } });
+    // A held Enter auto-repeats: without the e.repeat check, the Enter that submitted the
+    // previous dialog would run straight on and accept this one.
+    m.el.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.repeat && !e.isComposing && e.keyCode !== 229 && document.activeElement !== cancel) { e.preventDefault(); finish(true); m.close(); } });
   });
 }
 function askPrompt(message, defaultValue = '', { okLabel = 'OK', cancelLabel = 'Cancel', title = '', placeholder = '' } = {}) {
@@ -7456,7 +7751,7 @@ function askPrompt(message, defaultValue = '', { okLabel = 'OK', cancelLabel = '
     input.select();
     m.el.querySelector('#ask-cancel').onclick = () => { finish(null); m.close(); };
     m.el.querySelector('#ask-ok').onclick = () => { finish(input.value); m.close(); };
-    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); finish(input.value); m.close(); } });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.repeat && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); finish(input.value); m.close(); } });
   });
 }
 document.addEventListener('click', closeAllMenus);
