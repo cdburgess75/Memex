@@ -74,7 +74,10 @@ suite('library sharing groundwork against real Postgres', () => {
   });
 
   describe('library_grants refuses anything but a well-formed read or write share', () => {
-    const L = 'aaaaaaaa-0000-4000-8000-000000000001';
+    // a library of its own, so the shares made here don't make "Clients" a shared
+    // library for the route tests further down
+    const L = 'aaaaaaaa-0000-4000-8000-0000000000c1';
+    beforeAll(() => db.query("INSERT INTO libraries (id, name) VALUES ($1, 'Constraints')", [L]));
     const ins = (cols, vals) => code(db.query(`INSERT INTO library_grants (library_id, ${cols}) VALUES ($1, ${vals.map((_, i) => '$' + (i + 2)).join(', ')})`, [L, ...vals]));
     test('a person, by lower-cased address, at read or write', async () => {
       expect(await ins('subject_type, subject_email, permission', ['user', 'tim@dts-tax.com', 'read'])).toBe('ok');
