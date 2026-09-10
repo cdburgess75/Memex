@@ -52,7 +52,7 @@ jest.mock('../../lib/db', () => {
       }
       // getAccessibleDocument() for the file rename below
       if (/FROM documents d\s+WHERE d\.id = \$1/.test(sql)) return { id: params[0], name: 'Inbox/report.pdf', library_id: 'lib-1' };
-      if (/UPDATE documents SET name = \$2 WHERE id = \$1/.test(sql)) return { name: params[1] };
+      if (/UPDATE documents SET name = \$2(, library_scoped = \$3)? WHERE id = \$1/.test(sql)) return { name: params[1] };
       return null;
     }),
     withTransaction: jest.fn(),
@@ -67,7 +67,8 @@ jest.mock('../../lib/storage', () => ({
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn().mockResolvedValue(null) }));
 jest.mock('../../lib/libraries', () => ({
   defaultLibraryId: jest.fn().mockResolvedValue('lib-1'),
-  canAccessLibrary: jest.fn().mockResolvedValue(true),
+  writeRight: jest.fn().mockResolvedValue({ right: 'owner', scoped: true }),
+  sharedFolderAt: jest.fn().mockResolvedValue(false),
 }));
 jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
@@ -124,13 +125,14 @@ describe('folder operations are scoped to one library', () => {
     }
   });
 
-  test('move refuses a destination library the caller cannot reach', async () => {
+  test('move refuses a destination library the caller cannot add files to', async () => {
     const libraries = require('../../lib/libraries');
-    libraries.canAccessLibrary.mockResolvedValueOnce(false);
+    libraries.writeRight.mockResolvedValueOnce({ status: 403, error: 'no' });
     const res = await request(makeApp())
       .post('/api/files/folder/move')
       .send({ path: 'Clients/Acme', library_id: '00000000-0000-0000-0000-000000000000' });
     expect(res.status).toBe(403);
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), '00000000-0000-0000-0000-000000000000', 'Clients/Acme');
     // and nothing was rewritten
     expect(seen.some(q => /UPDATE documents d SET library_id/.test(q.sql))).toBe(false);
   });

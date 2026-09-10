@@ -89,18 +89,47 @@ function folderScopeError(res, e) {
 // no longer also reaches "Q1-A", nor "50%" reach "500".
 function existingFolder(raw) { return folderLookupPath(raw); }
 
+// The right to add files at a place in a library (libraries.writeRight). Sends the
+// refusal and returns null when there is none.
+async function destinationRight(res, user, libraryId, path) {
+  const r = await libraries.writeRight(user, libraryId, path);
+  if (r.status) { res.status(r.status).json({ error: r.error }); return null; }
+  return r;
+}
+
+// Folder shares are keyed by path. Until renames and moves carry them along (piece 4),
+// a folder with a share at or below it must not be renamed, moved or deleted: the share
+// would be orphaned, or re-attach to whatever next took the name.
+async function refuseIfShared(res, libraryId, ...paths) {
+  for (const p of paths) {
+    if (p && await libraries.sharedFolderAt(libraryId, p)) {
+      res.status(409).json({ code: 'FOLDER_SHARED', error: "This folder is shared. Remove its shares before renaming, moving or deleting it." });
+      return true;
+    }
+  }
+  return false;
+}
+
+// SQL for "is library content after the move" (see routes/files.js libraryScopeAfterMove),
+// with its three parameters starting at $n: the destination is scoped, the mover's id,
+// the mover is an admin.
+const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND (d.uploaded_by = $${n + 1} OR $${n + 2}::boolean))`;
+
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const dest = await destinationRight(res, req.user, libraryId, folderPath);
+    if (!dest) return;
     const markerName = `${folderPath}/.keep`;
     const storagePath = `documents/${Date.now()}-keep`;
     await storage.upload(storagePath, Buffer.alloc(0), 'application/octet-stream');
     const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id)
-       VALUES ($1, 0, $2, $3, $4, $5, $6) RETURNING ${DOCUMENT_COLUMNS}`,
-      [markerName, 'application/octet-stream', storagePath, req.user.id, req.user.email, req.body?.library_id || (await libraries.defaultLibraryId())]
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id, library_scoped)
+       VALUES ($1, 0, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
+      [markerName, 'application/octet-stream', storagePath, req.user.id, req.user.email, libraryId, dest.scoped]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     res.json({ ok: true, path: folderPath });
@@ -120,13 +149,17 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     const newPath = parent ? `${parent}/${newName}` : newName;
     const libraryId = await folderLibraryId(req, oldPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
+    if (await refuseIfShared(res, libraryId, oldPath, newPath)) return;
+    const dest = await destinationRight(res, req.user, libraryId, newPath);
+    if (!dest) return;
     const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
+      `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
       // a folder name with an emoji in it would otherwise be cut one character short.
-      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
+      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId,
+       dest.scoped, req.user.id, req.user.role === 'admin']
     );
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -141,6 +174,7 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = await folderLibraryId(req, folderPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
+    if (await refuseIfShared(res, libraryId, folderPath)) return;
     const rows = await db.query(
       `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
@@ -169,11 +203,17 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
+    if (await refuseIfShared(res, srcLibraryId, oldPath, newPath)) return;
+    // Moving a folder INTO another one needs the right to add files there -- dragging a
+    // folder into a shared folder must not quietly share it with everyone who has access.
+    const dest = await destinationRight(res, req.user, srcLibraryId, newPath);
+    if (!dest) return;
     const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
+      `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
+       dest.scoped, req.user.id, req.user.role === 'admin']
     );
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -187,21 +227,26 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
-    // The two sibling transfers both check the destination (/folder/copy below and
-    // /api/files/library-transfer); this one did not, and documents.library_id has
-    // no foreign key, so any uuid was accepted. A document stamped with a library
-    // the caller cannot reach — or one that does not exist — drops out of every
-    // library-scoped listing and out of every folder operation, which since the
-    // folder queries became library-scoped is the whole of them. canAccessLibrary
-    // returns false for an unknown id, so this covers the bogus-uuid case too.
-    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
+    // The destination must be a library the caller can add files to, at this path
+    // (writeRight: 400 for a malformed id, 404 for an unknown one, 403 without a right).
+    // documents.library_id has no foreign key, so without this a document could be
+    // stamped with a library nobody can reach and drop out of every listing.
+    const dest = await destinationRight(res, req.user, libraryId, folderPath);
+    if (!dest) return;
     const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
+    if (await refuseIfShared(res, srcLibraryId, folderPath)) return;
+    if (await refuseIfShared(res, libraryId, folderPath)) return;
+    // Library content never moves into a library the caller can write to only under the
+    // old open-library rule ($12): it would leave the library it was shared through for
+    // one whose owner then holds it. Those files stay where they are.
     const rows = await db.query(
-      `UPDATE documents d SET library_id = $2
+      `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
+         AND (NOT d.library_scoped OR $12::boolean)
        RETURNING d.id`,
-      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
+       dest.scoped, req.user.id, req.user.role === 'admin', dest.right !== 'legacy']
     );
     await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length})`);
@@ -498,7 +543,9 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
-    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
+    // The copies are new files in the target: the caller needs the right to add them there.
+    const dest = await destinationRight(res, req.user, libraryId, folderPath);
+    if (!dest) return;
     const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
@@ -512,7 +559,7 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
       const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
       const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
       await storage.copy(d.storage_path, newPath, d.mime_type);
-      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
+      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId, libraryScoped: dest.scoped });
     }
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);

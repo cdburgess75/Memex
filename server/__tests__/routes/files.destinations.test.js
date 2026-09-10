@@ -1,0 +1,217 @@
+'use strict';
+// Every write checks, before anything is stored, that the caller may add files at the
+// destination (libraries.writeRight), and records whether the result is library content.
+const request = require('supertest');
+const express = require('express');
+
+const mockQueries = [];
+const mockRows = { doc: null, version: null, session: null, transfer: [] };
+jest.mock('../../lib/db', () => ({
+  query: jest.fn(async (sql, params) => {
+    mockQueries.push({ sql, params });
+    if (/WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(sql)) return mockRows.transfer;
+    if (/SELECT DISTINCT d\.library_id/.test(sql)) return [{ library_id: 'aaaaaaaa-0000-4000-8000-000000000001' }];
+    return [];
+  }),
+  queryOne: jest.fn(async (sql, params) => {
+    mockQueries.push({ sql, params });
+    if (/INSERT INTO documents/.test(sql)) return { id: 'new-doc', name: params[0] };
+    if (/INSERT INTO upload_sessions/.test(sql)) return { id: 's1', received_chunks: [] };
+    if (/FROM upload_sessions WHERE id = \$1 AND uploaded_by = \$2/.test(sql)) return mockRows.session;
+    if (/FROM document_versions\s+WHERE id = \$1 AND document_id = \$2/.test(sql)) return mockRows.version;
+    if (/UPDATE documents\s+SET name = \$1, size = \$2/.test(sql)) return { id: 'd1', name: params[0] };
+    if (/UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return { id: 'd1', name: params[1] };
+    if (/COALESCE\(MAX\(version_number\)/.test(sql)) return { next: 1 };
+    // folderLibraryId() with an explicit library: the folder is there
+    if (/SELECT 1 FROM documents d\s+WHERE d\.deleted_at IS NULL AND d\.library_id = \$1 AND starts_with/.test(sql)) return { '?column?': 1 };
+    return null;
+  }),
+  withTransaction: jest.fn(),
+}));
+jest.mock('../../lib/storage', () => ({
+  upload: jest.fn().mockResolvedValue(undefined), uploadStream: jest.fn().mockResolvedValue({ size: 3 }),
+  download: jest.fn().mockResolvedValue(Buffer.from('abc')), del: jest.fn().mockResolvedValue(undefined),
+  copy: jest.fn().mockResolvedValue(undefined), isLocalProvider: jest.fn().mockResolvedValue(true),
+  getUrl: jest.fn(), localBase: jest.fn(), validateLocalToken: jest.fn(),
+}));
+jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn().mockResolvedValue(null) }));
+jest.mock('../../lib/textExtraction', () => ({ extractText: jest.fn().mockResolvedValue(null) }));
+jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../lib/uploadNotify', () => ({ record: jest.fn() }));
+
+const LIB = 'aaaaaaaa-0000-4000-8000-000000000001';
+const mockRight = { value: { right: 'owner', scoped: true } };
+jest.mock('../../lib/libraries', () => ({
+  ...jest.requireActual('../../lib/libraries'),
+  writeRight: jest.fn(async () => mockRight.value),
+  sharedFolderAt: jest.fn(async () => false),
+  defaultLibraryId: jest.fn(async () => 'aaaaaaaa-0000-4000-8000-000000000001'),
+}));
+jest.mock('../../lib/documentAccess', () => ({
+  ...jest.requireActual('../../lib/documentAccess'),
+  getAccessibleDocument: jest.fn(async () => mockRows.doc),
+  grantOwnerAdmin: jest.fn().mockResolvedValue(undefined),
+}));
+
+const USER = { id: '11111111-1111-4111-8111-111111111111', email: 'me@x.com', role: 'contributor' };
+jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: '11111111-1111-4111-8111-111111111111', email: 'me@x.com', role: 'contributor' }; next(); });
+
+const libraries = require('../../lib/libraries');
+const storage = require('../../lib/storage');
+const app = () => { const a = express(); a.use(express.json()); a.use('/api/files', require('../../routes/files')); return a; };
+const inserted = () => mockQueries.find(q => /INSERT INTO documents/.test(q.sql));
+const REFUSED = { status: 403, error: "You can't add files here. Ask the library owner for Read-Write access." };
+
+beforeEach(() => {
+  mockQueries.length = 0;
+  mockRight.value = { right: 'owner', scoped: true };
+  Object.assign(mockRows, { doc: null, version: null, session: null, transfer: [] });
+  jest.clearAllMocks();
+});
+
+describe('uploads and new files', () => {
+  const stream = (q = `displayName=Clients/Acme/a.txt&libraryId=${LIB}`) =>
+    request(app()).post(`/api/files/upload-stream?${q}`).set('Content-Type', 'text/plain').send('abc');
+
+  test('a refused upload stores nothing', async () => {
+    mockRight.value = REFUSED;
+    const res = await stream();
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/Read-Write/);
+    expect(storage.uploadStream).not.toHaveBeenCalled();
+    expect(inserted()).toBeUndefined();
+  });
+  test('the right is checked at the folder the file lands in', async () => {
+    await stream();
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.objectContaining({ id: USER.id }), LIB, 'Clients/Acme');
+  });
+  test.each([[true], [false]])('library_scoped is recorded as the right says (%p)', async (scoped) => {
+    mockRight.value = { right: scoped ? 'owner' : 'legacy', scoped };
+    await stream();
+    expect(inserted().params[8]).toBe(scoped);
+  });
+  test('a malformed library id is a 400 before anything is stored', async () => {
+    const res = await stream('displayName=a.txt&libraryId=lib-1');
+    expect(res.status).toBe(400);
+    expect(storage.uploadStream).not.toHaveBeenCalled();
+  });
+  test('"New file" checks its destination and records library content', async () => {
+    mockRight.value = REFUSED;
+    expect((await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB })).status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+    mockRight.value = { right: 'grant', scoped: true };
+    await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB });
+    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.anything(), LIB, 'Q1');
+    expect(inserted().params[9]).toBe(true);
+  });
+  test('a chunked upload naming its library is refused at the start', async () => {
+    mockRight.value = REFUSED;
+    const res = await request(app()).post('/api/files/uploads').send({ displayName: 'big.bin', size: 10, libraryId: LIB });
+    expect(res.status).toBe(403);
+    expect(mockQueries.some(q => /INSERT INTO upload_sessions/.test(q.sql))).toBe(false);
+  });
+  test('and checked again at completion, before the file is assembled', async () => {
+    mockRows.session = { id: 's1', status: 'active', name: 'Q1/big.bin', total_chunks: 0, received_chunks: [], storage_path: 'p', mime_type: 'x' };
+    mockRight.value = REFUSED;
+    expect((await request(app()).post('/api/files/uploads/s1/complete').send({ libraryId: LIB })).status).toBe(403);
+    expect(storage.uploadStream).not.toHaveBeenCalled();
+  });
+});
+
+describe('renames, restores and transfers', () => {
+  const doc = (over) => ({ id: 'd1', name: 'Clients/a.txt', library_id: LIB, library_scoped: false, uploaded_by: USER.id, storage_path: 'p', mime_type: 'text/plain', ...over });
+  test('a rename that keeps the folder needs no destination check', async () => {
+    mockRows.doc = doc();
+    await request(app()).put('/api/files/d1/rename').send({ name: 'Clients/b.txt' });
+    expect(libraries.writeRight).not.toHaveBeenCalled();
+  });
+  test('a rename into another folder is a move: checked there, and refused without a right', async () => {
+    mockRows.doc = doc();
+    mockRight.value = REFUSED;
+    expect((await request(app()).put('/api/files/d1/rename').send({ name: 'Shared/a.txt' })).status).toBe(403);
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Shared');
+    expect(mockQueries.some(q => /UPDATE documents SET name = \$2, library_scoped/.test(q.sql))).toBe(false);
+  });
+  test('moving your own file where writes are scoped makes it library content; someone else\'s stays personal', async () => {
+    mockRows.doc = doc();
+    await request(app()).put('/api/files/d1/rename').send({ name: 'Shared/a.txt' });
+    expect(mockQueries.find(q => /library_scoped = \$3/.test(q.sql)).params[2]).toBe(true);
+    mockQueries.length = 0;
+    mockRows.doc = doc({ uploaded_by: '99999999-9999-4999-8999-999999999999' });
+    await request(app()).put('/api/files/d1/rename').send({ name: 'Shared/a.txt' });
+    expect(mockQueries.find(q => /library_scoped = \$3/.test(q.sql)).params[2]).toBe(false);
+  });
+  test('library content never goes back to being personal', async () => {
+    mockRows.doc = doc({ library_scoped: true });
+    mockRight.value = { right: 'legacy', scoped: false };
+    await request(app()).put('/api/files/d1/rename').send({ name: 'Other/a.txt' });
+    expect(mockQueries.find(q => /library_scoped = \$3/.test(q.sql)).params[2]).toBe(true);
+  });
+  test('restoring a version keeps the file in its current folder', async () => {
+    mockRows.doc = doc({ name: 'Now/Here/report.docx' });
+    mockRows.version = { id: 'v1', version_number: 2, name: 'Old/Place/report-v2.docx', size: 1, mime_type: 'x', storage_path: 'vp' };
+    await request(app()).post('/api/files/d1/restore-version/v1');
+    const upd = mockQueries.find(q => /SET name = \$1, size = \$2/.test(q.sql));
+    expect(upd.params[0]).toBe('Now/Here/report-v2.docx');
+  });
+  test('a library transfer checks the target once per folder, and refuses the whole move without a right', async () => {
+    mockRows.transfer = [doc({ id: 'd1', name: 'A/1.txt' }), doc({ id: 'd2', name: 'A/2.txt' }), doc({ id: 'd3', name: 'B/3.txt' })];
+    mockRight.value = REFUSED;
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1', 'd2', 'd3'], libraryId: LIB, mode: 'move' });
+    expect(res.status).toBe(403);
+    expect(libraries.writeRight.mock.calls.map(c => c[2])).toEqual(['A']);
+    expect(mockQueries.some(q => /UPDATE documents SET library_id/.test(q.sql))).toBe(false);
+  });
+  test('library content is not moved into a library held only under the old open rule', async () => {
+    mockRows.transfer = [doc({ id: 'd1', name: 'A/1.txt', library_scoped: true }), doc({ id: 'd2', name: 'A/2.txt' })];
+    mockRight.value = { right: 'legacy', scoped: false };
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1', 'd2'], libraryId: LIB, mode: 'move' });
+    expect(res.body).toMatchObject({ count: 1, skipped: 1 });
+    const upd = mockQueries.filter(q => /UPDATE documents SET library_id/.test(q.sql));
+    expect(upd.flatMap(q => q.params[1])).toEqual(['d2']);
+  });
+});
+
+describe('folders', () => {
+  const post = (url, body) => request(app()).post(`/api/files/folder${url}`).send({ source_library_id: LIB, ...body });
+  test.each([
+    ['rename', '/rename', { path: 'Clients/Acme', name: 'Acme2' }],
+    ['reparent', '/reparent', { path: 'Clients/Acme', target: 'Archive' }],
+    ['move', '/move', { path: 'Clients/Acme', library_id: LIB }],
+    ['delete', '/delete', { path: 'Clients/Acme' }],
+  ])('%s refuses a folder with a share at or below it (until shares follow renames)', async (_n, url, body) => {
+    libraries.sharedFolderAt.mockResolvedValueOnce(true);
+    const res = await post(url, body);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('FOLDER_SHARED');
+    expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
+  });
+  test('moving a folder into another needs the right to add files there', async () => {
+    mockRight.value = REFUSED;
+    expect((await post('/reparent', { path: 'Clients/Acme', target: 'Shared' })).status).toBe(403);
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Shared/Acme');
+  });
+  test('a folder rename carries the move rule, with its parameters after the rest', async () => {
+    await post('/rename', { path: 'Clients/Acme', name: 'Acme2' });
+    const upd = mockQueries.find(q => /UPDATE documents d SET name = \$2/.test(q.sql));
+    expect(upd.sql).toMatch(/library_scoped = d\.library_scoped OR \(\$10::boolean AND \(d\.uploaded_by = \$11 OR \$12::boolean\)\)/);
+    expect(upd.params.slice(9)).toEqual([true, USER.id, false]);
+  });
+  test('a folder moved to a library held only under the old open rule leaves library content behind', async () => {
+    mockRight.value = { right: 'legacy', scoped: false };
+    await post('/move', { path: 'Clients/Acme', library_id: LIB });
+    const upd = mockQueries.find(q => /UPDATE documents d SET library_id = \$2/.test(q.sql));
+    expect(upd.sql).toMatch(/AND \(NOT d\.library_scoped OR \$12::boolean\)/);
+    expect(upd.params[11]).toBe(false);
+  });
+  test('creating a folder needs a right there, and its marker is library content when that says so', async () => {
+    mockRight.value = REFUSED;
+    expect((await request(app()).post('/api/files/folder').send({ path: 'New', library_id: LIB })).status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+    mockRight.value = { right: 'owner', scoped: true };
+    await request(app()).post('/api/files/folder').send({ path: 'New', library_id: LIB });
+    expect(inserted().params[6]).toBe(true);
+  });
+});

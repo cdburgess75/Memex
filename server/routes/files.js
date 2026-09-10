@@ -513,6 +513,34 @@ router.get('/local-download', async (req, res) => {
   }
 });
 
+// The folder a file lands in: everything before its last '/', '' at the library root.
+function parentOf(name) { const n = String(name || ''); const i = n.lastIndexOf('/'); return i < 0 ? '' : n.slice(0, i); }
+
+// Whether a file is library content after it moves (see libraries.writeRight). It
+// never goes back to being personal; it becomes library content when it lands where
+// writes are scoped -- but only if it is the mover's own file (or they are an admin).
+// Moving someone ELSE'S personal file, which a per-file grant lets you edit, into a
+// shared library would otherwise hand it to everyone the library is shared with.
+function libraryScopeAfterMove(doc, dest, user) {
+  return !!doc.library_scoped || (!!dest.scoped && (String(doc.uploaded_by || '') === String(user?.id || '') || user?.role === 'admin'));
+}
+
+// Every write decides, BEFORE anything is stored, whether the caller may add files at
+// that place (libraries.writeRight), and whether what lands there is library content.
+// Sends the refusal and returns null when there is no right.
+async function destinationRight(req, res, user, libraryId, parentPath) {
+  const r = await libraries.writeRight(user, libraryId, parentPath);
+  if (r.status) { res.status(r.status).json({ error: r.error }); return null; }
+  return r;
+}
+
+// The library a request writes into (header / query / body, default library when
+// absent). A malformed id is answered here as a 400; returns undefined after replying.
+async function targetLibrary(req, res) {
+  try { return await libraries.resolveLibraryId(req); }
+  catch (e) { if (e && e.status === 400) { res.status(400).json({ error: e.message }); return undefined; } throw e; }
+}
+
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
@@ -599,6 +627,12 @@ async function guardExchangeUpload(req, res, next) {
     const { share, error } = await loadExchangeLink(req.params.token);
     if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
     if (!share.allow_upload) return res.status(403).json({ error: 'This link is download-only.' });
+    // Files sent back land beside the shared file, owned by the link's creator -- so the
+    // creator must still be able to add files there (checked here, before multer reads
+    // a byte). A subfolder in the upload is below that folder, which the same right covers.
+    const dest = await libraries.writeRight(share.creator, share.library_id || (await libraries.defaultLibraryId()), parentOf(share.name));
+    if (dest.status) return res.status(403).json({ error: 'This link can no longer receive files.' });
+    req.exchangeDest = dest;
     // A password-protected link authorises uploads with a TICKET, not the raw
     // password. The ticket is minted once by POST /ticket (which DOES verify the
     // password, under the tight share limiter), so this high-volume route — one
@@ -673,6 +707,7 @@ router.post('/share/:token/upload',
       displayName, storagePath, mimetype, storedSize: size, user: owner,
       sourceDetail: `via exchange link · from ${from}`,
       libraryId: share.library_id,
+      libraryScoped: req.exchangeDest.scoped,
     });
     // The per-link quota was already reserved atomically above.
     await logDocumentEvent(share.document_id, 'external_upload_received', null, from,
@@ -793,22 +828,38 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     const libraryId = req.body?.libraryId;
     const mode = req.body?.mode === 'copy' ? 'copy' : 'move';
     if (!ids.length || !libraryId) return res.status(400).json({ error: 'ids and libraryId required' });
-    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
 
     // Restrict to documents the caller can access: reading is enough to COPY a file
     // (the copy is theirs), but MOVING it takes it out of where it was, which is an edit
     // -- otherwise someone with read-only access could empty a shared library.
     const accessible = await db.query(
-      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path
+      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path, d.library_scoped, d.uploaded_by
        FROM documents d
        WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
       [...documentAccess.userParams(req.user, mode === 'move' ? 'write' : 'read'), ids]
     );
-    const skipped = ids.length - accessible.length;
+    let skipped = ids.length - accessible.length;
+
+    // The caller must be able to add files at every place these land in the target
+    // library: once per distinct folder, before anything moves or is copied.
+    const rights = new Map();
+    for (const parent of new Set(accessible.map(d => parentOf(d.name)))) {
+      const r = await libraries.writeRight(req.user, libraryId, parent);
+      if (r.status) return res.status(r.status).json({ error: r.error });
+      rights.set(parent, r);
+    }
 
     if (mode === 'move') {
-      await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, accessible.map(d => d.id)]);
-      return res.json({ ok: true, mode, count: accessible.length, skipped });
+      // Library content never moves into a library the caller can write to only under
+      // the old open-library rule: it would leave the library it was shared through for
+      // one whose owner then holds it. Such files are skipped and counted.
+      const movable = accessible.filter(d => !(d.library_scoped && rights.get(parentOf(d.name)).right === 'legacy'));
+      skipped += accessible.length - movable.length;
+      const toScoped = movable.filter(d => libraryScopeAfterMove(d, rights.get(parentOf(d.name)), req.user)).map(d => d.id);
+      const toPersonal = movable.filter(d => !toScoped.includes(d.id)).map(d => d.id);
+      if (toScoped.length) await db.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[])', [libraryId, toScoped]);
+      if (toPersonal.length) await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, toPersonal]);
+      return res.json({ ok: true, mode, count: movable.length, skipped });
     }
 
     // copy: duplicate the stored object + create a new document record per file
@@ -816,7 +867,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
       const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
       await storage.copy(d.storage_path, newPath, d.mime_type);
-      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
+      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId, libraryScoped: rights.get(parentOf(d.name)).scoped });
     }
     res.json({ ok: true, mode, count: accessible.length, skipped });
   } catch (e) {
@@ -1004,7 +1055,12 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
   }
 
+  let uploadLibraryId, dest;
   try {
+    uploadLibraryId = await targetLibrary(req, res);
+    if (uploadLibraryId === undefined) return;
+    dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
+    if (!dest) return;
     await storage.upload(storagePath, buffer, mimetype);
   } catch (e) {
     return serverError(res, e);
@@ -1020,11 +1076,10 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
       console.error('Text extraction failed (non-fatal):', e.message);
     }
 
-    const uploadLibraryId = await libraries.resolveLibraryId(req);
     const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId]
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, dest.scoped]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
@@ -1068,6 +1123,14 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
   }
 
+  let uploadLibraryId, dest;
+  try {
+    uploadLibraryId = await targetLibrary(req, res);
+    if (uploadLibraryId === undefined) return;
+    dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
+    if (!dest) return;
+  } catch (e) { return serverError(res, e); }
+
   let storedSize = declaredSize;
   try {
     // The cap is enforced inside uploadStream's own pipeline (see storage.capStream),
@@ -1093,11 +1156,10 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
       }
     }
 
-    const uploadLibraryId = await libraries.resolveLibraryId(req);
     const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId]
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
+      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, dest.scoped]
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
@@ -1137,6 +1199,14 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
     // the volume partway through. Fails open if free space can't be measured.
     if ((await freeDiskBytes()) - size < (await minFreeDiskBytes())) {
       return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
+    }
+    // When the session already names its library, refuse a destination the caller has
+    // no right to before any chunk is sent. The complete step checks again regardless:
+    // the library is named there too, and rights can change in between.
+    if (req.headers['x-library-id'] || req.query?.libraryId || req.body?.libraryId) {
+      const lib = await targetLibrary(req, res);
+      if (lib === undefined) return;
+      if (!(await destinationRight(req, res, req.user, lib, parentOf(displayName)))) return;
     }
     const session = await db.queryOne(
       `INSERT INTO upload_sessions
@@ -1251,6 +1321,11 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     }
     if (missing.length) return res.status(409).json({ error: 'Upload is missing chunks', missing });
 
+    const completeLibraryId = await targetLibrary(req, res);
+    if (completeLibraryId === undefined) return;
+    const dest = await destinationRight(req, res, req.user, completeLibraryId, parentOf(session.name));
+    if (!dest) return;
+
     const stream = await chunkedFileStream(session);
     const result = await storage.uploadStream(session.storage_path, stream, session.mime_type);
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
@@ -1261,7 +1336,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       storedSize,
       user: req.user,
       sourceDetail: 'resumable upload',
-      libraryId: await libraries.resolveLibraryId(req),
+      libraryId: completeLibraryId,
+      libraryScoped: dest.scoped,
       notifyUpload: true,
     });
 
@@ -1797,6 +1873,10 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     );
     if (!version) return res.status(404).json({ error: 'Version not found' });
 
+    // Restore the CONTENT, and the file name the version had -- but keep the file where
+    // it is now. A version's stored name carries the folder it was in at the time, and
+    // restoring that would be a move nobody asked for, past every destination check.
+    const restoredName = [parentOf(doc.name), String(version.name || '').split('/').pop()].filter(Boolean).join('/') || doc.name;
     await saveDocumentVersion(doc, req.user, 'before_version_restore');
     await storage.copy(version.storage_path, doc.storage_path, version.mime_type);
     const updated = await db.queryOne(
@@ -1806,7 +1886,7 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
            restored_at = NOW(), restored_by = $5, restored_by_email = $6
        WHERE id = $7
        RETURNING ${DOCUMENT_COLUMNS}`,
-      [version.name, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
+      [restoredName, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
     );
 
     await logDocumentEvent(doc.id, 'version_restored', req.user.id, req.user.email, `restored version ${version.version_number}`);
@@ -1851,14 +1931,24 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     // there -- keeps it in that folder; new folders and the file name are cleaned the
     // way uploads are (HTML-significant and control characters stripped, traversal
     // neutralized), so a rename cannot invent a name an upload could never have stored.
+    const libraryId = doc.library_id || (await libraries.defaultLibraryId());
     const raw = String(req.body?.name || '').replace(/\\/g, '/');
     const cut = raw.lastIndexOf('/');
     const base = cleanDisplayName(raw.slice(cut + 1)).slice(0, 255);
     if (!base) return res.status(400).json({ error: 'name required' });
-    const folder = cut >= 0 ? await destinationFolder(raw.slice(0, cut), doc.library_id, req.user) : '';
+    const folder = cut >= 0 ? await destinationFolder(raw.slice(0, cut), libraryId, req.user) : '';
     if (folder === null) return res.status(400).json({ error: 'invalid folder' });
     const name = folder ? `${folder}/${base}` : base;
-    const updated = await db.queryOne('UPDATE documents SET name = $2 WHERE id = $1 RETURNING *', [req.params.id, name]);
+    // Names carry their folder, so a rename that changes the folder part is a move into
+    // that folder -- and needs the same right to add files there as an upload would.
+    // Whether the file becomes library content follows the move rule (libraryScope).
+    let scoped = !!doc.library_scoped;
+    if (parentOf(name) !== parentOf(doc.name)) {
+      const dest = await destinationRight(req, res, req.user, libraryId, parentOf(name));
+      if (!dest) return;
+      scoped = libraryScopeAfterMove(doc, dest, req.user);
+    }
+    const updated = await db.queryOne('UPDATE documents SET name = $2, library_scoped = $3 WHERE id = $1 RETURNING *', [req.params.id, name, scoped]);
     await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
     res.json({ success: true, name: updated.name });
   } catch (e) {
@@ -1909,12 +1999,15 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
     const blank = blankDocs.blankFile(ext, rawName);
 
     const path = require('path');
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const dest = await destinationRight(req, res, req.user, libraryId, parentOf(fullName));
+    if (!dest) return;
     const sanitized = path.basename(fullName).replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `documents/${Date.now()}-${sanitized}`;
     await storage.upload(storagePath, blank.buffer, blank.mime);
     const { doc } = await createDocumentRecord({
       displayName: fullName, storagePath, mimetype: blank.mime, storedSize: blank.buffer.length,
-      user: req.user, sourceDetail: 'created', libraryId: req.body?.library_id || null,
+      user: req.user, sourceDetail: 'created', libraryId, libraryScoped: dest.scoped,
     });
     res.json(doc);
   } catch (e) { serverError(res, e); }

@@ -21,7 +21,8 @@ jest.mock('../../lib/storage', () => ({
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn().mockResolvedValue(null) }));
 jest.mock('../../lib/libraries', () => ({
   defaultLibraryId: jest.fn().mockResolvedValue('lib-1'),
-  canAccessLibrary: jest.fn().mockResolvedValue(true),
+  writeRight: jest.fn().mockResolvedValue({ right: 'owner', scoped: true }),
+  sharedFolderAt: jest.fn().mockResolvedValue(false),
 }));
 jest.mock('../../lib/documentAccess', () => ({
   condition: () => 'TRUE',
