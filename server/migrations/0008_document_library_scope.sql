@@ -10,6 +10,10 @@
 -- The default (false) fails closed: a file is library content only when the code that
 -- wrote it says so (libraries.writeRight), and it only ever flips false -> true.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS library_scoped BOOLEAN NOT NULL DEFAULT false;
+-- A library made by an older release after 0007 ran (rolled back, then forward again)
+-- has no owner yet: it takes its creator, as 0007 did, before the files are marked.
+UPDATE libraries SET owner_id = created_by, owner_email = lower(created_by_email)
+ WHERE owner_id IS NULL AND created_by IS NOT NULL;
 UPDATE documents d SET library_scoped = true
   FROM libraries l
  WHERE d.library_id = l.id AND l.owner_id IS NOT NULL

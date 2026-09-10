@@ -356,4 +356,124 @@ suite('library sharing groundwork against real Postgres', () => {
       expect(await docFollows.followersOf(mine, 'someone-else@x.com')).toEqual([RICHARD.email]);
     });
   });
+
+  // Release 3: every write checks its destination (libraries.writeRight), and records
+  // whether what it wrote is library content (documents.library_scoped).
+  describe('destination checks (real SQL)', () => {
+    const libraries = require('../../lib/libraries');
+    const jwt = require('jsonwebtoken');
+    const LD = 'aaaaaaaa-0000-4000-8000-0000000000d1';   // owned by OWNER, shared
+    const LOPEN = 'aaaaaaaa-0000-4000-8000-0000000000d2'; // no owner, no members, no shares
+    const LMEM = 'aaaaaaaa-0000-4000-8000-0000000000d3';  // no shares, members: RO only
+    const LR = 'aaaaaaaa-0000-4000-8000-0000000000d4';    // made by an older release after 0007
+    const u = (n, role = 'contributor', verified = true) => ({ id: `d${n}d${n}d${n}d${n}-0000-4000-8000-00000000000${n}`, email: `u${n}@dest.com`, role, verified });
+    const OWNER = u(1), RW = u(2), RO = u(3), GRP = u(4), UNV = u(5, 'contributor', false), VIEWER = u(6, 'viewer'), MAKER = u(7);
+    const people = [OWNER, RW, RO, GRP, UNV, VIEWER, MAKER];
+    const as = (who) => jwt.verify.mockReturnValue({ sub: who.id, email: who.email, email_verified: who.verified });
+    const addDoc = async (name, owner, lib, scoped = false) => (await one(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id, library_scoped)
+       VALUES ($1, 1, 'text/plain', $2, $3, $4, $5, $6) RETURNING id`, [name, 'p/' + lib + name, owner.id, owner.email, lib, scoped])).id;
+    const grant = (lib, email, permission, folder = '') => db.query(
+      "INSERT INTO library_grants (library_id, folder_path, subject_type, subject_email, permission) VALUES ($1, $2, 'user', $3, $4)", [lib, folder, email, permission]);
+    const post = (url, body) => request(app).post(url).set('Authorization', 'Bearer t').send(body);
+
+    beforeAll(async () => {
+      for (const p of people) {
+        await db.query('INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, $3, $4)', [p.id, p.email, p.role, p.verified ? p.email : null]);
+      }
+      await db.query(`INSERT INTO libraries (id, name, created_by, created_by_email, owner_id, owner_email) VALUES
+        ($1, 'Destinations', $5, $6, $5, $6), ($2, 'Open', NULL, NULL, NULL, NULL), ($3, 'Members only', NULL, NULL, NULL, NULL),
+        ($4, 'Rollback era', $7, $8, NULL, NULL)`, [LD, LOPEN, LMEM, LR, OWNER.id, OWNER.email, MAKER.id, 'U7@Dest.com']);
+      await db.query("INSERT INTO library_members (library_id, subject_email) VALUES ($1, $2)", [LMEM, RO.email]);
+      await grant(LD, RW.email, 'write', 'Team');
+      await grant(LD, RO.email, 'read');
+      await grant(LD, UNV.email, 'write');
+      await grant(LD, VIEWER.email, 'write');
+      await grant(LD, 'nobody@dest.com', 'read', 'Parent/Child');
+      const g = await one("INSERT INTO groups (name) VALUES ('Dest writers') RETURNING id");
+      await db.query('INSERT INTO group_members (group_id, member_email) VALUES ($1, $2)', [g.id, 'U4@Dest.com']);
+      await db.query("INSERT INTO library_grants (library_id, subject_type, group_id, permission) VALUES ($1, 'group', $2, 'write')", [LD, g.id]);
+    });
+
+    test('0008 gives a rollback-era library its creator, then marks only owners\' own files as library content', async () => {
+      const mine = await addDoc('Backfill/mine.txt', MAKER, LR);
+      const other = await addDoc('Backfill/other.txt', OWNER, LR);
+      const ownerless = await addDoc('Backfill/legacy.txt', RICHARD, 'aaaaaaaa-0000-4000-8000-000000000002');
+      const sql = fs.readFileSync(path.join(migrations.DIR, '0008_document_library_scope.sql'), 'utf8');
+      await db.query(sql);
+      await db.query(sql); // and again: nothing changes
+      expect(await one('SELECT owner_id, owner_email FROM libraries WHERE id = $1', [LR])).toEqual({ owner_id: MAKER.id, owner_email: 'u7@dest.com' });
+      const scoped = async (id) => (await one('SELECT library_scoped FROM documents WHERE id = $1', [id])).library_scoped;
+      expect(await scoped(mine)).toBe(true);
+      expect(await scoped(other)).toBe(false);
+      expect(await scoped(ownerless)).toBe(false);
+    });
+
+    test.each([
+      ['an admin, in an owned library', () => ADMIN, LD, '', { right: 'admin', scoped: true }],
+      ['an admin, in an unowned unshared library', () => ADMIN, LOPEN, '', { right: 'admin', scoped: false }],
+      ['the owner, anywhere in it', () => OWNER, LD, 'Deep/Down', { right: 'owner', scoped: true }],
+      ['a Read-Write share on the folder', () => RW, LD, 'Team', { right: 'grant', scoped: true }],
+      ['... and below it', () => RW, LD, 'Team/Sub/Deeper', { right: 'grant', scoped: true }],
+      ['... but not a folder that merely starts the same', () => RW, LD, 'Teammates', { status: 403 }],
+      ['... nor the library root, once it is shared', () => RW, LD, '', { status: 403 }],
+      ['a Read-only share', () => RO, LD, '', { status: 403 }],
+      ['a Read-Write share through a group (by verified address)', () => GRP, LD, 'Anything', { right: 'grant', scoped: true }],
+      ['a share to an address its account has not verified', () => UNV, LD, '', { status: 403 }],
+      ['a viewer, whatever the share says', () => VIEWER, LD, '', { status: 403 }],
+      ['anyone, in an open library nobody has shared', () => RW, LOPEN, 'x', { right: 'legacy', scoped: false }],
+      ['a listed member, in a members-only library', () => RO, LMEM, '', { right: 'legacy', scoped: false }],
+      ['someone not listed there', () => RW, LMEM, '', { status: 403 }],
+      ['an unknown library', () => OWNER, 'aaaaaaaa-0000-4000-8000-0000000000ff', '', { status: 404 }],
+      ['a malformed library id', () => OWNER, 'lib-1', '', { status: 400 }],
+    ])('writeRight: %s', async (_label, who, lib, at, want) => {
+      const user = who();
+      const got = await libraries.writeRight({ ...user, emailVerified: user.verified !== false }, lib, at);
+      expect(got).toMatchObject(want);
+    });
+
+    test('sharedFolderAt: a share at the folder or anywhere below it', async () => {
+      expect(await libraries.sharedFolderAt(LD, 'Team')).toBe(true);
+      expect(await libraries.sharedFolderAt(LD, 'Parent')).toBe(true);        // Parent/Child is shared
+      expect(await libraries.sharedFolderAt(LD, 'Parent/Child/x')).toBe(false);
+      expect(await libraries.sharedFolderAt(LD, 'Te')).toBe(false);
+      expect(await libraries.sharedFolderAt(LOPEN, 'Team')).toBe(false);
+    });
+
+    test('a new folder is library content only where the right says so', async () => {
+      as(RW);
+      expect((await post('/api/files/folder', { path: 'Team/New', library_id: LD })).status).toBe(200);
+      expect((await post('/api/files/folder', { path: 'Elsewhere', library_id: LD })).status).toBe(403);
+      expect((await post('/api/files/folder', { path: 'Mine', library_id: LOPEN })).status).toBe(200);
+      as(RO);
+      expect((await post('/api/files/folder', { path: 'Team/Nope', library_id: LD })).status).toBe(403);
+      const marks = await db.query("SELECT name, library_id, library_scoped FROM documents WHERE name LIKE '%/.keep' AND uploaded_by IN ($1, $2)", [RW.id, RO.id]);
+      expect(marks.map(m => [m.name, m.library_id, m.library_scoped]).sort()).toEqual([
+        ['Mine/.keep', LOPEN, false],
+        ['Team/New/.keep', LD, true],
+      ]);
+    });
+
+    test('a shared folder cannot be renamed, moved or deleted out from under its share', async () => {
+      as(OWNER);
+      await addDoc('Team/plan.txt', OWNER, LD, true);
+      for (const [url, body] of [['/rename', { name: 'Team2' }], ['/reparent', { target: 'Archive' }], ['/delete', {}], ['/move', { library_id: LOPEN }]]) {
+        const res = await post('/api/files/folder' + url, { path: 'Team', source_library_id: LD, ...body });
+        expect([url, res.status, res.body.code]).toEqual([url, 409, 'FOLDER_SHARED']);
+      }
+      expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Team/plan.txt' AND library_id = $1 AND deleted_at IS NULL", [LD])).n).toBe(1);
+    });
+
+    test('moving a folder to a library held only under the old open rule leaves library content behind', async () => {
+      as(OWNER);
+      const content = await addDoc('Outbox/content.txt', OWNER, LD, true);
+      const personal = await addDoc('Outbox/personal.txt', OWNER, LD, false);
+      const res = await post('/api/files/folder/move', { path: 'Outbox', library_id: LOPEN, source_library_id: LD });
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBe(1);
+      const where = async (id) => (await one('SELECT library_id, library_scoped FROM documents WHERE id = $1', [id]));
+      expect(await where(content)).toEqual({ library_id: LD, library_scoped: true });
+      expect(await where(personal)).toEqual({ library_id: LOPEN, library_scoped: false });
+    });
+  });
 });
