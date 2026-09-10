@@ -157,6 +157,14 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     const folderPath = safeDocName(req.body?.path, '');
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // The two sibling transfers both check the destination (/folder/copy below and
+    // /api/files/library-transfer); this one did not, and documents.library_id has
+    // no foreign key, so any uuid was accepted. A document stamped with a library
+    // the caller cannot reach — or one that does not exist — drops out of every
+    // library-scoped listing and out of every folder operation, which since the
+    // folder queries became library-scoped is the whole of them. canAccessLibrary
+    // returns false for an unknown id, so this covers the bogus-uuid case too.
+    if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
     const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
