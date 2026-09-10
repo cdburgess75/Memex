@@ -207,7 +207,7 @@ suite('library sharing groundwork against real Postgres', () => {
   // files (PUT /:id/rename) and folders (/folder/reparent) land in the same place.
   describe('destinations and old folder links, through the real routes', () => {
     const L = 'aaaaaaaa-0000-4000-8000-000000000001';
-    const TAMMY = { id: '44444444-4444-4444-8444-444444444444', email: 'tammy2@ptechllc.com' };
+    const TAMMY = { id: '77777777-7777-4777-8777-777777777777', email: 'tammy2@ptechllc.com' };
     let reportId;
     const add = async (name, owner) => (await one(
       `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id)
