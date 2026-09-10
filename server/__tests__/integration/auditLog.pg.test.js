@@ -15,10 +15,11 @@
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
 
-// Everything the migrations (0001–0004) create, plus the base tables this test
-// seeds, so reruns start clean.
+// Everything the migrations create, plus the base tables this test seeds, so reruns
+// start clean.
 const MIGRATION_TABLES = [
-  'schema_migrations', 'user_preferences', 'storage_connectors', 'user_profiles',
+  'schema_migrations', 'group_members', 'groups', 'system_settings',
+  'user_preferences', 'storage_connectors', 'user_profiles',
   'notifications', 'library_members', 'libraries', 'document_acl', 'upload_sessions',
   'document_share_links', 'folder_share_links', 'upload_links', 'recent_opens',
   'compliance_attestations', 'folder_notify_prefs', 'document_follows',
@@ -49,6 +50,8 @@ suite('auditLog against real Postgres', () => {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       document_id UUID, event_type TEXT NOT NULL, actor_id UUID, actor_email TEXT, detail TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+    // 0005 tidies a row out of system_settings, which the base schema provides.
+    await db.query('CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT)');
     // A pre-existing row (hash NULL) that must stay outside the chain.
     await db.query("INSERT INTO document_events (event_type, actor_email, detail) VALUES ('legacy', 'old@x.com', 'pre-chain row')");
   });
