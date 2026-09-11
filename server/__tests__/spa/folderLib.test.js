@@ -114,8 +114,8 @@ describe('the move summary', () => {
     expect(ctx.transferSummary(mode, done, skipped, 'Clients')).toBe(want);
   });
   test('files kept behind as library content are explained', () => {
-    expect(ctx.transferSummary('move', 1, 0, 'Clients', 2)).toBe('Moved 1 item to Clients · 2 files that belong to the library stayed (they can only move to a library you own or can write to)');
-    expect(ctx.transferSummary('move', 0, 1, 'Clients', 1)).toBe('Nothing was moved: 1 file you can only view stayed where it was · 1 file that belongs to the library stayed (it can only move to a library you own or can write to)');
+    expect(ctx.transferSummary('move', 1, 0, 'Clients', 2)).toBe("Moved 1 item to Clients · 2 files that belong to the library stayed where they were (only the library's owner can move them to another library)");
+    expect(ctx.transferSummary('move', 0, 1, 'Clients', 1)).toBe("Nothing was moved: 1 file you can only view stayed where it was · 1 file that belongs to the library stayed where it was (only the library's owner can move it to another library)");
   });
   test('the library-transfer dialog and the folder move use the server counts', () => {
     const b = body('openLibraryTransfer');
@@ -148,9 +148,9 @@ describe('library relationships and where you can add files', () => {
     throw new Error(name);
   };
   const run = (ctx) => {
-    vm.runInNewContext(['currentLibrary', 'libraryRelation', 'canWriteHere', 'libraryMenuRow', 'libraryMenuInnerHtml'].map(fnSource).join('\n')
+    vm.runInNewContext(['currentLibrary', 'libraryRelation', 'canWriteHere', 'canChangeFile', 'folderIsShared', 'canShareLibrary', 'libraryMenuRow', 'libraryMenuInnerHtml'].map(fnSource).join('\n')
       + `\nconst LIBRARY_PILL = { rw: 'Read-Write', r: 'Read-only', folders: 'Folders' };`
-      + `\nthis.api = { currentLibrary, libraryRelation, canWriteHere, libraryMenuInnerHtml };`, ctx);
+      + `\nthis.api = { currentLibrary, libraryRelation, canWriteHere, canChangeFile, folderIsShared, canShareLibrary, libraryMenuInnerHtml };`, ctx);
     return ctx.api;
   };
   const base = (over) => ({
@@ -163,7 +163,8 @@ describe('library relationships and where you can add files', () => {
     [{ my_access: 'rw' }, 'Shared with you · Read-Write'],
     [{ my_access: 'r' }, 'Shared with you · Read-only'],
     [{ my_access: 'folders' }, 'Folders in it are shared with you'],
-    [{ my_access: 'listed', add_right: 'legacy' }, 'Listed for everyone · files you add stay private to you'],
+    [{ my_access: 'listed', add_right: 'legacy' }, 'Not shared · files you add stay private to you'],
+    [{ my_access: 'listed', add_right: null }, 'You see only files shared with you'],
     [{ my_access: 'admin', owner_email: 'dave@x.com' }, 'Owned by dave@x.com'],
   ])('%j reads "%s"', (lib, want) => expect(run(base()).libraryRelation(lib)).toBe(want));
 
@@ -182,7 +183,7 @@ describe('library relationships and where you can add files', () => {
 
   test('the switcher groups libraries by relationship, and offers Share only where you manage', () => {
     const api = run(base({ librariesList: [
-      { id: 'L1', name: 'Mine', my_access: 'owner', can_manage: true },
+      { id: 'L1', name: 'Mine', my_access: 'owner', can_manage: true, owner_id: 'u1' },
       { id: 'L2', name: 'Theirs', my_access: 'rw', can_manage: false },
       { id: 'L3', name: 'Open', my_access: 'listed', can_manage: false },
     ] }));
@@ -204,8 +205,36 @@ describe('library relationships and where you can add files', () => {
     expect(fnSource('mountLibraryShare')).not.toMatch(/onclick=/);
   });
 
-  test('the old copy-a-grant-onto-every-file folder form is gone', () => {
-    expect(html).not.toMatch(/\/files\/folder\/members/);
+  test('the old copy-a-grant-onto-every-file folder form is gone; its grants stay listed and revocable', () => {
+    expect(html).not.toMatch(/apiPost\('\/files\/folder\/members'/);
     expect(html).not.toMatch(/function grantFolderAccess/);
+    const b = fnSource('loadFolderFileGrants');
+    expect(b).toMatch(/apiGet\('\/files\/folder\/members\?path='/);
+    expect(b).toMatch(/apiDelete\('\/files\/folder\/members', inFolderLib\(\{ path, email \}, lib\)\)/);
+  });
+
+  test("an ownerless library (the one seeded at install) offers no Share", () => {
+    const api = run(base({ currentUser: { role: 'admin' }, librariesList: [{ id: 'L1', name: 'Ptech Workspace', my_access: 'admin', can_manage: true, owner_id: null }] }));
+    expect(api.libraryMenuInnerHtml()).not.toMatch(/data-share-lib/);
+  });
+
+  test.each([
+    ["your own personal file, in a library shared without you", { name: 'Old/mine.pdf', uploaded_by: 'me', library_scoped: false }, true],
+    ["someone else's file there", { name: 'Old/theirs.pdf', uploaded_by: 'you', library_scoped: false }, false],
+    ["your own upload that became library content", { name: 'Old/added.pdf', uploaded_by: 'me', library_scoped: true }, false],
+  ])('canChangeFile: %s', (_l, f, want) => {
+    const api = run(base({ currentUser: { id: 'me', role: 'contributor' }, librariesList: [{ id: 'L1', name: 'Clients', my_access: 'listed', add_right: null, my_folders: [] }] }));
+    expect(api.canChangeFile(f)).toBe(want);
+  });
+
+  test('a shared folder, or one with a shared folder inside, reads as shared -- not a look-alike', () => {
+    const api = run(base({ librariesList: [{ id: 'L1', name: 'Clients', add_right: 'owner', shared_folders: ['Clients/Acme'], my_folders: [{ path: 'Team', level: 'rw' }] }] }));
+    expect(['Clients', 'Clients/Acme', 'Team', 'Clients/Acme2', 'Teams', 'Other'].map(p => api.folderIsShared(p))).toEqual([true, true, true, false, false, false]);
+  });
+
+  test('uploads land in the folder being viewed', () => {
+    expect(fnSource('handleFilePickerChange')).toMatch(/intoFolder\(dest, file\.webkitRelativePath \|\| file\.name\)/);
+    expect(fnSource('handleFolderPickerChange')).toMatch(/const dest = uploadDestination\(\);/);
+    expect(fnSource('handleFileHomeDrop')).toMatch(/if \(!canWriteHere\(dest\)\)/);
   });
 });

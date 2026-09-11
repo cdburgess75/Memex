@@ -125,7 +125,9 @@ const LISTING = `
                      WHERE g.library_id = l.id AND g.folder_path <> '' AND ${shareSubject('g', 3)}
                      GROUP BY g.folder_path) f) AS folders,
            EXISTS (SELECT 1 FROM documents d
-                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 4)}) AS can_read_any
+                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 4)}) AS can_read_any,
+           (SELECT json_agg(DISTINCT g.folder_path) FROM library_grants g
+             WHERE g.library_id = l.id AND g.folder_path <> '') AS shared_folders
       FROM libraries l
   ) v
   WHERE ($1 = 'admin' OR v.owner_id = $3 OR (v.no_members AND NOT v.shared) OR v.member_listed
@@ -140,6 +142,8 @@ const LISTING = `
 //   add_right   what writeRight answers at the root: 'admin' | 'owner' | 'grant' |
 //               'legacy' | null (folder shares are in my_folders)
 //   shared      whether it is shared at all -- only to someone who manages it
+//   shared_folders  the folders in it that are shared (they can't be renamed, moved or
+//               deleted until shares follow them) -- only to someone who manages it
 function shapeLibrary(user, r) {
   const admin = user?.role === 'admin';
   const contributor = user?.role === 'contributor';
@@ -148,8 +152,8 @@ function shapeLibrary(user, r) {
   const myFolders = (r.folders || []).map(f => ({ path: f.path, level: level(f.level) }));
   const canManage = admin || (contributor && isOwner);
   let myAccess = null;
-  if (admin) myAccess = 'admin';
-  else if (isOwner) myAccess = 'owner';
+  if (isOwner) myAccess = 'owner'; // an admin's own library is still theirs
+  else if (admin) myAccess = 'admin';
   else if (r.root_level) myAccess = level(r.root_level);
   else if (myFolders.length) myAccess = 'folders';
   else if ((r.no_members && !r.shared) || r.member_listed || r.can_read_any) myAccess = 'listed';
@@ -165,7 +169,7 @@ function shapeLibrary(user, r) {
     owner_id: r.owner_id, owner_email: r.owner_email,
     can_manage: canManage, my_access: myAccess, my_folders: myFolders, add_right: addRight,
   };
-  if (canManage) out.shared = !!r.shared;
+  if (canManage) { out.shared = !!r.shared; out.shared_folders = r.shared_folders || []; }
   return out;
 }
 
