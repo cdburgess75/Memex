@@ -11,7 +11,7 @@ const html = fs.readFileSync(path.join(__dirname, '../../../index.html'), 'utf8'
 const fnLine = (name) => html.match(new RegExp(`^function ${name}\\(.*$`, 'm'))[0];
 const section = (() => {
   const start = html.indexOf('// ---- Who has access (piece 3) ----');
-  const end = html.indexOf('async function renderShareLinks() {');
+  const end = html.indexOf('// ---- My links ----');
   if (start < 0 || end < start) throw new Error('Who has access section not found');
   return html.slice(start, end);
 })();

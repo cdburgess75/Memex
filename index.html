@@ -2155,6 +2155,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-link-meta { color: var(--ink-soft); font-size: 13px; line-height: 1.45; margin-top: 4px; }
 .file-link-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); background: var(--accent-wash); color: var(--accent); }
 .file-link-status.expired, .file-link-status.revoked { background: #FDE7E9; color: #A4262C; }
+.file-link-status.paused { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--paper)); }
 html.dark.file-home-mode body { background: var(--paper); background-image: none; }
 html.dark .file-home-shell { background: var(--paper); color: var(--ink); }
 html.dark .file-home-nav { background: var(--surface); border-color: var(--rule); }
@@ -2258,6 +2259,7 @@ html.dark .file-preview::before { opacity: 0.65; }
 html.dark .file-link-status { background: var(--accent-wash); color: var(--accent); }
 html.dark .file-link-status.expired,
 html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
+html.dark .file-link-status.paused { color: var(--warning); background: color-mix(in srgb, var(--warning) 16%, var(--paper)); }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
   .file-home-main { padding: 28px 24px 40px; }
@@ -8177,7 +8179,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
-        ${fileNavButton('Links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
+        ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
       ${connMountsNavHtml()}
@@ -8584,8 +8586,8 @@ async function renderHome() {
     let shares = [];
     try { const sd = await apiGet('/files/shares'); shares = sd.shares || (Array.isArray(sd) ? sd : []); } catch (e) { shares = []; }
     const soon = Date.now() + 7 * 86400000;
-    const attention = shares.filter(s => { const t = s.expires_at ? new Date(s.expires_at).getTime() : 0; return t && t > Date.now() && t < soon && (s.status || 'active') !== 'revoked'; });
-    const liveShares = shares.filter(s => (s.status || 'active') !== 'revoked' && (!s.expires_at || new Date(s.expires_at).getTime() > Date.now()));
+    const attention = shares.filter(s => { const t = s.expires_at ? new Date(s.expires_at).getTime() : 0; return t && t < soon && (s.state === 'active' || s.state === 'paused'); });
+    const liveShares = shares.filter(s => s.state === 'active');
 
     const name = String(currentUser?.name || '').trim() || String(currentUser?.email || 'there').split('@')[0];
     const hr = new Date().getHours();
@@ -8647,7 +8649,7 @@ async function renderHome() {
       hubs.length ? hubs.map(hubCard).join('') : `<p class="wdash-empty">No shared libraries yet.</p>`
     }</section>`;
 
-    const attentionWidget = attention.length ? `<section class="wdash-w">${wdashHead('Needs attention','attention')}${attention.map(s => { const nm = String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
+    const attentionWidget = attention.length ? `<section class="wdash-w">${wdashHead('Needs attention','attention')}${attention.map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
 
     const notifWidget = `<section class="wdash-w">${wdashHead('Notifications','notifications')}${
       notifList.length
@@ -8665,7 +8667,7 @@ async function renderHome() {
 
     const sharesWidget = `<section class="wdash-w">${wdashHead('Active links','links')}${
       liveShares.length
-        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} active link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
+        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} active link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
         : `<p class="wdash-empty">No active links yet.</p>`
     }</section>`;
 
@@ -9379,32 +9381,6 @@ async function revokeShareLink(shareId) {
   }
 }
 
-function shareLinkStatus(share) {
-  if (share.revoked_at) return { label: 'Revoked', className: 'revoked' };
-  if (share.document_deleted) return { label: 'File deleted', className: 'expired' };
-  if (share.expires_at && new Date(share.expires_at).getTime() <= Date.now()) return { label: 'Expired', className: 'expired' };
-  return { label: 'Active', className: 'active' };
-}
-
-function shareLinkCard(share) {
-  const status = shareLinkStatus(share);
-  const fileName = share.document_name || 'Unknown file';
-  const canRevoke = status.label === 'Active';
-  return `<div class="file-link-card ${status.className !== 'active' ? 'file-share-revoked' : ''}">
-    <div>
-      <div class="file-link-title" title="${esc(fileName)}">${esc(fileName)}</div>
-      <div class="file-link-meta">
-        Created ${shareDate(share.created_at)} by ${esc(share.created_by_email || 'unknown')}<br>
-        Expires: ${shareDate(share.expires_at)} · Opens: ${share.access_count || 0}${share.last_accessed_at ? ` · Last opened: ${shareDate(share.last_accessed_at)}` : ''}${share.has_password ? ' · Password protected' : ''}
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <span class="file-link-status ${status.className}">${status.label}</span>
-      ${canRevoke ? `<button class="file-library-tool" data-doc="${share.document_id}" data-share="${share.id}" onclick="revokeShareFromLinks(this.dataset.doc, this.dataset.share)">Revoke</button>` : ''}
-    </div>
-  </div>`;
-}
-
 // ---- Shared with me ----
 // Libraries, folders and files other people have shared with you, or with a group you're
 // in, across every library, as Seafile has it. The server builds it
@@ -9940,31 +9916,97 @@ function openLibraryAccess({ libraryId, folderPath = '' }) {
   mountAccessList(m.el.querySelector('.acc-mount'), { kind: folderPath ? 'folder' : 'library', libraryId: lib.id, path: folderPath });
 }
 
-async function renderShareLinks() {
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Share links</h2><button class="file-library-tool" onclick="renderShareLinks()">Refresh</button></div><div class="file-links-list" id="file-links-list">${emptyState('Loading share links', 'Collecting active, expired, and revoked links.')}</div>`, 'files', 'links');
-  const list = document.getElementById('file-links-list');
-  if (!list) return;
-  try {
-    const data = await apiGet('/files/shares');
-    const shares = data.shares || [];
-    if (!shares.length) {
-      list.innerHTML = emptyState('No share links yet', 'Select a file, choose Share, and create your first link.');
-      return;
-    }
-    list.innerHTML = shares.map(shareLinkCard).join('');
-  } catch (e) {
-    list.innerHTML = emptyState('Could not load share links', e.message || 'Try refreshing this view.');
+// ---- My links ----
+// The public links you've made, each with the state its public route really gives it
+// (GET /api/files/shares, lib/linkList). Admins can switch to every link in Depot.
+const LINK_STATE = {
+  active: ['Active', 'active'], paused: ['Paused', 'paused'], expired: ['Expired', 'expired'],
+  revoked: ['Revoked', 'revoked'], file_deleted: ['File deleted', 'expired'], files_gone: ['Files deleted', 'expired'],
+};
+const LINK_GROUPS = [['active', 'Active'], ['paused', 'Paused'], ['expired', 'Expired'], ['revoked', 'Revoked'], ['gone', 'Deleted']];
+const linkGroup = (state) => (state === 'file_deleted' || state === 'files_gone' ? 'gone' : state);
+let _linksScope = 'mine';
+let _linksShow = new Set(['active', 'paused']);
+let _linksData = null;
+function myLinkCard(x, kind, scope) {
+  const [label, cls] = LINK_STATE[x.state] || ['Active', 'active'];
+  const title = kind === 'folder' ? `Folder “${accLast(x.folder_path)}” (${x.file_count} file${x.file_count === 1 ? '' : 's'})`
+    : x.name_hidden ? 'A file you can no longer open' : accLast(x.document_name) || 'A file';
+  const place = kind === 'folder' ? [x.library_name, x.folder_path].filter(Boolean).join(' / ')
+    : x.name_hidden ? '' : [x.library_name, String(x.document_name || '').split('/').slice(0, -1).join('/')].filter(Boolean).join(' / ');
+  const meta = [
+    place,
+    x.recipient_email ? `sent to ${x.recipient_email}` : '',
+    x.expires_at ? `expires ${new Date(x.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : 'never expires',
+    `opened ${x.access_count || 0} time${x.access_count === 1 ? '' : 's'}`,
+    x.has_password ? 'password' : '', x.allow_upload ? 'can send files back' : '',
+    kind === 'folder' && x.state === 'active' ? `${x.serving} still served` : '',
+    scope === 'all' ? `made by ${x.created_by_me ? 'you' : x.created_by_email || 'someone'}` : '',
+  ].filter(Boolean).join(' · ');
+  let note = '';
+  if (x.state === 'paused') {
+    note = x.created_by_me
+      ? (x.paused_reason === 'creator_view_only' ? "Your account can only view files, so the link doesn't open. Revoke it so it can't start working again."
+        : `You can no longer edit ${kind === 'folder' ? 'these files' : 'this file'}, so the link doesn't open. Revoke it so it can't start working again.`)
+      : "Whoever made it can no longer publish these files, so the link doesn't open. Revoke it so it can't start working again.";
   }
+  const canRevoke = x.state === 'active' || x.state === 'paused';
+  return `<div class="file-link-card ${cls === 'active' ? '' : 'file-share-revoked'}"><div>`
+    + `<div class="file-link-title" title="${escAttr(title)}">${esc(title)}</div>`
+    + `<div class="file-link-meta">${esc(meta)}</div>${note ? `<div class="file-link-meta">${esc(note)}</div>` : ''}</div>`
+    + `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><span class="file-link-status ${cls}">${esc(label)}</span>`
+    + (canRevoke ? `<button class="file-library-tool" type="button" data-link-kind="${kind}" data-link-id="${escAttr(String(x.id))}" data-link-doc="${escAttr(String(x.document_id || ''))}" data-link-name="${escAttr(kind === 'folder' ? accLast(x.folder_path) : (x.name_hidden ? '' : accLast(x.document_name)))}">Revoke</button>` : '')
+    + `</div></div>`;
 }
-
-async function revokeShareFromLinks(documentId, shareId) {
-  if (!documentId || !shareId) return;
+function renderMyLinksList() {
+  const list = document.getElementById('file-links-list');
+  if (!list || !_linksData) return;
+  const all = [...(_linksData.shares || []).map(x => ({ x, kind: 'file' })), ...(_linksData.folder_links || []).map(x => ({ x, kind: 'folder' }))];
+  const counts = Object.fromEntries(LINK_GROUPS.map(([g]) => [g, all.filter(i => linkGroup(i.x.state) === g).length]));
+  const chips = `<div class="acc-chips" role="group" aria-label="Show links">${LINK_GROUPS.filter(([g]) => counts[g] || g === 'active').map(([g, t]) =>
+    `<button type="button" class="acc-chip${_linksShow.has(g) ? ' active' : ''}" aria-pressed="${_linksShow.has(g)}" data-links-chip="${g}">${t} (${counts[g]})</button>`).join('')}</div>`;
+  const shown = all.filter(i => _linksShow.has(linkGroup(i.x.state)));
+  if (!all.length) {
+    list.innerHTML = _linksScope === 'all' ? emptyState('No public links in Depot yet', '')
+      : emptyState("You haven't made any links yet", 'Select a file or folder, choose Share, and create a link.');
+    return;
+  }
+  list.innerHTML = chips + (shown.length ? shown.map(i => myLinkCard(i.x, i.kind, _linksScope)).join('') : emptyState('No links in this view', 'Choose another status above.'));
+}
+async function renderShareLinks(scope = _linksScope) {
+  const isAdmin = currentUser?.role === 'admin';
+  _linksScope = isAdmin && scope === 'all' ? 'all' : 'mine';
+  const seg = isAdmin ? `<div class="share-seg" role="tablist" aria-label="Whose links" style="margin-bottom:12px"><button type="button" class="share-seg-opt${_linksScope === 'mine' ? ' active' : ''}" role="tab" aria-selected="${_linksScope === 'mine'}" data-links-scope="mine">My links</button><button type="button" class="share-seg-opt${_linksScope === 'all' ? ' active' : ''}" role="tab" aria-selected="${_linksScope === 'all'}" data-links-scope="all">All links (admin)</button></div>` : '';
+  const sub = _linksScope === 'all'
+    ? "Every public link in Depot, whoever made it. You can see these because you're an admin."
+    : "Public links you've made. Anyone who has one can open the file or folder without signing in, until it expires or you revoke it.";
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">${_linksScope === 'all' ? 'All links' : 'My links'}</h2><button class="file-library-tool" type="button" data-links-refresh>Refresh</button></div>`
+    + `<p class="file-home-sub swm-sub">${esc(sub)}</p>${seg}<div class="file-links-list" id="file-links-list">${emptyState('Loading links', '')}</div>`, 'files', 'links');
+  const panel = document.getElementById('panel');
+  panel.onclick = async (e) => {
+    const t = e.target;
+    const sc = t.closest('[data-links-scope]');
+    if (sc) { renderShareLinks(sc.dataset.linksScope); return; }
+    if (t.closest('[data-links-refresh]')) { renderShareLinks(); return; }
+    const chip = t.closest('[data-links-chip]');
+    if (chip) { const g = chip.dataset.linksChip; if (_linksShow.has(g)) _linksShow.delete(g); else _linksShow.add(g); renderMyLinksList(); return; }
+    const rv = t.closest('[data-link-id]');
+    if (rv) {
+      if (!await confirmKeyRemoval(accessLinkWords({ name: rv.dataset.linkName || null }))) return;
+      try {
+        if (rv.dataset.linkKind === 'folder') await apiDelete(`/files/folder/links/${encodeURIComponent(rv.dataset.linkId)}`);
+        else await apiDelete(`/files/${encodeURIComponent(rv.dataset.linkDoc)}/shares/${encodeURIComponent(rv.dataset.linkId)}`);
+        toast('Link revoked');
+      } catch (err) { toast(groupErr(err, "Couldn't revoke it. Try again.")); }
+      renderShareLinks();
+    }
+  };
   try {
-    await apiDelete('/files/' + documentId + '/shares/' + shareId);
-    toast('Share link revoked');
-    await renderShareLinks();
+    _linksData = await apiGet(`/files/shares?scope=${_linksScope}`);
+    renderMyLinksList();
   } catch (e) {
-    toast('Revoke failed: ' + e.message);
+    const list = document.getElementById('file-links-list');
+    if (list) list.innerHTML = emptyState("Couldn't load links", e.message || 'Try refreshing this view.');
   }
 }
 
