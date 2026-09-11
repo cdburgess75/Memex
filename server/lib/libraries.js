@@ -184,9 +184,14 @@ async function listLibraries(user) {
 // The library, if the caller may see it in their list (null otherwise, or for an id
 // that is not a uuid).
 async function visibleLibrary(user, libraryId) {
-  if (!isUuid(libraryId)) return null;
-  const row = await db.queryOne(`${LISTING} AND v.id = $9`, [...listingParams(user), libraryId]);
+  const row = await visibleLibraryRow(user, libraryId);
   return row ? shapeLibrary(user, row) : null;
+}
+// The same, unshaped: also says WHY it is listed (no_members, shared, member_listed,
+// can_read_any) -- "who has access" tells someone listed only by the old rules so.
+async function visibleLibraryRow(user, libraryId) {
+  if (!isUuid(libraryId)) return null;
+  return db.queryOne(`${LISTING} AND v.id = $9`, [...listingParams(user), libraryId]);
 }
 
 // The creator owns the library (by user id, as with groups). Ownership is what lets
@@ -217,4 +222,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, listLibraries, visibleLibrary, shapeLibrary, createLibrary, resolveLibraryId, writeRight, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { defaultLibraryId, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, sharedFolderAt, listMembers, addMember, removeMember, info };

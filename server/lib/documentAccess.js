@@ -246,12 +246,17 @@ async function backfillOwnerGrants() {
 // it (user_roles.verified_email, kept current at every sign-in); otherwise the account
 // keeps what is granted to its id -- the files it owns -- and nothing matched by
 // address. Null when the account is unknown, which callers treat as no access.
-async function resolveActor(userId) {
+// `q` lets a caller read it inside its own transaction (lib/accessKeys' snapshot).
+async function resolveActor(userId, q = db) {
   if (!userId) return null;
   let row;
   try {
-    row = await db.queryOne('SELECT user_id, role, email, verified_email FROM user_roles WHERE user_id = $1', [userId]);
+    row = await q.queryOne('SELECT user_id, role, email, verified_email FROM user_roles WHERE user_id = $1', [userId]);
   } catch { return null; }
+  return actorOf(row);
+}
+// A user_roles row as the account acts: its verified address, if any, is its address.
+function actorOf(row) {
   if (!row) return null;
   return {
     id: row.user_id,
@@ -332,6 +337,7 @@ module.exports = {
   backfillOwnerGrants,
   searchAccessibleDocuments,
   resolveActor,
+  actorOf,
   readersAmong,
   getAccessibleDocument,
   grantOwnerAdmin,

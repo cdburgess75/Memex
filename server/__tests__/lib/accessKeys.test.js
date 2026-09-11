@@ -29,6 +29,7 @@ const fileRow = (over = {}) => ({
 function answer({ shares = [], files = [] } = {}) {
   mockClient.query.mockImplementation(async (sql) => {
     if (/^SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY$/.test(sql)) return { rows: [] };
+    if (sql === 'SET LOCAL jit = off') return { rows: [] };
     if (/FROM library_grants g/.test(sql)) return { rows: shares };
     if (/FROM document_acl acl/.test(sql)) return { rows: files };
     throw new Error(`unexpected statement: ${sql.slice(0, 80)}`);
@@ -48,23 +49,24 @@ describe('who gets a list', () => {
     await accessKeys.sharedWithMe(ME);
     expect(db.withTransaction).toHaveBeenCalledTimes(1);
     expect(statements()[0]).toBe('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    expect(statements()).toHaveLength(3);
+    expect(statements()[1]).toBe('SET LOCAL jit = off');
+    expect(statements()).toHaveLength(4);
   });
   test("the caller's own parameters, then the write and admin sets", async () => {
     await accessKeys.sharedWithMe(ME);
     const expected = [...documentAccess.userParams(ME, 'read'), documentAccess.permissionsFor('write'), documentAccess.permissionsFor('admin')];
-    expect(mockClient.query.mock.calls[1][1]).toEqual(expected);
     expect(mockClient.query.mock.calls[2][1]).toEqual(expected);
+    expect(mockClient.query.mock.calls[3][1]).toEqual(expected);
   });
   test("shares use the rule's own subject match and skip libraries the caller owns", async () => {
     await accessKeys.sharedWithMe(ME);
-    const sql = statements()[1];
+    const sql = statements()[2];
     expect(sql).toContain(documentAccess.shareSubject('g', documentAccess.refsAt(1)));
     expect(sql).toContain('l.owner_id IS DISTINCT FROM $2');
   });
   test('files are kept only where the rule itself lets the caller in', async () => {
     await accessKeys.sharedWithMe(ME);
-    const sql = statements()[2];
+    const sql = statements()[3];
     expect(sql).toContain(documentAccess.condition('m', 1));
     expect(sql).toMatch(/NOT \(NOT d\.library_scoped AND d\.uploaded_by IS NOT DISTINCT FROM \$2\)/);
     expect(sql).toMatch(/LIMIT 501/);
@@ -152,5 +154,103 @@ describe('the helpers', () => {
   test('the door probe is library content with no id and no uploader, a folder ending in "/"', () => {
     expect(accessKeys.probe('l.id', 'g.folder_path')).toMatch(/NULL::uuid AS id, NULL::uuid AS uploaded_by, true AS library_scoped/);
     expect(accessKeys.probe('l.id', 'g.folder_path')).toContain("CASE WHEN g.folder_path = '' THEN '' ELSE g.folder_path || '/' END AS name");
+  });
+});
+
+describe('reconcile: the rule is the truth', () => {
+  const r = (key, level, relation = 'door') => ({ key, kind: 'library_share', relation, level });
+  beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
+  afterEach(() => console.error.mockRestore());
+  test('reasons that explain the level exactly are left alone, and nothing is logged', () => {
+    const out = accessKeys.reconcile('write', [r('ls:1', 'write'), r('ls:2', 'read')], {});
+    expect(out).toEqual({ reasons: [r('ls:1', 'write'), r('ls:2', 'read')], drift: false });
+    expect(console.error).not.toHaveBeenCalled();
+  });
+  test('a level the reasons cannot explain is named, never hidden', () => {
+    const out = accessKeys.reconcile('admin', [r('ls:1', 'write')], { door: 'library', id: 'L', user_id: 'U' });
+    expect(out.drift).toBe(true);
+    expect(out.reasons.at(-1)).toEqual({ key: null, kind: 'unexplained', relation: 'door', level: 'admin' });
+    expect(console.error).toHaveBeenCalledWith('access-keys drift', { door: 'library', id: 'L', user_id: 'U', gate: 'admin', best: 'write' });
+  });
+  test('reasons claiming more than the rule gives are capped at it', () => {
+    const out = accessKeys.reconcile('read', [r('ls:1', 'write'), r('fs:2', 'read')], {});
+    expect(out.reasons.map(x => x.level)).toEqual(['read', 'read']);
+    expect(out.drift).toBe(true);
+  });
+  test('reasons for someone the rule keeps out all go', () => {
+    expect(accessKeys.reconcile(null, [r('ls:1', 'read')], {}).reasons).toEqual([]);
+  });
+});
+
+describe('impactOf: what removing a key does', () => {
+  const person = (ref, level, reasons, extra = {}) => ({ ref, level, reasons, drift: false, ...extra });
+  const r = (key, level, relation = 'door', more = {}) => ({ key, kind: key.startsWith('fs') ? 'folder_share' : 'library_share', relation, level, ...more });
+  test('someone with no other way in loses access; someone with one keeps the best of the rest', () => {
+    const people = [
+      person('u:a', 'write', [r('ls:1', 'write')]),
+      person('u:b', 'write', [r('ls:1', 'write'), r('ls:2', 'read')]),
+      person('u:c', 'read', [r('ls:9', 'read')]),
+    ];
+    expect(accessKeys.impactOf(people, 'ls:1')).toEqual({
+      lose: ['u:a'], keep: [{ ref: 'u:b', before: 'write', after: 'read', via: ['ls:2'] }], unknown: [], admins_unaffected: 0,
+    });
+  });
+  test('the admin reason never goes', () => {
+    const people = [person('u:admin', 'admin', [{ key: 'admins', kind: 'admin', relation: 'door', level: 'admin' }, r('ls:1', 'write')])];
+    expect(accessKeys.impactOf(people, 'ls:1').keep).toEqual([{ ref: 'u:admin', before: 'admin', after: 'admin', via: ['admins'] }]);
+  });
+  test('lowering a share to Read-only keeps them, at read, unless something else gives more', () => {
+    const people = [person('u:a', 'write', [r('ls:1', 'write')]), person('u:b', 'write', [r('ls:1', 'write'), r('fs:2', 'write', 'above')])];
+    const out = accessKeys.impactOf(people, 'ls:1', { lowerTo: 'read' });
+    expect(out.lose).toEqual([]);
+    expect(out.keep).toEqual([{ ref: 'u:a', before: 'write', after: 'read', via: [] }, { ref: 'u:b', before: 'write', after: 'write', via: ['fs:2'] }]);
+  });
+  test('a person whose reasons disagree with the rule is "unknown", never a promise', () => {
+    const people = [person('u:a', 'write', [r('ls:1', 'write')], { drift: true })];
+    expect(accessKeys.impactOf(people, 'ls:1')).toMatchObject({ lose: [], keep: [], unknown: ['u:a'] });
+  });
+  test('a share of a folder inside: the door, or another share at or above that folder, keeps it open', () => {
+    const inside = (key, path, level) => r(key, level, 'inside', { folder_path: path });
+    const people = [
+      person('u:door', 'read', [r('ls:1', 'read'), inside('fs:5', 'A/B', 'write')]),
+      person('u:above', null, [inside('fs:6', 'A', 'read'), inside('fs:5', 'A/B', 'write')]),
+      person('u:beside', null, [inside('fs:7', 'A/C', 'write'), inside('fs:5', 'A/B', 'write')]),
+    ];
+    expect(accessKeys.impactOf(people, 'fs:5')).toEqual({
+      lose: ['u:beside'],
+      keep: [{ ref: 'u:door', before: 'write', after: 'read', via: ['ls:1'] }, { ref: 'u:above', before: 'write', after: 'read', via: ['fs:6'] }],
+      unknown: [], admins_unaffected: 0,
+    });
+  });
+  test('admins it lets in are counted, not named', () => {
+    expect(accessKeys.impactOf([], 'ls:1', { adminsAdmitted: 2 }).admins_unaffected).toBe(2);
+  });
+});
+
+describe('stillOpen and shareRelation', () => {
+  const file = (over = {}) => ({ id: 'f', name: 'A/B/x.pdf', library_scoped: true, uploaded_by: 'up', ...over });
+  const p = (over = {}) => ({ user_id: 'u', is_admin_account: false, door_level: null, reasons: [], ...over });
+  test('a file given one by one stays open through the door, a folder share above it, or another grant', () => {
+    expect(accessKeys.stillOpen(p({ door_level: 'read' }), file())).toBe(true);
+    expect(accessKeys.stillOpen(p({ reasons: [{ kind: 'folder_share', relation: 'inside', folder_path: 'A' }] }), file())).toBe(true);
+    expect(accessKeys.stillOpen(p({ reasons: [{ kind: 'folder_share', relation: 'inside', folder_path: 'A/B x' }] }), file())).toBe(false);
+    expect(accessKeys.stillOpen(p(), file(), () => true)).toBe(true);
+    expect(accessKeys.stillOpen(p(), file())).toBe(false);
+  });
+  test("library keys don't reach a personal file; its uploader and admins do", () => {
+    expect(accessKeys.stillOpen(p({ door_level: 'write' }), file({ library_scoped: false }))).toBe(false);
+    expect(accessKeys.stillOpen(p({ user_id: 'up' }), file({ library_scoped: false }))).toBe(true);
+    expect(accessKeys.stillOpen(p({ is_admin_account: true }), file({ library_scoped: false }))).toBe(true);
+  });
+  test('where a share sits relative to the door', () => {
+    const lib = { kind: 'library', path: '' };
+    const folder = { kind: 'folder', path: 'A/B' };
+    expect(accessKeys.shareRelation(lib, '')).toBe('door');
+    expect(accessKeys.shareRelation(lib, 'A')).toBe('inside');
+    expect(accessKeys.shareRelation(folder, '')).toBe('above');
+    expect(accessKeys.shareRelation(folder, 'A')).toBe('above');
+    expect(accessKeys.shareRelation(folder, 'A/B')).toBe('at');
+    expect(accessKeys.shareRelation(folder, 'A/B/C')).toBe('inside');
+    expect(accessKeys.shareRelation({ kind: 'file' }, 'A')).toBe('above');
   });
 });
