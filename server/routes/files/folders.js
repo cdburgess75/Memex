@@ -18,7 +18,6 @@ const libraries = require('../../lib/libraries');
 const storage = require('../../lib/storage');
 const notifications = require('../../lib/notifications');
 const emailEvents = require('../../lib/emailEvents');
-const { actingAs } = require('../../lib/email');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
@@ -119,9 +118,11 @@ const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploade
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
-    if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // A new folder inside an existing (or shared) one keeps that folder's name exactly;
+    // only the new part is named the way new folders are.
+    const folderPath = await destinationFolder(req.body?.path, libraryId, req.user);
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
     const dest = await destinationRight(res, req.user, libraryId, folderPath);
     if (!dest) return;
     const markerName = `${folderPath}/.keep`;
@@ -242,20 +243,25 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     if (await refuseIfShared(res, srcLibraryId, folderPath)) return;
     if (await refuseIfShared(res, libraryId, folderPath)) return;
-    // Library content never moves into a library the caller can write to only under the
-    // old open-library rule ($11): it would leave the library it was shared through for
-    // one whose owner then holds it. Those files stay where they are, and are counted
-    // (kept) so the app can say why.
+    // Library content belongs to its library: taking it to ANOTHER library hands it to
+    // that library's owner and ends its shares, so only whoever manages the source (its
+    // owner while a contributor, or an admin) may, and never into a library held only
+    // under the old open rule ($11). Anyone else's move leaves it where it is, counted
+    // (kept) so the app can say why -- they can still copy it.
+    const src = await db.queryOne('SELECT owner_id FROM libraries WHERE id = $1', [srcLibraryId]);
+    const managesSource = req.user.role === 'admin'
+      || (req.user.role === 'contributor' && !!src?.owner_id && String(src.owner_id) === String(req.user.id));
+    const contentMoves = String(srcLibraryId) === String(libraryId) || (managesSource && dest.right !== 'legacy');
     const rows = await db.query(
       `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
          AND (NOT d.library_scoped OR $11::boolean)
        RETURNING d.id`,
       [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id, dest.right !== 'legacy']
+       dest.scoped, req.user.id, contentMoves]
     );
     let kept = 0;
-    if (dest.right === 'legacy') {
+    if (!contentMoves) {
       const left = await db.queryOne(
         `SELECT count(*)::int AS n FROM documents d
          WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $7 AND d.library_scoped
@@ -474,6 +480,7 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
        JOIN documents d ON d.id = acl.document_id
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 2)}
          AND lower(acl.subject_id) <> lower($${2 + documentAccess.userParams(req.user, 'admin').length})
+         AND NOT (d.library_scoped AND lower(acl.subject_id) IS NOT DISTINCT FROM d.uploaded_by::text)
        GROUP BY acl.subject_id
        ORDER BY subject_email`,
       [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase(), libraryId]

@@ -118,7 +118,7 @@ function toMarkdown(b) {
   }
   lines.push('');
   if (ar.pendingShares && ar.pendingShares.length) {
-    lines.push('Shared with addresses that have no verified account yet (they get this access once they sign in with it verified):');
+    lines.push('Shared with addresses that have no verified account (they get this access once they sign in with that address verified):');
     lines.push('');
     for (const p of ar.pendingShares) lines.push(`- ${esc(p.email)}: ${list([...(p.libraryAccess || []), ...(p.folderAccess || [])])}`);
     lines.push('');

@@ -151,22 +151,23 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
         const existing = await shares.findShare(lib.id, folderPath, { email, groupId: group?.id });
         return res.status(409).json({ error: `Already shared with ${email || group.name}. Change the level in the list.`, share: existing });
       }
-      if (e && e.code === '23503') return res.status(404).json({ error: email ? 'Library not found' : 'Group not found' });
+      if (e && e.code === '23503') return res.status(404).json({ error: email ? 'Library not found' : 'That library or group no longer exists' });
       throw e;
     }
     await audit(req, 'library_shared', `${where(lib, folderPath)} -> ${email ? `user ${q(email)}` : `group ${group.id} ${q(group.name)}`} ${permission} by ${req.user.id}`);
 
     // Tell them. A person: in-app and by email. A group: in-app, to each member.
     const sharer = actingAs(req.user);
-    const what = folderPath ? `the folder "${folderPath.split('/').pop()}" in ${lib.name}` : `the library "${lib.name}"`;
+    const oneLine = (v) => String(v || '').replace(/\s+/g, ' ').trim(); // names go into mail text
+    const what = folderPath ? `the folder "${oneLine(folderPath.split('/').pop())}" in ${oneLine(lib.name)}` : `the library "${oneLine(lib.name)}"`;
     const title = `${sharer.label} shared ${folderPath ? 'a folder' : 'a library'} with you`;
     const bodyText = `${what} · ${LEVEL[permission]}`;
     const me = String(req.user.email || '').toLowerCase();
     const recipients = email ? [email] : (await groups.listMembers(group.id)).map(m => String(m.member_email || '').toLowerCase());
     for (const to of [...new Set(recipients)].filter(a => a && a !== me)) {
-      try {
-        await notifications.create({ userEmail: to, type: 'share_granted', title, body: bodyText, refType: 'library', refId: lib.id });
-      } catch (e) { console.error('notification (library share_granted) failed:', e.message); }
+      // Not awaited: a large group must not hold up the answer (each notice is best-effort).
+      notifications.create({ userEmail: to, type: 'share_granted', title, body: bodyText, refType: 'library', refId: lib.id })
+        .catch(e => console.error('notification (library share_granted) failed:', e.message));
       if (email) {
         emailEvents.send('share_granted', {
           to, subject: title,
@@ -209,7 +210,7 @@ router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'),
     // Only the request that removed the row records it; a concurrent second delete 404s.
     const removed = await shares.deleteShare(lib.id, share.id);
     if (!removed) return res.status(404).json({ error: 'Share not found' });
-    await audit(req, 'library_unshared', `${where(lib, share.folder_path)} -> ${who(share)} ${share.permission} by ${req.user.id}`);
+    await audit(req, 'library_unshared', `${where(lib, share.folder_path)} -> ${who(share)} ${removed.permission} by ${req.user.id}`);
     res.json({ ok: true });
   } catch (e) { serverError(res, e); }
 });

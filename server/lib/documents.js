@@ -77,9 +77,10 @@ function canonicalFolderPath(raw) {
   return path;
 }
 
-// Where something moved or renamed INTO a folder path lands. The longest leading part
-// of the path that is already a folder the caller can see in this library is kept
-// exactly as stored; only the rest -- folders this move brings into being -- is cleaned
+// Where something moved, renamed, uploaded or created INTO a folder path lands. The
+// longest leading part of the path that is already a folder the caller can see in this
+// library -- one holding a file they can read, or one shared with them -- is kept
+// exactly as stored; only the rest -- folders this brings into being -- is cleaned
 // the way any new folder name is (safeDocName). So a folder dropped on
 // "Smith & Co (2025)" lands inside it rather than beside it in a rewritten
 // "Smith _ Co _2025_", and a file and a folder moved together into a new "R&D" both
@@ -100,6 +101,11 @@ async function destinationFolder(raw, libraryId, user) {
        WHERE EXISTS (SELECT 1 FROM documents d
                      WHERE d.deleted_at IS NULL AND d.library_id = $2 AND starts_with(d.name, p || '/')
                        AND ${documentAccess.condition('d', 3)})
+          OR EXISTS (SELECT 1 FROM library_grants g
+                     WHERE g.library_id = $2 AND g.folder_path = p
+                       AND ((g.subject_type = 'user' AND g.subject_email = (SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $4))
+                         OR (g.subject_type = 'group' AND g.group_id IN (SELECT gm.group_id FROM group_members gm
+                              WHERE lower(gm.member_email) = (SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $4)))))
        ORDER BY char_length(p) DESC LIMIT 1`,
       [prefixes, libraryId, ...documentAccess.userParams(user, 'read')]
     );
@@ -155,13 +161,17 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   // else's file, owned by them, in a place the uploader can only look at. Conservative by design: a changed file has a different hash and is never
   // skipped, so nothing is ever silently dropped. Only computed for files up to the
   // text-extraction size, where we already have the bytes in hand (no extra read).
+  // Only into a file of the same kind: an upload meant as library content must not be
+  // folded into the uploader's older personal copy (which the library's shares never
+  // reach), nor a personal upload into library content.
   if (contentHash) {
     const existing = await db.queryOne(
       `SELECT ${DOCUMENT_COLUMNS} FROM documents d
        WHERE d.deleted_at IS NULL AND d.content_hash = $1 AND d.name = $2 AND d.library_id = $3
          AND ${documentAccess.condition('d', 4)}
+         AND d.library_scoped = $9
        LIMIT 1`,
-      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'write')]
+      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'write'), !!libraryScoped]
     );
     if (existing) {
       await storage.del(storagePath).catch(() => {}); // discard the redundant blob

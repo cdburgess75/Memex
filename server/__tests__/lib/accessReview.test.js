@@ -149,6 +149,6 @@ describe('shares in the review', () => {
   test('the CSV carries every new column, and the pending addresses as rows', () => {
     const csv = toCsv(r);
     expect(csv).toMatch(/^ann@x\.com,Ann Smith,contributor,[^,]*,yes,Clients,"?Shared, no members \(Read-Write, direct\)"?/m);
-    expect(csv).toMatch(/^new@outside\.com,,no account yet,,no,,,/m);
+    expect(csv).toMatch(/^new@outside\.com,,no verified account,,no,,,/m);
   });
 });

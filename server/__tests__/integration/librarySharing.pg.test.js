@@ -645,4 +645,134 @@ suite('library sharing groundwork against real Postgres', () => {
       expect(res.status).toBe(410);
     });
   });
+
+  // Release 4, after review: moving library content out, uploads into shared folders
+  // with unusual names, and who still sees a library listed.
+  describe('sharing: moving out, uploading in, listing (real SQL)', () => {
+    const jwt = require('jsonwebtoken');
+    const documentAccess = require('../../lib/documentAccess');
+    const shares = require('../../lib/libraryShares');
+    const LM = 'aaaaaaaa-0000-4000-8000-0000000000f1';       // owned by MOWN, shared
+    const LOTHER = 'aaaaaaaa-0000-4000-8000-0000000000f2';   // owned by MOWN, not shared
+    const LOPEN2 = 'aaaaaaaa-0000-4000-8000-0000000000f3';   // no owner, members, shares
+    const LMEM2 = 'aaaaaaaa-0000-4000-8000-0000000000f4';    // members-only (not the stranger)
+    const who = (n, role = 'contributor', email = `m${n}@move.com`, verified = email) =>
+      ({ id: `f${n}f${n}f${n}f${n}-0000-4000-8000-00000000000${n}`, email, role, verified });
+    const MOWN = who(1), MRW = who(2), MFOLD = who(3), MVIEW = who(4, 'viewer'), MSTR = who(5), MCLAIM = who(6, 'contributor', 'victim@move.com', 'mclaim@move.com');
+    const as = (u) => { jwt.verify.mockReturnValue({ sub: u.id, email: u.email, email_verified: !!u.verified }); return request(app); };
+    const auth = (r) => r.set('Authorization', 'Bearer t');
+    const docs = {};
+    const add = async (key, name, owner, lib, scoped) => {
+      docs[key] = (await one(`INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id, library_scoped)
+        VALUES ($1, 1, 'text/plain', $2, $3, $4, $5, $6) RETURNING id`, [name, 'p/m/' + key, owner.id, owner.email, lib, scoped])).id;
+      await documentAccess.grantOwnerAdmin(docs[key], owner);
+    };
+    const reads = async (u, key) => !!(await documentAccess.getAccessibleDocument({ id: docs[key], user: { id: u.id, role: u.role, email: u.email, emailVerified: !!u.verified }, required: 'read', columns: 'd.id' }));
+    const libOf = async (key) => (await one('SELECT library_id FROM documents WHERE id = $1', [docs[key]])).library_id;
+
+    beforeAll(async () => {
+      for (const u of [MOWN, MRW, MFOLD, MVIEW, MSTR, MCLAIM]) {
+        await db.query('INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, $3, $4)', [u.id, u.email, u.role, u.verified || null]);
+      }
+      await db.query(`INSERT INTO libraries (id, name, owner_id, owner_email) VALUES
+        ($1, 'Moves', $5, $6), ($2, 'Owner other', $5, $6), ($3, 'Open two', NULL, NULL), ($4, 'Members two', NULL, NULL)`, [LM, LOTHER, LOPEN2, LMEM2, MOWN.id, MOWN.email]);
+      await db.query('INSERT INTO library_members (library_id, subject_email) VALUES ($1, $2)', [LMEM2, MOWN.email]);
+      await add('plans', 'Plans/p.txt', MOWN, LM, true);
+      await add('loose', 'Loose/l.txt', MOWN, LM, true);
+      await add('smith', 'Smith & Co (2025)/a.txt', MOWN, LM, true);
+      await add('smithPersonal', 'Smith & Co (2025)/mine.txt', MSTR, LM, false); // MSTR's own, from before sharing
+      await add('private', 'Private/only-mine.txt', MSTR, LM, false);
+      await add('otherSmith', 'Smith & Co (2025)/b.txt', MOWN, LOTHER, true);
+      await add('granted', 'Plans/for-viewer.txt', MOWN, LM, true);
+      await documentAccess.grantUserAccess(docs.granted, { email: MVIEW.email, permission: 'read', grantedBy: MOWN });
+      await shares.createShare({ libraryId: LM, folderPath: '', email: MRW.email, permission: 'write', user: MOWN });
+      await shares.createShare({ libraryId: LM, folderPath: 'Smith & Co (2025)', email: MFOLD.email, permission: 'write', user: MOWN });
+      await shares.createShare({ libraryId: LM, folderPath: '', email: 'victim@move.com', permission: 'read', user: MOWN });
+    });
+
+    test('a Read-Write sharee cannot carry library content off to a library of their own; the owner keeps it', async () => {
+      const mine = await auth(as(MRW).post('/api/libraries')).send({ name: 'Carried off' });
+      const t = await auth(as(MRW).post('/api/files/library-transfer')).send({ ids: [docs.plans], libraryId: mine.body.id, mode: 'move' });
+      expect(t.body).toMatchObject({ count: 0, kept: 1 });
+      const f = await auth(as(MRW).post('/api/files/folder/move')).send({ path: 'Loose', library_id: mine.body.id, source_library_id: LM });
+      expect(f.body).toMatchObject({ count: 0, kept: 1 });
+      expect([await libOf('plans'), await libOf('loose')]).toEqual([LM, LM]);
+      expect([await reads(MOWN, 'plans'), await reads(MOWN, 'loose')]).toEqual([true, true]);
+      // copying out is still allowed: the copy is theirs
+      const c = await auth(as(MRW).post('/api/files/library-transfer')).send({ ids: [docs.plans], libraryId: mine.body.id, mode: 'copy' });
+      expect(c.body.count).toBe(1);
+    });
+
+    test('the owner can move their library content to another library they own', async () => {
+      const t = await auth(as(MOWN).post('/api/files/library-transfer')).send({ ids: [docs.loose], libraryId: LOTHER, mode: 'move' });
+      expect(t.body).toMatchObject({ count: 1, kept: 0 });
+      expect(await libOf('loose')).toBe(LOTHER);
+      expect(await reads(MOWN, 'loose')).toBe(true);
+    });
+
+    test('a Read-Write folder sharee adds files inside a shared folder with an unusual name, exactly', async () => {
+      expect((await auth(as(MFOLD).post('/api/files/folder')).send({ path: 'Smith & Co (2025)/Q1 & Q2', library_id: LM })).body.path).toBe('Smith & Co (2025)/Q1 _ Q2');
+      const created = await auth(as(MFOLD).post('/api/files/create')).send({ name: 'Plan', type: 'md', folder: 'Smith & Co (2025)', library_id: LM });
+      expect(created.status).toBe(200);
+      expect(created.body.name).toBe('Smith & Co (2025)/Plan.md');
+      const row = await one('SELECT library_scoped FROM documents WHERE id = $1', [created.body.id]);
+      expect(row.library_scoped).toBe(true);
+      // and outside the shared folder they have no right at all
+      expect((await auth(as(MFOLD).post('/api/files/create')).send({ name: 'Nope', type: 'md', folder: 'Plans', library_id: LM })).status).toBe(403);
+    });
+
+    test("a folder share reaches library content in that folder of that library only", async () => {
+      expect(await reads(MFOLD, 'smith')).toBe(true);
+      expect(await reads(MFOLD, 'smithPersonal')).toBe(false); // someone's personal file in the shared folder
+      expect(await reads(MFOLD, 'otherSmith')).toBe(false);    // same folder name, another library
+    });
+
+    test('a share matches the verified address, never the address an account merely signs in with', async () => {
+      // MCLAIM signs in as victim@move.com, but Keycloak verified mclaim@move.com
+      expect(await reads(MCLAIM, 'plans')).toBe(false);
+      expect(await reads({ ...MCLAIM, verified: 'victim@move.com' }, 'plans')).toBe(false); // the token's claim alone changes nothing
+    });
+
+    test('someone given files one by one still sees the library listed once it is shared', async () => {
+      const lib = (await auth(as(MVIEW).get('/api/libraries'))).body.find(l => l.id === LM);
+      expect(lib).toMatchObject({ my_access: 'listed', add_right: null });
+      expect(await reads(MVIEW, 'granted')).toBe(true);
+    });
+
+    test('the old rules still list open and members-only libraries as before', async () => {
+      const mine = async (u) => (await auth(as(u).get('/api/libraries'))).body;
+      expect((await mine(MSTR)).find(l => l.id === LOPEN2)).toMatchObject({ my_access: 'listed', add_right: 'legacy' });
+      expect((await mine(MSTR)).find(l => l.id === LMEM2)).toBeUndefined();
+      expect((await mine(MOWN)).find(l => l.id === LMEM2)).toMatchObject({ my_access: 'listed', add_right: 'legacy' });
+    });
+
+    test("sharing a folder that holds only someone else's private files is 'not found'", async () => {
+      const res = await auth(as(MOWN).post(`/api/libraries/${LM}/shares`)).send({ email: 'x@y.com', permission: 'read', folder_path: 'Private' });
+      expect(res.status).toBe(404);
+    });
+
+    test('a level change made from a stale level changes nothing', async () => {
+      const s = (await shares.listShares(LM)).find(x => x.subject_email === MRW.email);
+      expect(await shares.setPermission(LM, s.id, 'read', 'read')).toBeNull(); // it is 'write' now
+      expect((await shares.getShare(LM, s.id)).permission).toBe('write');
+    });
+
+    test('an owner demoted to viewer can read their library but not change or share it', async () => {
+      await db.query("UPDATE user_roles SET role = 'viewer' WHERE user_id = $1", [MOWN.id]);
+      try {
+        const u = { ...MOWN, role: 'viewer' };
+        expect(await reads(u, 'plans')).toBe(true);
+        expect(!!(await documentAccess.getAccessibleDocument({ id: docs.plans, user: { id: u.id, role: 'viewer', email: u.email, emailVerified: true }, required: 'write', columns: 'd.id' }))).toBe(false);
+        expect((await auth(as(u).get('/api/libraries'))).body.find(l => l.id === LM)).toMatchObject({ can_manage: false, add_right: null });
+        expect((await auth(as(u).get(`/api/libraries/${LM}/shares`))).status).toBe(403);
+      } finally { await db.query("UPDATE user_roles SET role = 'contributor' WHERE user_id = $1", [MOWN.id]); }
+    });
+
+    test('the access review builds on the real schema and reports the shares', async () => {
+      const report = await require('../../lib/accessReview').build();
+      const rw = report.users.find(u => u.email === MRW.email);
+      expect(rw.libraryAccess).toContain('Moves (Read-Write, direct)');
+      expect(report.users.find(u => u.email === MCLAIM.email).libraryAccess).toEqual([]);
+    });
+  });
 });

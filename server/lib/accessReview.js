@@ -63,7 +63,9 @@ function assemble({ roles, profiles, memberships, libraries, lastActivity, share
       out.push({
         library: libName.get(String(g.library_id)) || String(g.library_id),
         folder: g.folder_path || '',
-        level: g.permission === 'write' && (role === 'contributor' || role === undefined) ? LEVEL.write : LEVEL.read,
+        // what the share gives THIS person: write only to a contributor (an admin has
+        // everything anyway; an address with no account yet is shown at the share's level)
+        level: g.permission === 'write' && (role === 'contributor' || role === 'admin' || role === undefined) ? LEVEL.write : LEVEL.read,
         via,
       });
     }
@@ -148,7 +150,7 @@ function toCsv(report) {
   }
   // Addresses with shares but no verified account yet, in the same columns.
   for (const p of report.pendingShares || []) {
-    lines.push([p.email, '', 'no account yet', '', 'no', '', p.libraryAccess.join('; '), p.folderAccess.join('; '), '', '', '', '']
+    lines.push([p.email, '', 'no verified account', '', 'no', '', p.libraryAccess.join('; '), p.folderAccess.join('; '), '', '', '', '']
       .map(csvCell).join(','));
   }
   return lines.join('\n');

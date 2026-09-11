@@ -4,6 +4,7 @@
 // migrations/0004_runtime_ensure_tables.sql, applied before the server listens.
 const db = require('./db');
 const { isUuid } = require('./groups');
+const documentAccess = require('./documentAccess');
 
 // What right, if any, the caller has to ADD or CHANGE files at `parentPath` ('' for the
 // library root) in a library -- decided before anything is stored or rewritten.
@@ -104,11 +105,13 @@ function shareSubject(t, idIdx) {
 }
 
 // Which libraries a caller sees in their list, and their relationship to each.
-// Parameters: $1 role, $2 the address they sign in with (lower-cased), $3 user id.
+// Parameters: $1 role, $2 the address they sign in with (lower-cased), $3 user id, then
+// the five userParams() at $4..$8 for "can open any file in it".
 // A library is listed to: an admin; its owner; everyone, while it has no members and
 // no shares (the old open rule -- a shared library leaves that list); a listed member
 // (the old rule, matched as the switcher always has); anyone it or a folder in it is
-// shared with; and anyone who still has personal files in it.
+// shared with; and anyone who can open any file in it -- their own personal files, or
+// files shared with them one by one -- so sharing a library never hides it from them.
 const LISTING = `
   SELECT v.* FROM (
     SELECT l.id, l.name, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
@@ -122,11 +125,11 @@ const LISTING = `
                      WHERE g.library_id = l.id AND g.folder_path <> '' AND ${shareSubject('g', 3)}
                      GROUP BY g.folder_path) f) AS folders,
            EXISTS (SELECT 1 FROM documents d
-                    WHERE d.library_id = l.id AND d.uploaded_by = $3 AND d.deleted_at IS NULL AND NOT d.library_scoped) AS has_personal
+                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 4)}) AS can_read_any
       FROM libraries l
   ) v
   WHERE ($1 = 'admin' OR v.owner_id = $3 OR (v.no_members AND NOT v.shared) OR v.member_listed
-         OR v.root_level IS NOT NULL OR v.folders IS NOT NULL OR v.has_personal)`;
+         OR v.root_level IS NOT NULL OR v.folders IS NOT NULL OR v.can_read_any)`;
 
 // One listed row, as the caller may see it.
 //   can_manage  may share it: an admin, or its owner while a contributor
@@ -149,7 +152,7 @@ function shapeLibrary(user, r) {
   else if (isOwner) myAccess = 'owner';
   else if (r.root_level) myAccess = level(r.root_level);
   else if (myFolders.length) myAccess = 'folders';
-  else if ((r.no_members && !r.shared) || r.member_listed || r.has_personal) myAccess = 'listed';
+  else if ((r.no_members && !r.shared) || r.member_listed || r.can_read_any) myAccess = 'listed';
   let addRight = null;
   if (admin) addRight = 'admin';
   else if (contributor) {
@@ -166,7 +169,8 @@ function shapeLibrary(user, r) {
   return out;
 }
 
-const listingParams = (user) => [user?.role || '', String(user?.email || '').toLowerCase(), user?.id || null];
+const listingParams = (user) => [user?.role || '', String(user?.email || '').toLowerCase(), user?.id || null,
+  ...documentAccess.userParams(user, 'read')];
 
 async function listLibraries(user) {
   const rows = await db.query(`${LISTING} ORDER BY v.created_at ASC`, listingParams(user));
@@ -177,7 +181,7 @@ async function listLibraries(user) {
 // that is not a uuid).
 async function visibleLibrary(user, libraryId) {
   if (!isUuid(libraryId)) return null;
-  const row = await db.queryOne(`${LISTING} AND v.id = $4`, [...listingParams(user), libraryId]);
+  const row = await db.queryOne(`${LISTING} AND v.id = $9`, [...listingParams(user), libraryId]);
   return row ? shapeLibrary(user, row) : null;
 }
 

@@ -138,6 +138,19 @@ describe('adding a share', () => {
     expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userEmail: 'tim@dts-tax.com', type: 'share_granted', refType: 'library', refId: LIB }));
     expect(emailEvents.send).toHaveBeenCalledWith('share_granted', expect.objectContaining({ to: 'tim@dts-tax.com', actorEmail: 'owner@corp.com' }));
   });
+  test("a sharer whose address isn't verified: the mail comes from the workspace and says so", async () => {
+    mockState.user = { ...OWNER, email: 'owner@corp.com', verifiedEmail: null, emailVerified: false };
+    await post({ email: 'tim@dts-tax.com', permission: 'read' });
+    const [, mail] = emailEvents.send.mock.calls[0];
+    expect(mail.actorEmail).toBeNull();
+    expect(mail.subject).toBe('owner@corp.com (unverified address) shared a library with you');
+    expect(notifications.create.mock.calls[0][0].title).toMatch(/\(unverified address\)/);
+  });
+  test('a library name cannot break lines in the mail', async () => {
+    mockState.lib = lib({ name: 'Clients\nBcc: x@evil.com' });
+    await post({ email: 'tim@dts-tax.com', permission: 'read' });
+    expect(emailEvents.send.mock.calls[0][1].text).toMatch(/the library "Clients Bcc: x@evil\.com"/);
+  });
   test('sharing with yourself tells nobody', async () => {
     await post({ email: OWNER.email, permission: 'read' });
     expect(notifications.create).not.toHaveBeenCalled();
@@ -193,6 +206,16 @@ describe('changing and removing a share', () => {
     mockState.share = null;
     expect((await put('write')).status).toBe(404);
     expect((await request(app()).put(`/api/libraries/${LIB}/shares/nope`).send({ permission: 'write' })).status).toBe(404);
+  });
+  test('a group share: changing and removing it are chained with the group named', async () => {
+    mockState.share = { id: SHARE, folder_path: 'Team', subject_type: 'group', subject_email: null, group_id: GROUP, group: { id: GROUP, name: 'Acctg' }, permission: 'write' };
+    shares.setPermission.mockResolvedValueOnce({ ...mockState.share, permission: 'read' });
+    await put('read');
+    shares.deleteShare.mockResolvedValueOnce({ id: SHARE, permission: 'read' });
+    await request(app()).delete(`/api/libraries/${LIB}/shares/${SHARE}`);
+    expect(events('library_share_changed')[0].detail).toBe(`library ${LIB} "Clients" "Team" -> group ${GROUP} "Acctg" write -> read by ${OWNER.id}`);
+    // the level recorded is the one the removed row had, not the one read before
+    expect(events('library_unshared')[0].detail).toBe(`library ${LIB} "Clients" "Team" -> group ${GROUP} "Acctg" read by ${OWNER.id}`);
   });
   test('removing it is chained once; a second, concurrent removal is a 404', async () => {
     expect((await request(app()).delete(`/api/libraries/${LIB}/shares/${SHARE}`)).status).toBe(200);
