@@ -55,7 +55,7 @@ const person = (email, name) => (email ? { email, name: name || null } : null);
 const probe = (libraryExpr, pathExpr) => `(SELECT NULL::uuid AS id, NULL::uuid AS uploaded_by, true AS library_scoped,
     ${libraryExpr} AS library_id, CASE WHEN ${pathExpr} = '' THEN '' ELSE ${pathExpr} || '/' END AS name)`;
 
-// Shared to me (Seafile's "Shared with me"): libraries, folders and files other people have shared with the caller
+// Shared with me: libraries, folders and files other people have shared with the caller
 // -- directly, or with a group they're in -- across every library. Their own libraries,
 // their own personal files and anything they reach only by being an admin are not
 // "shared with" them. Shares match only a verified address, so an account without one

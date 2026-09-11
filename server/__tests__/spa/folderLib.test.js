@@ -188,9 +188,9 @@ describe('library relationships and where you can add files', () => {
       { id: 'L3', name: 'Open', my_access: 'listed', can_manage: false },
     ] }));
     const menu = api.libraryMenuInnerHtml();
-    expect(menu.indexOf('My libraries')).toBeLessThan(menu.indexOf('Shared to me'));
-    expect(menu.indexOf('Shared to me')).toBeLessThan(menu.indexOf('Other libraries'));
-    expect(menu).toContain("setFileView('shared')\">See everything shared to you");
+    expect(menu.indexOf('My libraries')).toBeLessThan(menu.indexOf('Shared with me'));
+    expect(menu.indexOf('Shared with me')).toBeLessThan(menu.indexOf('Other libraries'));
+    expect(menu).toContain("setFileView('shared')\">See everything shared with you");
     expect((menu.match(/data-share-lib="L1"/g) || []).length).toBe(2); // the row, and "Share “Mine”…"
     expect(menu).not.toMatch(/data-share-lib="L2"/);
     expect(menu).toMatch(/Theirs<\/span><span class="pill">Read-Write<\/span>/);

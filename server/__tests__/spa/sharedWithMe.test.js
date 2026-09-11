@@ -1,5 +1,5 @@
 'use strict';
-// The app's Shared to me page (index.html). No browser here: the page's section is
+// The app's Shared with me page (index.html). No browser here: the page's section is
 // lifted out of index.html and run in a sandbox against a stub DOM, and the call sites
 // are checked by reading the source. The server decides every level; the page only words it.
 const fs = require('fs');
@@ -13,9 +13,9 @@ const fnLine = (name) => {
   return m[0];
 };
 const section = (() => {
-  const start = html.indexOf('// ---- Shared to me ----');
+  const start = html.indexOf('// ---- Shared with me ----');
   const end = html.indexOf('async function renderShareLinks() {');
-  if (start < 0 || end < start) throw new Error('Shared to me section not found');
+  if (start < 0 || end < start) throw new Error('Shared with me section not found');
   return html.slice(start, end);
 })();
 
@@ -113,8 +113,8 @@ describe('the call sites', () => {
     }
     throw new Error(`unbalanced ${name}`);
   };
-  test('the rail item is "Shared to me" and routes to the page', () => {
-    expect(html).toContain("fileNavButton('Shared to me', 'shared', `setFileView('shared')`");
+  test('the rail item is "Shared with me" and routes to the page', () => {
+    expect(html).toContain("fileNavButton('Shared with me', 'shared', `setFileView('shared')`");
     expect(body('setFileView')).toMatch(/view === 'shared'\) \{\s*renderSharedWithMe\(\);/);
   });
   test('nav highlighting matches data-view, not label text', () => {
