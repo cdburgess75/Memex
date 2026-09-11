@@ -111,7 +111,10 @@ const B = {
               AND starts_with(${a}.name, pv_lf.folder_path || '/')`,
 };
 
-function conditionWith(alias, r) {
+// `folderShareWhen` adds one conjunct inside the FOLDER-share branch only. Left out,
+// the text is byte for byte what it has always been, so condition() -- and the golden
+// test that pins it -- are untouched.
+function conditionWith(alias, r, { folderShareWhen = '' } = {}) {
   return `(
     ${B.admin(r)}
     OR ${B.uploader(alias, r)}
@@ -133,7 +136,8 @@ function conditionWith(alias, r) {
       OR EXISTS (
            SELECT 1 FROM library_grants pv_lf
             WHERE ${B.folderShareRow(alias)}
-              AND ${shareLevel(r, 'pv_lf.permission')} = ANY(${r.perms}::text[]) AND ${shareSubject('pv_lf', r)})
+              AND ${shareLevel(r, 'pv_lf.permission')} = ANY(${r.perms}::text[]) AND ${shareSubject('pv_lf', r)}${folderShareWhen ? `
+              AND ${folderShareWhen}` : ''})
     ))
   )`;
 }
@@ -142,7 +146,22 @@ function condition(alias = 'd', s = 1) {
   return conditionWith(alias, refsAt(s));
 }
 
-async function getAccessibleDocument({ id, user, required = 'read', columns = '*', deleted = 'active' }) {
+// The rule, for places that can reach a document IN THE TRASH. A folder share is keyed
+// by a NAME, and names come round again: delete "Clients/Mender", make a new folder of
+// that name for another client months later, share it, and without this the new people
+// would find the old client's deleted files in their Trash -- and could restore them.
+// So a folder share opens a trashed document only if the share already existed when the
+// document was deleted. A whole-library share is not guarded: a library's identity is
+// its id, which is never reused the way a name is. On a live document the extra test is
+// always true, so nothing but the Trash behaves differently, and only ever narrower.
+function conditionInTrash(alias = 'd', s = 1) {
+  return conditionWith(alias, refsAt(s), {
+    folderShareWhen: `(${alias}.deleted_at IS NULL OR pv_lf.created_at <= ${alias}.deleted_at)`,
+  });
+}
+
+// `trashGuard` uses conditionInTrash: for anything that can return a trashed document.
+async function getAccessibleDocument({ id, user, required = 'read', columns = '*', deleted = 'active', trashGuard = false }) {
   const deletedClause = deleted === 'active'
     ? 'AND d.deleted_at IS NULL'
     : deleted === 'deleted'
@@ -153,7 +172,7 @@ async function getAccessibleDocument({ id, user, required = 'read', columns = '*
      FROM documents d
      WHERE d.id = $1
        ${deletedClause}
-       AND ${condition('d', 2)}`,
+       AND ${trashGuard ? conditionInTrash('d', 2) : condition('d', 2)}`,
     [id, ...userParams(user, required)]
   );
 }
@@ -345,6 +364,7 @@ module.exports = {
   grantUserAccess,
   revokeUserAccess,
   condition,
+  conditionInTrash,
   conditionWith,
   refsAt,
   acctRefs,
