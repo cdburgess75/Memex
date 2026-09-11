@@ -55,6 +55,9 @@ const CREATOR = '22222222-2222-4222-8222-222222222222';
 const DOC = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(() => {
+  // Destination rights are libraries.writeRight's business (tested on its own); here the
+  // creator may always add files beside what they shared.
+  jest.spyOn(require('../../lib/libraries'), 'writeRight').mockResolvedValue({ right: 'owner', scoped: true });
   mockQueries.length = 0;
   Object.assign(mockLive, { actor: undefined, read: true, write: true });
   mockRows.share = {
@@ -155,7 +158,7 @@ describe('who may see link lists, move files, and resume an upload', () => {
   });
   test('moving files to another library needs write on each; copying needs read', async () => {
     const libs = require('../../lib/libraries');
-    jest.spyOn(libs, 'canAccessLibrary').mockResolvedValue(true);
+    jest.spyOn(libs, 'writeRight').mockResolvedValue({ right: 'owner', scoped: true });
     await request(app()).post('/api/files/library-transfer').send({ ids: [DOC], libraryId: '44444444-4444-4444-8444-444444444444', mode: 'move' });
     let q = mockQueries.find(x => /WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(x.sql));
     expect(q.params[4]).toEqual(['write', 'admin']);
@@ -166,7 +169,7 @@ describe('who may see link lists, move files, and resume an upload', () => {
   });
   test('a move reports how many files it skipped', async () => {
     const libs = require('../../lib/libraries');
-    jest.spyOn(libs, 'canAccessLibrary').mockResolvedValue(true);
+    jest.spyOn(libs, 'writeRight').mockResolvedValue({ right: 'owner', scoped: true });
     const res = await request(app()).post('/api/files/library-transfer').send({ ids: [DOC, '55555555-5555-4555-8555-555555555555'], libraryId: '44444444-4444-4444-8444-444444444444', mode: 'move' });
     expect(res.body).toMatchObject({ count: 0, skipped: 2 });
   });

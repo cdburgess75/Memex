@@ -44,8 +44,10 @@ suite('auditLog against real Postgres', () => {
     await dropAll();
     // Minimal stand-ins for the base tables postgres/init/01_schema.sql provides
     // on a real box; the migrations build everything else on top of them.
+    // (uploaded_by and library_id: 0008 marks an owner's own files as library content)
     await db.query(`CREATE TABLE documents (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      uploaded_by UUID, library_id UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       deleted_at TIMESTAMPTZ)`);
     await db.query(`CREATE TABLE document_events (
