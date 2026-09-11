@@ -7497,27 +7497,38 @@ function openLibraryTransfer(mode) {
     try {
       // Report what the server did, not what was selected: files the caller can only
       // view are left where they are (skipped).
-      let done = 0, skipped = 0;
+      let done = 0, skipped = 0, kept = 0;
       if (selected.length) {
         const r = await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
         done += Number(r?.count ?? selected.length);
         skipped += Number(r?.skipped || 0);
+        kept += Number(r?.kept || 0);
       }
-      for (const p of folders) { await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib)); done++; }
+      for (const p of folders) {
+        const r = await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib));
+        if (Number(r?.count) > 0) done++;
+        kept += Number(r?.kept || 0);
+      }
       clearFileSelection(false);
       await loadFiles();
       const target = librariesList.find(l => String(l.id) === b.dataset.lib);
-      toast(transferSummary(mode, done, skipped, target?.name || 'library'));
+      toast(transferSummary(mode, done, skipped, target?.name || 'library', kept));
     } catch (e) { toast(`${verb} failed: ` + e.message); }
   });
 }
 
-// "Moved 3 items to Clients · 1 stayed where it was (you can only view it)".
-function transferSummary(mode, done, skipped, where) {
+// "Moved 3 items to Clients · 1 file you can only view stayed where it was". Files
+// that belong to a library (library content) can only move to a library you own or
+// have Read-Write access to; the server keeps those behind and counts them.
+function transferSummary(mode, done, skipped, where, kept = 0) {
   const verbed = mode === 'copy' ? 'Copied' : 'Moved';
-  const kept = skipped ? `${skipped} ${skipped === 1 ? 'file' : 'files'} you can only view stayed where ${skipped === 1 ? 'it was' : 'they were'}` : '';
-  if (!done) return kept ? `Nothing was ${verbed.toLowerCase()}: ${kept}` : `Nothing was ${verbed.toLowerCase()}`;
-  return `${verbed} ${done} item${done === 1 ? '' : 's'} to ${where}${kept ? ` · ${kept}` : ''}`;
+  const files = (n) => `${n} ${n === 1 ? 'file' : 'files'}`;
+  const notes = [
+    skipped ? `${files(skipped)} you can only view stayed where ${skipped === 1 ? 'it was' : 'they were'}` : '',
+    kept ? `${files(kept)} that ${kept === 1 ? 'belongs' : 'belong'} to the library stayed (${kept === 1 ? 'it' : 'they'} can only move to a library you own or can write to)` : '',
+  ].filter(Boolean).join(' · ');
+  if (!done) return notes ? `Nothing was ${verbed.toLowerCase()}: ${notes}` : `Nothing was ${verbed.toLowerCase()}`;
+  return `${verbed} ${done} item${done === 1 ? '' : 's'} to ${where}${notes ? ` · ${notes}` : ''}`;
 }
 
 async function ensureFilesView() {
@@ -9335,7 +9346,7 @@ async function uploadErrorMessage(res) {
   }
 }
 
-async function getOrCreateUploadSession(file, displayName) {
+async function getOrCreateUploadSession(file, displayName, libraryId) {
   const key = uploadResumeKey(file, displayName);
   const savedId = localStorage.getItem(key);
   if (savedId) {
@@ -9348,6 +9359,7 @@ async function getOrCreateUploadSession(file, displayName) {
   }
   const created = await apiPost('/files/uploads', {
     displayName,
+    libraryId, // named up front, so a place the caller can't write to is refused before any chunk is sent
     size: file.size,
     mimeType: file.type || 'application/octet-stream',
     chunkSize: RESUMABLE_CHUNK_SIZE
@@ -9357,7 +9369,8 @@ async function getOrCreateUploadSession(file, displayName) {
 }
 
 async function uploadFileResumable(file, displayName, statusEl, ordinal, totalItems) {
-  let { key, session, resumed } = await getOrCreateUploadSession(file, displayName);
+  const lib = currentLibraryId; // the library the upload started in, even if the view changes meanwhile
+  let { key, session, resumed } = await getOrCreateUploadSession(file, displayName, lib);
   const received = new Set((session.receivedChunks || []).map(Number));
   const totalChunks = session.totalChunks || Math.ceil(file.size / RESUMABLE_CHUNK_SIZE);
   let doneBytes = received.size * (session.chunkSize || RESUMABLE_CHUNK_SIZE);
@@ -9385,7 +9398,7 @@ async function uploadFileResumable(file, displayName, statusEl, ordinal, totalIt
     setUploadStatus(statusEl, `Uploading ${ordinal} of ${totalItems}: ${displayName}`, Math.min(file.size, end), file.size);
   }
 
-  const completed = await apiPost('/files/uploads/' + session.id + '/complete', { libraryId: currentLibraryId });
+  const completed = await apiPost('/files/uploads/' + session.id + '/complete', { libraryId: lib });
   localStorage.removeItem(key);
   setUploadStatus(statusEl, `Uploaded ${displayName}`, file.size, file.size);
   return completed;
@@ -9766,7 +9779,7 @@ function moveFolderToLibrary(path) {
   const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
     m.close();
-    try { const r = await apiPost('/files/folder/move', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
+    try { const r = await apiPost('/files/folder/move', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(transferSummary('move', Number(r.count) || 0, 0, librariesList.find(l => String(l.id) === b.dataset.lib)?.name || 'library', Number(r.kept) || 0)); }
     catch (e) { toast('Move failed: ' + e.message); }
   });
 }

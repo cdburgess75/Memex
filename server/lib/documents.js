@@ -15,7 +15,7 @@ const { logEvent, logDocumentEvent } = require('./fileEvents');
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, uploaded_by,
   uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
-  restored_at, restored_by, restored_by_email, library_id
+  restored_at, restored_by, restored_by_email, library_id, library_scoped
 `;
 
 // Text extraction downloads the whole file into memory, so its size gate is capped
@@ -129,7 +129,10 @@ function recordUploadNotify(user, displayName, libraryId, documentId = null) {
   } catch (e) { console.error('uploadNotify record:', e.message); }
 }
 
-async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false }) {
+// libraryScoped: whether the new file is library content (see libraries.writeRight and
+// migration 0008). The caller decides it from the destination right it checked; it
+// defaults to false, a personal file, which is today's behaviour.
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false, libraryScoped = false }) {
   let canIngest = false;
   let documentText = null;
   let contentHash = null;
@@ -168,9 +171,9 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   }
 
   const doc = await db.queryOne(
-    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, content_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
-    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, lib, contentHash]
+    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, content_hash, library_scoped)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${DOCUMENT_COLUMNS}`,
+    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, lib, contentHash, !!libraryScoped]
   );
   await documentAccess.grantOwnerAdmin(doc.id, user);
   await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
