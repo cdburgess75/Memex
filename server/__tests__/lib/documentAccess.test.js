@@ -99,3 +99,22 @@ describe('documentAccess', () => {
     );
   });
 });
+
+// The address slot a per-file grant is matched against. Blank only when the identity
+// provider has said outright that the address is not verified.
+describe('matchEmail', () => {
+  const { userParams, matchEmail } = require('../../lib/documentAccess');
+  test('an unverified address matches no email-keyed grant', () => {
+    expect(matchEmail({ email: 'A@B.com', emailVerified: false })).toBe('');
+    expect(userParams({ id: 'u', email: 'A@B.com', role: 'contributor', emailVerified: false })[3]).toBe('');
+  });
+  test('a verified address, or one the token says nothing about, keeps matching', () => {
+    expect(matchEmail({ email: 'A@B.com', emailVerified: true })).toBe('a@b.com');
+    expect(matchEmail({ email: 'A@B.com', emailVerified: null })).toBe('a@b.com');
+    expect(matchEmail({ email: 'A@B.com' })).toBe('a@b.com');
+  });
+  test('the id slot is untouched, so a person keeps the files they own', () => {
+    expect(userParams({ id: 'u-1', email: 'a@b.com', emailVerified: false }).slice(1, 3)).toEqual(['u-1', 'u-1']);
+    expect(userParams({ id: 'u-1', email: 'a@b.com', emailVerified: false })).toHaveLength(5);
+  });
+});

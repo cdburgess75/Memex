@@ -21,12 +21,21 @@ function validPermission(permission) {
   return Object.prototype.hasOwnProperty.call(PERMISSION_LEVELS, permission);
 }
 
+// The address a per-file grant may match. Blank when the identity provider has said
+// outright that the address is NOT verified, so an account that merely claims someone
+// else's address can't open files shared with that address. A token that says nothing
+// either way keeps today's behaviour for per-file grants; library, folder and group
+// shares go further and match only a verified address (user_roles.verified_email).
+function matchEmail(user) {
+  return user?.emailVerified === false ? '' : String(user?.email || '').toLowerCase();
+}
+
 function userParams(user, required = 'read') {
   return [
     user?.role || '',
     user?.id || null,
     String(user?.id || ''),
-    String(user?.email || '').toLowerCase(),
+    matchEmail(user),
     permissionsFor(required),
   ];
 }
@@ -171,6 +180,7 @@ module.exports = {
   revokeUserAccess,
   condition,
   userParams,
+  matchEmail,
   permissionsFor,
   normalizeEmail,
   validPermission,

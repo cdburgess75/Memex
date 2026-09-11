@@ -21,7 +21,8 @@ const emailEvents = require('../../lib/emailEvents');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
-const { safeDocName, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
+const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
+const { isUuid } = require('../../lib/groups');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -42,13 +43,27 @@ const FOLDER_COPY_MAX_FILES = 5000;
  * clients keep working: one candidate is used, several is an ambiguity the caller
  * must settle, none lets the handler 404 as it did before. This deliberately does
  * NOT read body.library_id — on /move and /copy that is the *target* library.
+ *
+ * An explicit id that is not a uuid is a 400: passed on, Postgres would refuse it with
+ * a cast error that surfaces as a 500. An explicit id is also checked against the
+ * folder: one that doesn't hold it (for this caller) is the same 404 as a folder that
+ * can't be found, not a 200 that quietly touched nothing.
  */
 async function folderLibraryId(req, folderPath, user) {
   const explicit = req.headers['x-library-id'] || req.body?.source_library_id || req.query?.source_library_id;
-  if (explicit) return String(explicit);
+  if (explicit) {
+    if (!isUuid(explicit)) { const e = new Error('Bad library id'); e.status = 400; throw e; }
+    const held = await db.queryOne(
+      `SELECT 1 FROM documents d
+       WHERE d.deleted_at IS NULL AND d.library_id = $1 AND starts_with(d.name, $2 || '/') AND ${documentAccess.condition('d', 3)}
+       LIMIT 1`,
+      [String(explicit), folderPath, ...documentAccess.userParams(user, 'read')]
+    );
+    return held ? String(explicit) : null;
+  }
   const rows = await db.query(
     `SELECT DISTINCT d.library_id FROM documents d
-     WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND ${documentAccess.condition('d', 2)}`,
+     WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND ${documentAccess.condition('d', 2)}`,
     [folderPath, ...documentAccess.userParams(user, 'read')]
   );
   if (rows.length > 1) {
@@ -59,11 +74,19 @@ async function folderLibraryId(req, folderPath, user) {
   return rows.length ? rows[0].library_id : null;
 }
 
-// Surface that ambiguity as a 409 rather than a generic 500.
+// Surface an ambiguous folder (409) or a malformed library id (400) as themselves
+// rather than a generic 500.
 function folderScopeError(res, e) {
-  if (e && e.status === 409) { res.status(409).json({ error: e.message }); return true; }
+  if (e && (e.status === 409 || e.status === 400)) { res.status(e.status).json({ error: e.message }); return true; }
   return false;
 }
+
+// Folder paths that name an EXISTING folder are matched exactly (folderLookupPath);
+// only the path of a folder being created goes through safeDocName, and a destination
+// that may be partly new goes through destinationFolder. Matching uses starts_with
+// rather than LIKE, so '_' and '%' in a folder name are ordinary characters: "Q1_A"
+// no longer also reaches "Q1-A", nor "50%" reach "500".
+function existingFolder(raw) { return folderLookupPath(raw); }
 
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
@@ -86,7 +109,7 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
 // POST /api/files/folder/rename — rename a folder (re-prefix every file under it)
 router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const oldPath = safeDocName(req.body?.path, '');
+    const oldPath = existingFolder(req.body?.path);
     const rawName = String(req.body?.name || '').trim();
     if (!oldPath || !rawName) return res.status(400).json({ error: 'path and name required' });
     if (/[\/\\]/.test(rawName) || rawName === '..' || rawName === '.') return res.status(400).json({ error: 'invalid name' });
@@ -98,9 +121,11 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
+      // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
+      // a folder name with an emoji in it would otherwise be cut one character short.
+      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -111,13 +136,13 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
 // POST /api/files/folder/delete — move a whole folder's contents to Trash
 router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = await folderLibraryId(req, folderPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
@@ -130,20 +155,24 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
 // POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
 router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const oldPath = safeDocName(req.body?.path, '');
-    const target = safeDocName(req.body?.target, '') || ''; // '' = move to root
+    const oldPath = existingFolder(req.body?.path);
     if (!oldPath) return res.status(400).json({ error: 'path required' });
+    const srcLibraryId = await folderLibraryId(req, oldPath, req.user);
+    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
+    // The target may be an existing folder (kept exactly), a new one (the folder
+    // picker's "+ New folder..."), or an existing folder with new ones under it; the
+    // new part is named the way the files moved alongside it are ('' = the root).
+    const target = await destinationFolder(req.body?.target, srcLibraryId, req.user);
+    if (target === null) return res.status(400).json({ error: 'invalid target' });
     const base = oldPath.split('/').pop();
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
-    const srcLibraryId = await folderLibraryId(req, oldPath, req.user);
-    if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
-      [oldPath, newPath, oldPath.length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
     );
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -154,7 +183,7 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
 // POST /api/files/folder/move — move a folder's contents to another library
 router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
     // The two sibling transfers both check the destination (/folder/copy below and
@@ -169,7 +198,7 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const rows = await db.query(
       `UPDATE documents d SET library_id = $2
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
        RETURNING d.id`,
       [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
     );
@@ -182,13 +211,13 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
 // GET /api/files/folder/zip?path=... — download a folder's files as a compressed zip
 router.get('/zip', auth, async (req, res) => {
   try {
-    const folderPath = safeDocName(req.query.path, '');
+    const folderPath = existingFolder(req.query.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = await folderLibraryId(req, folderPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.name, d.storage_path, d.size FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}
        ORDER BY d.name`,
       [folderPath, ...documentAccess.userParams(req.user, 'read'), libraryId]
     );
@@ -202,7 +231,7 @@ router.get('/zip', auth, async (req, res) => {
     // whole ZIP in memory — bounds peak RAM regardless of folder size.
     await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, folderPath)), res);
   } catch (e) {
-    if (!res.headersSent) serverError(res, e);
+    if (!res.headersSent) { if (folderScopeError(res, e)) return; serverError(res, e); }
     else res.destroy(e);
   }
 });
@@ -221,17 +250,21 @@ function folderZipEntries(docs, folderPath) {
 // GET /api/files/folder/links?path=... — list the caller's folder download links.
 router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.query.path, '');
+    const folderPath = existingFolder(req.query.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const adminAll = (req.user.role === 'admin');
+    // Links made before folder paths were matched exactly were stored under the
+    // rewritten name ("Tax _ Co" for "Tax & Co"); list those too, or a live link would
+    // drop out of the only place it can be seen and revoked.
+    const keys = [...new Set([folderPath, safeDocName(folderPath, '')].filter(Boolean))];
     const rows = await db.query(
       `SELECT id, folder_path, document_ids, expires_at, revoked_at, created_at,
               created_by_email, last_accessed_at, access_count, password_hash
        FROM folder_share_links
-       WHERE folder_path = $1 ${adminAll ? '' : 'AND created_by = $2'}
+       WHERE folder_path = ANY($1::text[]) ${adminAll ? '' : 'AND created_by = $2'}
        ORDER BY revoked_at IS NULL DESC, created_at DESC
        LIMIT 100`,
-      adminAll ? [folderPath] : [folderPath, req.user.id]
+      adminAll ? [keys] : [keys, req.user.id]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
@@ -240,7 +273,7 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
 // POST /api/files/folder/links — mint a public download link for a folder.
 router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     // Snapshot exactly the files the CREATOR may re-publish under this folder.
     // Requires 'write' (not 'read') to mint a public link — same bar the per-file
@@ -249,7 +282,7 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.size FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
       [folderPath, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder to share' });
@@ -354,7 +387,7 @@ router.get('/share/:token', async (req, res) => {
 // GET /api/files/folder/members?path=... — who has been granted access across a folder.
 router.get('/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.query.path, '');
+    const folderPath = existingFolder(req.query.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     // Only surface grants on files the caller can administer, and collapse the
     // per-file rows into one line per person (with how many files they can reach).
@@ -368,7 +401,7 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
               max(acl.created_at) AS created_at
        FROM document_acl acl
        JOIN documents d ON d.id = acl.document_id
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 2)}
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 2)}
          AND lower(acl.subject_id) <> lower($${2 + documentAccess.userParams(req.user, 'admin').length})
        GROUP BY acl.subject_id
        ORDER BY subject_email`,
@@ -381,7 +414,7 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
 // POST /api/files/folder/members — grant one person access to every file in a folder.
 router.post('/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const email = documentAccess.normalizeEmail(req.body?.email);
     // Reject anything that isn't a plain address (no quotes/spaces/angle brackets) —
@@ -395,7 +428,7 @@ router.post('/members', auth, requireRole('admin', 'contributor'), async (req, r
     const rows = await db.query(
       `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
        SELECT d.id, 'user', $2, $2, $3, $4, $5 FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep'
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep'
          AND d.library_id = $11 AND ${documentAccess.condition('d', 6)}
        ON CONFLICT (document_id, subject_type, subject_id)
        DO UPDATE SET permission = EXCLUDED.permission, subject_email = EXCLUDED.subject_email,
@@ -430,7 +463,7 @@ router.post('/members', auth, requireRole('admin', 'contributor'), async (req, r
 // DELETE /api/files/folder/members — revoke a person's access across a folder.
 router.delete('/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     const email = documentAccess.normalizeEmail(req.body?.email);
     if (!folderPath || !email) return res.status(400).json({ error: 'path and email required' });
     if (email === String(req.user.email || '').toLowerCase()) return res.status(400).json({ error: "You can't revoke your own access" });
@@ -439,7 +472,7 @@ router.delete('/members', auth, requireRole('admin', 'contributor'), async (req,
     const rows = await db.query(
       `DELETE FROM document_acl acl USING documents d
        WHERE acl.document_id = d.id AND acl.subject_type = 'user' AND lower(acl.subject_id) = lower($2)
-         AND d.name LIKE $1 || '/%' AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
+         AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
        RETURNING acl.document_id`,
       [folderPath, email, ...documentAccess.userParams(req.user, 'admin'), libraryId]
     );
@@ -452,7 +485,7 @@ router.delete('/members', auth, requireRole('admin', 'contributor'), async (req,
 // POST /api/files/folder/copy — duplicate a folder's files into another library.
 router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
+    const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
     if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
@@ -460,7 +493,7 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     const docs = await db.query(
       `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path FROM documents d
-       WHERE d.deleted_at IS NULL AND d.name LIKE $1 || '/%' AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
+       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
       [folderPath, ...documentAccess.userParams(req.user, 'read'), srcLibraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
@@ -474,7 +507,7 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);
     res.json({ ok: true, count: docs.length });
-  } catch (e) { console.error('folder copy failed:', e); serverError(res, e); }
+  } catch (e) { if (folderScopeError(res, e)) return; console.error('folder copy failed:', e); serverError(res, e); }
 });
 
 module.exports = router;

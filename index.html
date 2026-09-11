@@ -2770,6 +2770,14 @@ let extractedFileText = '';
 let filesList = []; // cached list of uploaded files
 let librariesList = []; // available libraries
 let currentLibraryId = localStorage.getItem('memex_library_id') || null; // active library
+// A folder is a name prefix, and the same name can exist in several libraries, so every
+// folder request says which library the folder is in: the one being viewed. (Viewing
+// all libraries sends none, and the server infers it — asking again if it's ambiguous.)
+// On /folder/move and /folder/copy, library_id is the DESTINATION; this is the source.
+// A loop that sends several folder requests passes the library it started in, so
+// switching library halfway through cannot send the rest to the wrong one.
+function inFolderLib(body, lib = currentLibraryId) { return lib ? { ...body, source_library_id: lib } : body; }
+function folderLibQuery(lib = currentLibraryId) { return lib ? '&source_library_id=' + encodeURIComponent(lib) : ''; }
 let aiModels = []; // enabled AI models [{provider,id,label}]
 let aiActive = ''; // active model as "provider:model"
 let trashList = []; // cached list of trashed files
@@ -7479,6 +7487,7 @@ function openLibraryTransfer(mode) {
   const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId));
   if (!targets.length) { toast('No other library yet — create one first.'); return; }
   const verb = mode === 'copy' ? 'Copy' : 'Move';
+  const srcLib = currentLibraryId;
   const m = openModal({ id: 'library-transfer-scrim', html: `<h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div>` });
   const scrim = m.el;
   const close = () => m.close();
@@ -7487,7 +7496,7 @@ function openLibraryTransfer(mode) {
     close();
     try {
       if (selected.length) await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
-      for (const p of folders) await apiPost('/files/folder/move', { path: p, library_id: b.dataset.lib });
+      for (const p of folders) await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib));
       clearFileSelection(false);
       await loadFiles();
       const target = librariesList.find(l => String(l.id) === b.dataset.lib);
@@ -8570,6 +8579,7 @@ function maybeOpenFolder(path) { if (!suppressRowClick) openFolder(path); }
 async function moveItemsIntoFolder(payload, targetPath) {
   const { files = [], folders = [] } = payload || {};
   if (!files.length && !folders.length) return;
+  const lib = currentLibraryId;
   let moved = 0;
   try {
     for (const id of files) {
@@ -8582,7 +8592,7 @@ async function moveItemsIntoFolder(payload, targetPath) {
     }
     for (const p of folders) {
       if (p === targetPath || targetPath === p.split('/').slice(0, -1).join('/') || targetPath.startsWith(p + '/')) continue;
-      await apiPost('/files/folder/reparent', { path: p, target: targetPath });
+      await apiPost('/files/folder/reparent', inFolderLib({ path: p, target: targetPath }, lib));
       moved++;
     }
     clearFileSelection(false);
@@ -8630,8 +8640,9 @@ async function downloadSelectedItems() {
   const files = selectedFiles();
   const folders = selectedFolders();
   if (!files.length && !folders.length) return;
+  const lib = currentLibraryId;
   for (const f of files) await downloadFile(f.id);
-  for (const p of folders) await downloadFolderZip(p);
+  for (const p of folders) await downloadFolderZip(p, lib);
 }
 
 async function deleteSelectedItems() {
@@ -8639,6 +8650,7 @@ async function deleteSelectedItems() {
   const folders = selectedFolders();
   const total = files.length + folders.length;
   if (!total) return;
+  const lib = currentLibraryId;
   const label = total === 1 ? `"${(files[0]?.name) || folders[0].split('/').pop()}"` : `${total} items`;
   // A files-only delete is fully reversible: skip the dialog, move to Trash, and
   // offer a 10-second Undo. Folders can't report which documents they trashed,
@@ -8664,7 +8676,7 @@ async function deleteSelectedItems() {
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
   }
   for (const p of folders) {
-    try { await apiPost('/files/folder/delete', { path: p }); } catch (e) { toast('Could not move that folder to Trash: ' + e.message); }
+    try { await apiPost('/files/folder/delete', inFolderLib({ path: p }, lib)); } catch (e) { toast('Could not move that folder to Trash: ' + e.message); }
   }
   clearFileSelection(false);
   await loadFiles();
@@ -9700,11 +9712,11 @@ function openFolderMenu(path, event) {
   refreshFolderNotifyLabel(path);
   return false;
 }
-async function downloadFolderZip(path) {
+async function downloadFolderZip(path, lib = currentLibraryId) {
   toast('Zipping folder…');
   try {
     const token = await getToken();
-    const res = await fetch('/api/files/folder/zip?path=' + encodeURIComponent(path), { headers: { Authorization: 'Bearer ' + token } });
+    const res = await fetch('/api/files/folder/zip?path=' + encodeURIComponent(path) + folderLibQuery(lib), { headers: { Authorization: 'Bearer ' + token } });
     if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.error || 'Zip failed'); return; }
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -9717,7 +9729,7 @@ async function renameFolder(path) {
   const next = (await askPrompt('Rename folder:', cur) || '').trim();
   if (!next || next === cur) return;
   try {
-    const r = await apiPost('/files/folder/rename', { path, name: next });
+    const r = await apiPost('/files/folder/rename', inFolderLib({ path, name: next }));
     if (currentFolderPath === path) currentFolderPath = r.path;
     else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
     await loadFiles();
@@ -9728,7 +9740,7 @@ async function deleteFolder(path) {
   const name = path.split('/').pop();
   if (!await askConfirm(`Move folder "${name}" and everything inside it to Trash?`, { danger: true })) return;
   try {
-    const r = await apiPost('/files/folder/delete', { path });
+    const r = await apiPost('/files/folder/delete', inFolderLib({ path }));
     if (currentFolderPath === path || currentFolderPath.startsWith(path + '/')) currentFolderPath = path.split('/').slice(0, -1).join('/');
     await loadFiles();
     toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`);
@@ -9740,7 +9752,7 @@ function moveFolderToLibrary(path) {
   const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
     m.close();
-    try { const r = await apiPost('/files/folder/move', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
+    try { const r = await apiPost('/files/folder/move', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`); }
     catch (e) { toast('Move failed: ' + e.message); }
   });
 }
@@ -9749,7 +9761,7 @@ function moveFolderToLibrary(path) {
 async function moveFolderToParent(path) {
   openFolderPicker('Move to folder', [path], async dest => {
     try {
-      const r = await apiPost('/files/folder/reparent', { path, target: dest });
+      const r = await apiPost('/files/folder/reparent', inFolderLib({ path, target: dest }));
       if (currentFolderPath === path) currentFolderPath = r.path;
       else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
       await loadFiles();
@@ -9765,16 +9777,18 @@ function copyFolderToLibrary(path) {
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
     m.close();
     toast('Copying folder…');
-    try { const r = await apiPost('/files/folder/copy', { path, library_id: b.dataset.lib }); await loadFiles(); toast(`Copied ${r.count} file${r.count === 1 ? '' : 's'}`); }
+    try { const r = await apiPost('/files/folder/copy', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(`Copied ${r.count} file${r.count === 1 ? '' : 's'}`); }
     catch (e) { toast('Copy failed: ' + e.message); }
   });
 }
 
 // ---- Folder sharing: public download link + internal member access ----
 let folderSharePath = null;
+let folderShareLib = null; // the library the dialog was opened in
 function closeFolderShare() { closeModal('folder-share-scrim'); }
 async function openFolderShare(path) {
   folderSharePath = path;
+  folderShareLib = currentLibraryId;
   closeFolderShare();
   const name = path.split('/').pop();
   openModal({ id: 'folder-share-scrim', html: `<button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2>Share folder</h2><p class="sub">${esc(name)}</p>
@@ -9797,7 +9811,7 @@ async function loadFolderShareLinks() {
   const list = document.getElementById('folder-share-list');
   if (!folderSharePath || !list) return;
   try {
-    const data = await apiGet('/files/folder/links?path=' + encodeURIComponent(folderSharePath));
+    const data = await apiGet('/files/folder/links?path=' + encodeURIComponent(folderSharePath) + folderLibQuery(folderShareLib));
     const shares = data.shares || [];
     if (!shares.length) { list.innerHTML = emptyState('No links yet', 'Create one above to share this folder outside the workspace.'); return; }
     list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link</strong><div class="file-share-meta">${s.file_count} file${s.file_count === 1 ? '' : 's'} · Expires: ${shareDate(s.expires_at)} · Downloads: ${s.access_count || 0}${s.has_password ? ' · Password' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-id="${esc(String(s.id))}" onclick="revokeFolderShareLink(this.dataset.id)">Revoke</button>`}</div>`).join('');
@@ -9808,7 +9822,7 @@ async function createFolderShareLink() {
   const days = document.getElementById('folder-share-expiry')?.value || '7';
   const password = document.getElementById('folder-share-password')?.value || '';
   try {
-    const data = await apiPost('/files/folder/links', { path: folderSharePath, expiresInDays: days, neverExpires: days === '0', password });
+    const data = await apiPost('/files/folder/links', inFolderLib({ path: folderSharePath, expiresInDays: days, neverExpires: days === '0', password }, folderShareLib));
     const url = data.share?.url;
     const result = document.getElementById('folder-share-result');
     const input = document.getElementById('folder-share-url');
@@ -9827,7 +9841,7 @@ async function loadFolderAccess() {
   const list = document.getElementById('folder-access-list');
   if (!folderSharePath || !list) return;
   try {
-    const data = await apiGet('/files/folder/members?path=' + encodeURIComponent(folderSharePath));
+    const data = await apiGet('/files/folder/members?path=' + encodeURIComponent(folderSharePath) + folderLibQuery(folderShareLib));
     const grants = data.grants || [];
     if (!grants.length) { list.innerHTML = emptyState('No additional access', 'Only owners and admins can open these files.'); return; }
     list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${g.permission === 'mixed' ? 'Mixed access' : permissionLabel(g.permission)} · ${g.doc_count} file${g.doc_count === 1 ? '' : 's'}</div></div><button class="file-library-tool" data-email="${escAttr(g.subject_email || g.subject_id)}" onclick="revokeFolderAccess(this.dataset.email)">Revoke</button></div>`).join('');
@@ -9839,7 +9853,7 @@ async function grantFolderAccess() {
   const permission = document.getElementById('folder-access-permission')?.value || 'read';
   if (!email) return toast('Enter an email address');
   try {
-    const r = await apiPost('/files/folder/members', { path: folderSharePath, email, permission });
+    const r = await apiPost('/files/folder/members', inFolderLib({ path: folderSharePath, email, permission }, folderShareLib));
     const input = document.getElementById('folder-access-email'); if (input) input.value = '';
     toast(`Access granted to ${r.count} file${r.count === 1 ? '' : 's'}`);
     await loadFolderAccess();
@@ -9847,7 +9861,7 @@ async function grantFolderAccess() {
 }
 async function revokeFolderAccess(email) {
   if (!folderSharePath || !email) return;
-  try { const r = await apiDelete('/files/folder/members', { path: folderSharePath, email }); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); await loadFolderAccess(); }
+  try { const r = await apiDelete('/files/folder/members', inFolderLib({ path: folderSharePath, email }, folderShareLib)); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); await loadFolderAccess(); }
   catch (e) { toast('Revoke failed: ' + e.message); }
 }
 
