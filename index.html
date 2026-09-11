@@ -1696,6 +1696,26 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ls-note { font-size: 12.5px; color: var(--ink-faint); margin: 10px 2px 0; }
 .library-menu-item .pill { margin-left: 6px; vertical-align: 1px; }
 .swm-sub { margin: -6px 0 14px; color: var(--ink-soft); font-size: 13.5px; }
+.acc-tabs { margin-bottom: 14px; }
+.acc-head { font: 600 14px var(--ui); color: var(--ink); margin: 2px 0; text-wrap: balance; }
+.acc-sub { font: 600 12.5px var(--ui); color: var(--ink-soft); margin: 18px 2px 4px; }
+.acc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.acc-chip { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-soft); border-radius: 999px; padding: 4px 10px; font: 500 12px var(--ui); cursor: pointer; }
+.acc-chip.active { background: var(--accent-wash); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--rule)); }
+.acc-chip:focus-visible, .acc-person-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.acc-people { border-top: 1px solid var(--rule-soft); margin-top: 6px; }
+.acc-person { border-bottom: 1px solid var(--rule-soft); padding: 8px 2px; }
+.acc-person-head { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.acc-avatar { flex: 0 0 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--ink-soft); font: 600 11px var(--ui); display: flex; align-items: center; justify-content: center; }
+.acc-reasons { margin: 4px 0 0 38px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-soft); }
+.acc-reason { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.acc-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.acc-meta { font-size: 11.5px; color: var(--ink-faint); margin-top: 1px; }
+.acc-more { font-size: 12px; color: var(--ink-faint); }
+.acc-files { margin: 4px 0 0; padding-left: 16px; }
+.acc-you-head { font: 600 14px var(--ui); color: var(--ink); }
+.acc-lines { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 3px; }
+.ask-lines { margin: -8px 0 18px; padding-left: 18px; color: var(--ink-soft); font-size: 13px; line-height: 1.5; }
 .swm-section { margin-bottom: 22px; }
 .swm-section h3 { font: 600 14px var(--ui); color: var(--ink); margin: 0 0 8px; }
 .swm-row { cursor: pointer; }
@@ -7503,14 +7523,17 @@ function libraryMenuInnerHtml() {
     + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
+    + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
 }
 // Share buttons carry the library id in data-share-lib (never spliced into an onclick).
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-share-lib]');
-  if (!b) return;
+  const a = !b && e.target.closest && e.target.closest('[data-access-lib]');
+  if (!b && !a) return;
   e.preventDefault(); e.stopPropagation();
-  openLibraryShare({ libraryId: b.dataset.shareLib });
+  if (b) openLibraryShare({ libraryId: b.dataset.shareLib });
+  else openLibraryAccess({ libraryId: a.dataset.accessLib });
 });
 function startRailResize(event) {
   event.preventDefault();
@@ -7587,7 +7610,7 @@ function openNewLibraryModal() {
 // refuses (GET/POST/PUT/DELETE /api/libraries/:id/shares).
 const SHARE_LEVELS = [['write', 'Read-Write'], ['read', 'Read-only']];
 const shareLevelLabel = (p) => (p === 'write' ? 'Read-Write' : 'Read-only');
-function openLibraryShare({ libraryId, folderPath = '' }) {
+function openLibraryShare({ libraryId, folderPath = '', tab = 'share' }) {
   closeLibraryMenu();
   const lib = librariesList.find(l => String(l.id) === String(libraryId));
   if (!lib || !lib.id) { toast('That library is no longer available.'); return; }
@@ -7597,10 +7620,29 @@ function openLibraryShare({ libraryId, folderPath = '' }) {
     `<button class="modal-x" type="button" aria-label="Close" data-ls-close>✕</button>`
     + `<h2 id="ls-title">${folderPath ? `Share folder “${esc(folderName)}”` : `Share “${esc(lib.name)}”`}</h2>`
     + (folderPath ? `<p class="sub">in ${esc(lib.name)}</p>` : '')
-    + `<div class="ls-mount"></div>`
+    + accessTabsHtml()
+    + `<div class="ls-mount" data-view-panel="share"></div><div class="acc-mount" data-view-panel="access" hidden></div>`
     + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-ls-close>Done</button></div>` });
   m.el.querySelectorAll('[data-ls-close]').forEach(b => b.onclick = () => m.close());
   mountLibraryShare(m.el.querySelector('.ls-mount'), { libraryId: lib.id, folderPath });
+  wireAccessTabs(m.el, { kind: folderPath ? 'folder' : 'library', libraryId: lib.id, path: folderPath }, tab);
+}
+// "Share | Who has access", as tabs inside a dialog; the list loads the first time its tab
+// opens, and again each time it's shown after a change on the Share side.
+function accessTabsHtml() {
+  return `<div class="share-seg acc-tabs" role="tablist" aria-label="Sharing">`
+    + `<button type="button" class="share-seg-opt active" role="tab" aria-selected="true" data-view-tab="share">Share</button>`
+    + `<button type="button" class="share-seg-opt" role="tab" aria-selected="false" data-view-tab="access">Who has access</button></div>`;
+}
+function wireAccessTabs(scope, door, tab = 'share') {
+  let list = null;
+  const show = (which) => {
+    scope.querySelectorAll('[data-view-tab]').forEach(b => { const on = b.dataset.viewTab === which; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+    scope.querySelectorAll('[data-view-panel]').forEach(p => { p.hidden = p.dataset.viewPanel !== which; });
+    if (which === 'access') { if (list) list.reload(); else list = mountAccessList(scope.querySelector('[data-view-panel="access"]'), door); }
+  };
+  scope.querySelectorAll('[data-view-tab]').forEach(b => b.addEventListener('click', () => show(b.dataset.viewTab)));
+  show(tab);
 }
 
 // The share controls and list, mounted into a container (the library dialog, or the
@@ -7717,8 +7759,20 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     } catch (err) { toast(groupErr(err, 'Could not share. Try again.')); await load(); }
     finally { st.busy = false; updateAdd(); }
   }
+  // What a change does, from the server's key list (the old wording if it can't load).
+  async function removalWords(shareId, opts) {
+    try {
+      const resp = await apiGet(accessUrl({ kind: folderPath ? 'folder' : 'library', libraryId, path: folderPath }));
+      const key = (resp.keys || []).find(k => k.id === shareId && (k.kind === 'library_share' || k.kind === 'folder_share'));
+      return key ? accessRemovalWords(key, resp, opts) : null;
+    } catch { return null; }
+  }
   async function changeLevel(shareId, permission) {
     if (st.busy) { toast('Still saving your last change…'); await load(); return; }
+    if (permission === 'read') {
+      const words = await removalWords(shareId, { lower: true });
+      if (words && !await confirmKeyRemoval(words)) { await load(); return; }
+    }
     st.busy = true;
     try { await apiPut(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}`, { permission }); toast(`Changed to ${shareLevelLabel(permission)}`); }
     catch (err) { toast(groupErr(err, 'Could not change the level. Try again.')); }
@@ -7726,7 +7780,10 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
   }
   async function remove(shareId, who) {
     if (st.busy) return;
-    if (!await askConfirm(`${who} will no longer get ${where}'s files through this share. (Anything else shared with them, directly or through a group, stays.)`, { danger: true, okLabel: 'Remove' })) return;
+    const words = await removalWords(shareId);
+    const ok = words ? await confirmKeyRemoval(words)
+      : await askConfirm(`${who} will no longer get ${where}'s files through this share. (Anything else shared with them, directly or through a group, stays.)`, { danger: true, okLabel: 'Remove' });
+    if (!ok) return;
     st.busy = true;
     try { await apiDelete(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}`); toast(`${who} removed`); loadLibraries().catch(() => {}); }
     catch (err) { toast(groupErr(err, 'Could not remove it. Try again.')); }
@@ -8056,7 +8113,7 @@ function closeTopModal() {
 // null on cancel. Enter accepts, Escape/backdrop cancels. Pass { danger: true } for a
 // destructive action to get the red confirm button (decided per call site, never
 // guessed from message text — file names can contain words like "delete").
-function askConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', title = '', danger = false } = {}) {
+function askConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', title = '', danger = false, detailLines = [] } = {}) {
   const isDanger = !!danger;
   return new Promise(resolve => {
     let done = false;
@@ -8065,6 +8122,7 @@ function askConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', title = '
       id: 'ask-scrim', modalClass: 'modal-ask', labelledBy: 'ask-title',
       onClose: () => finish(false),
       html: (title ? `<h2 id="ask-title">${esc(title)}</h2><p class="ask-msg">` : `<p class="ask-msg" id="ask-title">`) + esc(message) + '</p>' +
+        (detailLines.length ? `<ul class="ask-lines">${detailLines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '') +
         `<div class="ask-actions"><button type="button" class="ghost-btn" id="ask-cancel">${esc(cancelLabel)}</button>` +
         `<button type="button" class="${isDanger ? 'danger-btn' : 'run-btn'}" id="ask-ok" autofocus>${esc(okLabel)}</button></div>`,
     });
@@ -9036,8 +9094,8 @@ function renderFileDetailsPane() {
   const isAdmin = currentUser?.role === 'admin';
   const dName = f.name.replace(/"/g, '&quot;');
   pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(fileDisplayName(f))}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
-    <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Added by</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || 'Top level')}</span></div></div></section>
-    <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Added by</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || 'Top level')}</span></div><div class="file-details-row"><strong>Belongs to</strong><span>${esc(f.library_scoped ? `The library “${currentLibrary()?.name || 'this library'}”` : `${accIsMe({ email: f.uploaded_by_email }) ? 'Your' : `${fileOwner(f)}'s`} own file`)}</span></div></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button><button class="file-library-tool" data-fid="${escAttr(String(f.id))}" onclick="openFileAccess(this.dataset.fid)">Who has access…</button></div></section>
     <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button></div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable file contents.</div></section>
     ${isAdmin ? `<section class="file-details-section"><div class="file-details-section-title">Editing & history</div><div class="file-details-actions"><button class="file-library-tool" onclick="openFileHistory('${f.id}')">Version history</button></div></section>` : ''}
     ${canEdit ? `<section class="file-details-section"><div class="file-details-section-title">Danger zone</div><div class="file-details-actions"><button class="file-library-tool danger" data-fid="${f.id}" data-name="${dName}" onclick="deleteFile(this.dataset.fid, this.dataset.name)">Move to Trash</button></div></section>` : ''}`;
@@ -9101,7 +9159,7 @@ function closeShareSelected() {
   closeModal('file-share-scrim');
 }
 
-async function openShareSelected() {
+async function openShareSelected({ openAccess = false } = {}) {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
@@ -9122,15 +9180,32 @@ async function openShareSelected() {
     + `</div></div>`
     + `<div class="share-foot"><div class="share-link-out" id="share-link-out" hidden><input class="share-link-url" id="share-link-url" readonly><button class="file-library-tool" onclick="copyShareLink()">Copy link</button></div><button class="run-btn" id="share-primary" onclick="doShare()">Create link</button></div>`
     + `</div>`
-    + `<details class="share-existing"><summary>Active links and people with direct access to this file</summary><div class="file-share-list" id="file-share-list">${emptyState('Loading', 'Checking existing links.')}</div><div class="file-share-list" id="file-access-list"></div></details>`
+    + `<details class="share-existing" id="file-access-details"${openAccess ? ' open' : ''}><summary id="file-access-summary">Who has access</summary><div class="acc-mount" id="file-access-list"></div><div class="file-share-list" id="file-share-list">${emptyState('Loading', 'Checking existing links.')}</div></details>`
     + `<div class="btn-row" style="justify-content:flex-end;margin-top:12px"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div>`, modalClass: 'file-share-modal' });
+  _fileAccessList = mountAccessList(document.getElementById('file-access-list'), { kind: 'file', fileId: f.id, libraryId: f.library_id }, {
+    showLinks: false,
+    onLoad: (resp) => {
+      const sum = document.getElementById('file-access-summary');
+      if (sum) sum.textContent = resp.can_see_keys
+        ? `Who has access · ${resp.people.length} ${resp.people.length === 1 ? 'person' : 'people'} · ${resp.links.length} ${resp.links.length === 1 ? 'link' : 'links'}`
+        : 'Your access';
+      // Only whoever manages the file's access can invite people to it one by one.
+      const invite = document.querySelector('#file-share-scrim .share-seg-opt[data-who="people"]');
+      if (invite) invite.hidden = !resp.can_see_keys;
+    },
+  });
   await loadShareLinks(f.id);
-  await loadFileAccess(f.id);
+}
+let _fileAccessList = null;
+// "Who has access…" on a file: its Share dialog, with the list open.
+function openFileAccess(fileId) {
+  selectSingleFile(fileId);
+  openShareSelected({ openAccess: true });
 }
 
 function shareSetWho(mode) {
   _shareWho = mode;
-  document.querySelectorAll('.share-seg-opt').forEach(b => b.classList.toggle('active', b.dataset.who === mode));
+  document.querySelectorAll('#file-share-scrim .share-seg-opt[data-who]').forEach(b => b.classList.toggle('active', b.dataset.who === mode));
   const people = document.getElementById('share-people'); if (people) people.hidden = mode !== 'people';
   const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = mode !== 'link';
   // "Edit" needs an account, so it only applies to invited people, never a public link.
@@ -9176,7 +9251,7 @@ async function doShare() {
     for (const email of _shareEmails) { try { await apiPut('/files/' + f.id + '/access', { email, permission }); ok++; } catch (e) { /* keep going */ } }
     _shareEmails = []; renderShareChips();
     toast(ok ? `Invited ${ok} ${ok === 1 ? 'person' : 'people'}` : 'Invite failed');
-    await loadFileAccess(f.id);
+    if (_fileAccessList) await _fileAccessList.reload();
   } else {
     const expiryOn = document.getElementById('share-expiry-on')?.checked;
     const dateVal = document.getElementById('share-expiry-date')?.value;
@@ -9228,59 +9303,6 @@ function permissionLabel(permission) {
   return permission === 'admin' ? 'Can manage' : permission === 'write' ? 'Can edit' : 'Can view';
 }
 
-async function loadFileAccess(fileId = firstSelectedFile()?.id) {
-  const list = document.getElementById('file-access-list');
-  if (!fileId || !list) return;
-  try {
-    const data = await apiGet('/files/' + fileId + '/access');
-    const grants = data.grants || [];
-    if (!grants.length) {
-      list.innerHTML = emptyState('No one has been given this file directly', 'People may also reach it through its library or folder.');
-      return;
-    }
-    list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${permissionLabel(g.permission)} · Granted ${shareDate(g.created_at)}</div></div><button class="file-library-tool" data-grant="${g.id}" onclick="revokeFileAccess(this.dataset.grant)">Revoke</button></div>`).join('');
-  } catch (e) {
-    if (e && (e.status === 404 || e.status === 403)) {
-      // Only whoever manages this file's access sees its list and invites people to it
-      // one by one: its uploader (for a personal file), the library's owner, or an admin.
-      list.innerHTML = emptyState('Sharing with people', "Only this file's owner, its library's owner or an admin can give people access to it.");
-      const invite = document.querySelector('.share-seg-opt[data-who="people"]');
-      if (invite) invite.hidden = true;
-      return;
-    }
-    list.innerHTML = emptyState('Could not load access', e.message || 'Try opening the share dialog again.');
-  }
-}
-
-async function grantFileAccess() {
-  const f = firstSelectedFile();
-  if (!f) return;
-  const email = document.getElementById('file-access-email')?.value.trim();
-  const permission = document.getElementById('file-access-permission')?.value || 'read';
-  if (!email) return toast('Enter an email address');
-  try {
-    await apiPut('/files/' + f.id + '/access', { email, permission });
-    const input = document.getElementById('file-access-email');
-    if (input) input.value = '';
-    toast('Access granted');
-    await loadFileAccess(f.id);
-  } catch (e) {
-    toast('Grant failed: ' + e.message);
-  }
-}
-
-async function revokeFileAccess(grantId) {
-  const f = firstSelectedFile();
-  if (!f || !grantId) return;
-  try {
-    await apiDelete('/files/' + f.id + '/access/' + grantId);
-    toast('Access revoked');
-    await loadFileAccess(f.id);
-  } catch (e) {
-    toast('Revoke failed: ' + e.message);
-  }
-}
-
 async function sendFileToPeople() {
   const f = firstSelectedFile();
   if (!f) return;
@@ -9313,7 +9335,7 @@ async function sendFileToPeople() {
     if (out) out.innerHTML = rows || 'Nothing sent.';
     ['send-to', 'send-note', 'send-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     await loadShareLinks(f.id);
-    await loadFileAccess?.(f.id)?.catch?.(() => {});
+    if (_fileAccessList) await _fileAccessList.reload().catch(() => {});
   } catch (e) {
     if (out) out.innerHTML = `<div>✕ ${esc(e.message)}</div>`;
   }
@@ -9480,6 +9502,442 @@ async function renderSharedWithMe() {
     r.addEventListener('click', () => open(r));
     r.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(r); } });
   });
+}
+
+// ---- Who has access (piece 3) ----
+// The key list of a library, a folder or a file: who can get in, why, and what removing a
+// key would do. It all comes from GET /api/access/...: the server evaluates the access
+// rule for every account, so nothing here works out who can get in or what a change does.
+const ACC_SHARE_WORD = { admin: 'Read-Write', write: 'Read-Write', read: 'Read-only' };
+const ACC_FILE_WORD = { admin: 'Can manage', write: 'Can edit', read: 'Can view' };
+const accShareWord = (l) => ACC_SHARE_WORD[l] || '';
+const accFileWord = (l) => ACC_FILE_WORD[l] || '';
+const accLast = (path) => String(path || '').split('/').pop();
+function accWho(p) { return p ? (p.name || p.email || 'someone') : 'someone'; }
+const accIsMe = (p) => !!p?.email && String(p.email).toLowerCase() === String(currentUser?.email || '').toLowerCase();
+const accBy = (p) => (accIsMe(p) ? 'You' : accWho(p));
+const accDomain = (email) => String(email || '').toLowerCase().split('@')[1] || '';
+
+// One reason, in words. `who` is 'them' (a manager's list) or 'you' (your own access).
+// Library and folder shares say Read-Write / Read-only; files given directly say
+// Can view / Can edit / Can manage.
+function accessReasonText(r, door, who = 'them') {
+  const you = who === 'you';
+  const them = you ? 'you' : 'them';
+  const kind = door.kind;
+  const lib = door.library?.name || door.file?.library?.name || 'the library';
+  const byWho = r.granted_by ? accBy(r.granted_by) : null;
+  const grp = r.via_group?.name || 'a group';
+  const share = accShareWord(r.level);
+  switch (r.kind) {
+    case 'admin': return you ? "You're an admin, so you can open everything in Depot" : 'Admin: can open everything in Depot';
+    case 'owner': {
+      if (kind === 'library') return you ? 'You own this library' : 'Owns this library';
+      const what = kind === 'file' ? 'the library this file belongs to' : 'the library this folder is in';
+      return you ? `You own “${lib}”, ${what}` : `Owns “${lib}”, ${what}`;
+    }
+    case 'uploader': return you ? "You added this file. It's your own: only you, people you give it to, and Depot's admins can open it."
+      : "Added this file · it's their own file, not the library's";
+    case 'file_grant': return you ? `${byWho || 'Someone'} gave you this file directly · ${accFileWord(r.level)}`
+      : `Given this file directly by ${byWho || 'someone'} · ${accFileWord(r.level)}`;
+    case 'file_grants': {
+      const n = r.files?.count || 0;
+      if (you) return `${n} file${n === 1 ? '' : 's'} here ${n === 1 ? 'was' : 'were'} given to you directly`;
+      return `Given ${n} file${n === 1 ? '' : 's'} in here directly · ${r.permission === 'mixed' ? 'mixed' : accFileWord(r.permission)}`;
+    }
+    case 'library_share': {
+      const onWhat = kind === 'library' ? 'this library' : 'the whole library';
+      if (r.via_group) return you ? `You're in the ${grp} group, which has ${share} on ${onWhat}` : `Member of ${grp}, which has ${share} on ${onWhat}`;
+      if (!byWho) return `Shared with ${them} · ${share}`;
+      return `${byWho} shared ${onWhat} with ${them} · ${share}`;
+    }
+    case 'folder_share': {
+      const path = r.folder_path || '';
+      if (r.relation === 'inside') {
+        if (r.via_group) return you ? `You're in the ${grp} group, which has ${share} on the folder “${path}”` : `Only the folder “${path}”: member of ${grp}, which has ${share} there`;
+        return you ? `${byWho || 'Someone'} shared the folder “${path}” with you · ${share}` : `Only the folder “${path}” · ${share}${byWho ? ` · shared by ${byWho}` : ''}`;
+      }
+      if (r.relation === 'at') {
+        if (r.via_group) return you ? `You're in the ${grp} group, which has ${share} on this folder` : `Member of ${grp}, which has ${share} on this folder`;
+        return byWho ? `${byWho} shared this folder with ${them} · ${share}` : `Shared with ${them} · ${share}`;
+      }
+      const name = accLast(path);
+      if (kind === 'file') {
+        if (r.via_group) return you ? `You're in the ${grp} group, which has ${share} on the folder “${name}” this file is in` : `Member of ${grp}, which has ${share} on the folder “${name}” this file is in`;
+        return byWho ? `${byWho} shared the folder “${name}” this file is in with ${them} · ${share}` : `Shared with ${them} · ${share}`;
+      }
+      if (r.via_group) return you ? `You're in the ${grp} group, which has ${share} on “${name}”, which contains this folder` : `Member of ${grp}, which has ${share} on “${name}”, which contains this folder`;
+      return byWho ? `${byWho} shared “${name}”, the folder this one is in, with ${them} · ${share}` : `Shared with ${them} · ${share}`;
+    }
+    case 'unexplained': return you ? "You can open this for a reason this list can't show. Please tell your Depot admin."
+      : "Can open this for a reason this list can't show. Please tell your Depot admin.";
+    default: return '';
+  }
+}
+// A reason as one line of a person's row, with the view-only note where it applies.
+function accReasonLine(r, door, person) {
+  const capped = person?.view_only && (r.level === 'write' || r.level === 'admin') && r.kind !== 'admin';
+  return accessReasonText(r, door) + (capped ? ' (their account can only view files)' : '');
+}
+
+// The pill beside a person: what they can use at this door.
+function accessLevelPill(p, doorKind) {
+  if (doorKind === 'file') return accFileWord(p.effective) || '';
+  if (p.is_owner) return 'Owner';
+  if (p.reasons.some(r => r.kind === 'admin')) return 'Admin';
+  if (!p.level) return p.reasons.some(r => r.kind === 'folder_share') ? 'Some folders' : 'Some files';
+  return accShareWord(p.effective);
+}
+
+// The door a response is about, for the words.
+const accDoorWhere = (door) => (door.kind === 'library' ? `“${door.library?.name || 'this library'}”`
+  : door.kind === 'folder' ? `the folder “${door.name}”` : `“${door.file?.name || 'this file'}”`);
+function accHeadline(resp) {
+  const n = resp.people.filter(p => p.level).length;
+  const some = resp.people.filter(p => !p.level).length;
+  const k = (resp.links || []).length;
+  const who = `${n} ${n === 1 ? 'person' : 'people'}`;
+  let h = resp.door.kind === 'file' ? `${who} can open ${accDoorWhere(resp.door)}` : `${who} can open everything in ${accDoorWhere(resp.door)}`;
+  if (some) h += ` · ${some} more can open some folders or files`;
+  if (k) h += ` · ${k} public ${k === 1 ? 'link' : 'links'}`;
+  return h;
+}
+
+// "Your access": for everyone who can see the door but not its full list.
+function renderYourAccess(el, resp) {
+  const you = resp.you || {};
+  const door = resp.door;
+  const f = door.file;
+  const lines = [];
+  let head;
+  if (!you.level) head = door.kind === 'file' ? "You can't open this file" : `You can't open this ${door.kind} as a whole`;
+  else if (resp.can_see_keys && (you.effective === 'admin' || you.effective === 'write')) head = 'You can edit this and manage who has access';
+  else head = you.effective === 'admin' || you.effective === 'write' ? 'You can edit this' : 'You can view this';
+  for (const r of you.reasons || []) lines.push(accessReasonText(r, door, 'you'));
+  if (f && f.library_content && accIsMe(f.added_by) && !(you.reasons || []).some(r => r.kind === 'uploader')) {
+    lines.push('You added this file. It belongs to the library now, so your access comes from the library.');
+  }
+  for (const x of you.inside?.folders || []) lines.push(`You have ${accShareWord(x.level)} on the folder “${x.path}” inside`);
+  if (you.inside?.files) lines.push(`${you.inside.files} file${you.inside.files === 1 ? '' : 's'} here ${you.inside.files === 1 ? 'was' : 'were'} given to you directly`);
+  const listed = {
+    open: "You see this library in your list because it isn't shared with anyone yet. That doesn't let you open other people's files.",
+    member_list: "You see this library in your list because you're on its old member list.",
+    your_files: 'You see this library in your list because some files in it are yours or were given to you. You can open only those.',
+  }[you.listed_because];
+  if (listed) lines.push(listed);
+  if (you.view_only && you.level) lines.push('Your account can only view files.');
+  const foot = !resp.can_see_keys && you.owner
+    ? `Only ${accWho(you.owner)} (the library owner) or an admin can see who else has access.`
+    : (!resp.can_see_keys ? 'Only the library owner or an admin can see who else has access.' : '');
+  el.innerHTML = `<div class="acc-you"><div class="acc-you-head">${esc(head)}</div>`
+    + (lines.length ? `<ul class="acc-lines">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '')
+    + (foot ? `<p class="file-share-hint" style="margin:8px 0 0">${esc(foot)}</p>` : '') + `</div>`;
+}
+
+// What removing (or lowering) a key does, in words, from the server's impact.
+function accessRemovalWords(key, resp, { lower = false } = {}) {
+  const door = resp.door;
+  const people = new Map(resp.people.map(p => [p.ref, p]));
+  const name = (ref) => accWho(people.get(ref));
+  const via = (k) => {
+    const p = people.get(k.ref);
+    const r = p?.reasons.find(x => (k.via || []).includes(x.key));
+    return r ? accessReasonText(r, door) : 'another way';
+  };
+  const where = key.folder_path ? `the folder “${accLast(key.folder_path)}”` : (door.kind === 'file' ? `“${door.file?.name}”` : `“${door.library?.name}”`);
+  const imp = (lower ? key.impact_if_read : key.impact) || { lose: [], keep: [], unknown: [], admins_unaffected: 0 };
+  const lines = [];
+  const unknown = imp.unknown.map(r => `${name(r)} may keep access another way.`);
+  const subject = key.subject?.type === 'group' ? `the ${key.subject.name} group` : (key.subject?.email || 'them');
+  if (key.kind === 'file_grants') {
+    const n = key.files_impact?.files || key.files?.count || 0;
+    const k = key.files_impact?.still_open || 0;
+    return {
+      title: `Revoke the ${n} file${n === 1 ? '' : 's'} given to ${subject} one by one here?`,
+      lines: [k === n && n ? 'They keep access to all of them another way.' : k ? `${k} of these stay open to them another way; the other ${n - k} won't.` : "They won't be able to open these any more."],
+      ok: 'Revoke',
+    };
+  }
+  if (key.kind === 'file_grant') {
+    const keep = imp.keep[0];
+    return {
+      title: `Revoke ${subject}'s access to “${door.file?.name}”?`,
+      lines: keep ? [`They'll still be able to ${keep.after === 'read' ? 'view' : 'edit'} it: ${via(keep)}.`]
+        : imp.unknown.length || resp.library_detail === 'hidden' ? ["They may still be able to open it through the library's sharing."]
+          : ["They won't be able to open it any more."],
+      ok: 'Revoke',
+    };
+  }
+  if (lower) {
+    const keep = imp.keep.find(k => k.after === 'write' || k.after === 'admin');
+    return {
+      title: `Change ${subject} to Read-only?`,
+      lines: key.subject?.type !== 'group' && keep ? [`They still have Read-Write another way (${via(keep)}), so nothing changes for them yet.`]
+        : ["They'll still open and download files here, but can't add, change or delete them, or make public links.", ...unknown],
+      ok: 'Change to Read-only',
+    };
+  }
+  if (key.subject?.type === 'group') {
+    const total = key.subject.member_count || 0;
+    if (imp.lose.length) {
+      const shown = imp.lose.slice(0, 3).map(name).join(', ');
+      lines.push(`${imp.lose.length} of its ${total} member${total === 1 ? '' : 's'} will lose access to ${where}: ${shown}${imp.lose.length > 3 ? ` and ${imp.lose.length - 3} more` : ''}.`);
+    }
+    if (imp.keep.length) lines.push(`${imp.keep.length} keep${imp.keep.length === 1 ? 's' : ''} another way in: ${imp.keep.slice(0, 3).map(k => `${name(k.ref)} (${via(k)})`).join('; ')}${imp.keep.length > 3 ? ` and ${imp.keep.length - 3} more` : ''}.`);
+    if (!imp.lose.length && !imp.unknown.length) lines.push('Nobody loses access: everyone this share lets in has another way in.');
+    if (key.waiting_count) lines.push(`${key.waiting_count} member${key.waiting_count === 1 ? " hasn't" : "s haven't"} signed in or verified their email, so nothing changes for them today.`);
+    if (imp.admins_unaffected) lines.push("Depot admins can open everything anyway.");
+    return { title: `Remove the ${key.subject.name} group's share?`, lines: [...lines, ...unknown], ok: 'Remove share' };
+  }
+  lines.push(`${subject} will lose ${accShareWord(key.permission)} on ${where}.`);
+  if (imp.keep.length) lines.push(`They can still get in: ${via(imp.keep[0])}.`);
+  else if (imp.lose.length) lines.push(`They won't be able to open anything in ${where} any more.`);
+  else if (key.waiting_count) lines.push("They haven't signed in or verified their email yet, so nothing changes for them today.");
+  if (key.relation !== 'inside') lines.push("Shares of folders inside, and files given one by one, aren't affected.");
+  const theirLinks = (resp.links || []).filter(l => l.state === 'active' && imp.lose.includes(`u:${l.created_by?.user_id}`)).length;
+  if (theirLinks) lines.push(`${theirLinks} public link${theirLinks === 1 ? '' : 's'} they made here will stop working unless they can still edit those files another way.`);
+  return { title: `Remove ${subject}'s share?`, lines: [...lines, ...unknown], ok: 'Remove share' };
+}
+function accessLinkWords(link) {
+  return {
+    title: 'Revoke this link?',
+    lines: [`Anyone who has it won't be able to download “${link.name || accLast(link.folder_path) || 'this'}” any more. People signed in to Depot keep whatever access they have.`],
+    ok: 'Revoke link',
+  };
+}
+async function confirmKeyRemoval(words) {
+  return askConfirm(words.lines[0] || '', { title: words.title, detailLines: words.lines.slice(1), danger: true, okLabel: words.ok });
+}
+
+// The URL for a door.
+function accessUrl(door) {
+  if (door.kind === 'file') return `/access/files/${encodeURIComponent(door.fileId)}`;
+  return `/access/libraries/${encodeURIComponent(door.libraryId)}${door.path ? `?folder=${encodeURIComponent(door.path)}` : ''}`;
+}
+
+function accPersonRow(p, resp, keys, open) {
+  const door = resp.door;
+  const ownerDomain = accDomain(door.library?.owner?.email || door.file?.library?.owner_email);
+  const dom = accDomain(p.email);
+  const tags = [];
+  if (ownerDomain && dom && dom !== ownerDomain) tags.push(`<span class="pill">Outside ${esc(ownerDomain)}</span>`);
+  if (p.same_address_accounts > 1) tags.push(`<span class="pill warn">${p.same_address_accounts} accounts use this address</span>`);
+  const reasons = p.reasons;
+  const shown = open ? reasons : reasons.slice(0, 1);
+  const initials = accWho(p).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
+  const ways = p.ways_in > 1 ? ` · ${p.ways_in} ways in` : '';
+  const lines = shown.map(r => {
+    const k = keys.get(r.key);
+    let act = '';
+    if (k && k.can_remove && (k.change_here || k.kind === 'file_grants' || k.kind === 'file_grant')) {
+      act = `<button class="file-library-tool" type="button" data-acc-remove="${escAttr(r.key)}">${k.kind === 'file_grant' || k.kind === 'file_grants' ? 'Revoke' : 'Remove'}</button>`;
+      if ((k.kind === 'library_share' || k.kind === 'folder_share') && k.permission === 'write') act += `<button class="file-library-tool" type="button" data-acc-lower="${escAttr(r.key)}">Make Read-only</button>`;
+    } else if (k && (k.kind === 'library_share' || k.kind === 'folder_share') && !k.change_here && door.kind !== 'file') {
+      act = `<button class="file-library-tool" type="button" data-acc-there="${escAttr(k.folder_path || '')}">${k.folder_path ? `Shared on the folder “${esc(accLast(k.folder_path))}”, change it there` : 'Shared on the library, change it there'}</button>`;
+    }
+    const meta = [r.granted_by ? accBy(r.granted_by) : '', r.granted_at ? fileDate(r.granted_at) : ''].filter(Boolean).join(' · ');
+    const files = r.kind === 'file_grants' && open
+      ? `<ul class="acc-files">${r.files.items.map(i => `<li>${esc(i.name)} · ${esc(accFileWord(i.permission))}</li>`).join('')}${r.files.more ? `<li>and ${r.files.more} more</li>` : ''}</ul>` : '';
+    return `<div class="acc-reason"><div><div>${esc(accReasonLine(r, door, p))}</div>${open && meta ? `<div class="acc-meta">${esc(meta)}</div>` : ''}${files}</div>${open ? `<div class="acc-acts">${act}</div>` : ''}</div>`;
+  }).join('');
+  const more = !open && reasons.length > 1 ? `<span class="acc-more">+ ${reasons.length - 1} more way${reasons.length - 1 === 1 ? '' : 's'} in</span>` : '';
+  return `<div class="acc-person" data-acc-person="${escAttr(p.ref)}">`
+    + `<button type="button" class="acc-person-head" aria-expanded="${open ? 'true' : 'false'}" data-acc-toggle="${escAttr(p.ref)}">`
+    + `<span class="acc-avatar" aria-hidden="true">${esc(initials || '?')}</span>`
+    + `<span class="ls-who"><span class="ls-who-name">${esc(accWho(p))}</span><span class="ls-who-sub">${p.name && p.email ? `<span>${esc(p.email)}</span>` : ''}${tags.join('')}</span></span>`
+    + `<span class="pill">${esc(accessLevelPill(p, door.kind))}${esc(ways)}</span></button>`
+    + `<div class="acc-reasons">${lines}${more}</div></div>`;
+}
+
+function accLinkRow(l, resp) {
+  const until = l.expires_at ? `until ${new Date(l.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : 'no end date';
+  const title = l.kind === 'folder' ? `Anyone with the folder link to “${l.name || l.folder_path}” · ${until}`
+    : l.recipient_email ? `Anyone with the link sent to ${l.recipient_email} · ${until}` : `Anyone with this link · ${until}`;
+  const meta = l.kind === 'folder'
+    ? [`A ZIP of the ${l.file_count} file${l.file_count === 1 ? '' : 's'} that were in it when it was made`, `${l.serving} still served`, `made by ${accBy(l.created_by)}`]
+    : [l.name, `made by ${accBy(l.created_by)}`, l.has_password ? 'password' : '', l.allow_upload ? 'can send files back' : '', `opened ${l.access_count} time${l.access_count === 1 ? '' : 's'}`];
+  let paused = '';
+  if (l.state === 'paused') {
+    const who = accIsMe(l.created_by) ? 'You' : accWho(l.created_by);
+    const why = {
+      creator_cannot_edit: `${who} can no longer edit ${l.kind === 'folder' ? 'these files' : 'this file'}, so the link doesn't open. It starts working again if they get Read-Write back, so revoke it if it shouldn't.`,
+      creator_view_only: `${who === 'You' ? 'Your' : `${who}'s`} account can only view files, so the link doesn't open. It starts working again if that changes, so revoke it if it shouldn't.`,
+      creator_gone: "The person who made it no longer has a Depot account, so the link doesn't open.",
+    }[l.paused_reason] || "The link doesn't open right now.";
+    paused = `<div class="acc-meta">${esc(why)}</div>`;
+  }
+  const act = l.can_revoke ? `<button class="file-library-tool" type="button" data-acc-revoke-link="${escAttr(l.ref)}">Revoke</button>`
+    : `<span class="acc-meta">Ask ${esc(accWho(l.created_by))} or an admin to revoke it.</span>`;
+  return `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(title)}${l.state === 'paused' ? ' <span class="pill warn">Paused</span>' : ''}</span>`
+    + `<span class="ls-who-sub"><span>${esc(meta.filter(Boolean).join(' · '))}</span></span>${paused}</div>${act}</div>`;
+}
+
+function accWaitingLines(resp) {
+  const out = [];
+  for (const k of resp.keys) {
+    if (!k.waiting_count) continue;
+    const lvl = k.kind === 'file_grant' || k.kind === 'file_grants' ? accFileWord(k.permission) : accShareWord(k.permission);
+    if (k.subject?.type === 'group') {
+      out.push({ k, text: `${k.waiting_count} ${k.waiting_count === 1 ? 'member' : 'members'} of ${k.subject.name} can't get in yet (not signed in, or email not verified)` });
+    } else {
+      for (const w of k.waiting || []) {
+        out.push({ k, text: w.why === 'unverified'
+          ? `${w.email} · Email not verified. Shares only reach a verified address, so this won't open for them until an admin verifies it.`
+          : `${w.email} · Hasn't signed in yet. Gets ${lvl} once they sign in with this address.` });
+      }
+    }
+  }
+  return out;
+}
+
+// The list itself, mounted into a dialog. `door`: { kind: 'library' | 'folder' | 'file',
+// libraryId, path, fileId }. Loads on mount and after every change; a newer load wins.
+function mountAccessList(root, door, { showLinks = true, onLoad = null } = {}) {
+  const st = { seq: 0, resp: null, open: new Set(), filter: 'all', busy: false };
+  const noun = door.kind === 'file' ? 'file' : door.kind;
+  async function load() {
+    const seq = ++st.seq;
+    if (!st.resp) root.innerHTML = `<div class="ls-empty">Working out who has access…</div>`;
+    let resp;
+    try { resp = await apiGet(accessUrl(door)); }
+    catch (e) {
+      if (seq !== st.seq) return;
+      const msg = e?.status === 404 ? (e.body?.error === 'Folder not found in this library' ? 'Folder not found in this library.' : `This ${noun} isn't there any more.`) : "Couldn't load who has access.";
+      root.innerHTML = `<div class="ls-empty">${esc(msg)}${e?.status === 404 ? '' : ` <button class="file-library-tool" type="button" data-acc-retry>Try again</button>`}</div>`;
+      return;
+    }
+    if (seq !== st.seq) return;
+    st.resp = resp;
+    render();
+    if (onLoad) onLoad(resp);
+  }
+  function render() {
+    const resp = st.resp;
+    if (!resp.can_see_keys) { renderYourAccess(root, resp); return; }
+    const d = resp.door;
+    const keys = new Map(resp.keys.map(k => [k.ref, k]));
+    const ownerDomain = accDomain(d.library?.owner?.email || d.file?.library?.owner_email);
+    const counts = {
+      all: resp.people.length,
+      rw: resp.people.filter(p => p.effective === 'write' || p.effective === 'admin').length,
+      outside: ownerDomain ? resp.people.filter(p => accDomain(p.email) && accDomain(p.email) !== ownerDomain).length : 0,
+      groups: resp.people.filter(p => p.reasons.some(r => r.via_group)).length,
+    };
+    const waiting = accWaitingLines(resp);
+    const pick = {
+      all: () => true,
+      rw: (p) => p.effective === 'write' || p.effective === 'admin',
+      outside: (p) => accDomain(p.email) && accDomain(p.email) !== ownerDomain,
+      groups: (p) => p.reasons.some(r => r.via_group),
+      waiting: () => false,
+    }[st.filter] || (() => true);
+    const chips = resp.people.length > 8 ? `<div class="acc-chips" role="group" aria-label="Show">${[
+      ['all', `Everyone (${counts.all})`], ['rw', `Read-Write (${counts.rw})`],
+      ...(ownerDomain && counts.outside ? [['outside', `Outside ${ownerDomain} (${counts.outside})`]] : []),
+      ...(counts.groups ? [['groups', `Through groups (${counts.groups})`]] : []),
+      ...(waiting.length ? [['waiting', `Waiting (${waiting.length})`]] : []),
+    ].map(([k, t]) => `<button type="button" class="acc-chip${st.filter === k ? ' active' : ''}" aria-pressed="${st.filter === k}" data-acc-chip="${k}">${esc(t)}</button>`).join('')}</div>` : '';
+    let context = '';
+    if (d.kind === 'file') {
+      const f = d.file;
+      if (resp.library_detail === 'hidden') context = `Also open to people the library “${f.library?.name || ''}” or a folder in it is shared with. Only ${resp.hidden_note?.library_owner_email || 'the library owner'} (the library owner) or an admin can see who.`;
+      else if (f.library_content) context = `This file belongs to the library “${f.library?.name || ''}”, so everyone the library, or a folder it's in, is shared with can open it.${f.added_by?.email ? ` Added by ${accWho(f.added_by)}${f.added_by.can_get_in === false ? ", who can't open it any more" : ''}.` : ''}`;
+      else context = `This is ${accIsMe(f.added_by) ? 'your' : `${accWho(f.added_by)}'s`} own file, not the library's. Library and folder shares don't reach it.`;
+    }
+    const people = resp.people.filter(pick);
+    const onlyOwner = !resp.people.some(p => !p.is_owner) && !waiting.length && !(resp.links || []).length;
+    const adminsRow = resp.admins?.count
+      ? (resp.admins.named ? `Depot admins can open everything: ${resp.admins.named.map(a => accWho(a)).join(', ')}` : `Depot admins (${resp.admins.count}) · can open everything in Depot`) : '';
+    const html = [];
+    html.push(`<div class="acc-head">${esc(accHeadline(resp))}</div>`);
+    if (d.kind !== 'file') html.push(`<p class="file-share-hint" style="margin:4px 0 10px">Library and folder shares include files added later. Files given one by one, and folder links, cover only the files they were made for.</p>`);
+    if (context) html.push(`<p class="file-share-hint" style="margin:4px 0 10px">${esc(context)}</p>`);
+    if (onlyOwner && d.kind !== 'file') {
+      const owner = d.library?.owner;
+      html.push(`<div class="ls-empty">${accIsMe(owner) || !owner ? "Only you and Depot's admins can get in. Use Share to give people or groups access." : `Only ${esc(accWho(owner))} and Depot's admins can get in.`}</div>`);
+    }
+    html.push(chips);
+    if (st.filter !== 'waiting') html.push(`<div class="acc-people">${people.map(p => accPersonRow(p, resp, keys, st.open.has(p.ref))).join('')}</div>`);
+    if (adminsRow && st.filter === 'all') html.push(`<div class="ls-note">${esc(adminsRow)}</div>`);
+    if (waiting.length && (st.filter === 'all' || st.filter === 'waiting')) {
+      html.push(`<h4 class="acc-sub">Waiting · these keys don't open anything yet</h4>`
+        + waiting.map(w => `<div class="ls-row"><div class="ls-who"><span class="ls-who-sub" style="font-size:12.5px"><span>${esc(w.text)}</span></span></div>${w.k.can_remove && w.k.subject?.type !== 'group' && (w.k.change_here || w.k.kind === 'file_grant') ? `<button class="file-library-tool" type="button" data-acc-remove="${escAttr(w.k.ref)}">Remove</button>` : ''}</div>`).join(''));
+    }
+    if (showLinks && (resp.links || []).length && st.filter === 'all') {
+      html.push(`<h4 class="acc-sub">Anyone with a link (${resp.links.length})</h4>` + resp.links.map(l => accLinkRow(l, resp)).join(''));
+    }
+    if (resp.personal_files?.length) {
+      html.push(resp.personal_files.map(x => `<p class="ls-note">${esc(accWho(x))} has ${x.count} private file${x.count === 1 ? '' : 's'} here from before the library was shared. Library shares don't reach them.</p>`).join(''));
+    }
+    html.push(`<p class="ls-note">As of ${esc(new Date(resp.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}. Removing a key stops new access at once; it can't take back copies people already downloaded.</p>`);
+    root.innerHTML = html.join('');
+  }
+  async function act(fn) {
+    if (st.busy) return;
+    st.busy = true;
+    try { await fn(); } finally { st.busy = false; await load(); }
+  }
+  root.addEventListener('click', async (e) => {
+    const t = e.target;
+    if (t.closest('[data-acc-retry]')) { load(); return; }
+    const tog = t.closest('[data-acc-toggle]');
+    if (tog) { const ref = tog.dataset.accToggle; if (st.open.has(ref)) st.open.delete(ref); else st.open.add(ref); render(); return; }
+    const chip = t.closest('[data-acc-chip]');
+    if (chip) { st.filter = chip.dataset.accChip; render(); return; }
+    const there = t.closest('[data-acc-there]');
+    if (there) { openLibraryShare({ libraryId: st.resp.door.library?.id || door.libraryId, folderPath: there.dataset.accThere }); return; }
+    const rm = t.closest('[data-acc-remove]') || t.closest('[data-acc-lower]');
+    if (rm) {
+      const lower = !!rm.dataset.accLower;
+      const k = st.resp.keys.find(x => x.ref === (rm.dataset.accRemove || rm.dataset.accLower));
+      if (!k || !await confirmKeyRemoval(accessRemovalWords(k, st.resp, { lower }))) return;
+      const libId = st.resp.door.library?.id || st.resp.door.file?.library?.id || door.libraryId;
+      await act(async () => {
+        try {
+          if (k.kind === 'library_share' || k.kind === 'folder_share') {
+            if (lower) await apiPut(`/libraries/${encodeURIComponent(libId)}/shares/${encodeURIComponent(k.id)}`, { permission: 'read' });
+            else await apiDelete(`/libraries/${encodeURIComponent(libId)}/shares/${encodeURIComponent(k.id)}`);
+            loadLibraries().catch(() => {});
+          } else if (k.kind === 'file_grant') {
+            await apiDelete(`/files/${encodeURIComponent(door.fileId)}/access/${encodeURIComponent(k.id)}`);
+          } else if (k.kind === 'file_grants') {
+            await apiDelete('/files/folder/members', inFolderLib({ path: door.path, email: k.subject.email }, libId));
+          }
+          toast(lower ? 'Changed to Read-only' : k.kind === 'file_grant' || k.kind === 'file_grants' ? 'Access revoked' : 'Share removed');
+        } catch (err) { toast(groupErr(err, "Couldn't change it. Try again.")); }
+      });
+      return;
+    }
+    const lk = t.closest('[data-acc-revoke-link]');
+    if (lk) {
+      const l = (st.resp.links || []).find(x => x.ref === lk.dataset.accRevokeLink);
+      if (!l || !await confirmKeyRemoval(accessLinkWords(l))) return;
+      await act(async () => {
+        try {
+          if (l.kind === 'folder') await apiDelete(`/files/folder/links/${encodeURIComponent(l.id)}`);
+          else await apiDelete(`/files/${encodeURIComponent(l.document_id)}/shares/${encodeURIComponent(l.id)}`);
+          toast('Link revoked');
+        } catch (err) { toast(groupErr(err, "Couldn't revoke it. Try again.")); }
+      });
+    }
+  });
+  load();
+  return { reload: load, get response() { return st.resp; } };
+}
+
+// A dialog holding only the list: from the library switcher, and for libraries that
+// can't be shared (no owner yet) but can still be looked into.
+function openLibraryAccess({ libraryId, folderPath = '' }) {
+  closeLibraryMenu();
+  const lib = librariesList.find(l => String(l.id) === String(libraryId));
+  if (!lib || !lib.id) { toast('That library is no longer available.'); return; }
+  const title = folderPath ? `Who has access to the folder “${accLast(folderPath)}”` : (lib.can_manage ? `Who has access to “${lib.name}”` : `Your access to “${lib.name}”`);
+  const m = openModal({ id: 'library-access-scrim', modalClass: 'file-share-modal', labelledBy: 'la-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-la-close>✕</button><h2 id="la-title">${esc(title)}</h2>`
+    + (folderPath ? `<p class="sub">in ${esc(lib.name)}</p>` : '')
+    + `<div class="acc-mount"></div><div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-la-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-la-close]').forEach(b => b.onclick = () => m.close());
+  mountAccessList(m.el.querySelector('.acc-mount'), { kind: folderPath ? 'folder' : 'library', libraryId: lib.id, path: folderPath });
 }
 
 async function renderShareLinks() {
@@ -10041,6 +10499,7 @@ function openFileMenu(fileId, event) {
     `<div class="file-menu-rule"></div>`,
     aiOff() ? '' : `<button class="file-menu-item" onclick="closeFileMenu();openAskFile('${fileId}')">Ask AI about this</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();openShareFile('${fileId}')">Share…</button>`,
+    `<button class="file-menu-item" onclick="closeFileMenu();openFileAccess('${fileId}')">Who has access…</button>`,
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();renameFile('${fileId}')">Rename…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>` : '',
@@ -10147,6 +10606,7 @@ function openFolderMenu(path, event) {
     `<button class="file-menu-item" onclick="closeFileMenu();openFolder(folderMenuPath)">Open</button>`,
     `<div class="file-menu-rule"></div>`,
     canShare ? `<button class="file-menu-item" onclick="closeFileMenu();openFolderShare(folderMenuPath)">Share…</button>` : '',
+    `<button class="file-menu-item" onclick="closeFileMenu();openLibraryAccess({ libraryId: currentLibraryId, folderPath: folderMenuPath })">${canShareLibrary(currentLibrary()) ? 'Who has access…' : 'Your access…'}</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
     `<button class="file-menu-item" id="folder-notify-item" onclick="closeFileMenu();toggleFolderNotify(folderMenuPath)">Turn off new-file notifications</button>`,
     `<div class="file-menu-rule"></div>`,
@@ -10258,7 +10718,7 @@ async function openFolderShare(path) {
   const canManage = canShareLibrary(lib);
   const canLink = canWriteHere(path);
   const m = openModal({ id: 'folder-share-scrim', labelledBy: 'fs-title', html: `<button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2 id="fs-title">Share folder “${esc(name)}”</h2>${lib ? `<p class="sub">in ${esc(lib.name)}</p>` : ''}
-    <section class="file-share-section"><h3>People and groups</h3>${canManage ? '<div class="ls-mount"></div>' : `<p class="file-share-hint">${esc(folderAccessLine(lib, path))}</p>`}<div class="fs-legacy"></div></section>
+    <section class="file-share-section"><h3>People and groups</h3>${canManage ? `${accessTabsHtml()}<div class="ls-mount" data-view-panel="share"></div><div class="acc-mount" data-view-panel="access" hidden></div>` : '<div class="acc-mount"></div><p class="file-share-hint" style="margin-top:8px">Only the library owner or an admin can share it further.</p>'}<div class="fs-legacy"></div></section>
     ${canLink ? `<section class="file-share-section" style="margin-top:22px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that downloads this folder as a ZIP — no sign-in needed. A link covers only the files in the folder right now; people and groups you share it with also get files added later.</p>
       <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
       <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
@@ -10267,7 +10727,11 @@ async function openFolderShare(path) {
     </section>` : ''}
     <div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeFolderShare()">Close</button></div>
   `, modalClass: 'file-share-modal' });
-  if (canManage) mountLibraryShare(m.el.querySelector('.ls-mount'), { libraryId: lib.id, folderPath: path });
+  const door = { kind: 'folder', libraryId: lib?.id, path };
+  if (canManage) {
+    mountLibraryShare(m.el.querySelector('.ls-mount'), { libraryId: lib.id, folderPath: path });
+    wireAccessTabs(m.el.querySelector('.file-share-section'), door);
+  } else if (lib?.id) mountAccessList(m.el.querySelector('.acc-mount'), door);
   loadFolderFileGrants(m.el.querySelector('.fs-legacy'), path, folderShareLib);
   if (canLink) await loadFolderShareLinks();
 }
@@ -10285,19 +10749,20 @@ async function loadFolderFileGrants(el, path, lib) {
     + grants.map(g => `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(g.subject_email || g.subject_id || 'Unknown person')}</span><span class="ls-who-sub"><span>${g.permission === 'mixed' ? 'Mixed access' : esc(permissionLabel(g.permission))} · ${g.doc_count} file${g.doc_count === 1 ? '' : 's'}</span></span></div><button class="file-library-tool" type="button" data-fg-revoke="${escAttr(g.subject_email || g.subject_id || '')}" aria-label="Revoke ${escAttr(g.subject_email || g.subject_id || '')}">Revoke</button></div>`).join('');
   el.querySelectorAll('[data-fg-revoke]').forEach(b => b.addEventListener('click', async () => {
     const email = b.dataset.fgRevoke;
-    if (!email || !await askConfirm(`Revoke ${email}'s access to the files in this folder that were given to them one by one?`, { danger: true, okLabel: 'Revoke' })) return;
+    if (!email) return;
+    let words = null;
+    try {
+      const resp = await apiGet(accessUrl({ kind: 'folder', libraryId: lib, path }));
+      const key = (resp.keys || []).find(k => k.kind === 'file_grants' && k.subject?.email === String(email).toLowerCase());
+      if (key) words = accessRemovalWords(key, resp);
+    } catch { /* the plain question below */ }
+    const ok = words ? await confirmKeyRemoval(words)
+      : await askConfirm(`Revoke ${email}'s access to the files in this folder that were given to them one by one?`, { danger: true, okLabel: 'Revoke' });
+    if (!ok) return;
     try { const r = await apiDelete('/files/folder/members', inFolderLib({ path, email }, lib)); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); }
     catch (e) { toast(groupErr(e, "Couldn't revoke it. Try again.")); }
     loadFolderFileGrants(el, path, lib);
   }));
-}
-// For someone who can't share the folder: what they have, and who can.
-function folderAccessLine(lib, path) {
-  const above = (lib?.my_folders || []).filter(x => path === x.path || path.startsWith(x.path + '/'));
-  const rw = lib?.my_access === 'rw' || above.some(x => x.level === 'rw');
-  const level = rw ? 'Read-Write' : (lib?.my_access === 'r' || above.length) ? 'Read-only' : null;
-  if (level) return `Shared with you (${level})${lib?.owner_email ? ` by ${lib.owner_email}` : ''}. Only the library owner or an admin can share it further.`;
-  return 'Only the library owner or an admin can share this folder.';
 }
 async function loadFolderShareLinks() {
   const list = document.getElementById('folder-share-list');
