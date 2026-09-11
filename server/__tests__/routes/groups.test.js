@@ -17,7 +17,7 @@ const request = require('supertest');
 const express = require('express');
 const crypto = require('crypto');
 
-const store = { groups: [], members: [], users: [], profiles: [] };
+const store = { groups: [], members: [], users: [], profiles: [], grants: [] };
 const lc = s => String(s || '').toLowerCase();
 const pgErr = (code, msg = code) => Object.assign(new Error(msg), { code });
 // Postgres's uuid input takes upper case, braces and missing hyphens, and refuses
@@ -34,6 +34,9 @@ const MEMBER_RET = ['id', 'member_email', 'added_by_email', 'created_at'];
 const ARROW = '\u2192';
 
 const SQL = {
+  // libraryShares.countForGroup: the library/folder shares a group carries
+  'SELECT count(*)::int AS n FROM library_grants WHERE group_id = $1':
+    ([gid]) => { uuidIn(gid); return [{ n: store.grants.filter(x => uuidEq(x.group_id, gid)).length }]; },
   // listGroups
   'SELECT g.id, g.name, g.owner_id, g.owner_email, g.created_at, (SELECT count(*) FROM group_members m WHERE m.group_id = g.id)::int AS member_count, EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = g.id AND lower(m.member_email) = lower($2)) AS is_member FROM groups g WHERE $1 OR g.owner_id = $3 OR EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = g.id AND lower(m.member_email) = lower($2)) ORDER BY lower(g.name)':
     ([isAdmin, email, uid]) => {
@@ -150,11 +153,12 @@ jest.mock('../../lib/auditLog', () => ({ append: (...a) => mockAppend(...a) }));
 let mockUser;
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockUser; next(); });
 
-const RICHARD = { id: '11111111-1111-4111-8111-111111111111', email: 'richard@ptechllc.com', role: 'contributor' };
-const DAVE    = { id: '22222222-2222-4222-8222-222222222222', email: 'dave@ptechllc.com', role: 'admin' };
-const TAMMY   = { id: '33333333-3333-4333-8333-333333333333', email: 'tammy@ptechllc.com', role: 'contributor' };
-const JACKSON = { id: '44444444-4444-4444-8444-444444444444', email: 'jackson@ptechllc.com', role: 'contributor' };
-const VIEWER  = { id: '55555555-5555-4555-8555-555555555555', email: 'viewer@ptechllc.com', role: 'viewer' };
+// Signed in with addresses Keycloak has verified (membership matches only those).
+const RICHARD = { id: '11111111-1111-4111-8111-111111111111', email: 'richard@ptechllc.com', verifiedEmail: 'richard@ptechllc.com', role: 'contributor' };
+const DAVE    = { id: '22222222-2222-4222-8222-222222222222', email: 'dave@ptechllc.com', verifiedEmail: 'dave@ptechllc.com', role: 'admin' };
+const TAMMY   = { id: '33333333-3333-4333-8333-333333333333', email: 'tammy@ptechllc.com', verifiedEmail: 'tammy@ptechllc.com', role: 'contributor' };
+const JACKSON = { id: '44444444-4444-4444-8444-444444444444', email: 'jackson@ptechllc.com', verifiedEmail: 'jackson@ptechllc.com', role: 'contributor' };
+const VIEWER  = { id: '55555555-5555-4555-8555-555555555555', email: 'viewer@ptechllc.com', verifiedEmail: 'viewer@ptechllc.com', role: 'viewer' };
 // Richard after an admin demoted him — same account, same id.
 const RICHARD_DEMOTED = { ...RICHARD, role: 'viewer' };
 // A different account that happens to use Richard's address (a recreated sign-in).
@@ -181,7 +185,7 @@ async function seedAcctg() {
 }
 
 beforeEach(() => {
-  store.groups = []; store.members = []; mockHooks = [];
+  store.groups = []; store.members = []; store.grants = []; mockHooks = [];
   store.users = [RICHARD, DAVE, TAMMY, JACKSON, VIEWER].map(u => ({ user_id: u.id, email: u.email, role: u.role }));
   store.profiles = [
     { email: 'tammy@ptechllc.com', display_name: 'Old Tammy', updated_at: new Date(2026, 0, 1) },
@@ -446,7 +450,29 @@ describe('membership', () => {
     expect((await as(RICHARD).delete(`/api/groups/${g.id}`)).status).toBe(200);
     expect((await as(DAVE).delete(`/api/groups/${g.id}`)).status).toBe(404);
     expect(groupRow(g.id)).toBeUndefined();
-    expect(events('group_deleted').map(e => e.detail)).toEqual([`group ${g.id} "Acctg", 2 member(s)`]);
+    expect(events('group_deleted').map(e => e.detail)).toEqual([`group ${g.id} "Acctg", 2 member(s), 0 share(s) removed`]);
+  });
+
+  test('deleting a group records the shares that went with it, and managers see the count first', async () => {
+    const g = await seedAcctg();
+    store.grants.push({ group_id: g.id }, { group_id: g.id });
+    expect((await as(RICHARD).get(`/api/groups/${g.id}`)).body.share_count).toBe(2);
+    expect((await as(TAMMY).get(`/api/groups/${g.id}`)).body.share_count).toBeUndefined(); // members don't see it
+    mockAppend.mockClear();
+    expect((await as(RICHARD).delete(`/api/groups/${g.id}`)).status).toBe(200);
+    expect(events('group_deleted')[0].detail).toMatch(/, 2 member\(s\), 2 share\(s\) removed$/);
+  });
+});
+
+// A group now carries access, so belonging is by VERIFIED address: an account that
+// merely claims a member's address sees nothing of the group.
+describe('membership by verified address', () => {
+  test("an account claiming a member's address, unverified, neither lists nor opens the group", async () => {
+    const g = await seedAcctg();
+    const CLAIMANT = { id: '77777777-7777-4777-8777-777777777777', email: TAMMY.email, verifiedEmail: null, role: 'contributor' };
+    expect((await as(CLAIMANT).get('/api/groups')).body).toEqual([]);
+    expect((await as(CLAIMANT).get(`/api/groups/${g.id}`)).status).toBe(404);
+    expect((await as(TAMMY).get(`/api/groups/${g.id}`)).status).toBe(200);
   });
 });
 

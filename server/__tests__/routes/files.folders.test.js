@@ -61,12 +61,14 @@ describe('folder sub-router mount (ST-1)', () => {
   });
 
   test('POST /api/files/folder creates the folder marker for a valid path', async () => {
-    db.queryOne.mockResolvedValueOnce({ id: 'doc-1', name: 'Reports/.keep' });
+    db.queryOne
+      .mockResolvedValueOnce(null) // destinationFolder: no existing folder by that name
+      .mockResolvedValueOnce({ id: 'doc-1', name: 'Reports/.keep' });
     const res = await request(makeApp()).post('/api/files/folder').send({ path: 'Reports' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, path: 'Reports' });
-    // safeDocName (lib/documents) sanitized the path; the INSERT ran; owner ACL granted.
-    expect(db.queryOne).toHaveBeenCalledTimes(1);
+    // the new name was cleaned (destinationFolder -> safeDocName); the INSERT ran; owner ACL granted.
+    expect(db.queryOne).toHaveBeenCalledTimes(2);
     expect(require('../../lib/documentAccess').grantOwnerAdmin).toHaveBeenCalledTimes(1);
   });
 

@@ -1675,6 +1675,31 @@ html.file-home-mode .masthead-actions { display: flex; }
 .share-foot .run-btn:disabled { opacity: .5; cursor: default; }
 .share-existing { margin-top: 14px; border-top: 1px solid var(--rule); padding-top: 12px; }
 .share-existing summary { font: 500 13px var(--ui); color: var(--ink-soft); cursor: pointer; }
+/* Sharing a library or a folder in it (Seafile's Share to user / Share to group). */
+.ls-add { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.ls-add-row { display: flex; gap: 8px; align-items: center; }
+.ls-add select, .ls-row select { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; background: var(--surface); color: var(--ink); font: 400 13.5px var(--ui); max-width: 100%; }
+.ls-add select:focus, .ls-row select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.ls-add [data-ls-group] { width: 100%; }
+.ls-add-row select, .ls-row select { width: auto; flex: 0 0 auto; }
+.ls-add-row .run-btn { margin-left: auto; }
+.ls-add .run-btn:disabled { opacity: .5; cursor: default; }
+.ls-list { margin-top: 16px; border-top: 1px solid var(--rule-soft); }
+.ls-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--rule-soft); }
+.ls-row-btn { width: 100%; border: 0; border-bottom: 1px solid var(--rule-soft); background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.ls-row-btn:hover { background: var(--surface-2); }
+.ls-row-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ls-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ls-who-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-who-sub { font-size: 12px; color: var(--ink-faint); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ls-empty { padding: 12px 2px; color: var(--ink-faint); font-size: 13px; }
+.ls-note { font-size: 12.5px; color: var(--ink-faint); margin: 10px 2px 0; }
+.library-menu-item .pill { margin-left: 6px; vertical-align: 1px; }
+.file-create-note { padding: 6px 12px 8px; max-width: 240px; font: 400 12px/1.4 var(--ui); color: var(--ink-faint); }
+.file-library-heading-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-share-btn { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); line-height: 0; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
+.library-share-btn:hover { color: var(--accent); background: var(--surface-2); }
+.library-share-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Widget dashboard — modular start screen, two columns above 1024px */
 .wdash { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start; margin-top: 22px; }
 .wdash-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
@@ -3567,22 +3592,23 @@ async function getToken() {
 
 // Build an Error carrying status + parsed body, so callers can branch on a machine
 // code (e.g. SMB_CREDENTIALS_REQUIRED) instead of string-matching the message.
+// The server answers { error: "..." } (sometimes with a code). The message is that
+// sentence, so no toast ever shows a JSON blob; the parsed body stays on err.body for
+// callers that branch on a code.
 async function apiError(res) {
   const t = await res.text();
   const err = new Error(t); err.status = res.status;
   try { err.body = JSON.parse(t); } catch { /* non-JSON body */ }
+  if (err.body && typeof err.body.error === 'string' && err.body.error) err.message = err.body.error;
   return err;
 }
 
 async function apiGet(path) {
   const res = await fetch('/api' + path, { headers: { Authorization: `Bearer ${await getToken()}` } });
   if (!res.ok) {
-    const t = await res.text();
-    // Keep the message text (back-compat), but attach status + parsed body so callers
-    // can branch on a machine code (e.g. SMB_CREDENTIALS_REQUIRED) without string-matching.
-    const err = new Error(t); err.status = res.status;
-    try { err.body = JSON.parse(t); } catch { /* non-JSON body */ }
-    throw err;
+    // Status + parsed body let callers branch on a machine code (e.g.
+    // SMB_CREDENTIALS_REQUIRED) without string-matching; the message is the sentence.
+    throw await apiError(res);
   }
   return res.json();
 }
@@ -4061,7 +4087,7 @@ function notifPanelHtml() {
   if (!notifList.length) return `${head}<div class="notif-empty">You're all caught up.</div>`;
   const items = notifList.map(n => {
     const unread = !n.read_at;
-    const nav = (n.ref_type === 'document' && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`;
+    const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`;
     return `<button class="notif-item${unread ? ' unread' : ''}" onclick="${nav}"><span class="notif-dot"></span><span><span class="notif-body-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="notif-body-sub">${esc(n.body)}</span>` : ''}<span class="notif-time">${esc(notifTimeAgo(n.created_at))}</span></span></button>`;
   }).join('');
   return `${head}<div class="notif-list">${items}</div>`;
@@ -4083,6 +4109,13 @@ async function openNotification(id, refType, refId) {
   closeNotifMenu();
   try { await apiPost('/notifications/read', { ids: [id] }); } catch { /* ignore */ }
   if (refType === 'document' && refId) { try { openFileDefault(refId); } catch { /* file may be gone */ } }
+  // Something was shared with you: go to that library (if it is still yours to see).
+  if (refType === 'library' && refId) {
+    await loadLibraries().catch(() => {});
+    if (librariesList.some(l => String(l.id) === String(refId))) { if (!document.getElementById('file-library-view')) await setTab('files'); switchLibrary(refId); }
+    else if (librariesList.some(l => l.id)) toast("That library isn't shared with you any more.");
+    else toast("Couldn't open that library right now. Try again.");
+  }
   await loadNotifications();
 }
 
@@ -4515,7 +4548,7 @@ function emptyState(title, text, action = '') {
 // An empty state should offer the way out, not just describe the void — but only
 // to someone who can actually upload. Viewers get the words without a dead button.
 function uploadEmptyAction() {
-  return (currentUser && currentUser.role !== 'viewer')
+  return (currentUser && currentUser.role !== 'viewer' && canWriteHere(uploadDestination()))
     ? `<button class="run-btn" type="button" onclick="chooseUpload('files')">Upload files</button>`
     : '';
 }
@@ -4911,7 +4944,7 @@ async function saveEncryptionSettings(confirmChange) {
   } catch (e) {
     // The server refuses a key change that would strand existing files unless we
     // confirm it explicitly. Surface the warning and let the admin decide.
-    let info = null; try { info = JSON.parse(e.message); } catch {}
+    let info = e.body || null; if (!info) { try { info = JSON.parse(e.message); } catch {} }
     if (info && info.code === 'ENC_KEY_CHANGE_BLOCKED') {
       if (await askConfirm(`${info.error}\n\nProceed anyway? Existing files will only open again if the previous key is restored.`)) {
         return saveEncryptionSettings(true);
@@ -5378,7 +5411,7 @@ function groupOwnerText(g) {
 
 function groupsSettingsHtml() {
   return `<div class="settings-sub">Groups</div>
-    <p class="settings-notice">A group is a named list of people — your team, a client's staff, a project. Whoever creates a group manages who is in it, and people from outside the company can be added. Groups don't give anyone access to anything yet: once libraries can be shared with a group, this is where you'll manage who's in it.</p>
+    <p class="settings-notice">A group is a named list of people — your team, a client's staff, a project. Whoever creates a group manages who is in it, and people from outside the company can be added. Share a library or a folder with a group and everyone in it can open it, including people you add later; take someone out and they lose it.</p>
     <div id="groups-body"><p class="settings-notice">Loading…</p></div>`;
 }
 
@@ -5528,7 +5561,8 @@ async function addGroupMember() {
 async function removeGroupMember(memberId, email) {
   if (!groupOpenId || groupStillBusy()) return;
   const gid = groupOpenId;
-  if (!(await askConfirm(`Remove ${email} from this group?`, { okLabel: 'Remove', danger: true }))) return;
+  const shared = (await apiGet(`/groups/${encodeURIComponent(gid)}`).catch(() => null))?.share_count || 0;
+  if (!(await askConfirm(`Remove ${email} from this group?${shared ? ` They will lose access to the ${shared} shared ${shared === 1 ? 'library or folder' : 'libraries and folders'} the group has.` : ''}`, { okLabel: 'Remove', danger: true }))) return;
   groupBusy = true;
   try {
     await apiDelete(`/groups/${encodeURIComponent(gid)}/members/${encodeURIComponent(memberId)}`);
@@ -5582,7 +5616,8 @@ async function deleteGroupConfirm() {
   if (groupStillBusy()) return;
   const g = groupsList.find(x => x.id === groupOpenId);
   if (!g) return;
-  if (!(await askConfirm(`Delete "${g.name}"? Everyone is removed from it. This can't be undone.`, { okLabel: 'Delete group', danger: true, title: 'Delete group' }))) return;
+  const shared = (await apiGet(`/groups/${encodeURIComponent(g.id)}`).catch(() => null))?.share_count || 0;
+  if (!(await askConfirm(`Delete "${g.name}"? Everyone is removed from it${shared ? `, and its ${shared} ${shared === 1 ? 'share' : 'shares'} of libraries and folders go with it: its members lose that access` : ''}. This can't be undone.`, { okLabel: 'Delete group', danger: true, title: 'Delete group' }))) return;
   groupBusy = true;
   try {
     await apiDelete(`/groups/${encodeURIComponent(g.id)}`);
@@ -6447,16 +6482,23 @@ async function loadAccessReview() {
 }
 function renderAccessReview(r) {
   const open = (r.openLibraries && r.openLibraries.length)
-    ? `<p class="settings-notice">Open libraries (any signed-in user can access): ${r.openLibraries.map(esc).join(', ')}</p>` : '';
+    ? `<p class="settings-notice">Listed to every signed-in user (this gives no access to the files in them): ${r.openLibraries.map(esc).join(', ')}</p>` : '';
+  const list = (a) => (a && a.length ? a.map(esc).join('<br>') : '<span class="cell-empty">—</span>');
   const rows = r.users.map(u => `<tr>
-      <td>${esc(u.email)}${u.name ? `<div class="file-row-sub">${esc(u.name)}</div>` : ''}</td>
+      <td>${esc(u.email)}${u.name ? `<div class="file-row-sub">${esc(u.name)}</div>` : ''}${u.emailVerified === false ? '<div><span class="pill warn">Email not verified</span></div>' : ''}</td>
       <td><span class="ar-role ar-role-${esc(u.role)}">${esc(u.role)}</span></td>
-      <td>${u.libraries.length ? u.libraries.map(esc).join(', ') : '<span class="cell-empty">—</span>'}</td>
+      <td>${list(u.owns)}</td>
+      <td>${u.role === 'admin' ? 'All libraries (admin)' : list(u.libraryAccess)}</td>
+      <td>${list(u.folderAccess)}</td>
+      <td>${list(u.groups)}</td>
+      <td>${u.role === 'admin' ? '<span class="cell-empty">—</span>' : list(u.libraries)}</td>
       <td style="text-align:right">${u.directShares || 0}</td>
       <td>${u.lastActivity ? esc(accessWhen(u.lastActivity)) : '<span class="cell-empty">never</span>'}</td>
     </tr>`).join('');
-  return `${open}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th>Libraries</th><th style="text-align:right">Direct shares</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="settings-notice">${r.userCount} user${r.userCount === 1 ? '' : 's'} · generated ${esc(accessWhen(r.generatedAt))}</p>`;
+  const pending = (r.pendingShares && r.pendingShares.length)
+    ? `<p class="settings-notice">Shared with addresses that have no verified account yet (they get this access once they sign in with that address verified):</p><ul class="settings-notice">${r.pendingShares.map(p => `<li>${esc(p.email)}: ${[...(p.libraryAccess || []), ...(p.folderAccess || [])].map(esc).join('; ')}</li>`).join('')}</ul>` : '';
+  return `${open}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th>Owns</th><th>Library access</th><th>Folder access</th><th>Groups</th><th title="Older member lists: they only decide who sees a library listed">Listed in</th><th style="text-align:right">Files shared directly</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${pending}<p class="settings-notice">${r.userCount} user${r.userCount === 1 ? '' : 's'} · generated ${esc(accessWhen(r.generatedAt))}. Access comes from owning a library, a share of a library or folder (directly or through a group), or a file shared directly.</p>`;
 }
 async function exportAccessReviewCsv() {
   try {
@@ -6990,7 +7032,9 @@ function fileLibraryCommandBarHtml() {
     const singleFolder = folderCount === 1 && selected.length === 0;
     const label = `${total} selected`;
     const fileOnly = folderCount === 0;
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button></div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    const parentOf = (name) => String(name || '').split('/').slice(0, -1).join('/');
+    const canChange = selected.every(f => canChangeFile(f)) && [...selectedFolderPaths].every(p => canWriteHere(p) && !folderIsShared(p));
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" data-share-folder="${escAttr([...selectedFolderPaths][0])}" onclick="openFolderShare(this.dataset.shareFolder)">Share</button>${canChange ? `<button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button>${canChange ? `<button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>` : ''}${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}${canChange ? `<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button>` : ''}</div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
   const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
@@ -7144,7 +7188,21 @@ function fileRailTreeHtml() {
 // they survive its re-renders) rather than the masthead. Menu ids/handlers kept
 // verbatim so existing create/upload flows keep resolving by id.
 function fileCommandCreateUploadHtml() {
-  return `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button><div class="file-upload-menu file-create-menu" id="file-create-menu"><button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button><div class="menu-rule"></div><button onclick="closeCreateMenu();openNewLibraryModal()">New library</button></div></div><div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload masthead-upload-secondary" type="button" onclick="toggleUploadMenu(event)"><span class="plus">↑</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button><button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button></div></div>`;
+  // Only where the caller can add files (the server refuses otherwise); "New library"
+  // stays for anyone who may create one.
+  const canAdd = canWriteHere(currentFolderPath);
+  const canCreateLib = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const legacy = currentLibrary()?.add_right === 'legacy' && canAdd;
+  const createItems = canAdd
+    ? `<button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button>${legacy ? '<div class="menu-rule"></div><div class="file-create-note">Only you (and admins) will see files you add here: this library isn\'t shared.</div>' : ''}${canCreateLib ? '<div class="menu-rule"></div>' : ''}`
+    : '';
+  const create = (createItems || canCreateLib)
+    ? `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button><div class="file-upload-menu file-create-menu" id="file-create-menu">${createItems}${canCreateLib ? `<button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>` : ''}</div></div>`
+    : '';
+  const upload = canAdd
+    ? `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload masthead-upload-secondary" type="button" onclick="toggleUploadMenu(event)"><span class="plus">↑</span><span>Upload</span><span class="chev">⌄</span></button><div class="file-upload-menu" id="file-upload-menu"><button onclick="closeUploadMenu();chooseUpload('files')">Upload files</button><button onclick="closeUploadMenu();chooseUpload('folder')">Upload folder</button></div></div>`
+    : '';
+  return create + upload;
 }
 
 
@@ -7359,8 +7417,9 @@ async function loadLibraries() {
     librariesList = await apiGet('/libraries');
     if (!Array.isArray(librariesList) || !librariesList.length) librariesList = [{ id: null, name: (brandDefaults.name || 'Workspace') }];
   } catch {
-    // Backend without the libraries API yet — fall back to a single default.
-    librariesList = [{ id: null, name: (brandDefaults.name || 'Workspace') }];
+    // A failed refresh keeps the list we have; only with nothing yet (a backend without
+    // the libraries API) fall back to a single default.
+    if (!Array.isArray(librariesList) || !librariesList.length || !librariesList.some(l => l.id)) librariesList = [{ id: null, name: (brandDefaults.name || 'Workspace') }];
   }
   if (!currentLibraryId || !librariesList.some(l => String(l.id) === String(currentLibraryId))) {
     currentLibraryId = librariesList[0].id || null;
@@ -7369,13 +7428,74 @@ async function loadLibraries() {
   else localStorage.removeItem('memex_library_id');
 }
 
-function libraryMenuInnerHtml() {
-  const items = librariesList.map(l => {
-    const pinned = pinnedLibraryIds.has(String(l.id));
-    return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span></button><button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
-  }).join('');
-  return `<div class="library-menu-label">Libraries</div>${items}<div class="library-menu-sep"></div>${currentUser?.role === 'admin' ? `<button class="library-menu-item" onclick="openLibraryMembers()">Manage members</button>` : ''}<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>`;
+// A library's relationship to the person looking at it, as the switcher and the rail
+// heading put it. The server decides all of it (GET /api/libraries: my_access,
+// my_folders, add_right, can_manage); nothing here grants or refuses anything.
+function currentLibrary() { return librariesList.find(l => String(l.id) === String(currentLibraryId)) || null; }
+function libraryRelation(l) {
+  switch (l?.my_access) {
+    case 'owner': return 'Owned by you';
+    case 'admin': return l.owner_email ? `Owned by ${l.owner_email}` : 'No owner yet';
+    case 'rw': return 'Shared with you · Read-Write';
+    case 'r': return 'Shared with you · Read-only';
+    case 'folders': return 'Folders in it are shared with you';
+    case 'listed': return l.add_right === 'legacy' ? 'Not shared · files you add stay private to you' : 'You see only files shared with you';
+    default: return 'Library';
+  }
 }
+// Whether the caller may add or change files at this folder ('' = the library root).
+// Only hides controls that would be refused; the server checks every write itself.
+function canWriteHere(path = '') {
+  if (currentUser?.role === 'viewer') return false;
+  const l = currentLibrary();
+  if (!l || !l.id) return true; // nothing known about this library: leave it to the server
+  if (l.add_right) return true;
+  const p = String(path || '');
+  return (l.my_folders || []).some(f => f.level === 'rw' && (p === f.path || p.startsWith(f.path + '/')));
+}
+// Changing or deleting an existing file: where you can add files, or your own personal
+// file (the server also honours per-file edit grants, which the list doesn't show).
+function canChangeFile(f) {
+  if (!f || currentUser?.role === 'viewer') return false;
+  const parent = String(f.name || '').split('/').slice(0, -1).join('/');
+  return canWriteHere(parent) || (!f.library_scoped && !!currentUser?.id && String(f.uploaded_by || '') === String(currentUser.id));
+}
+// A folder with a share at or below it can't be renamed, moved or deleted until shares
+// follow renames (the server refuses with FOLDER_SHARED). Managers are told which
+// folders are shared; everyone else knows the ones shared with them.
+function folderIsShared(path) {
+  const l = currentLibrary();
+  const shared = [...(l?.shared_folders || []), ...(l?.my_folders || []).map(f => f.path)];
+  return shared.some(f => f === path || f.startsWith(path + '/'));
+}
+// A library can be shared by whoever manages it -- once it has an owner.
+function canShareLibrary(l) { return !!(l && l.id && l.can_manage && l.owner_id); }
+const LIBRARY_PILL = { rw: 'Read-Write', r: 'Read-only', folders: 'Folders' };
+function libraryMenuRow(l) {
+  const pinned = pinnedLibraryIds.has(String(l.id));
+  const pill = LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '';
+  const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
+  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
+}
+function libraryMenuInnerHtml() {
+  const mine = librariesList.filter(l => l.my_access === 'owner');
+  const shared = librariesList.filter(l => ['rw', 'r', 'folders'].includes(l.my_access));
+  const other = librariesList.filter(l => !mine.includes(l) && !shared.includes(l));
+  const section = (label, rows) => (rows.length ? `<div class="library-menu-label">${label}</div>${rows.map(libraryMenuRow).join('')}` : '');
+  const cur = currentLibrary();
+  const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  return section('My libraries', mine) + section('Shared with me', shared) + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
+    + `<div class="library-menu-sep"></div>`
+    + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
+    + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
+}
+// Share buttons carry the library id in data-share-lib (never spliced into an onclick).
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-share-lib]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  openLibraryShare({ libraryId: b.dataset.shareLib });
+});
 function startRailResize(event) {
   event.preventDefault();
   const shell = document.getElementById('file-home-shell');
@@ -7434,7 +7554,7 @@ async function createLibraryFlow(name) {
 }
 function openNewLibraryModal() {
   closeLibraryMenu();
-  const m = openModal({ id: 'new-library-scrim', html: `<h2>New library</h2><p class="sub">Create a shared library to organize files separately.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div>` });
+  const m = openModal({ id: 'new-library-scrim', html: `<h2>New library</h2><p class="sub">Create a library, then use Share to give people or groups access.</p><input id="new-library-name" type="text" placeholder="Library name" style="margin-top:14px" autocomplete="off"><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px"><button class="ghost-btn" id="new-library-cancel">Cancel</button><button class="run-btn" id="new-library-create">Create library</button></div>` });
   const scrim = m.el;
   const close = () => m.close();
   const input = scrim.querySelector('#new-library-name');
@@ -7444,38 +7564,208 @@ function openNewLibraryModal() {
   input.focus();
 }
 
-async function openLibraryMembers() {
+// ---- Sharing a library, or a folder in it ----
+// Seafile's model: "Share to user" or "Share to group", at Read-Write or Read-only,
+// reaching every file there including files added later. Only the library's owner (or
+// an admin) manages shares; the server decides everything and says why when it
+// refuses (GET/POST/PUT/DELETE /api/libraries/:id/shares).
+const SHARE_LEVELS = [['write', 'Read-Write'], ['read', 'Read-only']];
+const shareLevelLabel = (p) => (p === 'write' ? 'Read-Write' : 'Read-only');
+function openLibraryShare({ libraryId, folderPath = '' }) {
   closeLibraryMenu();
-  const libId = currentLibraryId;
-  if (!libId) { toast('This library has no server id yet.'); return; }
-  const libName = currentLibraryName();
-  const m = openModal({ id: 'library-members-scrim', html: `<h2>Members · ${esc(libName)}</h2><p class="sub">No members means everyone can see this library. Add people to restrict it to them (and admins).</p><div id="lib-members-list" style="margin-top:14px">Loading…</div><div style="display:flex;gap:8px;margin-top:14px"><input id="lib-member-email" type="email" placeholder="name@company.com" style="flex:1" autocomplete="off"><button class="run-btn" id="lib-member-add">Add</button></div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-members-close">Done</button></div>` });
-  const scrim = m.el;
-  const close = () => m.close();
-  scrim.querySelector('#lib-members-close').onclick = close;
-  const emailInput = scrim.querySelector('#lib-member-email');
-  const render = async () => {
-    const listEl = scrim.querySelector('#lib-members-list');
+  const lib = librariesList.find(l => String(l.id) === String(libraryId));
+  if (!lib || !lib.id) { toast('That library is no longer available.'); return; }
+  if (!lib.owner_id) { toast(`“${lib.name}” has no owner yet, so it can't be shared. Create a new library to share instead.`); return; }
+  const folderName = folderPath ? folderPath.split('/').pop() : '';
+  const m = openModal({ id: 'library-share-scrim', modalClass: 'file-share-modal', labelledBy: 'ls-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-ls-close>✕</button>`
+    + `<h2 id="ls-title">${folderPath ? `Share folder “${esc(folderName)}”` : `Share “${esc(lib.name)}”`}</h2>`
+    + (folderPath ? `<p class="sub">in ${esc(lib.name)}</p>` : '')
+    + `<div class="ls-mount"></div>`
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-ls-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-ls-close]').forEach(b => b.onclick = () => m.close());
+  mountLibraryShare(m.el.querySelector('.ls-mount'), { libraryId: lib.id, folderPath });
+}
+
+// The share controls and list, mounted into a container (the library dialog, or the
+// folder dialog when the caller manages the library).
+function mountLibraryShare(root, { libraryId, folderPath = '' }) {
+  const st = { emails: [], tab: 'user', busy: false, seq: 0, groups: null };
+  const lib0 = librariesList.find(l => String(l.id) === String(libraryId));
+  const where = folderPath ? `the folder “${folderPath.split('/').pop()}”` : (lib0?.name || 'this library');
+  root.innerHTML =
+    `<div class="share-seg" role="group" aria-label="Share with">`
+    + `<button type="button" class="share-seg-opt active" data-ls-tab="user" aria-pressed="true">Share to user</button>`
+    + `<button type="button" class="share-seg-opt" data-ls-tab="group" aria-pressed="false">Share to group</button></div>`
+    + `<div class="ls-add">`
+    + `<div data-ls-pane="user"><div class="share-chips" data-ls-chips></div><input class="share-email-input" type="email" autocomplete="off" data-ls-email placeholder="Add people by email, then press Enter" aria-label="Email address"></div>`
+    + `<div data-ls-pane="group" hidden><select data-ls-group aria-label="Group"><option value="">Loading groups…</option></select></div>`
+    + `<div class="ls-add-row"><select data-ls-level aria-label="Level">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select><button class="run-btn" type="button" data-ls-add disabled>Share</button></div>`
+    + `<p class="file-share-hint" style="margin:0">${folderPath ? "People you add can open this folder's files, including files added to it later." : "People you add can open this library's files, including files added later."} Read-Write also lets them add, change and delete files and create public links. Neither lets them share it onward. Files other people added before the library was shared stay private to them.</p>`
+    + (!folderPath && lib0 && lib0.shared === false ? `<p class="file-share-hint" style="margin:0">Right now everyone can see this library in their list and add their own private files to it. Once it's shared, only you and the people you share it with will.</p>` : '')
+    + `</div>`
+    + `<div class="ls-list" data-ls-list><div class="ls-empty">Loading…</div></div>`
+    + `<div data-ls-notes></div>`;
+  const $ = (sel) => root.querySelector(sel);
+  const emailInput = $('[data-ls-email]');
+  const addBtn = $('[data-ls-add]');
+  const validEmail = (v) => /^[^\s@"'<>,;]+@[^\s@"'<>,;]+\.[^\s@"'<>,;]+$/.test(v);
+
+  const updateAdd = () => {
+    const typed = emailInput.value.split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
+    const ready = st.tab === 'user' ? (st.emails.length > 0 || (typed.length > 0 && typed.every(validEmail))) : !!$('[data-ls-group]').value;
+    addBtn.disabled = !ready || st.busy;
+    addBtn.textContent = st.tab === 'user' && st.emails.length > 1 ? `Share with ${st.emails.length} people` : 'Share';
+  };
+  const renderChips = () => {
+    $('[data-ls-chips]').innerHTML = st.emails.map((e, i) => `<span class="share-chip">${esc(e)}<button type="button" aria-label="Remove ${escAttr(e)}" data-ls-chip="${i}">×</button></span>`).join('');
+    updateAdd();
+  };
+  // Whatever is typed or pasted -- one address, or a list separated by commas, semicolons
+  // or spaces -- becomes chips; anything that isn't an address stays in the box, flagged.
+  const takeTyped = () => {
+    const parts = emailInput.value.split(/[\s,;]+/).map(v => v.trim().toLowerCase()).filter(Boolean);
+    const bad = parts.filter(v => !validEmail(v));
+    for (const v of parts) if (validEmail(v) && !st.emails.includes(v)) st.emails.push(v);
+    emailInput.value = bad.join(', ');
+    renderChips();
+    if (bad.length) { toast(bad.length === 1 ? `“${bad[0]}” isn't a valid email address` : `${bad.length} of those aren't valid email addresses`); return false; }
+    return true;
+  };
+  const loadGroupOptions = async () => {
+    const sel = $('[data-ls-group]');
     try {
-      const members = await apiGet(`/libraries/${libId}/members`);
-      if (!members.length) { listEl.innerHTML = `<div class="sub" style="padding:6px 0">Open to everyone — no members yet.</div>`; return; }
-      listEl.innerHTML = members.map(m => `<div class="lib-member-row"><span>${esc(m.subject_email)}</span><button class="file-library-icon-btn" title="Remove" data-mid="${esc(String(m.id))}">✕</button></div>`).join('');
-      listEl.querySelectorAll('button[data-mid]').forEach(b => b.onclick = async () => {
-        try { await apiDelete(`/libraries/${libId}/members/${b.dataset.mid}`); await loadLibraries(); render(); }
-        catch (e) { toast('Remove failed: ' + e.message); }
-      });
-    } catch (e) { listEl.innerHTML = `<div class="sub" style="color:var(--accent)">Could not load members: ${esc(e.message)}</div>`; }
+      st.groups = await apiGet('/groups');
+      sel.innerHTML = st.groups.length
+        ? `<option value="">Choose a group…</option>` + st.groups.map(g => `<option value="${escAttr(String(g.id))}">${esc(g.name)} · ${esc(g.owner_email || 'no owner')} · ${g.member_count} ${g.member_count === 1 ? 'person' : 'people'}</option>`).join('')
+        : `<option value="">No groups yet. Create one in Settings → Groups.</option>`;
+    } catch (e) { sel.innerHTML = `<option value="">Could not load groups</option>`; }
+    updateAdd();
   };
-  const add = async () => {
-    const email = emailInput.value.trim();
-    if (!email) return;
-    try { await apiPost(`/libraries/${libId}/members`, { email }); emailInput.value = ''; await loadLibraries(); render(); }
-    catch (e) { toast('Add failed: ' + e.message); }
+
+  root.addEventListener('click', async (e) => {
+    const tab = e.target.closest('[data-ls-tab]');
+    if (tab) {
+      st.tab = tab.dataset.lsTab;
+      root.querySelectorAll('[data-ls-tab]').forEach(b => { const on = b === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+      root.querySelectorAll('[data-ls-pane]').forEach(p => { p.hidden = p.dataset.lsPane !== st.tab; });
+      if (st.tab === 'group' && !st.groups) loadGroupOptions();
+      if (st.tab === 'user') emailInput.focus();
+      updateAdd();
+      return;
+    }
+    const chip = e.target.closest('[data-ls-chip]');
+    if (chip) { st.emails.splice(Number(chip.dataset.lsChip), 1); renderChips(); return; }
+    if (e.target.closest('[data-ls-add]')) { await add(); return; }
+    const rm = e.target.closest('[data-ls-remove]');
+    if (rm) { await remove(rm.dataset.lsRemove, rm.dataset.lsWho); return; }
+    const open = e.target.closest('[data-ls-open]');
+    if (open) { openLibraryShare({ libraryId, folderPath: open.dataset.lsOpen }); }
+  });
+  root.addEventListener('change', async (e) => {
+    if (e.target.matches('[data-ls-group]')) { updateAdd(); return; }
+    const lvl = e.target.closest('[data-ls-level-for]');
+    if (lvl) await changeLevel(lvl.dataset.lsLevelFor, lvl.value);
+  });
+  emailInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); takeTyped(); }
+    else if (e.key === 'Backspace' && !emailInput.value && st.emails.length) { st.emails.pop(); renderChips(); }
+  });
+  emailInput.addEventListener('input', updateAdd);
+  emailInput.addEventListener('blur', () => { if (emailInput.value.trim()) takeTyped(); });
+
+  async function add() {
+    if (st.busy) return;
+    if (st.tab === 'user' && !takeTyped()) return;
+    const permission = $('[data-ls-level]').value;
+    const body = { permission, folder_path: folderPath };
+    st.busy = true; updateAdd();
+    try {
+      if (st.tab === 'group') {
+        const gid = $('[data-ls-group]').value;
+        if (!gid) return;
+        await apiPost(`/libraries/${encodeURIComponent(libraryId)}/shares`, { ...body, group_id: gid });
+        toast(`Shared with ${st.groups?.find(g => String(g.id) === gid)?.name || 'the group'} (${shareLevelLabel(permission)})`);
+        $('[data-ls-group]').value = '';
+      } else {
+        const done = [], failed = [];
+        for (const email of st.emails) {
+          try { await apiPost(`/libraries/${encodeURIComponent(libraryId)}/shares`, { ...body, email }); done.push(email); }
+          catch (err) { failed.push(err && err.status === 409 ? groupErr(err, `Already shared with ${email}`) : `${email}: ${groupErr(err, 'could not share')}`); }
+        }
+        st.emails = st.emails.filter(x => !done.includes(x)); renderChips();
+        const ok = done.length ? `Shared with ${done.length === 1 ? done[0] : `${done.length} people`} (${shareLevelLabel(permission)})` : '';
+        toast([ok, ...failed].filter(Boolean).join(' · '));
+      }
+      await load(); loadLibraries().catch(() => {});
+    } catch (err) { toast(groupErr(err, 'Could not share. Try again.')); await load(); }
+    finally { st.busy = false; updateAdd(); }
+  }
+  async function changeLevel(shareId, permission) {
+    if (st.busy) { toast('Still saving your last change…'); await load(); return; }
+    st.busy = true;
+    try { await apiPut(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}`, { permission }); toast(`Changed to ${shareLevelLabel(permission)}`); }
+    catch (err) { toast(groupErr(err, 'Could not change the level. Try again.')); }
+    finally { st.busy = false; await load(); }
+  }
+  async function remove(shareId, who) {
+    if (st.busy) return;
+    if (!await askConfirm(`${who} will no longer get ${where}'s files through this share. (Anything else shared with them, directly or through a group, stays.)`, { danger: true, okLabel: 'Remove' })) return;
+    st.busy = true;
+    try { await apiDelete(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}`); toast(`${who} removed`); loadLibraries().catch(() => {}); }
+    catch (err) { toast(groupErr(err, 'Could not remove it. Try again.')); }
+    finally { st.busy = false; await load(); }
+  }
+
+  const whoOf = (x) => (x.subject_type === 'group' ? `${x.group?.name || 'A group'} (${x.group?.member_count ?? 0} ${x.group?.member_count === 1 ? 'person' : 'people'})` : x.subject_email);
+  const shareRow = (x) => {
+    const pills = [];
+    if (x.subject_type === 'group') pills.push(`<span>${x.group?.member_count ?? 0} ${x.group?.member_count === 1 ? 'person' : 'people'} · ${x.group?.owner_email ? `owned by ${esc(x.group.owner_email)}` : 'no owner'}</span>`);
+    if (x.account === 'none') pills.push(`<span class="pill">Hasn't signed in</span>`);
+    if (x.account === 'unverified') pills.push(`<span class="pill warn" title="Their email address hasn't been verified, so this share won't reach them until an admin verifies it">Email not verified</span>`);
+    return `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)}</span>${pills.length ? `<span class="ls-who-sub">${pills.join('')}</span>` : ''}</div>`
+      + `<select data-ls-level-for="${escAttr(String(x.id))}" aria-label="Level for ${escAttr(whoOf(x))}">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}"${x.permission === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
+      + `<button class="file-library-tool" type="button" data-ls-remove="${escAttr(String(x.id))}" data-ls-who="${escAttr(whoOf(x))}" aria-label="Remove ${escAttr(whoOf(x))}">Remove</button></div>`;
   };
-  scrim.querySelector('#lib-member-add').onclick = add;
-  emailInput.onkeydown = e => { if (e.key === 'Enter') add(); if (e.key === 'Escape') close(); };
-  render();
-  emailInput.focus();
+
+  async function load() {
+    const seq = ++st.seq;
+    const listEl = $('[data-ls-list]'); const notes = $('[data-ls-notes]');
+    let data;
+    try { data = await apiGet(`/libraries/${encodeURIComponent(libraryId)}/shares`); }
+    catch (err) { if (seq === st.seq) { listEl.innerHTML = `<div class="ls-empty">${esc(groupErr(err, 'Could not load who this is shared with.'))}</div>`; notes.innerHTML = ''; } return; }
+    if (seq !== st.seq) return; // a newer load is on its way
+    const here = data.shares.filter(x => x.folder_path === folderPath);
+    const ordered = [...here.filter(x => x.subject_type === 'group'), ...here.filter(x => x.subject_type !== 'group')];
+    const owner = data.library.owner_email
+      ? `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(data.library.owner_email)}</span><span class="ls-who-sub"><span class="pill ok">Owner</span></span></div></div>` : '';
+    listEl.innerHTML = owner + (ordered.length ? ordered.map(shareRow).join('') : `<div class="ls-empty">${folderPath ? 'This folder is not shared with anyone yet.' : 'Not shared with anyone yet.'}</div>`);
+    const parts = [];
+    if (folderPath) {
+      // Shares above this folder reach it too; say so rather than let the list look complete.
+      const above = data.shares.filter(x => x.folder_path === '' || folderPath.startsWith(x.folder_path + '/'));
+      if (above.length) parts.push(`<p class="ls-note">Also open to ${above.length} ${above.length === 1 ? 'person or group' : 'people and groups'} the ${above.some(x => x.folder_path === '') ? 'library' : 'folder above'} is shared with.</p>`);
+    } else {
+      const inside = data.shares.filter(x => x.folder_path !== '');
+      if (inside.length) {
+        const folders = [...new Set(inside.map(x => x.folder_path))];
+        parts.push(`<details class="share-existing"><summary>Folders shared inside this library (${folders.length})</summary>`
+          + folders.map(f => {
+            const rows = inside.filter(x => x.folder_path === f);
+            const gone = rows.some(x => x.folder_present === false);
+            return `<button type="button" class="ls-row ls-row-btn" data-ls-open="${escAttr(f)}" title="Open this folder's sharing"><span class="ls-who"><span class="ls-who-name">${esc(f)}</span><span class="ls-who-sub"><span>${rows.map(x => `${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)} · ${shareLevelLabel(x.permission)}`).join(', ')}</span>${gone ? '<span class="pill warn">Folder is empty or gone</span>' : ''}</span></span></button>`;
+          }).join('') + `</details>`);
+      }
+    }
+    if (Array.isArray(data.legacy_members) && data.legacy_members.length) {
+      parts.push(`<p class="ls-note">Listed for ${data.legacy_members.map(x => esc(x.subject_email)).join(', ')}: a member list from before sharing existed. It only decides who sees the library in their list and gives no access to files.</p>`);
+    }
+    notes.innerHTML = parts.join('');
+  }
+
+  renderChips();
+  load();
+  setTimeout(() => emailInput.focus(), 0);
 }
 
 function openLibraryTransfer(mode) {
@@ -7484,8 +7774,9 @@ function openLibraryTransfer(mode) {
   const folders = mode === 'move' ? selectedFolders() : []; // copy is files-only
   const total = selected.length + folders.length;
   if (!total) return;
-  const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId));
-  if (!targets.length) { toast('No other library yet — create one first.'); return; }
+  // Only libraries the caller can add files to (the server checks each file's folder).
+  const targets = librariesList.filter(l => l.id && String(l.id) !== String(currentLibraryId) && l.add_right);
+  if (!targets.length) { toast('No other library you can add files to.'); return; }
   const verb = mode === 'copy' ? 'Copy' : 'Move';
   const srcLib = currentLibraryId;
   const m = openModal({ id: 'library-transfer-scrim', html: `<h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div>` });
@@ -7525,7 +7816,7 @@ function transferSummary(mode, done, skipped, where, kept = 0) {
   const files = (n) => `${n} ${n === 1 ? 'file' : 'files'}`;
   const notes = [
     skipped ? `${files(skipped)} you can only view stayed where ${skipped === 1 ? 'it was' : 'they were'}` : '',
-    kept ? `${files(kept)} that ${kept === 1 ? 'belongs' : 'belong'} to the library stayed (${kept === 1 ? 'it' : 'they'} can only move to a library you own or can write to)` : '',
+    kept ? `${files(kept)} that ${kept === 1 ? 'belongs' : 'belong'} to the library stayed where ${kept === 1 ? 'it was' : 'they were'} (only the library's owner can move ${kept === 1 ? 'it' : 'them'} to another library)` : '',
   ].filter(Boolean).join(' · ');
   if (!done) return notes ? `Nothing was ${verbed.toLowerCase()}: ${notes}` : `Nothing was ${verbed.toLowerCase()}`;
   return `${verbed} ${done} item${done === 1 ? '' : 's'} to ${where}${notes ? ` · ${notes}` : ''}`;
@@ -7801,7 +8092,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
   return `<section class="file-library-nav${collapsed}" id="file-library-nav">
     <div class="library-switch-wrap">
-      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">Shared library</span></span><span class="chev">⌄</span></button>
+      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
       <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
     ${filePinnedSectionHtml()}
@@ -8276,7 +8567,7 @@ async function renderHome() {
       const m2 = [];
       if (lastTs) m2.push(`updated ${esc(fileDate(lastTs))}`);
       if (links) m2.push(`<span class="wdash-hub-live">${links} active link${links === 1 ? '' : 's'}</span>`);
-      const foot = canCreate ? `<div class="wdash-hub-foot"><button class="wdash-hub-act" onclick="event.stopPropagation();hubUpload(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">↑</span> Upload files</button><button class="wdash-hub-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">+</span> New folder</button></div>` : '';
+      const foot = canCreate && (l.add_right || !l.id) ? `<div class="wdash-hub-foot"><button class="wdash-hub-act" onclick="event.stopPropagation();hubUpload(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">↑</span> Upload files</button><button class="wdash-hub-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">+</span> New folder</button></div>` : '';
       return `<div class="wdash-hub-card" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><div class="wdash-hub-top"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><div class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-stats">${stats}</span>${m2.length ? `<span class="wdash-hub-stats2">${m2.join(' · ')}</span>` : ''}</div></div>${foot}</div>`;
     };
 
@@ -8288,7 +8579,7 @@ async function renderHome() {
 
     const notifWidget = `<section class="wdash-w">${wdashHead('Notifications','notifications')}${
       notifList.length
-        ? notifList.slice(0, 6).map(n => { const unread = !n.read_at; const nav = (n.ref_type === 'document' && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
+        ? notifList.slice(0, 6).map(n => { const unread = !n.read_at; const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
         : `<p class="wdash-empty">You're all caught up.</p>`
     }</section>`;
 
@@ -8628,13 +8919,15 @@ async function moveItemsIntoFolder(payload, targetPath) {
 // Folder picker — the reliable, click-based way to move items into a folder.
 function openFolderPicker(title, excludePaths, onPick) {
   const exclude = new Set(excludePaths || []);
-  const folders = allFoldersForFiles(filesList).filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')));
-  const items = [`<button class="library-menu-item" data-path="">⌂ All files (root)</button>`,
+  const folders = allFoldersForFiles(filesList).filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')) && canWriteHere(f.path));
+  const rootOk = canWriteHere('');
+  const items = [rootOk ? `<button class="library-menu-item" data-path="">⌂ All files (root)</button>` : '',
     ...folders.map(f => `<button class="library-menu-item" data-path="${esc(f.path)}">${esc(f.path)}</button>`)].join('');
-  const m = openModal({ id: 'folder-picker-scrim', html: `<h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px"><button class="ghost-btn" id="fp-new">+ New folder…</button><button class="ghost-btn" id="fp-cancel">Cancel</button></div>` });
+  const m = openModal({ id: 'folder-picker-scrim', html: `<h2>${esc(title)}</h2><p class="sub">Choose a destination folder.</p><div class="library-pick-list">${items}</div><div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px">${rootOk ? '<button class="ghost-btn" id="fp-new">+ New folder…</button>' : '<span></span>'}<button class="ghost-btn" id="fp-cancel">Cancel</button></div>` });
   const scrim = m.el;
   scrim.querySelector('#fp-cancel').onclick = () => m.close();
-  scrim.querySelector('#fp-new').onclick = async () => { const n = ((await askPrompt('New folder name:')) || '').trim(); if (n) { m.close(); onPick(n); } };
+  const fpNew = scrim.querySelector('#fp-new');
+  if (fpNew) fpNew.onclick = async () => { const n = ((await askPrompt('New folder name:')) || '').trim(); if (n) { m.close(); onPick(n); } };
   scrim.querySelectorAll('button[data-path]').forEach(b => b.onclick = () => { m.close(); onPick(b.dataset.path); });
 }
 function moveSelectedToFolder() {
@@ -8725,7 +9018,7 @@ function renderFileDetailsPane() {
   const ext = fileExt(f.name);
   const isOffice = ['docx','doc','xlsx','xls','pptx','ppt'].includes(ext);
   const canIngest = ['docx','doc','xlsx','xls','pdf','txt','md','csv'].includes(ext);
-  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
+  const canEdit = canChangeFile(f);
   const isAdmin = currentUser?.role === 'admin';
   const dName = f.name.replace(/"/g, '&quot;');
   pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(fileDisplayName(f))}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
@@ -8798,7 +9091,7 @@ async function openShareSelected() {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  _shareEmails = []; _shareWho = 'link';
+  _shareEmails = []; _shareWho = 'link'; _shareLinkBlocked = false;
   openModal({ id: 'file-share-scrim', html: `<h2>Share</h2><p class="sub">${esc(f.name)}</p>`
     + `<div class="share-flow">`
     + `<div class="share-q"><div class="share-q-num">1</div><div class="share-q-body"><div class="share-q-title">Who gets it</div>`
@@ -8815,7 +9108,7 @@ async function openShareSelected() {
     + `</div></div>`
     + `<div class="share-foot"><div class="share-link-out" id="share-link-out" hidden><input class="share-link-url" id="share-link-url" readonly><button class="file-library-tool" onclick="copyShareLink()">Copy link</button></div><button class="run-btn" id="share-primary" onclick="doShare()">Create link</button></div>`
     + `</div>`
-    + `<details class="share-existing"><summary>Active links and people with access</summary><div class="file-share-list" id="file-share-list">${emptyState('Loading', 'Checking existing links.')}</div><div class="file-share-list" id="file-access-list"></div></details>`
+    + `<details class="share-existing"><summary>Active links and people with direct access to this file</summary><div class="file-share-list" id="file-share-list">${emptyState('Loading', 'Checking existing links.')}</div><div class="file-share-list" id="file-access-list"></div></details>`
     + `<div class="btn-row" style="justify-content:flex-end;margin-top:12px"><button class="ghost-btn" onclick="closeShareSelected()">Close</button></div>`, modalClass: 'file-share-modal' });
   await loadShareLinks(f.id);
   await loadFileAccess(f.id);
@@ -8854,10 +9147,11 @@ function shareToggle(which) {
   if (which === 'expiry') { const on = document.getElementById('share-expiry-on')?.checked; const d = document.getElementById('share-expiry-date'); if (d) d.hidden = !on; }
   else { const on = document.getElementById('share-pw-on')?.checked; const p = document.getElementById('share-pw'); if (p) p.hidden = !on; }
 }
+let _shareLinkBlocked = false; // this person can't make a link to the open file
 function shareUpdateFoot() {
   const primary = document.getElementById('share-primary'); if (!primary) return;
   if (_shareWho === 'people') { primary.textContent = _shareEmails.length ? `Send invite to ${_shareEmails.length}` : 'Send invite'; primary.disabled = !_shareEmails.length; }
-  else { primary.textContent = 'Create link'; primary.disabled = false; }
+  else { primary.textContent = _shareLinkBlocked ? "Can't create a link (view only)" : 'Create link'; primary.disabled = _shareLinkBlocked; }
 }
 async function doShare() {
   const f = firstSelectedFile(); if (!f) return;
@@ -8905,6 +9199,13 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
     }
     list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'}${s.recipient_email ? ` · ${esc(s.recipient_email)}` : ' link'}</strong><div class="file-share-meta">Expires: ${shareDate(s.expires_at)} · Opens: ${s.access_count || 0}${s.has_password ? ' · Password protected' : ''}${s.allow_upload ? ' · Can send files back' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-share="${s.id}" onclick="revokeShareLink(this.dataset.share)">Revoke</button>`}</div>`).join('');
   } catch (e) {
+    if (e && (e.status === 404 || e.status === 403)) {
+      // Links need edit access to the file; someone who can only read it can't make one.
+      _shareLinkBlocked = true;
+      list.innerHTML = emptyState('Links', "You can view this file but not edit it, so you can't create a link to it.");
+      shareUpdateFoot();
+      return;
+    }
     list.innerHTML = emptyState('Could not load shares', e.message || 'Try opening the share dialog again.');
   }
 }
@@ -8920,11 +9221,19 @@ async function loadFileAccess(fileId = firstSelectedFile()?.id) {
     const data = await apiGet('/files/' + fileId + '/access');
     const grants = data.grants || [];
     if (!grants.length) {
-      list.innerHTML = emptyState('No additional workspace access', 'The owner and admins can manage this file.');
+      list.innerHTML = emptyState('No one has been given this file directly', 'People may also reach it through its library or folder.');
       return;
     }
     list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${permissionLabel(g.permission)} · Granted ${shareDate(g.created_at)}</div></div><button class="file-library-tool" data-grant="${g.id}" onclick="revokeFileAccess(this.dataset.grant)">Revoke</button></div>`).join('');
   } catch (e) {
+    if (e && (e.status === 404 || e.status === 403)) {
+      // Only whoever manages this file's access sees its list and invites people to it
+      // one by one: its uploader (for a personal file), the library's owner, or an admin.
+      list.innerHTML = emptyState('Sharing with people', "Only this file's owner, its library's owner or an admin can give people access to it.");
+      const invite = document.querySelector('.share-seg-opt[data-who="people"]');
+      if (invite) invite.hidden = true;
+      return;
+    }
     list.innerHTML = emptyState('Could not load access', e.message || 'Try opening the share dialog again.');
   }
 }
@@ -9139,8 +9448,14 @@ async function renderFileList() {
   el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Owner</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
 }
 
+// Uploads land in the folder being viewed (captured when the files are picked or
+// dropped, so navigating meanwhile can't send them elsewhere) -- which is also where a
+// folder shared with you lets you add files.
+function uploadDestination() { return fileView === 'active' ? (currentFolderPath || '') : ''; }
+function intoFolder(dest, path) { return dest ? `${dest}/${path}` : path; }
 function handleFilePickerChange(event) {
-  uploadFiles(Array.from(event.target.files).map(file => ({ file, path: file.webkitRelativePath || file.name })));
+  const dest = uploadDestination();
+  uploadFiles(Array.from(event.target.files).map(file => ({ file, path: intoFolder(dest, file.webkitRelativePath || file.name) })));
   event.target.value = '';
 }
 
@@ -9149,7 +9464,8 @@ function handleFilePickerChange(event) {
 // uploading them all together. (Drag-drop already handles multiple folders.)
 let stagedFolderItems = [];
 function handleFolderPickerChange(event) {
-  const picked = Array.from(event.target.files).map(file => ({ file, path: file.webkitRelativePath || file.name }));
+  const dest = uploadDestination();
+  const picked = Array.from(event.target.files).map(file => ({ file, path: intoFolder(dest, file.webkitRelativePath || file.name) }));
   event.target.value = '';
   const seen = new Set(stagedFolderItems.map(i => i.path));
   for (const it of picked) if (!seen.has(it.path)) { stagedFolderItems.push(it); seen.add(it.path); }
@@ -9184,7 +9500,9 @@ function handleFileHomeDropLeave(event) {
 async function handleFileHomeDrop(event) {
   event.preventDefault();
   event.currentTarget.classList.remove('dragging');
-  const items = await filesFromFileHomeDrop(event.dataTransfer);
+  const dest = uploadDestination();
+  if (!canWriteHere(dest)) { toast("You can't add files here. Ask the library owner for Read-Write access."); return; }
+  const items = (await filesFromFileHomeDrop(event.dataTransfer)).map(it => ({ ...it, path: intoFolder(dest, it.path) }));
   uploadFiles(items);
 }
 
@@ -9599,6 +9917,7 @@ function openFileMenu(fileId, event) {
   const ext = fileExt(f.name);
   const isOffice = OFFICE_EXTS.includes(ext);
   const canPreview = PREVIEW_EXTS.includes(ext);
+  const canChange = canChangeFile(f);
   closeFileMenu();
   const items = [
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDefault('${fileId}')">Open</button>`,
@@ -9610,12 +9929,12 @@ function openFileMenu(fileId, event) {
     `<div class="file-menu-rule"></div>`,
     aiOff() ? '' : `<button class="file-menu-item" onclick="closeFileMenu();openAskFile('${fileId}')">Ask AI about this</button>`,
     `<button class="file-menu-item" onclick="closeFileMenu();openShareFile('${fileId}')">Share…</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();renameFile('${fileId}')">Rename…</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>`,
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();renameFile('${fileId}')">Rename…</button>` : '',
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>` : '',
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDetails('${fileId}')">Details</button>`,
-    `<div class="file-menu-rule"></div>`,
-    `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFile('${fileId}')">Delete</button>`,
+    canChange ? `<div class="file-menu-rule"></div>` : '',
+    canChange ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFile('${fileId}')">Delete</button>` : '',
   ].filter(Boolean).join('');
   const menu = document.createElement('div');
   menu.className = 'file-row-menu';
@@ -9711,6 +10030,7 @@ function openFolderMenu(path, event) {
   folderMenuPath = path;
   closeFileMenu();
   const canShare = currentUser?.role !== 'viewer';
+  const canChange = canWriteHere(path) && !folderIsShared(path);
   const items = [
     `<button class="file-menu-item" onclick="closeFileMenu();openFolder(folderMenuPath)">Open</button>`,
     `<div class="file-menu-rule"></div>`,
@@ -9718,12 +10038,13 @@ function openFolderMenu(path, event) {
     `<button class="file-menu-item" onclick="closeFileMenu();downloadFolderZip(folderMenuPath)">Download as ZIP</button>`,
     `<button class="file-menu-item" id="folder-notify-item" onclick="closeFileMenu();toggleFolderNotify(folderMenuPath)">Turn off new-file notifications</button>`,
     `<div class="file-menu-rule"></div>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>`,
-    `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>`,
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>` : '',
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>` : '',
+    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>`,
-    `<div class="file-menu-rule"></div>`,
-    `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>`,
+    canChange ? `<div class="file-menu-rule"></div>` : '',
+    canChange ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
+    canWriteHere(path) && folderIsShared(path) ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder (or one inside it) is shared, so it can't be renamed, moved or deleted. Remove its shares first.</div>` : '',
   ].filter(Boolean).join('');
   const menu = document.createElement('div');
   menu.className = 'file-row-menu'; menu.id = 'file-row-menu'; menu.innerHTML = items;
@@ -9773,9 +10094,11 @@ async function deleteFolder(path) {
     toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`);
   } catch (e) { toast('Delete failed: ' + e.message); }
 }
+function transferTargets() { return (librariesList || []).filter(l => l.id && String(l.id) !== String(currentLibraryId) && l.add_right); }
 function moveFolderToLibrary(path) {
-  if (!Array.isArray(librariesList) || librariesList.length < 2) { toast('No other library to move to'); return; }
-  const m = openModal({ id: 'folder-move-scrim', html: `<h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-move-scrim')">Cancel</button></div>` });
+  const targets = transferTargets();
+  if (!targets.length) { toast('No other library you can add files to'); return; }
+  const m = openModal({ id: 'folder-move-scrim', html: `<h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-move-scrim')">Cancel</button></div>` });
   const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
     m.close();
@@ -9798,8 +10121,9 @@ async function moveFolderToParent(path) {
 }
 // Copy every file in a folder into another library (originals stay in place).
 function copyFolderToLibrary(path) {
-  if (!Array.isArray(librariesList) || !librariesList.length) { toast('No library to copy to'); return; }
-  const m = openModal({ id: 'folder-copy-scrim', html: `<h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${librariesList.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-copy-scrim')">Cancel</button></div>` });
+  const targets = transferTargets();
+  if (!targets.length) { toast('No other library you can add files to'); return; }
+  const m = openModal({ id: 'folder-copy-scrim', html: `<h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-copy-scrim')">Cancel</button></div>` });
   const scrim = m.el;
   scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
     m.close();
@@ -9809,7 +10133,7 @@ function copyFolderToLibrary(path) {
   });
 }
 
-// ---- Folder sharing: public download link + internal member access ----
+// ---- Folder sharing: people and groups (library shares), and public download links ----
 let folderSharePath = null;
 let folderShareLib = null; // the library the dialog was opened in
 function closeFolderShare() { closeModal('folder-share-scrim'); }
@@ -9818,21 +10142,50 @@ async function openFolderShare(path) {
   folderShareLib = currentLibraryId;
   closeFolderShare();
   const name = path.split('/').pop();
-  openModal({ id: 'folder-share-scrim', html: `<button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2>Share folder</h2><p class="sub">${esc(name)}</p>
-    <section class="file-share-section"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that downloads this folder as a ZIP — no sign-in needed. It shares the files that are in the folder right now.</p>
+  const lib = currentLibrary();
+  const canManage = canShareLibrary(lib);
+  const canLink = canWriteHere(path);
+  const m = openModal({ id: 'folder-share-scrim', labelledBy: 'fs-title', html: `<button class="modal-x" type="button" aria-label="Close" onclick="closeFolderShare()">✕</button><h2 id="fs-title">Share folder “${esc(name)}”</h2>${lib ? `<p class="sub">in ${esc(lib.name)}</p>` : ''}
+    <section class="file-share-section"><h3>People and groups</h3>${canManage ? '<div class="ls-mount"></div>' : `<p class="file-share-hint">${esc(folderAccessLine(lib, path))}</p>`}<div class="fs-legacy"></div></section>
+    ${canLink ? `<section class="file-share-section" style="margin-top:22px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates a link that downloads this folder as a ZIP — no sign-in needed. A link covers only the files in the folder right now; people and groups you share it with also get files added later.</p>
       <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
       <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
       <div class="file-share-result" id="folder-share-result"><input class="file-share-url" id="folder-share-url" readonly><button class="file-library-tool" onclick="copyFolderShareUrl()">Copy link</button></div>
       <div class="file-share-list" id="folder-share-list">${emptyState('Loading links', 'Checking existing links for this folder.')}</div>
-    </section>
-    <section style="margin-top:22px"><h3>People with access</h3><p class="file-share-hint">Give a signed-in person view or edit access to every file in this folder.</p>
-      <div class="file-access-form"><input id="folder-access-email" type="email" placeholder="person@example.com" autocomplete="off"><select id="folder-access-permission"><option value="read">Can view</option><option value="write">Can edit</option></select><button class="run-btn" onclick="grantFolderAccess()">Grant</button></div>
-      <div class="file-share-list" id="folder-access-list">${emptyState('Loading access', 'Checking who can open this folder.')}</div>
-    </section>
+    </section>` : ''}
     <div class="btn-row" style="margin-top:20px;justify-content:flex-end"><button class="ghost-btn" onclick="closeFolderShare()">Close</button></div>
   `, modalClass: 'file-share-modal' });
-  await loadFolderShareLinks();
-  await loadFolderAccess();
+  if (canManage) mountLibraryShare(m.el.querySelector('.ls-mount'), { libraryId: lib.id, folderPath: path });
+  loadFolderFileGrants(m.el.querySelector('.fs-legacy'), path, folderShareLib);
+  if (canLink) await loadFolderShareLinks();
+}
+// People given the files in this folder one by one -- by the folder form that folder
+// sharing replaced, or file by file. Those grants still work, so they are listed here
+// with Revoke until they're gone (only for files the caller manages; nothing to show
+// is shown as nothing).
+async function loadFolderFileGrants(el, path, lib) {
+  if (!el || currentUser?.role === 'viewer') return;
+  let grants = [];
+  try { grants = (await apiGet('/files/folder/members?path=' + encodeURIComponent(path) + folderLibQuery(lib))).grants || []; }
+  catch { grants = []; }
+  if (!grants.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<h3 style="margin-top:18px">Given these files one by one</h3><p class="file-share-hint">These people were given files in this folder individually (before folder sharing, or file by file). They keep that access until you revoke it; it doesn't include files added later.</p>`
+    + grants.map(g => `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(g.subject_email || g.subject_id || 'Unknown person')}</span><span class="ls-who-sub"><span>${g.permission === 'mixed' ? 'Mixed access' : esc(permissionLabel(g.permission))} · ${g.doc_count} file${g.doc_count === 1 ? '' : 's'}</span></span></div><button class="file-library-tool" type="button" data-fg-revoke="${escAttr(g.subject_email || g.subject_id || '')}" aria-label="Revoke ${escAttr(g.subject_email || g.subject_id || '')}">Revoke</button></div>`).join('');
+  el.querySelectorAll('[data-fg-revoke]').forEach(b => b.addEventListener('click', async () => {
+    const email = b.dataset.fgRevoke;
+    if (!email || !await askConfirm(`Revoke ${email}'s access to the files in this folder that were given to them one by one?`, { danger: true, okLabel: 'Revoke' })) return;
+    try { const r = await apiDelete('/files/folder/members', inFolderLib({ path, email }, lib)); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); }
+    catch (e) { toast(groupErr(e, "Couldn't revoke it. Try again.")); }
+    loadFolderFileGrants(el, path, lib);
+  }));
+}
+// For someone who can't share the folder: what they have, and who can.
+function folderAccessLine(lib, path) {
+  const above = (lib?.my_folders || []).filter(x => path === x.path || path.startsWith(x.path + '/'));
+  const rw = lib?.my_access === 'rw' || above.some(x => x.level === 'rw');
+  const level = rw ? 'Read-Write' : (lib?.my_access === 'r' || above.length) ? 'Read-only' : null;
+  if (level) return `Shared with you (${level})${lib?.owner_email ? ` by ${lib.owner_email}` : ''}. Only the library owner or an admin can share it further.`;
+  return 'Only the library owner or an admin can share this folder.';
 }
 async function loadFolderShareLinks() {
   const list = document.getElementById('folder-share-list');
@@ -9864,34 +10217,6 @@ async function revokeFolderShareLink(id) {
   try { await apiDelete('/files/folder/links/' + id); toast('Link revoked'); await loadFolderShareLinks(); }
   catch (e) { toast('Revoke failed: ' + e.message); }
 }
-async function loadFolderAccess() {
-  const list = document.getElementById('folder-access-list');
-  if (!folderSharePath || !list) return;
-  try {
-    const data = await apiGet('/files/folder/members?path=' + encodeURIComponent(folderSharePath) + folderLibQuery(folderShareLib));
-    const grants = data.grants || [];
-    if (!grants.length) { list.innerHTML = emptyState('No additional access', 'Only owners and admins can open these files.'); return; }
-    list.innerHTML = grants.map(g => `<div class="file-share-item"><div><strong>${esc(g.subject_email || g.subject_id || 'Unknown user')}</strong><div class="file-share-meta">${g.permission === 'mixed' ? 'Mixed access' : permissionLabel(g.permission)} · ${g.doc_count} file${g.doc_count === 1 ? '' : 's'}</div></div><button class="file-library-tool" data-email="${escAttr(g.subject_email || g.subject_id)}" onclick="revokeFolderAccess(this.dataset.email)">Revoke</button></div>`).join('');
-  } catch (e) { list.innerHTML = emptyState('Could not load access', e.message); }
-}
-async function grantFolderAccess() {
-  if (!folderSharePath) return;
-  const email = document.getElementById('folder-access-email')?.value.trim();
-  const permission = document.getElementById('folder-access-permission')?.value || 'read';
-  if (!email) return toast('Enter an email address');
-  try {
-    const r = await apiPost('/files/folder/members', inFolderLib({ path: folderSharePath, email, permission }, folderShareLib));
-    const input = document.getElementById('folder-access-email'); if (input) input.value = '';
-    toast(`Access granted to ${r.count} file${r.count === 1 ? '' : 's'}`);
-    await loadFolderAccess();
-  } catch (e) { toast('Grant failed: ' + e.message); }
-}
-async function revokeFolderAccess(email) {
-  if (!folderSharePath || !email) return;
-  try { const r = await apiDelete('/files/folder/members', inFolderLib({ path: folderSharePath, email }, folderShareLib)); toast(`Access revoked (${r.count} file${r.count === 1 ? '' : 's'})`); await loadFolderAccess(); }
-  catch (e) { toast('Revoke failed: ' + e.message); }
-}
-
 async function openInDesktopOffice(fileId) {
   recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
@@ -9974,7 +10299,7 @@ async function previewFile(fileId, opts = {}) {
   const isSheet = ['xlsx', 'xls'].includes(ext);
   const isDoc = ext === 'docx';
   const isEml = ext === 'eml';
-  const canEdit = isText && currentUser?.role !== 'viewer';
+  const canEdit = isText && canChangeFile(f);
   let data;
   try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
   const url = data.url;

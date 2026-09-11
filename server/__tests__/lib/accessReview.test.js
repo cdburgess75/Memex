@@ -60,8 +60,8 @@ describe('toCsv', () => {
     const csv = toCsv(assemble(DATA, NOW));
     const lines = csv.split('\n');
     expect(lines[0]).toContain('Memex access review');
-    expect(lines[1]).toContain('Open libraries');
-    expect(lines[2]).toBe('email,name,role,role_assigned,libraries,direct_shares,last_activity');
+    expect(lines[1]).toContain('Listed to every signed-in user (no file access)');
+    expect(lines[2]).toBe('email,name,role,role_assigned,email_verified,owns,library_access,folder_access,groups,listed_in,direct_shares,last_activity');
     expect(csv).toContain('ann@x.com,Ann Smith,contributor');
     // libraries joined with "; " must be quoted because of the comma-free but semicolon list
     expect(csv).toMatch(/Clients; Ops/);
@@ -86,9 +86,9 @@ describe('toCsv', () => {
       { id: 'L3', name: 'Public\n=HYPERLINK("http://evil","x")' },
     ] };
     const csv = toCsv(assemble(data, NOW));
-    // The whole "# Open libraries" header must be quoted, so the newline stays
-    // inside one CSV field instead of starting a new physical =formula row.
-    expect(csv).toContain('"# Open libraries');
+    // The whole "# Listed to every signed-in user" header must be quoted, so the newline
+    // stays inside one CSV field instead of starting a new physical =formula row.
+    expect(csv).toContain('"# Listed to every signed-in user');
   });
 
   test('role_assigned is ISO even when Postgres returns a Date object', () => {
@@ -96,5 +96,59 @@ describe('toCsv', () => {
     const csv = toCsv(assemble(data, NOW));
     expect(csv).toContain('2026-02-01T00:00:00.000Z');
     expect(csv).not.toMatch(/GMT|Pacific|Daylight/); // never a locale toString()
+  });
+});
+
+// Shares: what each person reaches, and why. Only a verified address matches a share.
+describe('shares in the review', () => {
+  const SHARED = {
+    ...DATA,
+    roles: [
+      ...DATA.roles.map(r => ({ ...r, verified_email: r.email })),
+      { user_id: 'u4', email: 'claims@x.com', role: 'contributor', assigned_at: null, verified_email: null },
+    ],
+    libraries: [{ id: 'L1', name: 'Clients', owner_id: 'u2' }, { id: 'L2', name: 'Ops' }, { id: 'L3', name: 'Public' }, { id: 'L4', name: 'Shared, no members' }],
+    groups: [{ id: 'G1', name: 'Acctg' }],
+    groupMembers: [{ group_id: 'G1', email: 'val@x.com' }, { group_id: 'G1', email: 'new@outside.com' }, { group_id: 'G1', email: 'claims@x.com' }],
+    grants: [
+      { library_id: 'L4', folder_path: '', subject_type: 'user', subject_email: 'ann@x.com', permission: 'write' },
+      { library_id: 'L1', folder_path: 'Mender', subject_type: 'group', group_id: 'G1', permission: 'write' },
+      { library_id: 'L4', folder_path: '', subject_type: 'user', subject_email: 'client@outside.com', permission: 'read' },
+    ],
+  };
+  const r = assemble(SHARED, NOW);
+  const user = (e) => r.users.find(u => u.email === e);
+
+  test('owners, direct library shares and group folder shares are named with their level and source', () => {
+    expect(user('ann@x.com').owns).toEqual(['Clients']);
+    expect(user('ann@x.com').libraryAccess).toEqual(['Shared, no members (Read-Write, direct)']);
+    expect(user('val@x.com').groups).toEqual(['Acctg']);
+  });
+
+  test('a viewer is shown at Read-only, whatever the share says', () => {
+    expect(user('val@x.com').folderAccess).toEqual(['Clients / Mender (Read-only, via group "Acctg")']);
+  });
+
+  test('an account without a verified address is flagged and gets nothing through shares', () => {
+    const c = user('claims@x.com');
+    expect(c.emailVerified).toBe(false);
+    expect(c.folderAccess).toEqual([]);
+    expect(c.groups).toEqual([]);
+  });
+
+  test('addresses holding shares with no verified account yet are listed separately', () => {
+    expect(r.pendingShares.map(p => p.email)).toEqual(['claims@x.com', 'client@outside.com', 'new@outside.com']);
+    expect(r.pendingShares.find(p => p.email === 'client@outside.com').libraryAccess).toEqual(['Shared, no members (Read-only, direct)']);
+    expect(r.pendingShares.find(p => p.email === 'new@outside.com').folderAccess).toEqual(['Clients / Mender (Read-Write, via group "Acctg")']);
+  });
+
+  test('a shared library is no longer "listed to everyone"', () => {
+    expect(r.openLibraries).toEqual(['Public']);
+  });
+
+  test('the CSV carries every new column, and the pending addresses as rows', () => {
+    const csv = toCsv(r);
+    expect(csv).toMatch(/^ann@x\.com,Ann Smith,contributor,[^,]*,yes,Clients,"?Shared, no members \(Read-Write, direct\)"?/m);
+    expect(csv).toMatch(/^new@outside\.com,,no verified account,,no,,,/m);
   });
 });

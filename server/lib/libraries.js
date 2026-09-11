@@ -4,16 +4,7 @@
 // migrations/0004_runtime_ensure_tables.sql, applied before the server listens.
 const db = require('./db');
 const { isUuid } = require('./groups');
-
-// Open-by-default access: admins see all; a library with no members is open to
-// everyone; otherwise only listed members (+admins) can access it.
-function accessCondition(roleIdx, emailIdx, alias = 'l') {
-  return `(
-    $${roleIdx} = 'admin'
-    OR NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = ${alias}.id)
-    OR EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = ${alias}.id AND lower(m.subject_email) = lower($${emailIdx}))
-  )`;
-}
+const documentAccess = require('./documentAccess');
 
 // What right, if any, the caller has to ADD or CHANGE files at `parentPath` ('' for the
 // library root) in a library -- decided before anything is stored or rewritten.
@@ -105,14 +96,97 @@ async function defaultLibraryId() {
   return row ? row.id : null;
 }
 
+// The caller as shares see them: their verified address, looked up by account id ($idx).
+const verifiedEmailOf = (idx) => `(SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $${idx})`;
+function shareSubject(t, idIdx) {
+  return `((${t}.subject_type = 'user' AND ${t}.subject_email = ${verifiedEmailOf(idIdx)})
+       OR (${t}.subject_type = 'group' AND ${t}.group_id IN (
+            SELECT gm.group_id FROM group_members gm WHERE lower(gm.member_email) = ${verifiedEmailOf(idIdx)})))`;
+}
+
+// Which libraries a caller sees in their list, and their relationship to each.
+// Parameters: $1 role, $2 the address they sign in with (lower-cased), $3 user id, then
+// the five userParams() at $4..$8 for "can open any file in it".
+// A library is listed to: an admin; its owner; everyone, while it has no members and
+// no shares (the old open rule -- a shared library leaves that list); a listed member
+// (the old rule, matched as the switcher always has); anyone it or a folder in it is
+// shared with; and anyone who can open any file in it -- their own personal files, or
+// files shared with them one by one -- so sharing a library never hides it from them.
+const LISTING = `
+  SELECT v.* FROM (
+    SELECT l.id, l.name, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
+           EXISTS (SELECT 1 FROM library_grants x WHERE x.library_id = l.id) AS shared,
+           NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id) AS no_members,
+           EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id AND $2 <> '' AND lower(m.subject_email) = $2) AS member_listed,
+           (SELECT max(g.permission) FROM library_grants g
+             WHERE g.library_id = l.id AND g.folder_path = '' AND ${shareSubject('g', 3)}) AS root_level,
+           (SELECT json_agg(json_build_object('path', f.folder_path, 'level', f.level) ORDER BY f.folder_path)
+              FROM (SELECT g.folder_path, max(g.permission) AS level FROM library_grants g
+                     WHERE g.library_id = l.id AND g.folder_path <> '' AND ${shareSubject('g', 3)}
+                     GROUP BY g.folder_path) f) AS folders,
+           EXISTS (SELECT 1 FROM documents d
+                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 4)}) AS can_read_any,
+           (SELECT json_agg(DISTINCT g.folder_path) FROM library_grants g
+             WHERE g.library_id = l.id AND g.folder_path <> '') AS shared_folders
+      FROM libraries l
+  ) v
+  WHERE ($1 = 'admin' OR v.owner_id = $3 OR (v.no_members AND NOT v.shared) OR v.member_listed
+         OR v.root_level IS NOT NULL OR v.folders IS NOT NULL OR v.can_read_any)`;
+
+// One listed row, as the caller may see it.
+//   can_manage  may share it: an admin, or its owner while a contributor
+//   my_access   'admin' | 'owner' | 'rw' | 'r' (a share of the whole library) |
+//               'folders' (shares of folders in it only) | 'listed' (the old rules, or
+//               personal files) -- viewers are capped at read
+//   my_folders  [{ path, level: 'rw' | 'r' }] the folders shared with them
+//   add_right   what writeRight answers at the root: 'admin' | 'owner' | 'grant' |
+//               'legacy' | null (folder shares are in my_folders)
+//   shared      whether it is shared at all -- only to someone who manages it
+//   shared_folders  the folders in it that are shared (they can't be renamed, moved or
+//               deleted until shares follow them) -- only to someone who manages it
+function shapeLibrary(user, r) {
+  const admin = user?.role === 'admin';
+  const contributor = user?.role === 'contributor';
+  const isOwner = !!r.owner_id && !!user?.id && String(r.owner_id) === String(user.id);
+  const level = (p) => (p === 'write' && contributor ? 'rw' : 'r');
+  const myFolders = (r.folders || []).map(f => ({ path: f.path, level: level(f.level) }));
+  const canManage = admin || (contributor && isOwner);
+  let myAccess = null;
+  if (isOwner) myAccess = 'owner'; // an admin's own library is still theirs
+  else if (admin) myAccess = 'admin';
+  else if (r.root_level) myAccess = level(r.root_level);
+  else if (myFolders.length) myAccess = 'folders';
+  else if ((r.no_members && !r.shared) || r.member_listed || r.can_read_any) myAccess = 'listed';
+  let addRight = null;
+  if (admin) addRight = 'admin';
+  else if (contributor) {
+    if (isOwner) addRight = 'owner';
+    else if (r.root_level === 'write') addRight = 'grant';
+    else if (!r.shared && (r.no_members || r.member_listed)) addRight = 'legacy';
+  }
+  const out = {
+    id: r.id, name: r.name, created_by_email: r.created_by_email, created_at: r.created_at,
+    owner_id: r.owner_id, owner_email: r.owner_email,
+    can_manage: canManage, my_access: myAccess, my_folders: myFolders, add_right: addRight,
+  };
+  if (canManage) { out.shared = !!r.shared; out.shared_folders = r.shared_folders || []; }
+  return out;
+}
+
+const listingParams = (user) => [user?.role || '', String(user?.email || '').toLowerCase(), user?.id || null,
+  ...documentAccess.userParams(user, 'read')];
+
 async function listLibraries(user) {
-  return db.query(
-    `SELECT l.id, l.name, l.created_by_email, l.created_at
-     FROM libraries l
-     WHERE ${accessCondition(1, 2, 'l')}
-     ORDER BY l.created_at ASC`,
-    [user?.role || '', user?.email || '']
-  );
+  const rows = await db.query(`${LISTING} ORDER BY v.created_at ASC`, listingParams(user));
+  return rows.map(r => shapeLibrary(user, r));
+}
+
+// The library, if the caller may see it in their list (null otherwise, or for an id
+// that is not a uuid).
+async function visibleLibrary(user, libraryId) {
+  if (!isUuid(libraryId)) return null;
+  const row = await db.queryOne(`${LISTING} AND v.id = $9`, [...listingParams(user), libraryId]);
+  return row ? shapeLibrary(user, row) : null;
 }
 
 // The creator owns the library (by user id, as with groups). Ownership is what lets
@@ -143,4 +217,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, listLibraries, createLibrary, resolveLibraryId, writeRight, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { defaultLibraryId, listLibraries, visibleLibrary, shapeLibrary, createLibrary, resolveLibraryId, writeRight, sharedFolderAt, listMembers, addMember, removeMember, info };
