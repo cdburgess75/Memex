@@ -24,6 +24,7 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const { serverError } = require('../lib/httpError');
 const groups = require('../lib/groups');
+const libraryShares = require('../lib/libraryShares');
 
 // Membership changes will decide who can open other people's libraries once groups
 // can be granted access, so every change is chained. A failure is logged loudly —
@@ -95,7 +96,9 @@ router.get('/:id', auth, async (req, res) => {
     const group = await loadVisible(req, res);
     if (!group) return;
     const manage = groups.canManage(req.user, group);
-    if (manage) return res.json({ ...group, can_manage: true });
+    // share_count: how many library and folder shares membership of this group carries,
+    // so the app can say what removing someone (or deleting the group) takes away.
+    if (manage) return res.json({ ...group, can_manage: true, share_count: await libraryShares.countForGroup(group.id) });
     const { id, name, owner_id, owner_email, created_at } = group;
     res.json({ id, name, owner_id, owner_email, created_at, can_manage: false });
   } catch (e) { serverError(res, e); }
@@ -131,11 +134,14 @@ router.delete('/:id', auth, async (req, res) => {
     const group = await loadManageable(req, res);
     if (!group) return;
     const members = await groups.listMembers(group.id);
+    // Deleting a group removes its shares with it (ON DELETE CASCADE); count them first
+    // so the chain records what access went away.
+    const shareCount = await libraryShares.countForGroup(group.id);
     // Only the request that actually removed the row records the deletion; a second,
     // concurrent delete finds nothing and must not write a duplicate audit entry.
     const deleted = await groups.deleteGroup(group.id);
     if (!deleted) return res.status(404).json({ error: 'Group not found' });
-    await audit(req, 'group_deleted', `group ${group.id} ${q(group.name)}, ${members.length} member(s)`);
+    await audit(req, 'group_deleted', `group ${group.id} ${q(group.name)}, ${members.length} member(s), ${shareCount} share(s) removed`);
     res.json({ ok: true });
   } catch (e) { serverError(res, e); }
 });

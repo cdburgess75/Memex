@@ -542,6 +542,22 @@ async function targetLibrary(req, res) {
   catch (e) { if (e && e.status === 400) { res.status(400).json({ error: e.message }); return undefined; } throw e; }
 }
 
+// The name an upload or a new file lands under. Its folder part keeps an existing folder
+// exactly as stored -- one holding files the caller can read, or one shared with them --
+// so a file dropped into a shared "Smith & Co (2025)" lands inside it (and under its
+// share), not in a rewritten "Smith _ Co _2025_" beside it. New folders and the file
+// name are cleaned as uploads always were. Null for a path that can't name a folder.
+async function landingName(raw, libraryId, user) {
+  const s = String(raw || '').replace(/\\/g, '/');
+  const cut = s.lastIndexOf('/');
+  const base = cleanDisplayName(s.slice(cut + 1));
+  if (!base) return '';
+  if (cut < 0) return base;
+  const folder = await destinationFolder(s.slice(0, cut), libraryId, user);
+  if (folder === null) return null;
+  return folder ? `${folder}/${base}` : base;
+}
+
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
@@ -834,8 +850,9 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     // (the copy is theirs), but MOVING it takes it out of where it was, which is an edit
     // -- otherwise someone with read-only access could empty a shared library.
     const accessible = await db.query(
-      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path, d.library_scoped, d.uploaded_by
-       FROM documents d
+      `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path, d.library_scoped, d.uploaded_by, d.library_id,
+              l.owner_id AS library_owner_id
+       FROM documents d LEFT JOIN libraries l ON l.id = d.library_id
        WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
       [...documentAccess.userParams(req.user, mode === 'move' ? 'write' : 'read'), ids]
     );
@@ -851,10 +868,16 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     }
 
     if (mode === 'move') {
-      // Library content never moves into a library the caller can write to only under
-      // the old open-library rule: it would leave the library it was shared through for
-      // one whose owner then holds it. Such files stay where they are, counted as kept.
-      const movable = accessible.filter(d => !(d.library_scoped && rights.get(parentOf(d.name)).right === 'legacy'));
+      // Library content belongs to its library. Taking it to ANOTHER library hands it to
+      // that library's owner and ends every share of it, so only whoever manages the
+      // library it is in (its owner, or an admin) may do that -- a Read-Write share lets
+      // you change and delete files there, and copy them out, not carry them off. It also
+      // never moves into a library the caller can write to only under the old open rule.
+      // Such files stay where they are, counted as kept.
+      const managesSource = (d) => req.user.role === 'admin'
+        || (req.user.role === 'contributor' && !!d.library_owner_id && String(d.library_owner_id) === String(req.user.id));
+      const movable = accessible.filter(d => !d.library_scoped || String(d.library_id) === String(libraryId)
+        || (managesSource(d) && rights.get(parentOf(d.name)).right !== 'legacy'));
       const kept = accessible.length - movable.length;
       const toScoped = movable.filter(d => libraryScopeAfterMove(d, rights.get(parentOf(d.name)), req.user)).map(d => d.id);
       const toPersonal = movable.filter(d => !toScoped.includes(d.id)).map(d => d.id);
@@ -1046,9 +1069,6 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
 
   const path = require('path');
   const { buffer, originalname, mimetype, size } = req.file;
-  const displayName = cleanDisplayName(req.body.displayName) || cleanDisplayName(originalname) || 'upload';
-  const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
 
   // Keep a single upload from filling the volume (the chunked path already does this;
   // the direct paths did not). Fails open for non-local storage (freeDiskBytes → ∞).
@@ -1056,10 +1076,14 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
   }
 
-  let uploadLibraryId, dest;
+  let uploadLibraryId, dest, displayName, storagePath;
   try {
     uploadLibraryId = await targetLibrary(req, res);
     if (uploadLibraryId === undefined) return;
+    displayName = await landingName(req.body.displayName || originalname, uploadLibraryId, req.user);
+    if (displayName === null) return res.status(400).json({ error: 'invalid folder' });
+    displayName = displayName || 'upload';
+    storagePath = `documents/${Date.now()}-${path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
     if (!dest) return;
     await storage.upload(storagePath, buffer, mimetype);
@@ -1102,11 +1126,8 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
 router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const path = require('path');
   const rawName = req.query.displayName || req.headers['x-file-name'];
-  const displayName = cleanDisplayName(rawName) || 'upload';
-  if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
-
-  const sanitizedName = path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = `documents/${Date.now()}-${sanitizedName}`;
+  if (!(await isFileTypeAllowed(cleanDisplayName(rawName) || 'upload'))) return res.status(415).json({ error: 'File type not allowed' });
+  let displayName, storagePath; // resolved against the library below (landingName)
   const mimetype = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
   const declaredSize = Number.parseInt(req.headers['content-length'] || '0', 10);
 
@@ -1128,6 +1149,10 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   try {
     uploadLibraryId = await targetLibrary(req, res);
     if (uploadLibraryId === undefined) return;
+    displayName = await landingName(rawName, uploadLibraryId, req.user);
+    if (displayName === null) return res.status(400).json({ error: 'invalid folder' });
+    displayName = displayName || 'upload';
+    storagePath = `documents/${Date.now()}-${path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
     if (!dest) return;
   } catch (e) { return serverError(res, e); }
@@ -1175,7 +1200,8 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
 
 // POST /api/files/uploads — create or resume a local-backed chunked upload session.
 router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  const displayName = cleanDisplayName(req.body.displayName || req.body.name) || 'upload';
+  const rawName = req.body.displayName || req.body.name;
+  let displayName = cleanDisplayName(rawName) || 'upload';
   if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
 
   const size = Number.parseInt(req.body.size || '0', 10);
@@ -1204,9 +1230,13 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
     // When the session already names its library, refuse a destination the caller has
     // no right to before any chunk is sent. The complete step checks again regardless:
     // the library is named there too, and rights can change in between.
+    // The stored name keeps an existing (or shared) folder exactly, as every upload does.
+    const lib = await targetLibrary(req, res);
+    if (lib === undefined) return;
+    const landed = await landingName(rawName, lib, req.user);
+    if (landed === null) return res.status(400).json({ error: 'invalid folder' });
+    displayName = landed || 'upload';
     if (req.headers['x-library-id'] || req.query?.libraryId || req.body?.libraryId) {
-      const lib = await targetLibrary(req, res);
-      if (lib === undefined) return;
       if (!(await destinationRight(req, res, req.user, lib, parentOf(displayName)))) return;
     }
     const session = await db.queryOne(
@@ -1604,7 +1634,11 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     // Ranked so an existing grant is never silently downgraded by a send.
     const RANK = { read: 1, write: 2, admin: 3 };
     const existingGrants = new Map(
-      (await db.query('SELECT lower(subject_email) AS email, permission FROM document_acl WHERE document_id = $1 AND subject_type = $2', [doc.id, 'user']))
+      // (the uploader's own owner row on library content grants nothing, so it isn't one)
+      (await db.query(
+        `SELECT lower(acl.subject_email) AS email, acl.permission FROM document_acl acl JOIN documents d ON d.id = acl.document_id
+          WHERE acl.document_id = $1 AND acl.subject_type = $2
+            AND NOT (d.library_scoped AND lower(acl.subject_id) IS NOT DISTINCT FROM d.uploaded_by::text)`, [doc.id, 'user']))
         .map(r => [r.email, r.permission])
     );
 
@@ -1995,12 +2029,16 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
     if (!blankDocs.SUPPORTED.includes(ext)) return res.status(400).json({ error: 'Unsupported file type' });
     const rawName = String(req.body?.name || '').trim().replace(new RegExp('\\.' + ext + '$', 'i'), '');
     if (!rawName) return res.status(400).json({ error: 'name required' });
-    const fullName = safeDocName(req.body?.folder, `${rawName}.${ext}`);
-    if (!fullName) return res.status(400).json({ error: 'invalid name' });
+    const base = safeDocName('', `${rawName}.${ext}`);
+    if (!base) return res.status(400).json({ error: 'invalid name' });
     const blank = blankDocs.blankFile(ext, rawName);
 
     const path = require('path');
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // An existing (or shared) folder is kept exactly; a new one is named as before.
+    const folder = await destinationFolder(req.body?.folder, libraryId, req.user);
+    if (folder === null) return res.status(400).json({ error: 'invalid name' });
+    const fullName = folder ? `${folder}/${base}` : base;
     const dest = await destinationRight(req, res, req.user, libraryId, parentOf(fullName));
     if (!dest) return;
     const sanitized = path.basename(fullName).replace(/[^a-zA-Z0-9._-]/g, '_');

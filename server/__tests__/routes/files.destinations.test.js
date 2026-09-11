@@ -179,13 +179,29 @@ describe('renames, restores and transfers', () => {
     expect(libraries.writeRight.mock.calls.map(c => c[2])).toEqual(['A']);
     expect(mockQueries.some(q => /UPDATE documents SET library_id/.test(q.sql))).toBe(false);
   });
+  const OTHER = 'bbbbbbbb-0000-4000-8000-000000000002';
   test('library content is not moved into a library held only under the old open rule', async () => {
-    mockRows.transfer = [doc({ id: 'd1', name: 'A/1.txt', library_scoped: true }), doc({ id: 'd2', name: 'A/2.txt' })];
+    mockRows.transfer = [doc({ id: 'd1', name: 'A/1.txt', library_scoped: true, library_id: OTHER, library_owner_id: USER.id }), doc({ id: 'd2', name: 'A/2.txt', library_id: OTHER })];
     mockRight.value = { right: 'legacy', scoped: false };
     const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1', 'd2'], libraryId: LIB, mode: 'move' });
     expect(res.body).toMatchObject({ count: 1, skipped: 0, kept: 1 });
     const upd = mockQueries.filter(q => /UPDATE documents SET library_id/.test(q.sql));
     expect(upd.flatMap(q => q.params[1])).toEqual(['d2']);
+  });
+  // Taking library content to ANOTHER library hands it to that library's owner and ends
+  // its shares; a Read-Write share doesn't carry that, only managing the source library.
+  test.each([
+    ['a Read-Write sharee (not the source owner)', { library_owner_id: '99999999-9999-4999-8999-999999999999' }, USER, 0, 1],
+    ['the source library owner', { library_owner_id: USER.id }, USER, 1, 0],
+    ['an admin', { library_owner_id: '99999999-9999-4999-8999-999999999999' }, { ...USER, role: 'admin' }, 1, 0],
+    ['anyone, within the same library', { library_owner_id: '99999999-9999-4999-8999-999999999999', library_id: LIB }, USER, 1, 0],
+  ])('moving library content to another library: %s', async (_l, over, who, count, kept) => {
+    mockAuth.user = who;
+    mockRows.transfer = [doc({ id: 'd1', name: 'A/1.txt', library_scoped: true, library_id: OTHER, ...over })];
+    mockRight.value = { right: 'owner', scoped: true };
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'move' });
+    expect(res.body).toMatchObject({ count, kept });
+    expect(mockQueries.some(q => /UPDATE documents SET library_id/.test(q.sql))).toBe(count > 0);
   });
 });
 
@@ -211,7 +227,7 @@ describe('folders', () => {
   test('a folder rename keeps the folder where it is, so nothing changes scope', async () => {
     await post('/rename', { path: 'Clients/Acme', name: 'Acme2' });
     const upd = mockQueries.find(q => /UPDATE documents d SET name = \$2/.test(q.sql));
-    expect(upd.sql).not.toMatch(/library_scoped/);
+    expect(upd.sql).toMatch(/^\s*UPDATE documents d SET name = \$2 \|\| substring\(d\.name from \$3::int\)\s+WHERE/);
     expect(upd.params).toHaveLength(9);
   });
   test('a folder rename still needs a right to change files there', async () => {
@@ -239,7 +255,7 @@ describe('folders', () => {
   test('a folder moved to a library held only under the old open rule leaves library content behind, and says how much', async () => {
     mockRight.value = { right: 'legacy', scoped: false };
     mockRows.keptCount = 2;
-    const res = await post('/move', { path: 'Clients/Acme', library_id: LIB });
+    const res = await post('/move', { path: 'Clients/Acme', library_id: 'bbbbbbbb-0000-4000-8000-000000000002' });
     const upd = mockQueries.find(q => /UPDATE documents d SET library_id = \$2/.test(q.sql));
     expect(upd.sql).toMatch(/AND \(NOT d\.library_scoped OR \$11::boolean\)/);
     expect(upd.sql).toMatch(/library_scoped = d\.library_scoped OR \(\$9::boolean AND d\.uploaded_by IS NOT DISTINCT FROM \$10\)/);

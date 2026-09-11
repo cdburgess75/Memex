@@ -92,12 +92,20 @@ const ROUTES = [
   ['zip', app => request(app).get('/api/files/folder/zip').query({ path: 'Clients/Acme' })],
   ['links', app => request(app).post('/api/files/folder/links').send({ path: 'Clients/Acme' })],
   ['members:list', app => request(app).get('/api/files/folder/members').query({ path: 'Clients/Acme' })],
-  ['members:grant', app => request(app).post('/api/files/folder/members').send({ path: 'Clients/Acme', email: 'a@b.com', permission: 'read' })],
   ['members:revoke', app => request(app).delete('/api/files/folder/members').send({ path: 'Clients/Acme', email: 'a@b.com' })],
   ['copy', app => request(app).post('/api/files/folder/copy').send({ path: 'Clients/Acme', library_id: 'lib-2' })],
 ];
 
 beforeEach(() => { seen.length = 0; mockSeedFolders('Clients/Acme', 'Archive', 'Tax & Co', 'Smith & Co (2025)/Old', 'Inbox'); });
+
+// Copying a grant onto every file in a folder (up to 'admin') is retired: folders are
+// shared from the library now, as a live share that covers files added later.
+test('granting people a folder here is retired (410) and changes nothing', async () => {
+  const res = await request(makeApp()).post('/api/files/folder/members').send({ path: 'Clients/Acme', email: 'a@b.com', permission: 'admin' });
+  expect(res.status).toBe(410);
+  expect(res.body.code).toBe('USE_FOLDER_SHARES');
+  expect(seen).toHaveLength(0);
+});
 
 describe('folder operations are scoped to one library', () => {
   test.each(ROUTES)('%s binds every placeholder it references', async (_name, call) => {
@@ -287,7 +295,6 @@ describe('every folder route matches its folder exactly', () => {
     ['links:list', app => request(app).get('/api/files/folder/links').query({ path: ODD })],
     ['links:create', app => request(app).post('/api/files/folder/links').send({ path: ODD })],
     ['members:list', app => request(app).get('/api/files/folder/members').query({ path: ODD })],
-    ['members:grant', app => request(app).post('/api/files/folder/members').send({ path: ODD, email: 'a@b.com', permission: 'read' })],
     ['members:revoke', app => request(app).delete('/api/files/folder/members').send({ path: ODD, email: 'a@b.com' })],
     ['copy', app => request(app).post('/api/files/folder/copy').send({ path: ODD, library_id: 'lib-2' })],
   ];

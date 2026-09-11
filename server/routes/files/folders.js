@@ -18,7 +18,6 @@ const libraries = require('../../lib/libraries');
 const storage = require('../../lib/storage');
 const notifications = require('../../lib/notifications');
 const emailEvents = require('../../lib/emailEvents');
-const { actingAs } = require('../../lib/email');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
@@ -119,9 +118,11 @@ const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploade
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const folderPath = safeDocName(req.body?.path, '');
-    if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // A new folder inside an existing (or shared) one keeps that folder's name exactly;
+    // only the new part is named the way new folders are.
+    const folderPath = await destinationFolder(req.body?.path, libraryId, req.user);
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
     const dest = await destinationRight(res, req.user, libraryId, folderPath);
     if (!dest) return;
     const markerName = `${folderPath}/.keep`;
@@ -242,20 +243,25 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     if (await refuseIfShared(res, srcLibraryId, folderPath)) return;
     if (await refuseIfShared(res, libraryId, folderPath)) return;
-    // Library content never moves into a library the caller can write to only under the
-    // old open-library rule ($11): it would leave the library it was shared through for
-    // one whose owner then holds it. Those files stay where they are, and are counted
-    // (kept) so the app can say why.
+    // Library content belongs to its library: taking it to ANOTHER library hands it to
+    // that library's owner and ends its shares, so only whoever manages the source (its
+    // owner while a contributor, or an admin) may, and never into a library held only
+    // under the old open rule ($11). Anyone else's move leaves it where it is, counted
+    // (kept) so the app can say why -- they can still copy it.
+    const src = await db.queryOne('SELECT owner_id FROM libraries WHERE id = $1', [srcLibraryId]);
+    const managesSource = req.user.role === 'admin'
+      || (req.user.role === 'contributor' && !!src?.owner_id && String(src.owner_id) === String(req.user.id));
+    const contentMoves = String(srcLibraryId) === String(libraryId) || (managesSource && dest.right !== 'legacy');
     const rows = await db.query(
       `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
          AND (NOT d.library_scoped OR $11::boolean)
        RETURNING d.id`,
       [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id, dest.right !== 'legacy']
+       dest.scoped, req.user.id, contentMoves]
     );
     let kept = 0;
-    if (dest.right === 'legacy') {
+    if (!contentMoves) {
       const left = await db.queryOne(
         `SELECT count(*)::int AS n FROM documents d
          WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $7 AND d.library_scoped
@@ -474,6 +480,7 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
        JOIN documents d ON d.id = acl.document_id
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 2)}
          AND lower(acl.subject_id) <> lower($${2 + documentAccess.userParams(req.user, 'admin').length})
+         AND NOT (d.library_scoped AND lower(acl.subject_id) IS NOT DISTINCT FROM d.uploaded_by::text)
        GROUP BY acl.subject_id
        ORDER BY subject_email`,
       [folderPath, ...documentAccess.userParams(req.user, 'admin'), String(req.user.email || '').toLowerCase(), libraryId]
@@ -482,53 +489,13 @@ router.get('/members', auth, requireRole('admin', 'contributor'), async (req, re
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// POST /api/files/folder/members — grant one person access to every file in a folder.
-router.post('/members', auth, requireRole('admin', 'contributor'), async (req, res) => {
-  try {
-    const folderPath = existingFolder(req.body?.path);
-    if (!folderPath) return res.status(400).json({ error: 'path required' });
-    const email = documentAccess.normalizeEmail(req.body?.email);
-    // Reject anything that isn't a plain address (no quotes/spaces/angle brackets) —
-    // defense in depth so a crafted value can't ride into the UI or outbound mail.
-    if (!/^[^\s@"'<>]+@[^\s@"'<>]+\.[^\s@"'<>]+$/.test(email)) return res.status(400).json({ error: 'Valid user email is required' });
-    const permission = req.body?.permission || 'read';
-    if (!documentAccess.validPermission(permission)) return res.status(400).json({ error: 'Permission must be read, write, or admin' });
-    // Only files the caller administers; skip the folder marker.
-    const libraryId = await folderLibraryId(req, folderPath, req.user);
-    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
-    const rows = await db.query(
-      `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
-       SELECT d.id, 'user', $2, $2, $3, $4, $5 FROM documents d
-       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep'
-         AND d.library_id = $11 AND ${documentAccess.condition('d', 6)}
-       ON CONFLICT (document_id, subject_type, subject_id)
-       DO UPDATE SET permission = EXCLUDED.permission, subject_email = EXCLUDED.subject_email,
-                     granted_by = EXCLUDED.granted_by, granted_by_email = EXCLUDED.granted_by_email
-       RETURNING document_id`,
-      [folderPath, email, permission, req.user.id, String(req.user.email || '').toLowerCase(), ...documentAccess.userParams(req.user, 'admin'), libraryId]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'No files you manage in this folder' });
-    await logEvent(`folder access grant · ${folderPath} · ${email} · ${permission} (${rows.length})`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_access_granted', req.user.id, req.user.email, `${folderPath} · ${email} · ${permission} (${rows.length})`);
-    if (email !== String(req.user.email || '').toLowerCase()) {
-      const folderName = folderPath.split('/').pop();
-      try {
-        await notifications.create({
-          userEmail: email,
-          type: 'share_granted',
-          title: `${actingAs(req.user).label} shared a folder with you`,
-          body: `"${folderName}" · ${rows.length} file${rows.length === 1 ? '' : 's'} · ${permission} access`,
-        });
-      } catch (e) { console.error('notification (folder share_granted) failed:', e.message); }
-      emailEvents.send('share_granted', {
-        to: email,
-        subject: `${actingAs(req.user).label} shared a folder with you`,
-        text: `${actingAs(req.user).label} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Depot.\n\nSign in to Depot to open it.`,
-        actorEmail: actingAs(req.user).sendAs,
-      }).catch(() => {});
-    }
-    res.json({ ok: true, count: rows.length, permission });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+// POST /api/files/folder/members — retired. It copied a grant onto each file in the
+// folder (up to 'admin', overwriting existing grants) -- a frozen list that missed files
+// added later and competed with real folder shares. Folders are shared from the library
+// now (POST /api/libraries/:id/shares with a folder_path). Existing per-file grants are
+// untouched and still listed and revocable here.
+router.post('/members', auth, requireRole('admin', 'contributor'), (req, res) => {
+  res.status(410).json({ code: 'USE_FOLDER_SHARES', error: 'Folder sharing has moved: use Share on the folder.' });
 });
 
 // DELETE /api/files/folder/members — revoke a person's access across a folder.

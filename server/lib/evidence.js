@@ -105,14 +105,24 @@ function toMarkdown(b) {
     lines.push(`Access review could not be generated: ${esc(ar.error)}. The list below is incomplete and must not be treated as evidence.`);
     lines.push('');
   }
-  if (ar.openLibraries && ar.openLibraries.length) lines.push(`Open libraries (any signed-in user): ${ar.openLibraries.map(esc).join(', ')}`);
+  if (ar.openLibraries && ar.openLibraries.length) lines.push(`Listed to every signed-in user (no file access): ${ar.openLibraries.map(esc).join(', ')}`);
   lines.push('');
-  lines.push('| User | Role | Libraries | Direct shares | Last activity |');
-  lines.push('|---|---|---|---|---|');
+  lines.push('Access comes from owning a library, a share of a library or folder (to the person or a group they belong to; shares match only a verified address), or files shared one by one. "Listed in" is the older member list, which only decides who sees a library listed.');
+  lines.push('');
+  lines.push('| User | Role | Owns | Library access | Folder access | Groups | Listed in | Direct shares | Last activity |');
+  lines.push('|---|---|---|---|---|---|---|---|---|');
+  const list = (a) => esc((a || []).join('; ')) || '—';
   for (const u of ar.users || []) {
-    lines.push(`| ${esc(u.email)}${u.name ? ` (${esc(u.name)})` : ''} | ${esc(u.role)} | ${esc((u.libraries || []).join(', '))} | ${u.directShares || 0} | ${esc(u.lastActivity || 'never')} |`);
+    const who = `${esc(u.email)}${u.name ? ` (${esc(u.name)})` : ''}${u.emailVerified === false ? ' — email not verified' : ''}`;
+    lines.push(`| ${who} | ${esc(u.role)} | ${list(u.owns)} | ${list(u.libraryAccess)} | ${list(u.folderAccess)} | ${list(u.groups)} | ${list(u.libraries)} | ${u.directShares || 0} | ${esc(u.lastActivity || 'never')} |`);
   }
   lines.push('');
+  if (ar.pendingShares && ar.pendingShares.length) {
+    lines.push('Shared with addresses that have no verified account (they get this access once they sign in with that address verified):');
+    lines.push('');
+    for (const p of ar.pendingShares) lines.push(`- ${esc(p.email)}: ${list([...(p.libraryAccess || []), ...(p.folderAccess || [])])}`);
+    lines.push('');
+  }
 
   // Update posture
   if (b.updates) {

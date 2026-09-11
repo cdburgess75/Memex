@@ -93,7 +93,9 @@ function canManage(user, group) {
 
 // What a caller can see: admins every group; everyone else the groups they own or
 // belong to. Each row says whether the caller may manage it, so the client does not
-// have to re-derive the rule.
+// have to re-derive the rule. Belonging is by VERIFIED address: a group now gives its
+// members access to what is shared with it, so an account that merely claims a
+// member's address must not see it as theirs either.
 async function listGroups(user) {
   const isAdmin = user?.role === 'admin';
   const rows = await db.query(
@@ -105,7 +107,7 @@ async function listGroups(user) {
          OR g.owner_id = $3
          OR EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = g.id AND lower(m.member_email) = lower($2))
       ORDER BY lower(g.name)`,
-    [isAdmin, normalizeEmail(user?.email), user?.id || null]
+    [isAdmin, normalizeEmail(user?.verifiedEmail), user?.id || null]
   );
   return rows.map(r => ({ ...r, can_manage: canManage(user, r) }));
 }
@@ -127,7 +129,7 @@ async function canView(user, group) {
   if (canManage(user, group) || isOwner(user, group)) return true;
   const row = await db.queryOne(
     'SELECT 1 FROM group_members WHERE group_id = $1 AND lower(member_email) = lower($2)',
-    [group.id, normalizeEmail(user.email)]
+    [group.id, normalizeEmail(user.verifiedEmail)]
   );
   return !!row;
 }

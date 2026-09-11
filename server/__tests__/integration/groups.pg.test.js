@@ -25,11 +25,12 @@ if (PG) jest.setTimeout(30000);
 let mockUser;
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockUser; next(); });
 
-const RICHARD = { id: '11111111-1111-4111-8111-111111111111', email: 'richard@ptechllc.com', role: 'contributor' };
-const DAVE    = { id: '22222222-2222-4222-8222-222222222222', email: 'dave@ptechllc.com', role: 'admin' };
-const TAMMY   = { id: '33333333-3333-4333-8333-333333333333', email: 'tammy@ptechllc.com', role: 'contributor' };
-const JACKSON = { id: '44444444-4444-4444-8444-444444444444', email: 'jackson@ptechllc.com', role: 'contributor' };
-const VIEWER  = { id: '55555555-5555-4555-8555-555555555555', email: 'viewer@ptechllc.com', role: 'viewer' };
+// Signed in with addresses Keycloak has verified (group membership matches only those).
+const RICHARD = { id: '11111111-1111-4111-8111-111111111111', email: 'richard@ptechllc.com', verifiedEmail: 'richard@ptechllc.com', role: 'contributor' };
+const DAVE    = { id: '22222222-2222-4222-8222-222222222222', email: 'dave@ptechllc.com', verifiedEmail: 'dave@ptechllc.com', role: 'admin' };
+const TAMMY   = { id: '33333333-3333-4333-8333-333333333333', email: 'tammy@ptechllc.com', verifiedEmail: 'tammy@ptechllc.com', role: 'contributor' };
+const JACKSON = { id: '44444444-4444-4444-8444-444444444444', email: 'jackson@ptechllc.com', verifiedEmail: 'jackson@ptechllc.com', role: 'contributor' };
+const VIEWER  = { id: '55555555-5555-4555-8555-555555555555', email: 'viewer@ptechllc.com', verifiedEmail: 'viewer@ptechllc.com', role: 'viewer' };
 const RICHARD_DEMOTED = { ...RICHARD, role: 'viewer' };
 const RICHARD_TWIN = { id: '66666666-6666-4666-8666-666666666666', email: RICHARD.email, role: 'contributor' };
 
