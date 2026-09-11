@@ -62,42 +62,82 @@ function userParams(user, required = 'read') {
 // and anything unknown get read -- so no share reaches document admin (managing a
 // file's own access list stays with owners and admins). A library that nobody is a
 // member of is NOT open for this purpose: that old rule only ever controlled listing.
-function condition(alias = 'd', s = 1) {
-  const role = `$${s}`;
-  const uid = `$${s + 1}`;
-  const perms = `$${s + 4}`;
-  const me = `(SELECT pv_ur.verified_email FROM user_roles pv_ur WHERE pv_ur.user_id = ${uid})`;
-  const cap = (level) => `(CASE WHEN ${role} = 'contributor' AND ${level} = 'write' THEN 'write' ELSE 'read' END) = ANY(${perms}::text[])`;
-  const subject = (t) => `((${t}.subject_type = 'user' AND ${t}.subject_email = ${me})
+//
+// The rule is written once, in named parts, over "refs": the SQL for the caller's
+// role, id, id as text, address and permission set. condition(alias, s) uses the $s..
+// $s+4 parameters of a request; acctRefs() uses a user_roles row, so the same rule can
+// be evaluated for every account at once (who can get in, and why -- lib/accessKeys).
+// The parts are also the row sources of each reason, so a reason and the rule can
+// never be two different ideas of the same thing. The text condition() produces is
+// pinned byte for byte by __tests__/lib/documentAccess.golden.test.js.
+const refsAt = (s = 1) => ({ role: `$${s}`, uid: `$${s + 1}`, idText: `$${s + 2}`, email: `$${s + 3}`, perms: `$${s + 4}` });
+// A stored account (user_roles row `t`), exactly as userParams(resolveActor(id)) sees it:
+// role, id, id as text, its VERIFIED address ('' when none), and a permission set.
+const acctRefs = (t, perms) => ({
+  role: `coalesce(${t}.role,'')`, uid: `${t}.user_id`, idText: `${t}.user_id::text`,
+  email: `coalesce(${t}.verified_email,'')`, perms,
+});
+
+// The caller's verified address, looked up by account id (never the claimed one).
+const verifiedOf = (r) => `(SELECT pv_ur.verified_email FROM user_roles pv_ur WHERE pv_ur.user_id = ${r.uid})`;
+// What a share of `level` gives this caller: write only to a contributor, else read.
+const shareLevel = (r, level) => `(CASE WHEN ${r.role} = 'contributor' AND ${level} = 'write' THEN 'write' ELSE 'read' END)`;
+// What owning the library gives: document admin while a contributor, else read.
+const ownerLevel = (r) => `(CASE WHEN ${r.role} = 'contributor' THEN 'admin' ELSE 'read' END)`;
+// Is share row `t` for this caller -- to their verified address, or a group they're in.
+const shareSubject = (t, r) => `((${t}.subject_type = 'user' AND ${t}.subject_email = ${verifiedOf(r)})
           OR (${t}.subject_type = 'group' AND ${t}.group_id IN (
-                SELECT pv_gm.group_id FROM group_members pv_gm WHERE lower(pv_gm.member_email) = ${me})))`;
+                SELECT pv_gm.group_id FROM group_members pv_gm WHERE lower(pv_gm.member_email) = ${verifiedOf(r)})))`;
+
+// The branches, each usable on its own. `a` is the document alias; the row sources use
+// fixed inner aliases: da (document_acl), pv_lo (libraries), pv_lg / pv_lf (library_grants).
+const B = {
+  admin: (r) => `${r.role} = 'admin'`,
+  uploader: (a, r) => `(${a}.uploaded_by = ${r.uid} AND NOT ${a}.library_scoped)`,
+  // document_acl row `da` on document `a` that is this caller's (any permission)
+  fileGrantRow: (a, r) => `da.document_id = ${a}.id
+        AND da.subject_type = 'user'
+        AND lower(da.subject_id) IN (lower(${r.idText}), lower(${r.email}))`,
+  // ...and that counts: not the uploader's own owner row on library content
+  fileGrantCounts: (a) => `NOT (${a}.library_scoped AND lower(da.subject_id) IS NOT DISTINCT FROM ${a}.uploaded_by::text)`,
+  // library `pv_lo` owned by this caller
+  ownerRow: (r) => `pv_lo.owner_id = ${r.uid}`,
+  // whole-library share `pv_lg`
+  libraryShareRow: () => `pv_lg.folder_path = ''`,
+  // folder share `pv_lf` on a folder that document `a` is in
+  folderShareRow: (a) => `pv_lf.library_id = ${a}.library_id AND pv_lf.folder_path <> ''
+              AND starts_with(${a}.name, pv_lf.folder_path || '/')`,
+};
+
+function conditionWith(alias, r) {
   return `(
-    ${role} = 'admin'
-    OR (${alias}.uploaded_by = ${uid} AND NOT ${alias}.library_scoped)
+    ${B.admin(r)}
+    OR ${B.uploader(alias, r)}
     OR EXISTS (
       SELECT 1
       FROM document_acl da
-      WHERE da.document_id = ${alias}.id
-        AND da.subject_type = 'user'
-        AND lower(da.subject_id) IN (lower($${s + 2}), lower($${s + 3}))
-        AND da.permission = ANY(${perms}::text[])
-        AND NOT (${alias}.library_scoped AND lower(da.subject_id) IS NOT DISTINCT FROM ${alias}.uploaded_by::text)
+      WHERE ${B.fileGrantRow(alias, r)}
+        AND da.permission = ANY(${r.perms}::text[])
+        AND ${B.fileGrantCounts(alias)}
     )
     OR (${alias}.library_scoped AND (
          ${alias}.library_id IN (
            SELECT pv_lo.id FROM libraries pv_lo
-            WHERE pv_lo.owner_id = ${uid}
-              AND (CASE WHEN ${role} = 'contributor' THEN 'admin' ELSE 'read' END) = ANY(${perms}::text[]))
+            WHERE ${B.ownerRow(r)}
+              AND ${ownerLevel(r)} = ANY(${r.perms}::text[]))
       OR ${alias}.library_id IN (
            SELECT pv_lg.library_id FROM library_grants pv_lg
-            WHERE pv_lg.folder_path = '' AND ${cap('pv_lg.permission')} AND ${subject('pv_lg')})
+            WHERE ${B.libraryShareRow()} AND ${shareLevel(r, 'pv_lg.permission')} = ANY(${r.perms}::text[]) AND ${shareSubject('pv_lg', r)})
       OR EXISTS (
            SELECT 1 FROM library_grants pv_lf
-            WHERE pv_lf.library_id = ${alias}.library_id AND pv_lf.folder_path <> ''
-              AND starts_with(${alias}.name, pv_lf.folder_path || '/')
-              AND ${cap('pv_lf.permission')} AND ${subject('pv_lf')})
+            WHERE ${B.folderShareRow(alias)}
+              AND ${shareLevel(r, 'pv_lf.permission')} = ANY(${r.perms}::text[]) AND ${shareSubject('pv_lf', r)})
     ))
   )`;
+}
+
+function condition(alias = 'd', s = 1) {
+  return conditionWith(alias, refsAt(s));
 }
 
 async function getAccessibleDocument({ id, user, required = 'read', columns = '*', deleted = 'active' }) {
@@ -296,6 +336,14 @@ module.exports = {
   grantUserAccess,
   revokeUserAccess,
   condition,
+  conditionWith,
+  refsAt,
+  acctRefs,
+  verifiedOf,
+  shareLevel,
+  ownerLevel,
+  shareSubject,
+  branches: B,
   userParams,
   matchEmail,
   permissionsFor,

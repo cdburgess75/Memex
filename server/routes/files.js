@@ -588,13 +588,9 @@ async function loadExchangeLink(token) {
 
 // The creator of a link, if they may still publish the file: an admin or contributor
 // with write access to it right now. Null otherwise (or if the account is gone).
+// (lib/linkAccess: the one answer the link lists show too)
 async function linkCreatorWithWrite(createdBy, documentId) {
-  const creator = await documentAccess.resolveActor(createdBy);
-  if (!creator || (creator.role !== 'admin' && creator.role !== 'contributor')) return null;
-  const doc = await documentAccess.getAccessibleDocument({
-    id: documentId, user: creator, required: 'write', columns: 'd.id', deleted: 'active',
-  });
-  return doc ? creator : null;
+  return require('../lib/linkAccess').creatorCanPublish(createdBy, documentId);
 }
 
 // GET /api/files/share/:token/info — what the exchange page renders from.
