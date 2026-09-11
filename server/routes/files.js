@@ -16,6 +16,7 @@ const settings = require('../lib/settings');
 const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
+const { isUuid } = require('../lib/groups');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const email = require('../lib/email');
@@ -1407,8 +1408,9 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
 router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     // The same bar as creating a link (write). A link list names who each link was
-    // sent to and who created it -- a customer's outside recipients -- which is not
-    // for everyone who can merely read the file.
+    // sent to and who created it -- a customer's outside recipients -- so everyone's
+    // links are for whoever manages the file's access (document admin); someone who can
+    // only edit it sees the links they made themselves.
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
       user: req.user,
@@ -1416,15 +1418,16 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
       columns: DOCUMENT_COLUMNS,
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const manages = !!(await documentAccess.getAccessibleDocument({ id: doc.id, user: req.user, required: 'admin', columns: 'd.id' }));
     const rows = await db.query(
       `SELECT id, document_id, expires_at, revoked_at, created_at, created_by_email,
               recipient_email, allow_upload, last_accessed_at, access_count, password_hash
        FROM document_share_links
-       WHERE document_id = $1
+       WHERE document_id = $1 ${manages ? '' : 'AND created_by = $2'}
        ORDER BY created_at DESC`,
-      [doc.id]
+      manages ? [doc.id] : [doc.id, req.user.id]
     );
-    res.json({ shares: rows.map(row => shareLinkClientShape(row)) });
+    res.json({ scope: manages ? 'all' : 'mine', shares: rows.map(row => shareLinkClientShape(row)) });
   } catch (e) {
     serverError(res, e);
   }
@@ -1511,25 +1514,15 @@ router.delete('/:id/access/:grantId', auth, requireRole('admin', 'contributor'),
 });
 
 // GET /api/files/shares — list share links across documents.
+// GET /api/files/shares?scope=mine|all -- "My links": the public links the caller made,
+// with each one's real state (lib/linkList). scope=all is every link, for admins only.
 router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const rows = await db.query(
-      `SELECT s.id, s.document_id, d.name AS document_name, s.expires_at, s.revoked_at,
-              s.created_at, s.created_by_email, s.last_accessed_at, s.access_count,
-              s.password_hash, d.deleted_at
-       FROM document_share_links s
-       JOIN documents d ON d.id = s.document_id
-       WHERE ${documentAccess.condition('d', 1)}
-       ORDER BY s.revoked_at IS NULL DESC, s.expires_at NULLS LAST, s.created_at DESC
-       LIMIT 250`,
-      // Links on files the caller could publish themselves (write), as for a single file.
-      documentAccess.userParams(req.user, 'write')
-    );
-    res.json({ shares: rows.map(row => ({
-      ...shareLinkClientShape(row),
-      document_name: row.document_name,
-      document_deleted: !!row.deleted_at
-    })) });
+    const scope = req.query.scope === 'all' ? 'all' : 'mine';
+    if (scope === 'all' && req.user.role !== 'admin') {
+      return res.status(403).json({ code: 'ADMIN_ONLY', error: "Only an admin can see everyone's links" });
+    }
+    res.json(await require('../lib/linkList').listLinks(req.user, scope));
   } catch (e) {
     serverError(res, e);
   }
@@ -1723,22 +1716,29 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
 });
 
 // DELETE /api/files/:id/shares/:shareId — revoke a share link.
+// Its creator can always revoke a link, whatever they can open now (a link of theirs
+// that has paused must stay revocable); otherwise it takes edit rights on the file.
 router.delete('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const doc = await documentAccess.getAccessibleDocument({
-      id: req.params.id,
-      user: req.user,
-      required: 'write',
-      columns: 'd.id',
-    });
-    if (!doc) return res.status(404).json({ error: 'Share link not found' });
-    const share = await db.queryOne(
+    if (!isUuid(req.params.id) || !isUuid(req.params.shareId)) return res.status(404).json({ error: 'Share link not found' });
+    const revoke = (extra) => db.queryOne(
       `UPDATE document_share_links
        SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
-       WHERE id = $3 AND document_id = $4 AND revoked_at IS NULL
+       WHERE id = $3 AND document_id = $4 AND revoked_at IS NULL ${extra}
        RETURNING id, document_id`,
       [req.user.id, req.user.email, req.params.shareId, req.params.id]
     );
+    let share = await revoke('AND created_by = $1');
+    if (!share) {
+      const doc = await documentAccess.getAccessibleDocument({
+        id: req.params.id,
+        user: req.user,
+        required: 'write',
+        columns: 'd.id',
+      });
+      if (!doc) return res.status(404).json({ error: 'Share link not found' });
+      share = await revoke('');
+    }
     if (!share) return res.status(404).json({ error: 'Share link not found' });
     await logDocumentEvent(share.document_id, 'share_revoked', req.user.id, req.user.email, `share ${req.params.shareId}`);
     await logEvent(`share revoke · ${req.params.id}`, req.user.id, req.user.email);

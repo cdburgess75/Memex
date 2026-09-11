@@ -14,7 +14,7 @@ const fnLine = (name) => {
 };
 const section = (() => {
   const start = html.indexOf('// ---- Shared with me ----');
-  const end = html.indexOf('async function renderShareLinks() {');
+  const end = html.indexOf('// ---- Who has access (piece 3) ----');
   if (start < 0 || end < start) throw new Error('Shared with me section not found');
   return html.slice(start, end);
 })();

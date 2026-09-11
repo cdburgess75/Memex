@@ -74,6 +74,9 @@ function scenario(seed) {
   // to someone and linked: what a manager who isn't an admin must never be shown.
   const privateDoc = { id: id(), library: libraries[0], name: 'Private/notes.txt', uploader: cs[3], scoped: false, deleted: false, size: 10 };
   documents.push(privateDoc);
+  // ...and one of the library's own files beside it, so a folder link can cover both.
+  const libraryDoc = { id: id(), library: libraries[0], name: 'Shared/plan.txt', uploader: cs[0], scoped: true, deleted: false, size: 10 };
+  documents.push(libraryDoc);
 
   const acl = [];
   const aclKeys = new Set();
@@ -85,7 +88,7 @@ function scenario(seed) {
   };
   for (const d of documents) if (d.uploader) addAcl(d, d.uploader.id, 'admin', d.uploader); // owner rows, by id
   addAcl(privateDoc, 'ghost0@acme.test', 'read', cs[3]);
-  const others = documents.filter(x => x !== privateDoc);
+  const others = documents.filter(x => x !== privateDoc && x !== libraryDoc);
   for (let i = 0; i < 45; i++) {
     const d = pick(others);
     const by = pick(accounts);
@@ -124,8 +127,11 @@ function scenario(seed) {
     return { id: id(), token: token(), lib, path, ids: [...new Set(ids)], by: pick(creators), revoked: chance(0.15), expired: chance(0.15) };
   });
 
+  // A folder link over a file the library's owner can edit and a private one they can't,
+  // made by someone else: the owner may not revoke it (they can't edit every file in it).
+  folderLinks.push({ id: id(), token: token(), lib: libraries[0], path: 'Shared', ids: [libraryDoc.id, privateDoc.id], by: cs[3], revoked: false, expired: false });
   const profiles = accounts.filter(() => chance(0.6)).map(a => ({ a, name: chance(0.2) ? '' : `Name of ${a.email}` }));
-  return { seed, accounts, libraries, groups, documents, acl, grants, fileLinks, folderLinks, profiles, gone, contacts, privateDoc };
+  return { seed, accounts, libraries, groups, documents, acl, grants, fileLinks, folderLinks, profiles, gone, contacts, privateDoc, libraryDoc };
 }
 
 // Load a scenario, in a handful of statements.

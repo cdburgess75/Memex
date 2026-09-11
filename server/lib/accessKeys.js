@@ -505,7 +505,7 @@ async function linkRows(q, door, viewer) {
   );
   const ids = [...new Set(hits.map(h => String(h.link_id)))];
   const folders = ids.length ? await q.query(
-    `SELECT f.id, f.folder_path, cardinality(f.document_ids) AS file_count, f.created_by, f.created_by_email, f.expires_at,
+    `SELECT f.id, f.folder_path, f.document_ids, cardinality(f.document_ids) AS file_count, f.created_by, f.created_by_email, f.expires_at,
             (f.password_hash IS NOT NULL) AS has_password, f.access_count, f.last_accessed_at, f.created_at
        FROM folder_share_links f WHERE f.id = ANY($1::uuid[]) ORDER BY f.created_at DESC`,
     [ids]
@@ -560,10 +560,26 @@ async function linksFor(q, door, viewer, names) {
       can_revoke: writer,
     });
   }
+  // DELETE /api/files/folder/links/:shareId lets its creator or an admin revoke it, or
+  // anyone with edit rights on every file it still serves from.
+  const writesAll = async (ids) => {
+    const p = paramList();
+    const list = p(ids);
+    const me = justMe(viewer, p);
+    const pw = p(documentAccess.permissionsFor('write'));
+    const row = await q.queryOne(
+      `SELECT count(*) FILTER (WHERE x.deleted_at IS NULL)::int AS live,
+              count(*) FILTER (WHERE x.deleted_at IS NULL AND NOT ${documentAccess.conditionWith('x', me.R(pw))})::int AS locked
+         FROM documents x WHERE x.id = ANY(${list}::uuid[])`,
+      p.vals
+    );
+    return !!row && row.live > 0 && row.locked === 0;
+  };
   for (const f of folderLinks) {
     const s = serving.get(String(f.created_by || ''));
     const ids = here.get(String(f.id)) || [];
     const n = ids.filter(i => s.ids.has(i)).length;
+    const mine = !!f.created_by && String(f.created_by) === String(viewer.id);
     out.push({
       ref: `fl:${f.id}`, kind: 'folder', id: f.id, document_id: null, name: String(f.folder_path || '').split('/').pop() || null,
       folder_path: f.folder_path, file_count: Number(f.file_count) || 0, files_here: ids.length, serving: n,
@@ -571,8 +587,7 @@ async function linksFor(q, door, viewer, names) {
       recipient_email: null, expires_at: f.expires_at, has_password: !!f.has_password, allow_upload: false,
       access_count: Number(f.access_count) || 0, last_accessed_at: f.last_accessed_at,
       state: n ? 'active' : 'paused', paused_reason: n ? null : s.why,
-      // DELETE /api/files/folder/links/:shareId: its creator, or an admin
-      can_revoke: isAdmin || (!!f.created_by && String(f.created_by) === String(viewer.id) && writer),
+      can_revoke: isAdmin || (writer && (mine || await writesAll(f.document_ids || []))),
     });
   }
   return out;

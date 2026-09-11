@@ -378,16 +378,25 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// DELETE /api/files/folder/links/:shareId — revoke a folder download link.
+// DELETE /api/files/folder/links/:shareId — revoke a folder download link. Its creator
+// or an admin can; so can anyone with edit rights on every file it still serves from
+// (at least one) -- the same bar as revoking a file's link. Folder links carry no
+// library, so the snapshot of files is the only scope there is.
 router.delete('/links/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
+    if (!isUuid(req.params.shareId)) return res.status(404).json({ error: 'Folder share link not found' });
     const adminAll = (req.user.role === 'admin');
+    const params = [req.user.id, req.user.email, req.params.shareId, ...documentAccess.userParams(req.user, 'write')];
     const share = await db.queryOne(
-      `UPDATE folder_share_links
+      `UPDATE folder_share_links f
        SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
-       WHERE id = $3 AND revoked_at IS NULL ${adminAll ? '' : 'AND created_by = $4'}
-       RETURNING id, folder_path`,
-      adminAll ? [req.user.id, req.user.email, req.params.shareId] : [req.user.id, req.user.email, req.params.shareId, req.user.id]
+       WHERE f.id = $3 AND f.revoked_at IS NULL
+         AND (${adminAll ? 'true' : `f.created_by = $1
+              OR (EXISTS (SELECT 1 FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL)
+                  AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL
+                                     AND NOT ${documentAccess.condition('d', 4)}))`})
+       RETURNING f.id, f.folder_path`,
+      adminAll ? params.slice(0, 3) : params
     );
     if (!share) return res.status(404).json({ error: 'Folder share link not found' });
     await logEvent(`folder share revoke · ${share.folder_path}`, req.user.id, req.user.email);
