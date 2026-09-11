@@ -11,8 +11,11 @@ memex-backup.json
 !.env.example
 .local-secrets/
 
-# Local tooling (preview launch config, plans)
-.claude/
+# Local tooling (preview launch config, plans). Ignore the CONTENTS rather than the
+# directory itself, so the vendored interface skills below stay tracked — git never
+# descends into an excluded directory, and `!.claude/skills/` alone would not rescue it.
+.claude/*
+!.claude/skills/
 
 # Per-customer license + operator secrets (mounted into the container read-only)
 license.json
