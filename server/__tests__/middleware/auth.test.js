@@ -252,3 +252,21 @@ describe('verified email', () => {
     });
   });
 });
+
+// One person to every check: the address a request matches per-file grants with is
+// exactly the verified address auth records for the account -- the one library, folder
+// and group shares, links, Collabora and "who has access" judge it by.
+describe('request identity equals stored identity', () => {
+  const documentAccess = jest.requireActual('../../lib/documentAccess');
+  test.each([[true], [false], [null], ['true'], [undefined]])('email_verified %p', async (claim) => {
+    db.query.mockReset(); db.query.mockResolvedValue([]); db.queryOne.mockReset();
+    jwt.verify.mockReturnValue({ sub: 'user-p0', email: 'P0@Test.com', ...(claim === undefined ? {} : { email_verified: claim }) });
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    db.queryOne.mockResolvedValueOnce({ role: 'contributor', verified_email: 'stale@test.com' });
+    const req = makeReq('t');
+    await auth(req, makeRes(), jest.fn());
+    const stored = db.query.mock.calls.find(([sql]) => /UPDATE user_roles SET verified_email/.test(sql))[1][1];
+    expect(documentAccess.userParams(req.user)[3]).toBe(stored || '');
+    console.warn.mockRestore();
+  });
+});

@@ -37,7 +37,8 @@ function emailVerifiedClaim(payload) {
 // misconfigured realm or an account created without "Email verified" shows up in the
 // logs without flooding them.
 //  - No claim at all: the realm is not sending it (the client lost its "email" scope).
-//    The address is never treated as verified, so it cannot bootstrap an admin.
+//    The address is never treated as verified: nothing shared to it opens for this
+//    account, and it cannot bootstrap an admin.
 //  - Claim false: Keycloak says the address is unverified. Files shared to that address
 //    will not open for this account until "Email verified" is ticked for it.
 //  - An ADMIN_EMAILS address that is not verified is not made an admin.
@@ -49,7 +50,7 @@ function noteUnverified(userId, email, claim) {
   if (claim === 'admin') {
     console.warn(`auth: ${JSON.stringify(email)} is listed in ADMIN_EMAILS but Keycloak does not mark it verified, so it is not made an admin; tick "Email verified" for the account in Keycloak and sign in again`);
   } else if (claim === null) {
-    console.warn(`auth: token for user ${userId} carries no email_verified claim; its address is not treated as verified (check the client's "email" scope in Keycloak)`);
+    console.warn(`auth: token for user ${userId} carries no email_verified claim; its address is not treated as verified, so files shared to it will not open (check the client's "email" scope in Keycloak)`);
   } else {
     console.warn(`auth: Keycloak marks the address ${JSON.stringify(email)} of user ${userId} unverified; files shared to that address will not open for it until "Email verified" is ticked for the account in Keycloak`);
   }

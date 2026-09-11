@@ -21,13 +21,15 @@ function validPermission(permission) {
   return Object.prototype.hasOwnProperty.call(PERMISSION_LEVELS, permission);
 }
 
-// The address a per-file grant may match. Blank when the identity provider has said
-// outright that the address is NOT verified, so an account that merely claims someone
-// else's address can't open files shared with that address. A token that says nothing
-// either way keeps today's behaviour for per-file grants; library, folder and group
-// shares go further and match only a verified address (user_roles.verified_email).
+// The address a per-file grant may match: only one the identity provider has verified.
+// Blank otherwise -- when the token says the address is unverified, and when it says
+// nothing either way -- so an account that merely claims someone else's address can't
+// open files shared with that address. Every other way in (library, folder and group
+// shares, links, Collabora, notices) already judges people by their verified address
+// alone, so a person is now the same person to every check, and "who has access" can
+// list exactly who gets in.
 function matchEmail(user) {
-  return user?.emailVerified === false ? '' : String(user?.email || '').toLowerCase();
+  return user?.emailVerified === true ? String(user?.email || '').toLowerCase() : '';
 }
 
 function userParams(user, required = 'read') {
@@ -282,7 +284,8 @@ async function readersAmong(docIds, emails) {
       );
       const actors = accounts.length
         ? accounts.map(r => ({ id: r.user_id, role: r.role || '', email: r.verified_email || r.email || '', emailVerified: !!r.verified_email }))
-        : [{ id: null, role: '', email: addr }];
+        // no account: whoever reads that mailbox, holding only what was granted to it
+        : [{ id: null, role: '', email: addr, emailVerified: true }];
       for (const actor of actors) {
         const rows = await db.query(
           `SELECT d.id FROM documents d WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL AND ${condition('d', 2)}`,

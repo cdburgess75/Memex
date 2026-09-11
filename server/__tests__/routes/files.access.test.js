@@ -30,6 +30,7 @@ jest.mock('../../lib/textExtraction', () => ({
 let mockUser = {
   id: '810da857-4296-473f-99e9-96f2a5ebd47e',
   email: 'user@test.com',
+  emailVerified: true,
   role: 'contributor',
 };
 
@@ -53,6 +54,7 @@ beforeEach(() => {
   mockUser = {
     id: '810da857-4296-473f-99e9-96f2a5ebd47e',
     email: 'user@test.com',
+    emailVerified: true,
     role: 'contributor',
   };
 });
