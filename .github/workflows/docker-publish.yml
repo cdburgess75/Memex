@@ -16,6 +16,21 @@ jobs:
   # publish. Runs serially (--runInBand) for deterministic, contention-free CI.
   test:
     runs-on: ubuntu-latest
+    # A throwaway Postgres for the integration suites (__tests__/integration/*.pg.test.js),
+    # which skip unless MEMEX_TEST_PG_URL is set and refuse any database whose name
+    # lacks "test". They drop and recreate the schema, so they run one after another.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: memex_ci_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memex_ci_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      MEMEX_TEST_PG_URL: postgres://postgres@localhost:5432/memex_ci_test
     steps:
       - name: Checkout
         uses: actions/checkout@v4

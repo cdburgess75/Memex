@@ -19,6 +19,8 @@ const path = require('path');
 
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
+// Migrations and the first connection can outlast Jest's 5 s default on a slow runner.
+if (PG) jest.setTimeout(30000);
 
 let mockUser;
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockUser; next(); });

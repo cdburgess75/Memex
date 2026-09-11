@@ -20,7 +20,16 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
   try {
     const name = (req.body?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name required' });
-    res.json(await libraries.createLibrary({ name, user: req.user }));
+    const lib = await libraries.createLibrary({ name, user: req.user });
+    // Libraries are about to become shareable by their owner, so who created which one
+    // belongs in the tamper-evident chain. Best-effort: never fails the request.
+    try {
+      await require('../lib/auditLog').append({
+        eventType: 'library_created', actorId: req.user.id, actorEmail: req.user.email,
+        detail: `library ${lib.id} ${JSON.stringify(lib.name)} owner ${req.user.id}`,
+      });
+    } catch (e) { console.error('audit library_created failed:', e.message); }
+    res.json(lib);
   } catch (e) {
     serverError(res, e);
   }

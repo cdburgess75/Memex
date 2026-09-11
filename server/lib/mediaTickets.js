@@ -21,7 +21,7 @@ function issue(user) {
   sweep();
   const token = crypto.randomBytes(24).toString('base64url');
   tickets.set(token, {
-    user: { id: user.id, email: user.email, role: user.role },
+    user: { id: user.id, email: user.email, role: user.role, emailVerified: user.emailVerified ?? null },
     expires: Date.now() + TTL_MS,
   });
   return { ticket: token, ttl: Math.floor(TTL_MS / 1000) };

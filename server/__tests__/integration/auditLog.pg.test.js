@@ -14,11 +14,13 @@
 // Without MEMEX_TEST_PG_URL the whole suite is skipped (normal CI / sandbox).
 const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
+// Migrations and the first connection can outlast Jest's 5 s default on a slow runner.
+if (PG) jest.setTimeout(30000);
 
 // Everything the migrations create, plus the base tables this test seeds, so reruns
 // start clean.
 const MIGRATION_TABLES = [
-  'schema_migrations', 'group_members', 'groups', 'system_settings',
+  'schema_migrations', 'library_grants', 'group_members', 'groups', 'system_settings', 'user_roles',
   'user_preferences', 'storage_connectors', 'user_profiles',
   'notifications', 'library_members', 'libraries', 'document_acl', 'upload_sessions',
   'document_share_links', 'folder_share_links', 'upload_links', 'recent_opens',
@@ -50,8 +52,10 @@ suite('auditLog against real Postgres', () => {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       document_id UUID, event_type TEXT NOT NULL, actor_id UUID, actor_email TEXT, detail TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-    // 0005 tidies a row out of system_settings, which the base schema provides.
+    // Stand-ins for base-schema tables later migrations touch: 0005 tidies a row out of
+    // system_settings; 0007 adds a verified-address column to user_roles.
     await db.query('CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT)');
+    await db.query('CREATE TABLE user_roles (user_id UUID PRIMARY KEY, email TEXT, role TEXT)');
     // A pre-existing row (hash NULL) that must stay outside the chain.
     await db.query("INSERT INTO document_events (event_type, actor_email, detail) VALUES ('legacy', 'old@x.com', 'pre-chain row')");
   });
