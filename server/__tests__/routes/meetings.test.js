@@ -2,10 +2,11 @@
 // Covers POST /api/meetings: validation, the "known accounts only" guard against
 // mail-relay abuse, and that each attendee is emailed a calendar invite carrying
 // the deep-link room.
-jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: 'u1', email: 'dave@x.com', name: 'Dave', role: 'admin' }; next(); });
+jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: 'u1', email: 'dave@x.com', name: 'Dave', role: 'admin', verifiedEmail: mockVerified.value }; next(); });
+const mockVerified = { value: 'dave@x.com' };
 jest.mock('../../lib/db', () => ({ query: jest.fn() }));
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn(async (k) => (k === 'app_url' ? 'https://memex.example' : null)) }));
-jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true, via: 'graph' })) }));
+jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true, via: 'graph' })), actingAs: jest.requireActual('../../lib/email').actingAs }));
 
 const express = require('express');
 const request = require('supertest');
@@ -85,6 +86,16 @@ describe('POST /api/meetings', () => {
   test('400 on missing title or invalid start', async () => {
     expect((await request(app()).post('/api/meetings').send({ ...good, title: '' })).status).toBe(400);
     expect((await request(app()).post('/api/meetings').send({ ...good, start: 'nope' })).status).toBe(400);
+  });
+
+  test("a member whose address isn't verified can't send invitations in their name", async () => {
+    mockVerified.value = null;
+    try {
+      const res = await request(app()).post('/api/meetings').send(good);
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/isn't verified/);
+      expect(email.sendMail).not.toHaveBeenCalled();
+    } finally { mockVerified.value = 'dave@x.com'; }
   });
 
   test('defaults and clamps the duration', async () => {

@@ -264,6 +264,21 @@ async function sendMail({ to, subject, text, html, attachments, icalEvent, actor
   }
 }
 
+// Mail sent on a member's behalf: which mailbox it may come from, and how to name them
+// in it. Only an address the identity provider has verified may do either. An account
+// that merely claims someone's address (Keycloak lets a local user change their own,
+// unverified) must not send from that person's real mailbox, nor be introduced under
+// their name. Works for req.user (verifiedEmail) and for resolveActor's live account
+// (emailVerified + email).
+function actingAs(user) {
+  const verified = user?.verifiedEmail || (user?.emailVerified === true && user?.email) || null;
+  const claimed = String(user?.email || '');
+  return {
+    sendAs: verified ? String(verified).toLowerCase() : null,
+    label: verified ? String(verified).toLowerCase() : (claimed ? `${claimed} (unverified address)` : 'A colleague'),
+  };
+}
+
 function _resetForTests() { _transport = null; _transportKey = ''; _graphToken = null; }
 
-module.exports = { sendMail, isConfigured, smtpConfig, graphConfig, resolveProvider, _resetForTests };
+module.exports = { sendMail, actingAs, isConfigured, smtpConfig, graphConfig, resolveProvider, _resetForTests };

@@ -4,7 +4,7 @@
 // rather than reaching an adapter.
 let mockRole = 'admin';
 jest.mock('../../middleware/auth', () => (req, _res, next) => {
-  req.user = { id: 'u1', email: 'dave@x.com', role: mockRole };
+  req.user = { id: 'u1', email: 'dave@x.com', role: mockRole, verifiedEmail: 'dave@x.com' };
   next();
 });
 jest.mock('../../middleware/requireRole', () => (...roles) => (req, res, next) =>
@@ -12,7 +12,7 @@ jest.mock('../../middleware/requireRole', () => (...roles) => (req, res, next) =
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => {}) }));
 jest.mock('../../lib/keycloakAdmin', () => ({ getBrokerToken: jest.fn(async () => 'user-graph-token') }));
 jest.mock('../../lib/smbSessionCreds', () => ({ get: jest.fn(() => null), set: jest.fn(), forget: jest.fn() }));
-jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true, via: 'graph' })) }));
+jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true, via: 'graph' })), actingAs: jest.requireActual('../../lib/email').actingAs }));
 jest.mock('../../lib/connectors', () => ({
   catalog: jest.fn(() => [{ kind: 'smb', label: 'SMB', fields: [] }]),
   list: jest.fn(),

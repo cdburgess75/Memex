@@ -112,7 +112,7 @@ async function destinationFolder(raw, libraryId, user) {
   return kept ? `${kept}/${made}` : made;
 }
 
-function recordUploadNotify(user, displayName, libraryId) {
+function recordUploadNotify(user, displayName, libraryId, documentId = null) {
   try {
     const full = String(displayName || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const parts = full.split('/').filter(Boolean);
@@ -124,7 +124,7 @@ function recordUploadNotify(user, displayName, libraryId) {
     require('./uploadNotify').record({
       libraryId: libraryId || null, folderPath: topFolder || '',
       uploaderEmail: user.email, uploaderName: user.name,
-      fileName: base, folderName: topFolder,
+      fileName: base, folderName: topFolder, documentId,
     });
   } catch (e) { console.error('uploadNotify record:', e.message); }
 }
@@ -146,8 +146,10 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   const lib = libraryId || (await libraries.defaultLibraryId());
 
   // U6 dedupe: a byte-identical re-upload — same content hash, same name, same library,
-  // visible to this user — returns the existing document instead of creating a
-  // duplicate. Conservative by design: a changed file has a different hash and is never
+  // that this user could EDIT — returns the existing document instead of creating a
+  // duplicate. Edit, not merely read: absorbing an upload into a document is a change
+  // to that document, and at read level one person's upload could land as someone
+  // else's file, owned by them, in a place the uploader can only look at. Conservative by design: a changed file has a different hash and is never
   // skipped, so nothing is ever silently dropped. Only computed for files up to the
   // text-extraction size, where we already have the bytes in hand (no extra read).
   if (contentHash) {
@@ -156,7 +158,7 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
        WHERE d.deleted_at IS NULL AND d.content_hash = $1 AND d.name = $2 AND d.library_id = $3
          AND ${documentAccess.condition('d', 4)}
        LIMIT 1`,
-      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'read')]
+      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'write')]
     );
     if (existing) {
       await storage.del(storagePath).catch(() => {}); // discard the redundant blob
@@ -175,7 +177,7 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   await logEvent(`upload · ${displayName}`, user.id, user.email);
   // Notify the library owner + folder followers (summary-batched), on real user
   // uploads only — not copies/migrations, which pass notifyUpload:false.
-  if (notifyUpload) recordUploadNotify(user, displayName, lib);
+  if (notifyUpload) recordUploadNotify(user, displayName, lib, doc.id);
   return { doc, canIngest };
 }
 

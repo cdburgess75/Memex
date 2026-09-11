@@ -7495,16 +7495,30 @@ function openLibraryTransfer(mode) {
   scrim.querySelectorAll('button[data-lib]').forEach(b => b.onclick = async () => {
     close();
     try {
-      if (selected.length) await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
-      for (const p of folders) await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib));
+      // Report what the server did, not what was selected: files the caller can only
+      // view are left where they are (skipped).
+      let done = 0, skipped = 0;
+      if (selected.length) {
+        const r = await apiPost('/files/library-transfer', { ids: selected.map(f => f.id), libraryId: b.dataset.lib, mode });
+        done += Number(r?.count ?? selected.length);
+        skipped += Number(r?.skipped || 0);
+      }
+      for (const p of folders) { await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib)); done++; }
       clearFileSelection(false);
       await loadFiles();
       const target = librariesList.find(l => String(l.id) === b.dataset.lib);
-      toast(`${mode === 'copy' ? 'Copied' : 'Moved'} ${total} item${total === 1 ? '' : 's'} to ${target?.name || 'library'}`);
+      toast(transferSummary(mode, done, skipped, target?.name || 'library'));
     } catch (e) { toast(`${verb} failed: ` + e.message); }
   });
 }
 
+// "Moved 3 items to Clients · 1 stayed where it was (you can only view it)".
+function transferSummary(mode, done, skipped, where) {
+  const verbed = mode === 'copy' ? 'Copied' : 'Moved';
+  const kept = skipped ? `${skipped} ${skipped === 1 ? 'file' : 'files'} you can only view stayed where ${skipped === 1 ? 'it was' : 'they were'}` : '';
+  if (!done) return kept ? `Nothing was ${verbed.toLowerCase()}: ${kept}` : `Nothing was ${verbed.toLowerCase()}`;
+  return `${verbed} ${done} item${done === 1 ? '' : 's'} to ${where}${kept ? ` · ${kept}` : ''}`;
+}
 
 async function ensureFilesView() {
   if (!document.getElementById('file-library-view')) { await setTab('files'); await new Promise(r => setTimeout(r, 30)); }

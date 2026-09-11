@@ -14,6 +14,11 @@ const notifications = require('./notifications');
 const emailEvents = require('./emailEvents');
 const folderNotifyPrefs = require('./folderNotifyPrefs');
 const libraries = require('./libraries');
+const documentAccess = require('./documentAccess');
+
+// The most documents one burst tracks for the per-recipient access check. A burst
+// bigger than this is summarised from the first ones only.
+const MAX_TRACKED = 5000;
 
 const FLUSH_MS = Number(process.env.UPLOAD_NOTIFY_DEBOUNCE_MS || 15000);
 const pending = new Map();
@@ -54,14 +59,13 @@ async function locationLabel(libraryId, folderPath) {
 }
 
 // Called once per uploaded file, from every user-facing upload path.
-function record({ libraryId = null, folderPath = '', uploaderEmail, uploaderName, fileName, folderName = null }) {
+function record({ libraryId = null, folderPath = '', uploaderEmail, uploaderName, fileName, folderName = null, documentId = null }) {
   const k = keyOf(libraryId, folderPath, uploaderEmail);
   let p = pending.get(k);
-  if (!p) { p = { libraryId, folderPath, uploaderEmail, uploaderName, count: 0, names: [], folders: new Set() }; pending.set(k, p); }
+  if (!p) { p = { libraryId, folderPath, uploaderEmail, uploaderName, count: 0, items: [] }; pending.set(k, p); }
   p.count += 1;
   if (uploaderName) p.uploaderName = uploaderName;
-  if (fileName && p.names.length < 8) p.names.push(fileName);
-  if (folderName) p.folders.add(folderName);
+  if (p.items.length < MAX_TRACKED) p.items.push({ name: fileName || 'file', folder: folderName || null, documentId: documentId ? String(documentId) : null });
   if (p.timer) clearTimeout(p.timer);
   p.timer = setTimeout(() => { flush(k).catch((e) => console.error('uploadNotify flush:', e.message)); }, FLUSH_MS);
   if (p.timer.unref) p.timer.unref();
@@ -74,29 +78,47 @@ async function flush(k) {
   if (p.timer) clearTimeout(p.timer);
 
   const who = p.uploaderName || p.uploaderEmail || 'Someone';
-  const n = p.count;
-  const files = `${n} file${n === 1 ? '' : 's'}`;
-  const what = p.folders.size
-    ? (p.folders.size > 1 ? `${p.folders.size} folders (${files})` : `a folder (${files})`)
-    : files;
   const where = await locationLabel(p.libraryId, p.folderPath);
-  const title = `${who} uploaded ${what} to ${where}`;
-  const list = p.names.slice(0, 8).map((x) => '• ' + x).join('\n');
-  const more = n > p.names.length ? `\n…and ${n - p.names.length} more` : '';
 
-  const recipients = await recipientsFor(p.libraryId, p.folderPath, p.uploaderEmail);
-  for (const to of recipients) {
+  // Each recipient hears only about the files THEY can read. The candidate list (the
+  // library owner, people who asked to be told) says nothing about access -- a member
+  // may have no access to this folder, and an owner's access to someone else's upload
+  // can end -- and a notice names up to eight files. Someone who can read none of them
+  // gets no notice at all.
+  const candidates = await recipientsFor(p.libraryId, p.folderPath, p.uploaderEmail);
+  const ids = p.items.map((i) => i.documentId).filter(Boolean);
+  const readers = candidates.length && ids.length ? await documentAccess.readersAmong(ids, candidates) : new Map();
+  const sent = [];
+  let lastTitle = null;
+  for (const to of candidates) {
+    const canRead = readers.get(String(to).toLowerCase()) || new Set();
+    const mine = p.items.filter((i) => i.documentId && canRead.has(i.documentId));
+    if (!mine.length) continue;
+    // Only files this recipient can read are counted; anything past MAX_TRACKED in an
+    // enormous burst couldn't be checked, so it isn't mentioned.
+    const n = mine.length;
+    const files = `${n} file${n === 1 ? '' : 's'}`;
+    const folders = new Set(mine.map((i) => i.folder).filter(Boolean));
+    const what = folders.size
+      ? (folders.size > 1 ? `${folders.size} folders (${files})` : `a folder (${files})`)
+      : files;
+    const title = `${who} uploaded ${what} to ${where}`;
+    const names = mine.slice(0, 8).map((i) => i.name);
+    const list = names.map((x) => '• ' + x).join('\n');
+    const more = n > names.length ? `\n…and ${n - names.length} more` : '';
     notifications.create({
       userEmail: to, type: 'upload_received', title,
-      body: p.names.slice(0, 3).join(', ') + (n > 3 ? ` +${n - 3} more` : ''),
+      body: names.slice(0, 3).join(', ') + (n > 3 ? ` +${n - 3} more` : ''),
       refType: 'library', refId: p.libraryId || null,
     }).catch(() => {});
     emailEvents.send('upload_received', {
       to, subject: title,
       text: `${title}.\n\n${list}${more}\n\nSign in to Depot to view.`,
     }).catch(() => {});
+    sent.push(to);
+    lastTitle = title;
   }
-  return { title, recipients, count: n };
+  return { title: lastTitle, recipients: sent, count: p.count };
 }
 
 // Flush everything now (tests, and a clean shutdown).

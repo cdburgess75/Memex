@@ -280,9 +280,13 @@ async function collaboraEditUrl(doc, ext, req) {
   // The office route only requires `read`, so a read-only grantee can reach here.
   // Encode the user's ACTUAL write permission into the WOPI token; Collabora then
   // opens read-only for viewers, and PutFile is refused server-side (see wopi.js).
-  const canWrite = !!(await documentAccess.getAccessibleDocument({
-    id: doc.id, user: req.user, required: 'write', columns: 'd.id', deleted: 'active',
-  }));
+  // Editing also needs the edit-capable roles, the same as every other write in Depot:
+  // a viewer who holds a write grant (through a group shared read-write, say) still
+  // opens the document read-only. wopi.js re-checks all of this on every call.
+  const canWrite = (req.user.role === 'admin' || req.user.role === 'contributor') &&
+    !!(await documentAccess.getAccessibleDocument({
+      id: doc.id, user: req.user, required: 'write', columns: 'd.id', deleted: 'active',
+    }));
   const token = generateToken(doc.id, req.user.id, req.user.email, canWrite);
   const wopiSrc = encodeURIComponent(`${wopiHost}/wopi/files/${doc.id}`);
   return `${browserBase}${pathAndQuery}${sep}WOPISrc=${wopiSrc}&access_token=${token}`;
@@ -512,10 +516,18 @@ router.get('/local-download', async (req, res) => {
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
+//
+// A link works only while the person who created it could still create it: an admin
+// or contributor with edit rights on the file, checked live every time the link is
+// used. Access can end in ways that touch nothing the link points at — a share
+// removed, a group membership ended, a demotion to viewer — and checking at the moment
+// of use is what makes every one of them end the link too, without a hook at each
+// place access can change. A link that fails the check answers exactly like a revoked
+// one: the recipient learns nothing about why.
 async function loadExchangeLink(token) {
   // s.* already carries upload_count / upload_bytes for the per-link cap check.
   const share = await db.queryOne(
-    `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id
+    `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id, d.storage_path
      FROM document_share_links s
      JOIN documents d ON d.id = s.document_id
      WHERE s.token_hash = $1`,
@@ -523,7 +535,21 @@ async function loadExchangeLink(token) {
   );
   if (!share || share.revoked_at || share.deleted_at) return { error: 'not_found' };
   if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) return { error: 'expired' };
+  const creator = await linkCreatorWithWrite(share.created_by, share.document_id);
+  if (!creator) return { error: 'not_found' };
+  share.creator = creator;
   return { share };
+}
+
+// The creator of a link, if they may still publish the file: an admin or contributor
+// with write access to it right now. Null otherwise (or if the account is gone).
+async function linkCreatorWithWrite(createdBy, documentId) {
+  const creator = await documentAccess.resolveActor(createdBy);
+  if (!creator || (creator.role !== 'admin' && creator.role !== 'contributor')) return null;
+  const doc = await documentAccess.getAccessibleDocument({
+    id: documentId, user: creator, required: 'write', columns: 'd.id', deleted: 'active',
+  });
+  return doc ? creator : null;
 }
 
 // GET /api/files/share/:token/info — what the exchange page renders from.
@@ -640,7 +666,9 @@ router.post('/share/:token/upload',
     const sanitized = path.basename(display).replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${sanitized}`;
     await storage.upload(storagePath, buffer, mimetype);
-    const owner = { id: share.created_by, email: share.created_by_email };
+    // The file belongs to the link's creator, as the live account the guard just
+    // checked -- role and verified address included -- not a bare id and address.
+    const owner = { ...share.creator, email: share.created_by_email || share.creator.email };
     const { doc } = await createDocumentRecord({
       displayName, storagePath, mimetype, storedSize: size, user: owner,
       sourceDetail: `via exchange link · from ${from}`,
@@ -669,19 +697,12 @@ router.post('/share/:token/upload',
 });
 
 router.get('/share/:token', async (req, res) => {
-  const hash = tokenHash(req.params.token);
   try {
-    const share = await db.queryOne(
-      `SELECT s.*, d.name, d.mime_type, d.storage_path, d.deleted_at
-       FROM document_share_links s
-       JOIN documents d ON d.id = s.document_id
-       WHERE s.token_hash = $1`,
-      [hash]
-    );
-    if (!share || share.revoked_at || share.deleted_at) return res.status(404).json({ error: 'Share link not found' });
-    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
-      return res.status(410).json({ error: 'Share link expired' });
-    }
+    // The same lookup the exchange page uses, so a download is refused on exactly the
+    // same terms -- including the live check on the link's creator.
+    const { share, error } = await loadExchangeLink(req.params.token);
+    if (error === 'expired') return res.status(410).json({ error: 'Share link expired' });
+    if (error) return res.status(404).json({ error: 'Share link not found' });
     // Accept either the password (header preferred; query kept for existing API
     // callers) or a short-lived download ticket the exchange page minted from
     // the password — so a browser download never carries the password in its URL.
@@ -774,17 +795,20 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     if (!ids.length || !libraryId) return res.status(400).json({ error: 'ids and libraryId required' });
     if (!(await libraries.canAccessLibrary(req.user, libraryId))) return res.status(403).json({ error: 'no access to target library' });
 
-    // Restrict to documents the caller can access.
+    // Restrict to documents the caller can access: reading is enough to COPY a file
+    // (the copy is theirs), but MOVING it takes it out of where it was, which is an edit
+    // -- otherwise someone with read-only access could empty a shared library.
     const accessible = await db.query(
       `SELECT d.id, d.name, d.mime_type, d.size, d.storage_path
        FROM documents d
        WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
-      [...documentAccess.userParams(req.user, 'read'), ids]
+      [...documentAccess.userParams(req.user, mode === 'move' ? 'write' : 'read'), ids]
     );
+    const skipped = ids.length - accessible.length;
 
     if (mode === 'move') {
       await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, accessible.map(d => d.id)]);
-      return res.json({ ok: true, mode, count: accessible.length });
+      return res.json({ ok: true, mode, count: accessible.length, skipped });
     }
 
     // copy: duplicate the stored object + create a new document record per file
@@ -794,7 +818,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       await storage.copy(d.storage_path, newPath, d.mime_type);
       await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId });
     }
-    res.json({ ok: true, mode, count: accessible.length });
+    res.json({ ok: true, mode, count: accessible.length, skipped });
   } catch (e) {
     console.error('library-transfer failed:', e);
     serverError(res, e);
@@ -1004,7 +1028,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
-    recordUploadNotify(req.user, displayName, uploadLibraryId);
+    recordUploadNotify(req.user, displayName, uploadLibraryId, doc.id);
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -1077,7 +1101,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     );
     await documentAccess.grantOwnerAdmin(doc.id, req.user);
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
-    recordUploadNotify(req.user, displayName, uploadLibraryId);
+    recordUploadNotify(req.user, displayName, uploadLibraryId, doc.id);
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
@@ -1209,7 +1233,13 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     );
     if (!session) return res.status(404).json({ error: 'Upload session not found' });
     if (session.status === 'complete' && session.document_id) {
-      const doc = await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents WHERE id = $1`, [session.document_id]);
+      // A retried "complete" hands back the document it made -- but only if the caller
+      // can still read it. It may since have been moved into a library they can't
+      // reach, or deduplicated onto someone else's file.
+      const doc = await documentAccess.getAccessibleDocument({
+        id: session.document_id, user: req.user, required: 'read', columns: DOCUMENT_COLUMNS, deleted: 'any',
+      });
+      if (!doc) return res.status(404).json({ error: 'Upload session not found' });
       return res.json({ doc, canIngest: false, session: uploadSessionClientShape(session), resumed: true });
     }
     if (session.status !== 'active') return res.status(409).json({ error: `Upload session is ${session.status}` });
@@ -1273,10 +1303,13 @@ router.delete('/uploads/:sessionId', auth, requireRole('admin', 'contributor'), 
 // GET /api/files/:id/shares — list share links for a document.
 router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
+    // The same bar as creating a link (write). A link list names who each link was
+    // sent to and who created it -- a customer's outside recipients -- which is not
+    // for everyone who can merely read the file.
     const doc = await documentAccess.getAccessibleDocument({
       id: req.params.id,
       user: req.user,
-      required: 'read',
+      required: 'write',
       columns: DOCUMENT_COLUMNS,
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
@@ -1334,7 +1367,7 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
         await notifications.create({
           userEmail: grant.subject_email,
           type: 'share_granted',
-          title: `${req.user.email} shared a file with you`,
+          title: `${email.actingAs(req.user).label} shared a file with you`,
           body: `"${doc.name}" · ${grant.permission} access`,
           refType: 'document',
           refId: doc.id,
@@ -1342,9 +1375,9 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
       } catch (e) { console.error('notification (share_granted) failed:', e.message); }
       emailEvents.send('share_granted', {
         to: grant.subject_email,
-        subject: `${req.user.email} shared a file with you`,
-        text: `${req.user.email} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
-        actorEmail: req.user.email,
+        subject: `${email.actingAs(req.user).label} shared a file with you`,
+        text: `${email.actingAs(req.user).label} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
+        actorEmail: email.actingAs(req.user).sendAs,
       }).catch(() => {});
     }
     res.json({ grant });
@@ -1386,7 +1419,8 @@ router.get('/shares', auth, requireRole('admin', 'contributor'), async (req, res
        WHERE ${documentAccess.condition('d', 1)}
        ORDER BY s.revoked_at IS NULL DESC, s.expires_at NULLS LAST, s.created_at DESC
        LIMIT 250`,
-      documentAccess.userParams(req.user, 'read')
+      // Links on files the caller could publish themselves (write), as for a single file.
+      documentAccess.userParams(req.user, 'write')
     );
     res.json({ shares: rows.map(row => ({
       ...shareLinkClientShape(row),
@@ -1467,7 +1501,9 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     const note = String(req.body?.message || '').slice(0, 2000).trim();
     const base = await publicAppBase(req);
     const sender = String(req.user.email || '').toLowerCase();
-    const senderName = req.user.email || 'A colleague';
+    // Named, and sent from their mailbox, only by a verified address (email.actingAs).
+    const sendingAs = email.actingAs(req.user);
+    const senderName = sendingAs.label;
     const senderDomain = sender.split('@')[1] || '';
 
     // Managing access (creating an ACL grant) requires admin on the document —
@@ -1525,7 +1561,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
               to,
               subject: `${senderName} shared a file with you`,
               text: `${senderName} gave you ${permission} access to "${doc.name}" in Depot.${note ? `\n\n${note}` : ''}\n\nOpen it here (sign in with your usual account):\n${base}\n`,
-              actorEmail: req.user.email,
+              actorEmail: sendingAs.sendAs,
             });
             sent = mail?.sent !== false;
             reason = mail?.sent === false ? mail.reason : undefined;
@@ -1565,7 +1601,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
           to,
           subject: `${senderName} sent you a file: ${doc.name}`,
           text: lines.join('\n'),
-          actorEmail: req.user.email,
+          actorEmail: sendingAs.sendAs,
         });
         results.push({ to, kind: 'link', sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined, url });
       } catch (e) {
