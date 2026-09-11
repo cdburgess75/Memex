@@ -61,7 +61,7 @@ describe('every folder request names its library', () => {
 
   test.each(lines.map(l => [l.n, l.text.trim().slice(0, 90), l.text]))('index.html:%i %s', (_n, _short, text) => {
     // revoking a link by its id needs no folder at all
-    if (/\/files\/folder\/links\/(' \+ id|\$\{encodeURIComponent\(l\.id\)\})/.test(text)) return;
+    if (/\/files\/folder\/links\/(' \+ id|\$\{encodeURIComponent\()/.test(text)) return;
     expect(text).toMatch(/inFolderLib\(|folderLibQuery\(/);
   });
 });

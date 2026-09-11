@@ -151,10 +151,16 @@ describe('who may see link lists, move files, and resume an upload', () => {
     await request(app()).get(`/api/files/${DOC}/shares`);
     expect(documentAccess.getAccessibleDocument).toHaveBeenCalledWith(expect.objectContaining({ id: DOC, required: 'write' }));
   });
-  test('the list of all links covers only files the caller could publish', async () => {
+  test('"My links" lists the links the caller made; everyone\'s is for admins only', async () => {
     await request(app()).get('/api/files/shares');
-    const q = mockQueries.find(x => /FROM document_share_links s\s+JOIN documents d ON d\.id = s\.document_id\s+WHERE/.test(x.sql));
-    expect(q.params[4]).toEqual(['write', 'admin']);
+    const q = mockQueries.find(x => /FROM document_share_links s\s+JOIN documents d ON d\.id = s\.document_id/.test(x.sql));
+    expect(q.sql).toMatch(/WHERE s\.created_by = \$6/);
+    expect(q.params[5]).toBe(mockUser.id);
+    const f = mockQueries.find(x => /FROM folder_share_links f/.test(x.sql));
+    expect(f.sql).toMatch(/WHERE f\.created_by = \$1/);
+    const res = await request(app()).get('/api/files/shares?scope=all');
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('ADMIN_ONLY');
   });
   test('moving files to another library needs write on each; copying needs read', async () => {
     const libs = require('../../lib/libraries');
