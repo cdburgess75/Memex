@@ -111,9 +111,10 @@ async function refuseIfShared(res, libraryId, ...paths) {
 }
 
 // SQL for "is library content after the move" (see routes/files.js libraryScopeAfterMove),
-// with its three parameters starting at $n: the destination is scoped, the mover's id,
-// the mover is an admin.
-const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND (d.uploaded_by = $${n + 1} OR $${n + 2}::boolean))`;
+// with its two parameters starting at $n: the destination is scoped, and the mover's id.
+// Only the mover's own files change -- admins included. IS NOT DISTINCT FROM keeps a row
+// with no recorded uploader false rather than NULL (the column is NOT NULL).
+const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploaded_by IS NOT DISTINCT FROM $${n + 1})`;
 
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
@@ -152,14 +153,15 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     if (await refuseIfShared(res, libraryId, oldPath, newPath)) return;
     const dest = await destinationRight(res, req.user, libraryId, newPath);
     if (!dest) return;
+    // A rename keeps the folder where it is, under the same shares, so what is library
+    // content and what is personal doesn't change.
     const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
+      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
       // a folder name with an emoji in it would otherwise be cut one character short.
-      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId,
-       dest.scoped, req.user.id, req.user.role === 'admin']
+      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -203,17 +205,20 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
-    if (await refuseIfShared(res, srcLibraryId, oldPath, newPath)) return;
+    if (await refuseIfShared(res, srcLibraryId, oldPath)) return;
     // Moving a folder INTO another one needs the right to add files there -- dragging a
     // folder into a shared folder must not quietly share it with everyone who has access.
+    // Checked before whether a share sits at the new path, so the answer can't be used
+    // to probe for shares in places the caller can't write to.
     const dest = await destinationRight(res, req.user, srcLibraryId, newPath);
     if (!dest) return;
+    if (await refuseIfShared(res, srcLibraryId, newPath)) return;
     const rows = await db.query(
       `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
        RETURNING d.id`,
       [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id, req.user.role === 'admin']
+       dest.scoped, req.user.id]
     );
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
@@ -238,19 +243,30 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     if (await refuseIfShared(res, srcLibraryId, folderPath)) return;
     if (await refuseIfShared(res, libraryId, folderPath)) return;
     // Library content never moves into a library the caller can write to only under the
-    // old open-library rule ($12): it would leave the library it was shared through for
-    // one whose owner then holds it. Those files stay where they are.
+    // old open-library rule ($11): it would leave the library it was shared through for
+    // one whose owner then holds it. Those files stay where they are, and are counted
+    // (kept) so the app can say why.
     const rows = await db.query(
       `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
-         AND (NOT d.library_scoped OR $12::boolean)
+         AND (NOT d.library_scoped OR $11::boolean)
        RETURNING d.id`,
       [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id, req.user.role === 'admin', dest.right !== 'legacy']
+       dest.scoped, req.user.id, dest.right !== 'legacy']
     );
+    let kept = 0;
+    if (dest.right === 'legacy') {
+      const left = await db.queryOne(
+        `SELECT count(*)::int AS n FROM documents d
+         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $7 AND d.library_scoped
+           AND ${documentAccess.condition('d', 2)}`,
+        [folderPath, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+      );
+      kept = left?.n || 0;
+    }
     await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length})`);
-    res.json({ ok: true, count: rows.length });
+    await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length}${kept ? `, ${kept} kept` : ''})`);
+    res.json({ ok: true, count: rows.length, kept });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 

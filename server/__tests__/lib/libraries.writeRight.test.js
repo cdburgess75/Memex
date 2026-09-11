@@ -49,10 +49,14 @@ test('a member-restricted library the caller is not listed in is refused', async
   db.queryOne.mockResolvedValueOnce(row({ legacy_listed: false }));
   expect((await writeRight(contributor, LIB, '')).status).toBe(403);
 });
-test('the query is given the verified-address slot, blank for an unverified account', async () => {
+// The old open-library rule is today's rule, unchanged: members are matched on the
+// address the account signs in with, as the library switcher matches them. Shares match
+// only the verified address, which the SQL looks up by account id ($2), not this slot.
+test('the legacy member match uses the address the switcher uses, even unverified', async () => {
   db.queryOne.mockResolvedValueOnce(row({}));
-  await writeRight({ ...contributor, emailVerified: false }, LIB, 'Clients');
-  expect(db.queryOne.mock.calls[0][1]).toEqual([LIB, 'u1', 'Clients', '']);
+  await writeRight({ ...contributor, email: 'U@X.com', emailVerified: false }, LIB, 'Clients');
+  expect(db.queryOne.mock.calls[0][1]).toEqual([LIB, 'u1', 'Clients', 'u@x.com']);
+  expect(db.queryOne.mock.calls[0][0]).toMatch(/g\.subject_email = \(SELECT ur\.verified_email FROM user_roles ur WHERE ur\.user_id = \$2\)/);
 });
 test('sharedFolderAt looks at and below the path, and ignores bad input', async () => {
   expect(await sharedFolderAt('nope', 'a')).toBe(false);

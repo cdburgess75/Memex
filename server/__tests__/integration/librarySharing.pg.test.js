@@ -384,7 +384,7 @@ suite('library sharing groundwork against real Postgres', () => {
       await db.query(`INSERT INTO libraries (id, name, created_by, created_by_email, owner_id, owner_email) VALUES
         ($1, 'Destinations', $5, $6, $5, $6), ($2, 'Open', NULL, NULL, NULL, NULL), ($3, 'Members only', NULL, NULL, NULL, NULL),
         ($4, 'Rollback era', $7, $8, NULL, NULL)`, [LD, LOPEN, LMEM, LR, OWNER.id, OWNER.email, MAKER.id, 'U7@Dest.com']);
-      await db.query("INSERT INTO library_members (library_id, subject_email) VALUES ($1, $2)", [LMEM, RO.email]);
+      await db.query("INSERT INTO library_members (library_id, subject_email) VALUES ($1, $2), ($1, $3)", [LMEM, RO.email, UNV.email]);
       await grant(LD, RW.email, 'write', 'Team');
       await grant(LD, RO.email, 'read');
       await grant(LD, UNV.email, 'write');
@@ -424,6 +424,7 @@ suite('library sharing groundwork against real Postgres', () => {
       ['anyone, in an open library nobody has shared', () => RW, LOPEN, 'x', { right: 'legacy', scoped: false }],
       ['a listed member, in a members-only library', () => RO, LMEM, '', { right: 'legacy', scoped: false }],
       ['someone not listed there', () => RW, LMEM, '', { status: 403 }],
+      ['a listed member whose address is not verified (the old rule is unchanged)', () => UNV, LMEM, '', { right: 'legacy', scoped: false }],
       ['an unknown library', () => OWNER, 'aaaaaaaa-0000-4000-8000-0000000000ff', '', { status: 404 }],
       ['a malformed library id', () => OWNER, 'lib-1', '', { status: 400 }],
     ])('writeRight: %s', async (_label, who, lib, at, want) => {
@@ -471,9 +472,27 @@ suite('library sharing groundwork against real Postgres', () => {
       const res = await post('/api/files/folder/move', { path: 'Outbox', library_id: LOPEN, source_library_id: LD });
       expect(res.status).toBe(200);
       expect(res.body.count).toBe(1);
+      expect(res.body.kept).toBe(1);
       const where = async (id) => (await one('SELECT library_id, library_scoped FROM documents WHERE id = $1', [id]));
       expect(await where(content)).toEqual({ library_id: LD, library_scoped: true });
       expect(await where(personal)).toEqual({ library_id: LOPEN, library_scoped: false });
+    });
+
+    // An admin tidying folders must never turn a colleague's private file into library
+    // content (the flag never flips back, and release 4's shares would hand it out).
+    test("an admin's renames and moves never scope a colleague's personal file", async () => {
+      await db.query("INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, 'admin', $2) ON CONFLICT (user_id) DO NOTHING", [ADMIN.id, ADMIN.email]);
+      jwt.verify.mockReturnValue({ sub: ADMIN.id, email: ADMIN.email, email_verified: true });
+      const theirs = await addDoc('Tidy/theirs.txt', RW, LD, false);
+      const mine = await addDoc('Tidy/mine.txt', ADMIN, LD, false);
+      expect((await post('/api/files/folder/rename', { path: 'Tidy', name: 'Tidied', source_library_id: LD })).status).toBe(200);
+      const scoped = async (id) => (await one('SELECT library_scoped FROM documents WHERE id = $1', [id])).library_scoped;
+      expect([await scoped(theirs), await scoped(mine)]).toEqual([false, false]); // a rename changes no scope
+      expect((await post('/api/files/folder/reparent', { path: 'Tidied', target: 'Archive', source_library_id: LD })).status).toBe(200);
+      expect([await scoped(theirs), await scoped(mine)]).toEqual([false, true]);  // only the admin's own file
+      const other = await addDoc('Loose/theirs2.txt', RW, LD, false);
+      await request(app).put(`/api/files/${other}/rename`).set('Authorization', 'Bearer t').send({ name: 'Archive/theirs2.txt' });
+      expect(await scoped(other)).toBe(false);
     });
   });
 });

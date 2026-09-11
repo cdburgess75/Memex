@@ -113,10 +113,23 @@ describe('the move summary', () => {
   ])('%s: %i done, %i skipped', (mode, done, skipped, want) => {
     expect(ctx.transferSummary(mode, done, skipped, 'Clients')).toBe(want);
   });
-  test('the library-transfer dialog uses the server counts', () => {
+  test('files kept behind as library content are explained', () => {
+    expect(ctx.transferSummary('move', 1, 0, 'Clients', 2)).toBe('Moved 1 item to Clients · 2 files that belong to the library stayed (they can only move to a library you own or can write to)');
+    expect(ctx.transferSummary('move', 0, 1, 'Clients', 1)).toBe('Nothing was moved: 1 file you can only view stayed where it was · 1 file that belongs to the library stayed (it can only move to a library you own or can write to)');
+  });
+  test('the library-transfer dialog and the folder move use the server counts', () => {
     const b = body('openLibraryTransfer');
     expect(b).toMatch(/done \+= Number\(r\?\.count/);
     expect(b).toMatch(/skipped \+= Number\(r\?\.skipped/);
-    expect(b).toMatch(/toast\(transferSummary\(mode, done, skipped,/);
+    expect(b).toMatch(/kept \+= Number\(r\?\.kept/);
+    expect(b).toMatch(/toast\(transferSummary\(mode, done, skipped, [^)]*, kept\)\)/);
+    expect(body('moveFolderToLibrary')).toMatch(/transferSummary\('move', Number\(r\.count\)/);
+  });
+  test('a large upload names its library when it starts, and finishes in the same one', () => {
+    const b = body('uploadFileResumable');
+    expect(b).toMatch(/const lib = currentLibraryId;/);
+    expect(b).toMatch(/getOrCreateUploadSession\(file, displayName, lib\)/);
+    expect(b).toMatch(/\/complete', \{ libraryId: lib \}/);
+    expect(body('getOrCreateUploadSession')).toMatch(/apiPost\('\/files\/uploads', \{\s*displayName,\s*libraryId,/);
   });
 });

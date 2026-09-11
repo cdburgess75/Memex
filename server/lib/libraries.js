@@ -4,7 +4,6 @@
 // migrations/0004_runtime_ensure_tables.sql, applied before the server listens.
 const db = require('./db');
 const { isUuid } = require('./groups');
-const { matchEmail } = require('./documentAccess');
 
 // Open-by-default access: admins see all; a library with no members is open to
 // everyone; otherwise only listed members (+admins) can access it.
@@ -51,7 +50,10 @@ async function writeRight(user, libraryId, parentPath = '') {
             (NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id)
              OR EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id AND $4 <> '' AND lower(m.subject_email) = lower($4))) AS legacy_listed
        FROM libraries l WHERE l.id = $1`,
-    [libraryId, user?.id || null, String(parentPath || ''), matchEmail(user)]
+    // $4 is the address as the library switcher matches members (the address the
+    // account signs in with): the legacy rule is today's rule, unchanged. Shares
+    // (library_grants) match only the verified address, looked up by account id.
+    [libraryId, user?.id || null, String(parentPath || ''), String(user?.email || '').toLowerCase()]
   );
   if (!row) return { status: 404, error: 'Library not found' };
   if (user?.role === 'admin') return { right: 'admin', scoped: !!row.owner_id || !!row.shared };

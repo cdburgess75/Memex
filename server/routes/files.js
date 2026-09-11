@@ -518,11 +518,12 @@ function parentOf(name) { const n = String(name || ''); const i = n.lastIndexOf(
 
 // Whether a file is library content after it moves (see libraries.writeRight). It
 // never goes back to being personal; it becomes library content when it lands where
-// writes are scoped -- but only if it is the mover's own file (or they are an admin).
-// Moving someone ELSE'S personal file, which a per-file grant lets you edit, into a
-// shared library would otherwise hand it to everyone the library is shared with.
+// writes are scoped -- but only if it is the mover's OWN file. Admins included: an
+// admin tidying folders must not turn a colleague's private file into library content,
+// which the library's shares would then hand to everyone (and the flag never flips
+// back). Adopting other people's files into a library is not something a move does.
 function libraryScopeAfterMove(doc, dest, user) {
-  return !!doc.library_scoped || (!!dest.scoped && (String(doc.uploaded_by || '') === String(user?.id || '') || user?.role === 'admin'));
+  return !!doc.library_scoped || (!!dest.scoped && !!user?.id && String(doc.uploaded_by || '') === String(user.id));
 }
 
 // Every write decides, BEFORE anything is stored, whether the caller may add files at
@@ -838,7 +839,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
        WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}`,
       [...documentAccess.userParams(req.user, mode === 'move' ? 'write' : 'read'), ids]
     );
-    let skipped = ids.length - accessible.length;
+    const skipped = ids.length - accessible.length; // files the caller can't move (or see)
 
     // The caller must be able to add files at every place these land in the target
     // library: once per distinct folder, before anything moves or is copied.
@@ -852,14 +853,14 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     if (mode === 'move') {
       // Library content never moves into a library the caller can write to only under
       // the old open-library rule: it would leave the library it was shared through for
-      // one whose owner then holds it. Such files are skipped and counted.
+      // one whose owner then holds it. Such files stay where they are, counted as kept.
       const movable = accessible.filter(d => !(d.library_scoped && rights.get(parentOf(d.name)).right === 'legacy'));
-      skipped += accessible.length - movable.length;
+      const kept = accessible.length - movable.length;
       const toScoped = movable.filter(d => libraryScopeAfterMove(d, rights.get(parentOf(d.name)), req.user)).map(d => d.id);
       const toPersonal = movable.filter(d => !toScoped.includes(d.id)).map(d => d.id);
       if (toScoped.length) await db.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[])', [libraryId, toScoped]);
       if (toPersonal.length) await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, toPersonal]);
-      return res.json({ ok: true, mode, count: movable.length, skipped });
+      return res.json({ ok: true, mode, count: movable.length, skipped, kept });
     }
 
     // copy: duplicate the stored object + create a new document record per file
