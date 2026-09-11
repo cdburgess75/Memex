@@ -414,17 +414,10 @@ router.get('/share/:token', async (req, res) => {
     // contributor with edit rights, checked live. A creator who has since lost access
     // (a share removed, a group left, a demotion) takes the link down with them, and a
     // file they lost access to drops out of it. Refused exactly like a revoked link.
-    const creator = await documentAccess.resolveActor(share.created_by);
-    if (!creator || (creator.role !== 'admin' && creator.role !== 'contributor')) {
-      return res.status(404).json({ error: 'Share link not found' });
-    }
-    const ids = Array.isArray(share.document_ids) ? share.document_ids : [];
-    const docs = ids.length ? await db.query(
-      `SELECT d.id, d.name, d.storage_path, d.size FROM documents d
-       WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 2)}
-       ORDER BY d.name`,
-      [ids, ...documentAccess.userParams(creator, 'write')]
-    ) : [];
+    // (lib/linkAccess: the one answer the link lists show too)
+    const { creator, docs } = await require('../../lib/linkAccess')
+      .servableDocs(share.created_by, share.document_ids, 'd.id, d.name, d.storage_path, d.size');
+    if (!creator) return res.status(404).json({ error: 'Share link not found' });
     if (!docs.length) return res.status(404).json({ error: 'These files are no longer available' });
     const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
     if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to download' });
