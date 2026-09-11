@@ -11,6 +11,7 @@ const access = require('../../lib/documentAccess');
 const user = {
   id: '810da857-4296-473f-99e9-96f2a5ebd47e',
   email: 'user@test.com',
+  emailVerified: true,
   role: 'contributor',
 };
 
@@ -108,10 +109,11 @@ describe('matchEmail', () => {
     expect(matchEmail({ email: 'A@B.com', emailVerified: false })).toBe('');
     expect(userParams({ id: 'u', email: 'A@B.com', role: 'contributor', emailVerified: false })[3]).toBe('');
   });
-  test('a verified address, or one the token says nothing about, keeps matching', () => {
+  test('only a verified address matches; a token that says nothing either way matches none', () => {
     expect(matchEmail({ email: 'A@B.com', emailVerified: true })).toBe('a@b.com');
-    expect(matchEmail({ email: 'A@B.com', emailVerified: null })).toBe('a@b.com');
-    expect(matchEmail({ email: 'A@B.com' })).toBe('a@b.com');
+    expect(matchEmail({ email: 'A@B.com', emailVerified: null })).toBe('');
+    expect(matchEmail({ email: 'A@B.com' })).toBe('');
+    expect(matchEmail({ email: 'A@B.com', emailVerified: 'true' })).toBe(''); // a real boolean only
   });
   test('the id slot is untouched, so a person keeps the files they own', () => {
     expect(userParams({ id: 'u-1', email: 'a@b.com', emailVerified: false }).slice(1, 3)).toEqual(['u-1', 'u-1']);
