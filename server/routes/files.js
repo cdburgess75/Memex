@@ -900,11 +900,13 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
 // GET /api/files/trash — list soft-deleted documents (admin/contributor)
 router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
+    // conditionInTrash: a folder share reaches a deleted file only if the share already
+    // existed when it was deleted -- folder names come round again (documentAccess).
     const rows = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}
        FROM documents d
        WHERE d.deleted_at IS NOT NULL
-         AND ${documentAccess.condition('d', 1)}
+         AND ${documentAccess.conditionInTrash('d', 1)}
        ORDER BY d.deleted_at DESC`,
       documentAccess.userParams(req.user, 'write')
     );
@@ -1335,7 +1337,7 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       // can still read it. It may since have been moved into a library they can't
       // reach, or deduplicated onto someone else's file.
       const doc = await documentAccess.getAccessibleDocument({
-        id: session.document_id, user: req.user, required: 'read', columns: DOCUMENT_COLUMNS, deleted: 'any',
+        id: session.document_id, user: req.user, required: 'read', columns: DOCUMENT_COLUMNS, deleted: 'any', trashGuard: true,
       });
       if (!doc) return res.status(404).json({ error: 'Upload session not found' });
       return res.json({ doc, canIngest: false, session: uploadSessionClientShape(session), resumed: true });
@@ -1857,6 +1859,7 @@ router.get('/:id/history', auth, requireRole('admin'), async (req, res) => {
       required: 'admin',
       columns: DOCUMENT_COLUMNS,
       deleted: 'any',
+      trashGuard: true,
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
@@ -1894,6 +1897,7 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
       required: 'write',
       columns: `${DOCUMENT_COLUMNS}, d.document_text`,
       deleted: 'any',
+      trashGuard: true,
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     const version = await db.queryOne(
@@ -2080,6 +2084,7 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
       required: 'write',
       columns: DOCUMENT_COLUMNS,
       deleted: 'deleted',
+      trashGuard: true,
     });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
