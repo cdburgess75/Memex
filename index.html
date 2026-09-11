@@ -7498,8 +7498,8 @@ function libraryMenuInnerHtml() {
   const section = (label, rows) => (rows.length ? `<div class="library-menu-label">${label}</div>${rows.map(libraryMenuRow).join('')}` : '');
   const cur = currentLibrary();
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  return section('My libraries', mine) + section('Shared to me', shared)
-    + (shared.length ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setFileView('shared')">See everything shared to you →</button>` : '')
+  return section('My libraries', mine) + section('Shared with me', shared)
+    + (shared.length ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setFileView('shared')">See everything shared with you →</button>` : '')
     + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
@@ -8118,7 +8118,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
         ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
-        ${fileNavButton('Shared to me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
+        ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${fileNavButton('Links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
@@ -9383,9 +9383,9 @@ function shareLinkCard(share) {
   </div>`;
 }
 
-// ---- Shared to me ----
+// ---- Shared with me ----
 // Libraries, folders and files other people have shared with you, or with a group you're
-// in, across every library (Seafile calls it "Shared with me"). The server builds it
+// in, across every library, as Seafile has it. The server builds it
 // (GET /api/access/shared-with-me); each level is what the access rule gives you.
 let _swmSeq = 0;
 const swmLevel = (lvl, kind) => (kind === 'file'
@@ -9407,7 +9407,7 @@ function swmShareLine(shares, lead = false) {
     : ` + also shared with you directly (${lvl(x)})`)).join('');
   return (lead ? head.charAt(0).toUpperCase() + head.slice(1) : head) + more;
 }
-// Open a library, and a folder in it, from Shared to me. The library's files load
+// Open a library, and a folder in it, from Shared with me. The library's files load
 // before the folder opens (as navApply does), so the previous view never flashes up.
 async function openSharedPlace(libId, folder = '') {
   closeLibraryMenu();
@@ -9423,7 +9423,7 @@ async function openSharedPlace(libId, folder = '') {
 }
 async function renderSharedWithMe() {
   const seq = ++_swmSeq;
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Shared to me</h2><button class="file-library-tool" type="button" onclick="renderSharedWithMe()">Refresh</button></div>
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Shared with me</h2><button class="file-library-tool" type="button" onclick="renderSharedWithMe()">Refresh</button></div>
     <p class="file-home-sub swm-sub">Libraries, folders and files other people have shared with you, or with a group you're in.</p>
     <div id="swm-body">${emptyState("Loading what's shared with you…", '')}</div>`, 'files', 'shared');
   let data;
@@ -9554,7 +9554,7 @@ async function renderFileList() {
   if (!rows.length) {
     el.innerHTML = q
       ? emptyState('No files match this search', 'Try a shorter search, another file type, or clear the search field.')
-      : emptyState('No files in this view', 'Drop files anywhere on this page, or switch to Shared to me, Links, or Trash.', uploadEmptyAction());
+      : emptyState('No files in this view', 'Drop files anywhere on this page, or switch to Shared with me, Links, or Trash.', uploadEmptyAction());
     return;
   }
   el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Added by</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
