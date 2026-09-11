@@ -198,6 +198,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/preferences', require('./routes/preferences'));
 app.use('/api/csp-report', require('./routes/cspReport')); // CSP (report-only) violation sink — unauthenticated by design
 app.use('/api/libraries', require('./routes/libraries'));
+app.use('/api/access', require('./routes/access'));
 app.use('/api/groups', require('./routes/groups'));
 app.use('/api/version', require('./routes/version'));
 app.use('/api/license', require('./routes/license'));
