@@ -13,8 +13,8 @@ const norm = (p) => String(p || '').replace(/^\/+|\/+$/g, '');
 const applies = (rowPath, p) => rowPath === '' || rowPath === p || p.startsWith(rowPath + '/');
 
 // Set (or update) this user's explicit choice for this place.
-async function setPref(libraryId, folderPath, email, enabled) {
-  await db.query(
+async function setPref(libraryId, folderPath, email, enabled, q = db) {
+  await q.query(
     `INSERT INTO folder_notify_prefs (library_id, folder_path, subscriber_email, enabled)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (COALESCE(library_id, '00000000-0000-0000-0000-000000000000'), folder_path, lower(subscriber_email))

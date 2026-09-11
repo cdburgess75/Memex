@@ -26,9 +26,10 @@ const documentAccess = require('./documentAccess');
 //
 // Returns { right, scoped } or { status, error } (400 malformed id, 404 unknown
 // library, 403 no right). Viewers never have a right.
-async function writeRight(user, libraryId, parentPath = '') {
+// `q` lets a caller read inside its own transaction (the folder operations do).
+async function writeRight(user, libraryId, parentPath = '', q = db) {
   if (!isUuid(libraryId)) return { status: 400, error: 'Bad library id' };
-  const row = await db.queryOne(
+  const row = await q.queryOne(
     `SELECT l.id, l.owner_id, COALESCE(l.owner_id = $2, false) AS is_owner,
             EXISTS (SELECT 1 FROM library_grants x WHERE x.library_id = l.id) AS shared,
             EXISTS (SELECT 1 FROM library_grants g
@@ -59,9 +60,17 @@ async function writeRight(user, libraryId, parentPath = '') {
 // and until renames and moves carry them (piece 4), a shared folder must not be
 // renamed, moved or deleted out from under its share -- which would orphan the share,
 // or re-attach it to whatever next took that name.
-async function sharedFolderAt(libraryId, path) {
+// Who manages a library's sharing: an admin, or its owner while a contributor.
+async function managesLibrary(user, libraryId, q = db) {
+  if (user?.role === 'admin') return true;
+  if (user?.role !== 'contributor' || !isUuid(libraryId)) return false;
+  const row = await q.queryOne('SELECT owner_id FROM libraries WHERE id = $1', [libraryId]);
+  return !!row?.owner_id && String(row.owner_id) === String(user.id);
+}
+
+async function sharedFolderAt(libraryId, path, q = db) {
   if (!isUuid(libraryId) || !path) return false;
-  const row = await db.queryOne(
+  const row = await q.queryOne(
     `SELECT 1 FROM library_grants
       WHERE library_id = $1 AND folder_path <> '' AND (folder_path = $2 OR starts_with(folder_path, $2 || '/'))
       LIMIT 1`,
@@ -222,4 +231,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { defaultLibraryId, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };

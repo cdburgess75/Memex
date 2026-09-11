@@ -44,8 +44,8 @@ async function listShares(libraryId) {
   return rows.map(shape);
 }
 
-async function getShare(libraryId, shareId) {
-  return shape(await db.queryOne(
+async function getShare(libraryId, shareId, q = db) {
+  return shape(await q.queryOne(
     `SELECT ${SHARE_COLUMNS} FROM library_grants g LEFT JOIN groups grp ON grp.id = g.group_id
       WHERE g.library_id = $1 AND g.id = $2`,
     [libraryId, shareId]
@@ -53,26 +53,26 @@ async function getShare(libraryId, shareId) {
 }
 
 // The same subject already holding a share at this path (for the 409 on a duplicate).
-async function findShare(libraryId, folderPath, { email, groupId }) {
-  const row = await db.queryOne(
+async function findShare(libraryId, folderPath, { email, groupId }, q = db) {
+  const row = await q.queryOne(
     `SELECT g.id FROM library_grants g
       WHERE g.library_id = $1 AND g.folder_path = $2
         AND ((g.subject_type = 'user' AND g.subject_email = $3) OR (g.subject_type = 'group' AND g.group_id = $4))`,
     [libraryId, folderPath, email || null, groupId || null]
   );
-  return row ? getShare(libraryId, row.id) : null;
+  return row ? getShare(libraryId, row.id, q) : null;
 }
 
 // Throws Postgres' own errors: 23505 for a duplicate, 23503 when the library or group
 // was deleted meanwhile -- the route turns those into 409 and 404.
-async function createShare({ libraryId, folderPath, email, groupId, permission, user }) {
-  const row = await db.queryOne(
+async function createShare({ libraryId, folderPath, email, groupId, permission, user }, q = db) {
+  const row = await q.queryOne(
     `INSERT INTO library_grants (library_id, folder_path, subject_type, subject_email, group_id, permission, granted_by, granted_by_email)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
     [libraryId, folderPath, email ? 'user' : 'group', email || null, email ? null : groupId, permission,
      user?.id || null, String(user?.email || '').toLowerCase() || null]
   );
-  return getShare(libraryId, row.id);
+  return getShare(libraryId, row.id, q); // the same client: the row is not committed yet
 }
 
 // Conditional on the level the caller saw when they were authorised, so two managers
@@ -93,8 +93,9 @@ async function deleteShare(libraryId, shareId) {
 
 // Does the folder exist, among files the CALLER can read? Sharing a folder must not
 // reveal whether someone else's private folder of that name exists.
-async function folderVisibleTo(libraryId, folderPath, user) {
-  const row = await db.queryOne(
+// `q`: readable inside a caller's transaction.
+async function folderVisibleTo(libraryId, folderPath, user, q = db) {
+  const row = await q.queryOne(
     `SELECT 1 FROM documents d
       WHERE d.library_id = $1 AND d.deleted_at IS NULL AND starts_with(d.name, $2 || '/')
         AND ${documentAccess.condition('d', 3)}
