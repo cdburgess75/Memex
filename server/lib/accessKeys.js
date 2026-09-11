@@ -49,7 +49,7 @@ const callerParams = (user) => [
 
 // A person's newest non-blank display name, by address.
 const nameOf = (emailExpr) => `(SELECT p.display_name FROM user_profiles p
-    WHERE lower(p.email) = lower(${emailExpr}) AND coalesce(p.display_name, '') <> '' ORDER BY p.updated_at DESC LIMIT 1)`;
+    WHERE lower(p.email) = lower(${emailExpr}) AND coalesce(p.display_name, '') <> '' ORDER BY p.updated_at DESC, p.user_id LIMIT 1)`;
 const person = (email, name) => (email ? { email, name: name || null } : null);
 
 // A library or folder "door" as a one-row probe document: library content with no id
@@ -97,7 +97,7 @@ async function sharedWithMe(user) {
               AND d.name <> '.keep' AND d.name NOT LIKE '%/.keep'
               AND (g.folder_path = '' OR starts_with(d.name, g.folder_path || '/'))) st
         WHERE ${documentAccess.shareSubject('g', R)} AND l.owner_id IS DISTINCT FROM $2
-        ORDER BY lower(l.name), g.folder_path`,
+        ORDER BY lower(l.name), l.id, g.folder_path, (g.group_id IS NOT NULL), g.created_at, g.id`,
       params
     );
     const byDoor = new Map();
@@ -140,14 +140,14 @@ async function sharedWithMe(user) {
           WHERE acl.subject_type = 'user' AND $4 <> '' AND lower(acl.subject_id) = lower($4) AND d.deleted_at IS NULL
             AND d.name <> '.keep' AND d.name NOT LIKE '%/.keep'
             AND NOT (NOT d.library_scoped AND d.uploaded_by IS NOT DISTINCT FROM $2)
-          ORDER BY d.id, CASE acl.permission WHEN 'admin' THEN 3 WHEN 'write' THEN 2 ELSE 1 END DESC, acl.created_at DESC)
+          ORDER BY d.id, CASE acl.permission WHEN 'admin' THEN 3 WHEN 'write' THEN 2 ELSE 1 END DESC, acl.created_at DESC, acl.id)
        SELECT m.*, l.name AS library_name, l.owner_email AS library_owner_email,
               ${nameOf('m.granted_by_email')} AS granted_by_name,
               ${nameOf('CASE WHEN m.library_scoped THEN l.owner_email ELSE m.uploaded_by_email END')} AS owner_name,
               ${callerLevel('m')} AS level
          FROM m LEFT JOIN libraries l ON l.id = m.library_id
         WHERE ${documentAccess.condition('m', 1)}
-        ORDER BY m.granted_at DESC
+        ORDER BY m.granted_at DESC, m.id
         LIMIT 501`,
       params
     );
@@ -344,7 +344,7 @@ async function insideGrantRows(q, door, viewer) {
           AND (${path}::text = '' OR starts_with(x.name, ${path}::text || '/'))
           AND lower(acl.subject_id) IS DISTINCT FROM x.uploaded_by::text)
      SELECT s.* FROM s WHERE ${documentAccess.conditionWith('s', me.R(pa))}
-      ORDER BY s.created_at DESC`,
+      ORDER BY s.created_at DESC, s.grant_id`,
     p.vals
   );
   // Who each subject is -- once per subject, not once per file: the accounts it matches
@@ -407,7 +407,7 @@ async function shareKeyRows(q, door) {
             CASE WHEN g.subject_type = 'user' THEN ${ACCOUNT_OF_SHARE('g.subject_email')} END AS account
        FROM library_grants g LEFT JOIN groups grp ON grp.id = g.group_id
       WHERE g.library_id = ${lib}::uuid AND ${where}
-      ORDER BY g.folder_path, g.created_at`,
+      ORDER BY g.folder_path, g.created_at, g.id`,
     p.vals
   );
 }
@@ -420,7 +420,7 @@ async function fileGrantKeyRows(q, documentId) {
             ${ACCOUNT_OF_GRANT('acl.subject_id')} AS account
        FROM document_acl acl JOIN documents x ON x.id = acl.document_id
       WHERE acl.document_id = $1 AND acl.subject_type = 'user' AND lower(acl.subject_id) IS DISTINCT FROM x.uploaded_by::text
-      ORDER BY acl.created_at`,
+      ORDER BY acl.created_at, acl.id`,
     [documentId]
   );
 }
@@ -433,7 +433,7 @@ async function groupMemberRows(q, groupIds) {
             EXISTS (SELECT 1 FROM user_roles r WHERE r.verified_email = lower(m.member_email)) AS ok,
             EXISTS (SELECT 1 FROM user_roles r WHERE lower(r.email) = lower(m.member_email)) AS known
        FROM group_members m WHERE m.group_id = ANY($1::uuid[])
-      ORDER BY lower(m.member_email)`,
+      ORDER BY lower(m.member_email), m.group_id`,
     [groupIds]
   );
 }
@@ -459,7 +459,7 @@ async function namesFor(q, emails) {
   const rows = await q.query(
     `SELECT DISTINCT ON (lower(p.email)) lower(p.email) AS email, p.display_name AS name
        FROM user_profiles p WHERE lower(p.email) = ANY($1::text[]) AND coalesce(p.display_name, '') <> ''
-      ORDER BY lower(p.email), p.updated_at DESC`,
+      ORDER BY lower(p.email), p.updated_at DESC, p.user_id`,
     [list]
   );
   return new Map(rows.map(r => [r.email, r.name]));
@@ -482,7 +482,7 @@ async function linkRows(q, door, viewer) {
          FROM document_share_links l JOIN documents x ON x.id = l.document_id
         WHERE l.revoked_at IS NULL AND x.deleted_at IS NULL AND ${scope})
      SELECT s.* FROM s WHERE ${documentAccess.conditionWith('s', me.R(pa))}
-      ORDER BY s.created_at DESC`,
+      ORDER BY s.created_at DESC, s.link_id`,
     p.vals
   );
   const fp = paramList();
@@ -507,7 +507,7 @@ async function linkRows(q, door, viewer) {
   const folders = ids.length ? await q.query(
     `SELECT f.id, f.folder_path, f.document_ids, cardinality(f.document_ids) AS file_count, f.created_by, f.created_by_email, f.expires_at,
             (f.password_hash IS NOT NULL) AS has_password, f.access_count, f.last_accessed_at, f.created_at
-       FROM folder_share_links f WHERE f.id = ANY($1::uuid[]) ORDER BY f.created_at DESC`,
+       FROM folder_share_links f WHERE f.id = ANY($1::uuid[]) ORDER BY f.created_at DESC, f.id`,
     [ids]
   ) : [];
   const here = new Map();
@@ -601,7 +601,7 @@ async function personalFileRows(q, door) {
       WHERE x.library_id = $1::uuid AND x.deleted_at IS NULL AND NOT x.library_scoped
         AND x.name <> '.keep' AND x.name NOT LIKE '%/.keep'
         AND ($2::text = '' OR starts_with(x.name, $2::text || '/'))
-      GROUP BY x.uploaded_by ORDER BY max(x.uploaded_by_email)`,
+      GROUP BY x.uploaded_by ORDER BY max(x.uploaded_by_email), x.uploaded_by`,
     [door.libraryId, door.path || '']
   );
 }
@@ -691,7 +691,11 @@ function stillOpen(person, file, otherGrant = () => false) {
 
 const personOf = (email, names) => (email ? { email, name: names.get(String(email).toLowerCase()) || null } : null);
 const sortPeople = (a, b) => (Number(b.is_owner) - Number(a.is_owner)) || ((RANK[b.level] || 0) - (RANK[a.level] || 0))
-  || String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''));
+  || String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')) || String(a.user_id).localeCompare(String(b.user_id));
+// A person's reasons, strongest first (the collapsed row shows the first), in a fixed order.
+const KIND_ORDER = ['owner', 'admin', 'uploader', 'library_share', 'folder_share', 'file_grant', 'file_grants', 'unexplained'];
+const sortReasons = (list) => [...list].sort((a, b) => ((RANK[b.level] || 0) - (RANK[a.level] || 0))
+  || (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) || String(a.key || '').localeCompare(String(b.key || '')));
 
 // Everything a manager sees at a door. `hidden`: a file whose library the viewer doesn't
 // manage -- the library's own sharing is the library owner's to see.
@@ -745,7 +749,7 @@ async function keyList(q, door, viewer, { hidden = false, libraryOwnerId = null 
         files: { count: gs.length, items: gs.slice(0, KEY_FILES_SHOWN).map(g => ({ id: g.id, name: g.name, grant_id: g.grant_id, permission: g.permission })), more: Math.max(0, gs.length - KEY_FILES_SHOWN) },
       });
     }
-    let all = [...reasons, ...insideReasons];
+    let all = [...sortReasons(reasons), ...sortReasons(insideReasons)];
     let level = gate.get(id) || null;
     if (hidden) {
       all = all.filter(r => r.kind === 'admin' || r.kind === 'uploader' || r.kind === 'file_grant');
@@ -898,11 +902,11 @@ async function yourAccess(q, door, user, { listed = null } = {}) {
     folder_path: r.folder_path ?? null, granted_by: personOf(r.granted_by_email, names), granted_at: r.granted_at || null,
   }));
   const { reasons } = reconcile(level, doorReasons, { door: door.kind, id: door.documentId || door.libraryId, user_id: String(user.id), you: true });
-  const out = { level, effective: effectiveFor(user.role, level), view_only: user.role !== 'admin' && user.role !== 'contributor', reasons };
+  const out = { level, effective: effectiveFor(user.role, level), view_only: user.role !== 'admin' && user.role !== 'contributor', reasons: sortReasons(reasons) };
   if (door.kind !== 'file') {
     const folders = (await insideShareRows(q, door, (p) => justMe(user, p)))
       .reduce((m, r) => m.set(r.folder_path, maxLevel(m.get(r.folder_path), r.level)), new Map());
-    out.inside = { folders: [...folders].map(([path, lvl]) => ({ path, level: lvl })), files: await myInsideGrantCount(q, door, user) };
+    out.inside = { folders: [...folders].sort(([a], [b]) => a.localeCompare(b)).map(([path, lvl]) => ({ path, level: lvl })), files: await myInsideGrantCount(q, door, user) };
     out.listed_because = null;
     if (!level && listed && !out.inside.folders.length && !out.inside.files) {
       if (listed.no_members && !listed.shared) out.listed_because = 'open';
