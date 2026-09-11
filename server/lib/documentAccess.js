@@ -40,18 +40,63 @@ function userParams(user, required = 'read') {
   ];
 }
 
-function condition(alias = 'd', startIndex = 1) {
+// THE rule for who may open or change a document. Every document query in Depot goes
+// through it, with the five parameters userParams() supplies starting at $s:
+//   $s role, $s+1 user id, $s+2 user id as text, $s+3 matchEmail, $s+4 permissions[]
+// Only those five are referenced, so no caller's later parameter numbers move.
+//
+// A document is reachable by:
+//   - a global admin;
+//   - its uploader -- unless it is LIBRARY CONTENT (documents.library_scoped), which
+//     belongs to its library: a Read-Write share lets you add files there, and when
+//     the share ends so does your access to what you added;
+//   - a per-file grant (document_acl) to the caller's id or address -- except the
+//     uploader's own owner row on library content, for the same reason;
+//   - on library content only: the library's owner (document admin while a
+//     contributor, read otherwise); a share of the whole library; or a share of a
+//     folder the document is in (a live prefix, matched exactly: '_' and '%' are
+//     ordinary characters). Shares go to a person or a group, and match only the
+//     caller's VERIFIED address (user_roles.verified_email, looked up by id), never
+//     the address a token merely claims. Group membership is read live.
+// A share can only ever give read or write -- write only to a contributor; viewers
+// and anything unknown get read -- so no share reaches document admin (managing a
+// file's own access list stays with owners and admins). A library that nobody is a
+// member of is NOT open for this purpose: that old rule only ever controlled listing.
+function condition(alias = 'd', s = 1) {
+  const role = `$${s}`;
+  const uid = `$${s + 1}`;
+  const perms = `$${s + 4}`;
+  const me = `(SELECT pv_ur.verified_email FROM user_roles pv_ur WHERE pv_ur.user_id = ${uid})`;
+  const cap = (level) => `(CASE WHEN ${role} = 'contributor' AND ${level} = 'write' THEN 'write' ELSE 'read' END) = ANY(${perms}::text[])`;
+  const subject = (t) => `((${t}.subject_type = 'user' AND ${t}.subject_email = ${me})
+          OR (${t}.subject_type = 'group' AND ${t}.group_id IN (
+                SELECT pv_gm.group_id FROM group_members pv_gm WHERE lower(pv_gm.member_email) = ${me})))`;
   return `(
-    $${startIndex} = 'admin'
-    OR ${alias}.uploaded_by = $${startIndex + 1}
+    ${role} = 'admin'
+    OR (${alias}.uploaded_by = ${uid} AND NOT ${alias}.library_scoped)
     OR EXISTS (
       SELECT 1
       FROM document_acl da
       WHERE da.document_id = ${alias}.id
         AND da.subject_type = 'user'
-        AND lower(da.subject_id) IN (lower($${startIndex + 2}), lower($${startIndex + 3}))
-        AND da.permission = ANY($${startIndex + 4}::text[])
+        AND lower(da.subject_id) IN (lower($${s + 2}), lower($${s + 3}))
+        AND da.permission = ANY(${perms}::text[])
+        AND NOT (${alias}.library_scoped AND lower(da.subject_id) IS NOT DISTINCT FROM ${alias}.uploaded_by::text)
     )
+    OR (${alias}.library_scoped AND (
+         ${alias}.library_id IN (
+           SELECT pv_lo.id FROM libraries pv_lo
+            WHERE pv_lo.owner_id = ${uid}
+              AND (CASE WHEN ${role} = 'contributor' THEN 'admin' ELSE 'read' END) = ANY(${perms}::text[]))
+      OR ${alias}.library_id IN (
+           SELECT pv_lg.library_id FROM library_grants pv_lg
+            WHERE pv_lg.folder_path = '' AND ${cap('pv_lg.permission')} AND ${subject('pv_lg')})
+      OR EXISTS (
+           SELECT 1 FROM library_grants pv_lf
+            WHERE pv_lf.library_id = ${alias}.library_id AND pv_lf.folder_path <> ''
+              AND starts_with(${alias}.name, pv_lf.folder_path || '/')
+              AND ${cap('pv_lf.permission')} AND ${subject('pv_lf')})
+    ))
   )`;
 }
 
@@ -83,13 +128,18 @@ async function grantOwnerAdmin(documentId, user) {
   );
 }
 
+// A file's own access list, as condition() reads it: on library content the uploader's
+// owner row counts for nothing (the file belongs to its library), so it is not shown
+// as if it did.
 async function listGrants(documentId) {
   return db.query(
-    `SELECT id, document_id, subject_type, subject_id, subject_email, permission,
-            granted_by, granted_by_email, created_at
-     FROM document_acl
-     WHERE document_id = $1
-     ORDER BY created_at ASC`,
+    `SELECT acl.id, acl.document_id, acl.subject_type, acl.subject_id, acl.subject_email, acl.permission,
+            acl.granted_by, acl.granted_by_email, acl.created_at
+     FROM document_acl acl
+     JOIN documents d ON d.id = acl.document_id
+     WHERE acl.document_id = $1
+       AND NOT (d.library_scoped AND lower(acl.subject_id) IS NOT DISTINCT FROM d.uploaded_by::text)
+     ORDER BY acl.created_at ASC`,
     [documentId]
   );
 }

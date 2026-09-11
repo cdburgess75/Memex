@@ -211,7 +211,7 @@ describe('folders', () => {
   test('a folder rename keeps the folder where it is, so nothing changes scope', async () => {
     await post('/rename', { path: 'Clients/Acme', name: 'Acme2' });
     const upd = mockQueries.find(q => /UPDATE documents d SET name = \$2/.test(q.sql));
-    expect(upd.sql).not.toMatch(/library_scoped/);
+    expect(upd.sql).not.toMatch(/SET[^\n]*library_scoped/);
     expect(upd.params).toHaveLength(9);
   });
   test('a folder rename still needs a right to change files there', async () => {
