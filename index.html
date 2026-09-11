@@ -1695,6 +1695,18 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ls-empty { padding: 12px 2px; color: var(--ink-faint); font-size: 13px; }
 .ls-note { font-size: 12.5px; color: var(--ink-faint); margin: 10px 2px 0; }
 .library-menu-item .pill { margin-left: 6px; vertical-align: 1px; }
+.swm-sub { margin: -6px 0 14px; color: var(--ink-soft); font-size: 13.5px; }
+.swm-section { margin-bottom: 22px; }
+.swm-section h3 { font: 600 14px var(--ui); color: var(--ink); margin: 0 0 8px; }
+.swm-row { cursor: pointer; }
+.swm-row:hover { background: var(--surface-2); }
+.swm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.swm-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swm-sub { color: var(--ink-soft); font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
+.swm-table th:nth-child(1) { width: 44%; }
+.swm-table th:nth-child(2) { width: 13%; }
+.swm-table th:nth-child(3) { width: 10%; }
+.swm-table th:nth-child(4) { width: 14%; }
 .file-create-note { padding: 6px 12px 8px; max-width: 240px; font: 400 12px/1.4 var(--ui); color: var(--ink-faint); }
 .file-library-heading-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-share-btn { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); line-height: 0; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
@@ -2925,7 +2937,7 @@ const FILE_COLUMN_DEFS = [
   { id: 'type', label: 'Type', width: '120px', sort: (a, b) => fileKind(fileExt(a.name)).localeCompare(fileKind(fileExt(b.name))) },
   { id: 'size', label: 'Size', width: '110px', align: 'right', sort: (a, b) => (a.size || 0) - (b.size || 0) },
   { id: 'modified', label: 'Modified', width: '160px', sort: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0) },
-  { id: 'owner', label: 'Owner', width: '210px', sort: (a, b) => fileOwner(a).localeCompare(fileOwner(b)) },
+  { id: 'owner', label: 'Added by', width: '210px', sort: (a, b) => fileOwner(a).localeCompare(fileOwner(b)) },
   { id: 'library', label: 'Library', width: '150px', sort: (a, b) => fileLibraryName(a).localeCompare(fileLibraryName(b)) },
 ];
 // Columns are a fixed, clean set now — the view-size slider replaced the old
@@ -6782,7 +6794,7 @@ function renderHomeInsights(list = filesList) {
   const office = list.filter(f => ['docx','doc','xlsx','xls','pptx','ppt'].includes(fileExt(f.name)));
   const latest = list[0];
   el.innerHTML = `<div class="file-home-card"><div class="file-home-card-label">Documents</div><div class="file-home-card-value">${list.length}</div><div class="file-home-card-note">Total files in the workspace</div></div>
-    <div class="file-home-card"><div class="file-home-card-label">Shared</div><div class="file-home-card-value">${shared.length}</div><div class="file-home-card-note">Items from other people</div></div>
+    <div class="file-home-card"><div class="file-home-card-label">From others</div><div class="file-home-card-value">${shared.length}</div><div class="file-home-card-note">Files other people added here</div></div>
     <div class="file-home-card"><div class="file-home-card-label">Office files</div><div class="file-home-card-value">${office.length}</div><div class="file-home-card-note">Openable in Office tools</div></div>
     <div class="file-home-card"><div class="file-home-card-label">Latest</div><div class="file-home-card-value">${latest ? esc(fileDate(latest.created_at)) : 'None'}</div><div class="file-home-card-note">${latest ? esc(fileDisplayName(latest)) : 'Upload files to get started'}</div></div>`;
 }
@@ -6960,7 +6972,7 @@ function hashToNav(hash) {
   if (first === 'admin') return { tab: 'admin', view: 'active', filter: 'all', folder: '' };
   if (['files', 'shared', 'favorites', 'links', 'trash'].includes(first)) {
     const view = first === 'files' ? 'active' : first;
-    const folder = (view === 'trash' || view === 'links') ? '' : seg.slice(1).join('/');
+    const folder = (view === 'trash' || view === 'links' || view === 'shared') ? '' : seg.slice(1).join('/');
     return { tab: 'files', page: null, view, filter, folder };
   }
   return null;
@@ -6986,7 +6998,7 @@ async function navApply(s) {
       document.documentElement.classList.add('file-home-mode');
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'files'));
       const view = s.view || 'active';
-      if (view === 'trash' || view === 'links') {
+      if (view === 'trash' || view === 'links' || view === 'shared') {
         setFileView(view);
       } else {
         await renderDocumentLibrary(view); // builds shell + loads (resets filter to 'all')
@@ -7143,8 +7155,10 @@ function navIcon(name, cls = 'file-nav-icon') {
 function wdashHead(label, icon) {
   return `<div class="wdash-h">${navIcon(icon, 'wdash-h-ic')}${label}</div>`;
 }
+const NAV_VIEW = { home: 'home', files: 'active', shared: 'shared', links: 'links', favorites: 'favorites', trash: 'trash' };
 function fileNavButton(label, icon, action, active) {
-  return `<button class="file-nav-link ${active ? 'active' : ''}" onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
+  const view = NAV_VIEW[icon];
+  return `<button class="file-nav-link ${active ? 'active' : ''}"${view ? ` data-view="${view}"` : ''} onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
 }
 
 // Pinned libraries: a collapsible rail section of favorited libraries for quick
@@ -7484,7 +7498,9 @@ function libraryMenuInnerHtml() {
   const section = (label, rows) => (rows.length ? `<div class="library-menu-label">${label}</div>${rows.map(libraryMenuRow).join('')}` : '');
   const cur = currentLibrary();
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  return section('My libraries', mine) + section('Shared with me', shared) + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
+  return section('My libraries', mine) + section('Shared to me', shared)
+    + (shared.length ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setFileView('shared')">See everything shared to you →</button>` : '')
+    + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
@@ -8102,7 +8118,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
         ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
-        ${fileNavButton('Shared', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
+        ${fileNavButton('Shared to me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${fileNavButton('Links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
@@ -8440,11 +8456,7 @@ function setFileView(view) {
   currentFolderPath = '';
   clearFileSelection(false);
   detailsPaneOpen = false;
-  document.querySelectorAll('.file-nav-link').forEach(btn => {
-    const label = btn.textContent.trim();
-    const isFilesHome = ['Home','Files','Shared','Links','Favorites','Trash'].includes(label);
-    btn.classList.toggle('active', isFilesHome && ((view === 'home' && label === 'Home') || (view === 'active' && label === 'Files') || (view === 'favorites' && label === 'Favorites') || (view === 'shared' && label === 'Shared') || (view === 'links' && label === 'Links') || (view === 'trash' && label === 'Trash')));
-  });
+  document.querySelectorAll('.file-nav-link[data-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
   if (view === 'home') {
     renderHome();
   } else if (view === 'trash') {
@@ -8452,6 +8464,8 @@ function setFileView(view) {
     loadTrash();
   } else if (view === 'links') {
     renderShareLinks();
+  } else if (view === 'shared') {
+    renderSharedWithMe();
   } else {
     renderDocumentLibrary(view);
   }
@@ -8542,9 +8556,9 @@ async function renderHome() {
       : kpi('Storage used', fileSizeLabel(usedBytes), IC_DB, `<div class="home-kpi-sub">across ${files.length.toLocaleString()} files</div>`, '');
 
     const recentRows = recentFiles.length
-      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = (isSharedFile(f) || f.share_count > 0 || f.is_shared) ? 'Shared' : 'Private'; return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
+      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = esc(fileOwner(f)); return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
       : `<tr><td colspan="5">${emptyState('No files yet', 'Upload files to see them here.')}</td></tr>`;
-    const recentCard = `<div class="home-card"><table class="home-tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Modified</th><th>Access</th></tr></thead><tbody>${recentRows}</tbody></table></div>`;
+    const recentCard = `<div class="home-card"><table class="home-tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Modified</th><th>Added by</th></tr></thead><tbody>${recentRows}</tbody></table></div>`;
 
     const activityCard = isAdmin
       ? `<div class="home-card">${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('') : emptyState('No recent activity', 'Activity across the workspace will appear here.')}</div>`
@@ -8624,7 +8638,7 @@ function renderTrashList() {
   if (!el) return;
   if (!trashList.length) { el.innerHTML = emptyState('Trash is empty', 'Deleted files will appear here when there is something to restore or permanently remove.'); return; }
   const isAdmin = currentUser?.role === 'admin';
-  el.innerHTML = `<table class="file-table"><thead><tr><th>Name</th><th>Deleted</th><th>Owner</th><th>Activity</th><th></th></tr></thead><tbody>${trashList.map(f => { const ext = fileExt(f.name); const when = fileDate(f.deleted_at); const dName = f.name.replace(/"/g, '&quot;'); const actor = f.deleted_by_email ? ` by ${esc(f.deleted_by_email)}` : ''; return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)}</div></div></div></td><td>${when}</td><td>${esc(fileOwner(f))}</td><td>Deleted${actor} ${when}</td><td><div class="file-row-actions">${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}<button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table>`;
+  el.innerHTML = `<table class="file-table"><thead><tr><th>Name</th><th>Deleted</th><th>Added by</th><th>Activity</th><th></th></tr></thead><tbody>${trashList.map(f => { const ext = fileExt(f.name); const when = fileDate(f.deleted_at); const dName = f.name.replace(/"/g, '&quot;'); const actor = f.deleted_by_email ? ` by ${esc(f.deleted_by_email)}` : ''; return `<tr><td><div class="file-row-name">${fileIconHtml(ext)}<div><div class="file-row-title">${esc(f.name)}</div><div class="file-row-sub">${fileSizeLabel(f.size || 0)}</div></div></div></td><td>${when}</td><td>${esc(fileOwner(f))}</td><td>Deleted${actor} ${when}</td><td><div class="file-row-actions">${isAdmin ? `<button class="file-action-btn" data-fid="${f.id}" onclick="openFileHistory(this.dataset.fid)">History</button>` : ''}<button class="file-action-btn primary" data-fid="${f.id}" data-name="${dName}" onclick="restoreFile(this.dataset.fid, this.dataset.name)">Restore</button>${isAdmin ? `<button class="file-action-btn danger" data-fid="${f.id}" data-name="${dName}" onclick="purgeFile(this.dataset.fid, this.dataset.name)">Delete forever</button>` : ''}</div></td></tr>`; }).join('')}</tbody></table>`;
 }
 
 async function restoreFile(fileId, name) {
@@ -8729,7 +8743,7 @@ function renderDocumentLibraryList(opts = {}) {
   if (!opts.rowsOnly && quick) quick.innerHTML = quickAccessHtml();
   if (!el) return;
   const q = (document.getElementById('global-search')?.value || '').trim().toLowerCase();
-  const source = fileView === 'shared' ? filesList.filter(isSharedFile) : fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
+  const source = fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   // Favorites is a flat, cross-folder view (like Shared): show every matching file
   // regardless of which folder it lives in, and don't surface folder rows.
@@ -9022,7 +9036,7 @@ function renderFileDetailsPane() {
   const isAdmin = currentUser?.role === 'admin';
   const dName = f.name.replace(/"/g, '&quot;');
   pane.innerHTML = `<div class="file-details-head"><div><div class="file-details-title">${esc(fileDisplayName(f))}</div><div class="file-details-kind">${esc(fileKind(ext))} · ${fileSizeLabel(f.size || 0)}</div></div><button class="file-library-close" title="Close details" onclick="toggleDetailsPane()">×</button></div>
-    <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Owner</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || (isSharedFile(f) ? 'Shared with me' : 'My files'))}</span></div></div></section>
+    <section class="file-details-section"><div class="file-details-section-title">File</div><div class="file-details-meta"><div class="file-details-row"><strong>Added by</strong><span>${esc(fileOwner(f))}</span></div><div class="file-details-row"><strong>Modified</strong><span>${fileDate(f.created_at)}</span></div><div class="file-details-row"><strong>Location</strong><span>${esc(fileFolderPath(f) || 'Top level')}</span></div></div></section>
     <section class="file-details-section"><div class="file-details-section-title">Open & share</div><div class="file-details-actions"><button class="file-library-tool" onclick="openSelectedFile()">Open</button><button class="file-library-tool" onclick="downloadSelectedItems()">Download</button><button class="file-library-tool" onclick="openShareSelected()">Share link</button></div></section>
     <section class="file-details-section"><div class="file-details-section-title">AI</div><div class="file-details-actions"><button class="file-library-tool" onclick="openAskSelected()">Ask about this file</button></div><div class="file-details-hint">Use AI on selected files only when you need grounded answers or searchable file contents.</div></section>
     ${isAdmin ? `<section class="file-details-section"><div class="file-details-section-title">Editing & history</div><div class="file-details-actions"><button class="file-library-tool" onclick="openFileHistory('${f.id}')">Version history</button></div></section>` : ''}
@@ -9369,6 +9383,105 @@ function shareLinkCard(share) {
   </div>`;
 }
 
+// ---- Shared to me ----
+// Libraries, folders and files other people have shared with you, or with a group you're
+// in, across every library (Seafile calls it "Shared with me"). The server builds it
+// (GET /api/access/shared-with-me); each level is what the access rule gives you.
+let _swmSeq = 0;
+const swmLevel = (lvl, kind) => (kind === 'file'
+  ? ({ admin: 'Can manage', write: 'Can edit', read: 'Can view' }[lvl] || '')
+  : (lvl === 'read' ? 'Read-only' : 'Read-Write'));
+function swmWho(p) { return p ? (p.name || p.email) : 'someone'; }
+// Size and last change of what's behind a library or folder share ('—' when it's empty).
+const swmStats = (r) => `<td class="file-col-size">${r.files ? fileSizeLabel(r.bytes || 0) : '—'}</td><td class="file-col-modified">${r.updated_at ? fileDate(r.updated_at) : '—'}</td>`;
+function swmShareLine(shares, lead = false) {
+  const lvl = (x) => swmLevel(x.permission);
+  const ordered = [...shares.filter(x => !x.via_group), ...shares.filter(x => x.via_group)];
+  const [first, ...rest] = ordered;
+  if (!first) return '';
+  const head = first.via_group
+    ? `shared with the ${esc(first.via_group.name)} group by ${esc(swmWho(first.granted_by))} · you're a member`
+    : `shared with you by ${esc(swmWho(first.granted_by))}`;
+  const more = rest.map(x => (x.via_group
+    ? ` + also shared with the ${esc(x.via_group.name)} group (${lvl(x)})`
+    : ` + also shared with you directly (${lvl(x)})`)).join('');
+  return (lead ? head.charAt(0).toUpperCase() + head.slice(1) : head) + more;
+}
+// Open a library, and a folder in it, from Shared to me. The library's files load
+// before the folder opens (as navApply does), so the previous view never flashes up.
+async function openSharedPlace(libId, folder = '') {
+  closeLibraryMenu();
+  currentLibraryId = libId || null;
+  if (currentLibraryId) localStorage.setItem('memex_library_id', currentLibraryId);
+  else localStorage.removeItem('memex_library_id');
+  if (state) state.tab = 'files';
+  currentFolderPath = '';
+  clearFileSelection(false);
+  document.querySelectorAll('.file-nav-link[data-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.view === 'active'));
+  await renderDocumentLibrary('active');
+  openFolder(folder);
+}
+async function renderSharedWithMe() {
+  const seq = ++_swmSeq;
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Shared to me</h2><button class="file-library-tool" type="button" onclick="renderSharedWithMe()">Refresh</button></div>
+    <p class="file-home-sub swm-sub">Libraries, folders and files other people have shared with you, or with a group you're in.</p>
+    <div id="swm-body">${emptyState("Loading what's shared with you…", '')}</div>`, 'files', 'shared');
+  let data;
+  try { data = await apiGet('/access/shared-with-me'); }
+  catch (e) {
+    if (seq !== _swmSeq) return;
+    const el = document.getElementById('swm-body');
+    if (el) el.innerHTML = emptyState("Couldn't load what's shared with you.", '', `<button class="run-btn" type="button" onclick="renderSharedWithMe()">Try again</button>`);
+    return;
+  }
+  if (seq !== _swmSeq) return;
+  const el = document.getElementById('swm-body');
+  if (!el) return;
+  if (!data.email_verified) {
+    el.innerHTML = emptyState("Your email address hasn't been verified", "Things shared with it can't open for you yet. Ask your Depot admin to verify it.");
+    return;
+  }
+  const notes = [];
+  if (data.is_admin) notes.push(`<p class="settings-notice">You're an admin, so you can open everything. This page lists what people have shared with you specifically.</p>`);
+  const cap = (x) => (x.view_only && x.level !== 'read' ? ` title="Your account can only view files"` : '');
+  const row = (attrs, cells) => `<tr class="swm-row" tabindex="0" role="button" ${attrs}>${cells}</tr>`;
+  const libs = data.libraries.map(l => row(`data-swm-lib="${escAttr(String(l.library.id))}"`,
+    `<td><div class="swm-name">${esc(l.library.name)}</div><div class="swm-sub">${swmShareLine(l.shares, true)}</div></td>`
+    + `<td${cap(l)}>${swmLevel(l.effective)}</td>${swmStats(l)}<td>${esc(swmWho(l.library.owner))}</td>`)).join('');
+  const folders = data.folders.map(f => row(`data-swm-lib="${escAttr(String(f.library.id))}" data-swm-folder="${escAttr(f.path)}"`,
+    `<td><div class="swm-name">${esc(f.name)}</div><div class="swm-sub">in ${esc(f.library.name)} · ${swmShareLine(f.shares)}${f.also_whole_library ? ' (you also have the whole library)' : ''}${f.files ? '' : ' · No files here right now'}</div></td>`
+    + `<td${cap(f)}>${swmLevel(f.effective)}</td>${swmStats(f)}<td>${esc(swmWho(f.library.owner))}</td>`)).join('');
+  const files = data.files.map(x => row(`data-swm-file="${escAttr(String(x.document.id))}" data-swm-lib="${escAttr(String(x.document.library?.id || ''))}" data-swm-folder="${escAttr(x.document.folder || '')}"`,
+    `<td><div class="swm-name">${esc(x.document.name)}</div><div class="swm-sub">in ${esc(x.document.library?.name || 'a library')}${x.document.folder ? ` / ${esc(x.document.folder)}` : ''} · given to you by ${esc(swmWho(x.granted_by))}</div></td>`
+    + `<td${cap(x)}>${swmLevel(x.effective, 'file')}</td><td class="file-col-size">${fileSizeLabel(x.document.size || 0)}</td><td class="file-col-modified">${fileDate(x.granted_at || x.document.created_at)}</td><td>${esc(swmWho(x.owner))}</td>`)).join('');
+  const table = (title, head, rows, hint) => (rows ? `<section class="swm-section"><h3>${title}</h3>${hint ? `<p class="file-share-hint">${hint}</p>` : ''}<div class="file-table-wrap"><table class="file-library-table swm-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></section>` : '');
+  const cols = (last4) => `<th>Name</th><th>Permission</th><th>Size</th><th>${last4}</th><th>Owner</th>`;
+  if (!libs && !folders && !files) {
+    el.innerHTML = notes.join('') + emptyState('Nothing is shared with you yet', "When someone shares a library, a folder or a file with you, or with a group you're in, it shows up here.");
+    return;
+  }
+  el.innerHTML = notes.join('')
+    + table('Libraries', cols('Updated'), libs)
+    + table('Folders', cols('Updated'), folders)
+    + table('Files given to you directly', cols('Added'), files, 'You can open these files, not the rest of their library.')
+    + (data.truncated?.files ? `<p class="settings-notice">Showing the 500 most recent files shared with you.</p>` : '');
+  const open = async (r) => {
+    const lib = r.dataset.swmLib;
+    await loadLibraries();
+    if (lib && !librariesList.some(l => String(l.id) === lib)) {
+      toast("You can't open that any more. The list has been refreshed.");
+      renderSharedWithMe();
+      return;
+    }
+    await openSharedPlace(lib, r.dataset.swmFolder || '');
+    if (r.dataset.swmFile) previewFile(r.dataset.swmFile);
+  };
+  el.querySelectorAll('.swm-row').forEach(r => {
+    r.addEventListener('click', () => open(r));
+    r.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(r); } });
+  });
+}
+
 async function renderShareLinks() {
   document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Share links</h2><button class="file-library-tool" onclick="renderShareLinks()">Refresh</button></div><div class="file-links-list" id="file-links-list">${emptyState('Loading share links', 'Collecting active, expired, and revoked links.')}</div>`, 'files', 'links');
   const list = document.getElementById('file-links-list');
@@ -9437,15 +9550,14 @@ async function renderFileList() {
   } else {
     fileSearchSeq += 1;
   }
-  const source = fileView === 'shared' ? searchableFiles.filter(isSharedFile) : searchableFiles;
-  const rows = filterFilesForHome(fileFilter, searchableFiles, !q).filter(f => fileView === 'shared' ? isSharedFile(f) : true);
+  const rows = filterFilesForHome(fileFilter, searchableFiles, !q);
   if (!rows.length) {
     el.innerHTML = q
       ? emptyState('No files match this search', 'Try a shorter search, another file type, or clear the search field.')
-      : emptyState('No files in this view', 'Drop files anywhere on this page, or switch to Shared, Links, or Trash.', uploadEmptyAction());
+      : emptyState('No files in this view', 'Drop files anywhere on this page, or switch to Shared to me, Links, or Trash.', uploadEmptyAction());
     return;
   }
-  el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Owner</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
+  el.innerHTML = `<table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-owner">Added by</th><th class="file-col-actions-wide" style="text-align:right">Actions</th></tr></thead><tbody>${rows.slice(0, 12).map(fileHomeRow).join('')}</tbody></table>`;
 }
 
 // Uploads land in the folder being viewed (captured when the files are picked or
@@ -10260,7 +10372,7 @@ function previewInfoHtml(f, name, ext) {
     ['Type', esc(fileKind(ext))],
     ['Size', fileSizeLabel(f.size || 0)],
     ['Modified', fileDate(f.created_at)],
-    ['Owner', esc(fileOwner(f))],
+    ['Added by', esc(fileOwner(f))],
     ['Location', esc(loc)],
   ];
   return `<div class="preview-info-title">Details</div>`
