@@ -50,7 +50,7 @@ async function listLinks(user, scope) {
        JOIN documents d ON d.id = s.document_id
        LEFT JOIN libraries l ON l.id = d.library_id
       WHERE ${mine ? 's.created_by = $6' : '$6::uuid IS NOT NULL'}
-      ORDER BY (s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now())) DESC, s.created_at DESC
+      ORDER BY (s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now())) DESC, s.created_at DESC, s.id
       LIMIT ${LIMIT}`,
     [...p, user.id]
   );
@@ -59,10 +59,10 @@ async function listLinks(user, scope) {
             f.last_accessed_at, f.access_count, f.password_hash,
             (SELECT count(*)::int FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL) AS live,
             (SELECT l.name FROM documents d JOIN libraries l ON l.id = d.library_id
-              WHERE d.id = ANY(f.document_ids) ORDER BY d.deleted_at NULLS FIRST LIMIT 1) AS library_name
+              WHERE d.id = ANY(f.document_ids) ORDER BY d.deleted_at NULLS FIRST, d.id LIMIT 1) AS library_name
        FROM folder_share_links f
       WHERE ${mine ? 'f.created_by = $1' : '$1::uuid IS NOT NULL'}
-      ORDER BY (f.revoked_at IS NULL AND (f.expires_at IS NULL OR f.expires_at > now())) DESC, f.created_at DESC
+      ORDER BY (f.revoked_at IS NULL AND (f.expires_at IS NULL OR f.expires_at > now())) DESC, f.created_at DESC, f.id
       LIMIT ${LIMIT}`,
     [user.id]
   );
