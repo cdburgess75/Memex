@@ -10,7 +10,7 @@ jest.mock('../../lib/profiles', () => ({
 const db = require('../../lib/db');
 const notif = require('../../lib/notifications');
 
-const user = { id: '810da857-4296-473f-99e9-96f2a5ebd47e', email: 'Me@Test.com' };
+const user = { id: '810da857-4296-473f-99e9-96f2a5ebd47e', email: 'Me@Test.com', verifiedEmail: 'me@test.com' };
 
 beforeEach(() => {
   db.query.mockReset(); db.query.mockResolvedValue([]);
@@ -62,7 +62,25 @@ describe('listing / counts / marking', () => {
     await notif.listForUser(user, 50);
     const call = db.query.mock.calls.find(c => /FROM notifications/.test(c[0]) && /ORDER BY created_at/.test(c[0]));
     expect(call[0]).toContain('user_id = $1 OR lower(user_email) = lower($2)');
-    expect(call[1]).toEqual([user.id, user.email]);
+    expect(call[1]).toEqual([user.id, user.verifiedEmail]);
+  });
+
+  // Notices about files are often addressed by email alone; an account that merely
+  // claims someone's address must not read (or clear) theirs.
+  test('an address the identity provider has not verified matches no email-addressed notice', async () => {
+    const claimant = { id: 'u-claim', email: 'bob@corp.com', verifiedEmail: null };
+    db.query.mockClear(); db.queryOne.mockClear();
+    db.queryOne.mockResolvedValue({ n: 0 });
+    await notif.listForUser(claimant, 50);
+    await notif.unreadCount(claimant);
+    await notif.markRead(claimant, ['11111111-1111-4111-8111-111111111111']);
+    await notif.markAllRead(claimant);
+    const calls = [...db.query.mock.calls, ...db.queryOne.mock.calls].filter(c => /FROM notifications|UPDATE notifications/.test(c[0]));
+    expect(calls).toHaveLength(4);
+    for (const [, params] of calls) {
+      expect(params).toContain('u-claim');
+      expect(params).not.toContain('bob@corp.com');
+    }
   });
 
   test('unreadCount filters read_at IS NULL and returns a number', async () => {

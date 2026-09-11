@@ -320,7 +320,8 @@ router.post('/:id/invite', auth, async (req, res) => {
     // Send one message per recipient so addresses aren't disclosed to each other,
     // as the sharer when their mailbox allows (the mailer falls back otherwise).
     const fileName = path.split('/').pop() || path;
-    const sharer = (req.user && req.user.email) || 'A colleague';
+    const sharingAs = email.actingAs(req.user);
+    const sharer = sharingAs.label;
     const link = result.url;
     let emailed = 0;
     if (link) {
@@ -330,7 +331,7 @@ router.post('/:id/invite', auth, async (req, res) => {
         const html = `<p>${escHtml(intro)}</p>${message ? `<blockquote>${escHtml(message)}</blockquote>` : ''}`
           + `<p><a href="${escHtml(link)}">Open &ldquo;${escHtml(fileName)}&rdquo;</a></p>`
           + `<p style="color:#666;font-size:12px">You'll be asked to sign in with your organization account.</p>`;
-        const r = await email.sendMail({ to, subject: `${sharer} shared "${fileName}" with you`, text, html, actorEmail: req.user && req.user.email });
+        const r = await email.sendMail({ to, subject: `${sharer} shared "${fileName}" with you`, text, html, actorEmail: sharingAs.sendAs });
         if (r && r.sent) emailed++;
       }
     }

@@ -92,7 +92,14 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     const room = `room-${base}-${crypto.randomBytes(9).toString('hex')}`;
     const joinUrl = `${appUrl}/?meet=${encodeURIComponent(room)}`;
 
-    const organizer = { email: req.user.email, name: req.user.name || req.user.email };
+    // The invite names this member as ORGANIZER and is sent from their mailbox, so it
+    // needs an address the identity provider has verified -- otherwise an account that
+    // merely claims someone's address could send invitations as them.
+    const sendingAs = email.actingAs(req.user);
+    if (!sendingAs.sendAs) {
+      return res.status(403).json({ error: "Your email address isn't verified, so Depot can't send invitations in your name. Ask an admin to mark it verified." });
+    }
+    const organizer = { email: sendingAs.sendAs, name: req.user.name || sendingAs.sendAs };
     const uid = `${crypto.randomUUID()}@memex`;
     const when = start.toUTCString();
     const bodyText =

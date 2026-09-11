@@ -44,7 +44,7 @@ router.post('/test-email', auth, requireRole('admin'), async (req, res) => {
       to: req.user.email,
       subject: 'Depot test email',
       text: 'This is a test email from Depot. If you received it, your email provider (Microsoft Graph or SMTP relay) is configured correctly.',
-      actorEmail: req.user.email,
+      actorEmail: email.actingAs(req.user).sendAs,
     });
     res.json(r);
   } catch (e) { serverError(res, e); }

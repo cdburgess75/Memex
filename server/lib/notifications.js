@@ -7,7 +7,9 @@ const db = require('./db');
 const profiles = require('./profiles');
 
 // Recipient match against the current user (id OR email). $startIndex = user_id,
-// $startIndex+1 = email.
+// $startIndex+1 = email. The viewer's email here is only ever their VERIFIED address
+// (viewerEmail): many notices about files are addressed by email alone, and an account
+// that merely claims someone's address must not read theirs.
 function recipientClause(startIndex) {
   return `(user_id = $${startIndex} OR lower(user_email) = lower($${startIndex + 1}))`;
 }
@@ -49,6 +51,8 @@ async function create({ userId = null, userEmail = null, type, title, body = nul
   );
 }
 
+function viewerEmail(user) { return user?.verifiedEmail || ''; }
+
 async function listForUser(user, limit = 50) {
   const cap = Math.max(1, Math.min(100, limit));
   return db.query(
@@ -57,14 +61,14 @@ async function listForUser(user, limit = 50) {
      WHERE ${recipientClause(1)}
      ORDER BY created_at DESC
      LIMIT ${cap}`,
-    [user.id || null, user.email || '']
+    [user.id || null, viewerEmail(user)]
   );
 }
 
 async function unreadCount(user) {
   const row = await db.queryOne(
     `SELECT COUNT(*)::int AS n FROM notifications WHERE ${recipientClause(1)} AND read_at IS NULL`,
-    [user.id || null, user.email || '']
+    [user.id || null, viewerEmail(user)]
   );
   return row ? Number(row.n) : 0;
 }
@@ -75,7 +79,7 @@ async function markRead(user, ids) {
     `UPDATE notifications SET read_at = NOW()
      WHERE ${recipientClause(2)} AND id = ANY($1::uuid[]) AND read_at IS NULL
      RETURNING id`,
-    [ids.map(String), user.id || null, user.email || '']
+    [ids.map(String), user.id || null, viewerEmail(user)]
   );
   return rows.length;
 }
@@ -84,7 +88,7 @@ async function markAllRead(user) {
   const rows = await db.query(
     `UPDATE notifications SET read_at = NOW()
      WHERE ${recipientClause(1)} AND read_at IS NULL RETURNING id`,
-    [user.id || null, user.email || '']
+    [user.id || null, viewerEmail(user)]
   );
   return rows.length;
 }

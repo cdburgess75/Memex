@@ -143,6 +143,71 @@ async function backfillOwnerGrants() {
   return rows.length;
 }
 
+// The live identity of an account, by user id, for code that acts on someone's behalf
+// without a request of theirs in hand: a public link they created being redeemed, a
+// Collabora session they opened, a notification about a file. What such code may do is
+// decided against this at the moment it happens, so losing access -- a share removed,
+// a group membership ended, a demotion -- takes effect at once instead of whenever the
+// link or token expires. (Switching people off, piece 6, will add 'disabled' here.)
+//
+// The address counts for address-keyed grants only if the identity provider verified
+// it (user_roles.verified_email, kept current at every sign-in); otherwise the account
+// keeps what is granted to its id -- the files it owns -- and nothing matched by
+// address. Null when the account is unknown, which callers treat as no access.
+async function resolveActor(userId) {
+  if (!userId) return null;
+  let row;
+  try {
+    row = await db.queryOne('SELECT user_id, role, email, verified_email FROM user_roles WHERE user_id = $1', [userId]);
+  } catch { return null; }
+  if (!row) return null;
+  return {
+    id: row.user_id,
+    role: row.role || '',
+    email: row.verified_email || row.email || '',
+    emailVerified: !!row.verified_email,
+  };
+}
+
+// For notifications addressed to people by email: of these addresses, which can still
+// read which of these documents. Returns Map(lower(address) -> Set(documentId)).
+//
+// An address is judged through every account that uses it (by verified or recorded
+// address) -- the mail reaches whoever holds that mailbox, so any of their accounts
+// being able to read the file is enough. An address with no account at all is judged as
+// an anonymous reader holding only what was granted to that address. Anything that goes
+// wrong counts as "can't read": a notification is never worth leaking a file name.
+async function readersAmong(docIds, emails) {
+  const out = new Map();
+  const ids = [...new Set((docIds || []).filter(Boolean).map(String))];
+  const addrs = [...new Set((emails || []).filter(Boolean).map(e => String(e).toLowerCase()))];
+  for (const addr of addrs) out.set(addr, new Set());
+  if (!ids.length || !addrs.length) return out;
+  for (const addr of addrs) {
+    try {
+      const accounts = await db.query(
+        `SELECT user_id, role, email, verified_email FROM user_roles
+          WHERE lower(verified_email) = $1 OR lower(email) = $1`,
+        [addr]
+      );
+      const actors = accounts.length
+        ? accounts.map(r => ({ id: r.user_id, role: r.role || '', email: r.verified_email || r.email || '', emailVerified: !!r.verified_email }))
+        : [{ id: null, role: '', email: addr }];
+      for (const actor of actors) {
+        const rows = await db.query(
+          `SELECT d.id FROM documents d WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL AND ${condition('d', 2)}`,
+          [ids, ...userParams(actor, 'read')]
+        );
+        for (const r of rows) out.get(addr).add(String(r.id));
+      }
+    } catch (e) {
+      console.error('readersAmong failed (treated as no access):', e.message);
+      out.set(addr, new Set());
+    }
+  }
+  return out;
+}
+
 // Documents the user may read whose text is relevant to `query`, ranked by full-text
 // relevance (with a name match fallback). Used to ground AI answers in uploaded files.
 async function searchAccessibleDocuments(user, query, limit = 6, libraryIds = null) {
@@ -173,6 +238,8 @@ async function searchAccessibleDocuments(user, query, limit = 6, libraryIds = nu
 module.exports = {
   backfillOwnerGrants,
   searchAccessibleDocuments,
+  resolveActor,
+  readersAmong,
   getAccessibleDocument,
   grantOwnerAdmin,
   listGrants,
