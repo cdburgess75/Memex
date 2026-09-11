@@ -23,6 +23,12 @@ There **is** a test suite — `server/__tests__/` (lib / middleware / routes / i
 - **Escaping.** User-controlled strings go through `esc()` (text/attribute) in `index.html`. `esc()`/`escAttr()` are correct for HTML text and attribute contexts, but **do NOT** protect a value interpolated into an inline `onclick="fn('...')"` JS-string — use `data-*` attributes read via `this.dataset.*` for dynamic handler args.
 - **Secrets never enter the public repo.** `.env`, `secrets/`, `keys/` (except the public license key), and the license signing key stay out of git.
 
+## Interface skills
+
+`.claude/skills/` carries the [jakubkrehel/skills](https://github.com/jakubkrehel/skills) collection, vendored so every clone has it: `better-ui`, `better-typography`, `better-colors`, `better-accessibility`, `better-layout` and `better-writing` (model-invocable), plus `better-interface` / `interface-review` (reviews), `break`, `variant` and `explain-interface` (user-invoked). Reach for them on front-end work in `index.html`; `.claude/skills/README.md` covers provenance and re-syncing.
+
+They assume a generic project with a styling system, so two of their defaults need translating here: **color is not free** — Depot ships five curated schemes and reserves the accent for actions, selection, focus and links, so work inside those tokens instead of generating a palette — and there is **no Tailwind and no build**, so read the CSS column of `better-typography/css-cheat-sheet.md` and land every fix in the single `<style>` block.
+
 ## Architecture
 
 ```
