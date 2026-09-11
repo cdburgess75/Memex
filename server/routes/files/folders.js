@@ -18,6 +18,7 @@ const libraries = require('../../lib/libraries');
 const storage = require('../../lib/storage');
 const notifications = require('../../lib/notifications');
 const emailEvents = require('../../lib/emailEvents');
+const { actingAs } = require('../../lib/email');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
@@ -454,15 +455,15 @@ router.post('/members', auth, requireRole('admin', 'contributor'), async (req, r
         await notifications.create({
           userEmail: email,
           type: 'share_granted',
-          title: `${req.user.email} shared a folder with you`,
+          title: `${actingAs(req.user).label} shared a folder with you`,
           body: `"${folderName}" · ${rows.length} file${rows.length === 1 ? '' : 's'} · ${permission} access`,
         });
       } catch (e) { console.error('notification (folder share_granted) failed:', e.message); }
       emailEvents.send('share_granted', {
         to: email,
-        subject: `${req.user.email} shared a folder with you`,
-        text: `${req.user.email} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Depot.\n\nSign in to Depot to open it.`,
-        actorEmail: req.user.email,
+        subject: `${actingAs(req.user).label} shared a folder with you`,
+        text: `${actingAs(req.user).label} gave you ${permission} access to the folder "${folderPath}" (${rows.length} files) in Depot.\n\nSign in to Depot to open it.`,
+        actorEmail: actingAs(req.user).sendAs,
       }).catch(() => {});
     }
     res.json({ ok: true, count: rows.length, permission });

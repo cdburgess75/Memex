@@ -91,6 +91,13 @@ describe('a public file link lives only while its creator could still publish th
     mockLive.actor = null;
     expect((await call('tok')).status).toBe(404);
   });
+  test('the download streams the linked file itself (its storage path comes with the link)', async () => {
+    const res = await request(app()).get('/api/files/share/tok');
+    expect(res.status).toBe(200);
+    const q = mockQueries.find(x => /FROM document_share_links s\s+JOIN documents d/.test(x.sql));
+    expect(q.sql).toMatch(/d\.storage_path/);
+    expect(require('../../lib/storage').downloadStream).toHaveBeenCalledWith('documents/report.pdf');
+  });
   test('a refused link looks exactly like a revoked one', async () => {
     mockLive.write = false;
     const lost = await request(app()).get('/api/files/share/tok/info');
@@ -105,9 +112,25 @@ describe('a folder link serves only what its creator could still publish', () =>
   beforeEach(() => {
     mockRows.folderShare = { id: 'fl-1', folder_path: 'Clients/Acme', document_ids: [DOC], created_by: CREATOR, created_by_email: 'creator@x.com', revoked_at: null, expires_at: null, password_hash: null };
   });
+  // The folder's files are there and readable in both cases, so only the creator's
+  // role decides the outcome.
+  const withFiles = () => { mockRows.folderDocs = [{ id: DOC, name: 'Clients/Acme/report.pdf', storage_path: 'documents/report.pdf', size: 4 }]; };
+  test('a creator who can still edit serves the folder', async () => {
+    withFiles();
+    expect((await request(app()).get('/api/files/folder/share/tok')).status).toBe(200);
+  });
   test('a creator who is now a viewer takes the link down', async () => {
+    withFiles();
     mockLive.actor = { id: CREATOR, role: 'viewer', email: 'creator@x.com', emailVerified: true };
     expect((await request(app()).get('/api/files/folder/share/tok')).status).toBe(404);
+    expect(mockQueries.some(x => /d\.id = ANY\(\$1::uuid\[\]\)/.test(x.sql))).toBe(false); // refused on the role alone
+  });
+  test("a creator whose address isn't verified reaches files by address grant no longer", async () => {
+    withFiles();
+    mockLive.actor = { id: CREATOR, role: 'contributor', email: 'creator@x.com', emailVerified: false };
+    await request(app()).get('/api/files/folder/share/tok');
+    const q = mockQueries.find(x => /d\.id = ANY\(\$1::uuid\[\]\)/.test(x.sql));
+    expect(q.params[4]).toBe(''); // matchEmail: the address slot is blank
   });
   test('the files are filtered by the creator\'s live WRITE access, not served as a frozen list', async () => {
     await request(app()).get('/api/files/folder/share/tok');

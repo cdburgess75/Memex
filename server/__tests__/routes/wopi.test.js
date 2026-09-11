@@ -103,6 +103,26 @@ describe('the token', () => {
     expect(documentAccess.resolveActor).not.toHaveBeenCalled();
     expect(storage.upload).not.toHaveBeenCalled();
   });
+
+  test('a save with a token never minted for editing is refused in front of the body parser too', async () => {
+    const readToken = generateToken('doc-1', 'user-1', 'viewer@test.com', false);
+    const res = await put(readToken, 'x');
+    expect(res.status).toBe(403);
+    // answered by the middleware: the handler's live lookup never ran
+    expect(documentAccess.resolveActor).not.toHaveBeenCalled();
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  test("every check runs as the token's live account, never as the address in the token", async () => {
+    const live = { id: 'user-1', role: 'contributor', email: 'live@test.com', emailVerified: true };
+    mockAccess.actor = live;
+    const token = generateToken('doc-1', 'user-1', 'claimed@test.com', true);
+    expect((await request(makeApp()).get(`/wopi/files/doc-1?access_token=${token}`)).status).toBe(200);
+    expect((await put(token)).status).toBe(200);
+    const users = documentAccess.getAccessibleDocument.mock.calls.map(([a]) => a.user);
+    expect(users.length).toBeGreaterThan(0);
+    for (const u of users) expect(u).toBe(live);
+  });
 });
 
 describe('access is decided live, on every call', () => {
@@ -164,9 +184,24 @@ describe('access is decided live, on every call', () => {
 });
 
 describe('locks', () => {
-  test.each(['LOCK', 'REFRESH_LOCK', 'UNLOCK', 'UNLOCK_AND_RELOCK'])('%s needs write, so a read-only session cannot block saves', async (o) => {
+  test.each(['LOCK', 'REFRESH_LOCK', 'UNLOCK_AND_RELOCK'])('%s needs write, so a read-only session cannot block saves', async (o) => {
     const readToken = generateToken('doc-1', 'user-1', 'viewer@test.com', false);
     expect((await op(readToken, o)).status).toBe(403);
+  });
+
+  // Releasing a lock you hold can't block anyone, and a session that lost write after
+  // taking the lock must still be able to let go of it when it closes -- otherwise the
+  // file stays locked against every other editor for 30 minutes.
+  test('a session that lost write can still release the lock it holds, and only that lock', async () => {
+    const token = generateToken('doc-1', 'user-1', 'editor@test.com', true);
+    expect((await op(token, 'LOCK')).status).toBe(200);
+    mockAccess.write = false;
+    const wrong = await request(makeApp()).post(`/wopi/files/doc-1?access_token=${token}`)
+      .set('X-WOPI-Override', 'UNLOCK').set('X-WOPI-Lock', 'someone-elses');
+    expect(wrong.status).toBe(409);
+    expect((await op(token, 'UNLOCK')).status).toBe(200);
+    mockAccess.read = false;
+    expect((await op(token, 'UNLOCK')).status).toBe(404); // no access at all: nothing
   });
 
   test('GET_LOCK needs only read', async () => {
@@ -182,6 +217,19 @@ describe('locks', () => {
 });
 
 describe('notices after a save', () => {
+  test("the edit notice names the editor, and mails as them, only by a verified address", async () => {
+    const emailEvents = require('../../lib/emailEvents');
+    const token = generateToken('doc-1', 'user-1', 'editor@test.com', true);
+    mockAccess.actor = { id: 'user-1', role: 'contributor', email: 'editor@test.com', emailVerified: true };
+    await put(token);
+    expect(emailEvents.send).toHaveBeenCalledWith('document_edited', expect.objectContaining({ to: 'owner@test.com', actorEmail: 'editor@test.com' }));
+    emailEvents.send.mockClear(); notifications.create.mockClear();
+    mockAccess.actor = { id: 'user-1', role: 'contributor', email: 'cfo@test.com', emailVerified: false };
+    await put(token);
+    expect(emailEvents.send).toHaveBeenCalledWith('document_edited', expect.objectContaining({ to: 'owner@test.com', actorEmail: null }));
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'cfo@test.com (unverified address) edited your file' }));
+  });
+
   test("the uploader is told someone edited their file only while they can still read it", async () => {
     const token = generateToken('doc-1', 'user-1', 'editor@test.com', true);
     await put(token);

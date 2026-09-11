@@ -88,3 +88,35 @@ describe('multi-folder loops keep the library they started in', () => {
     }
   });
 });
+
+// Moves report what the server did, not what was selected (files the caller can only
+// view are skipped by the server and stay put).
+describe('the move summary', () => {
+  const fnSource = (name) => {
+    const start = html.search(new RegExp(`function ${name}\\(`));
+    const open = html.indexOf('{', start);
+    let depth = 0;
+    for (let j = open; j < html.length; j++) {
+      if (html[j] === '{') depth++;
+      else if (html[j] === '}' && --depth === 0) return html.slice(start, j + 1);
+    }
+    throw new Error(name);
+  };
+  const ctx = {};
+  vm.runInNewContext(`${fnSource('transferSummary')}\nthis.transferSummary = transferSummary;`, ctx);
+  test.each([
+    ['move', 3, 0, 'Moved 3 items to Clients'],
+    ['move', 1, 0, 'Moved 1 item to Clients'],
+    ['move', 2, 1, 'Moved 2 items to Clients · 1 file you can only view stayed where it was'],
+    ['move', 0, 2, 'Nothing was moved: 2 files you can only view stayed where they were'],
+    ['copy', 0, 0, 'Nothing was copied'],
+  ])('%s: %i done, %i skipped', (mode, done, skipped, want) => {
+    expect(ctx.transferSummary(mode, done, skipped, 'Clients')).toBe(want);
+  });
+  test('the library-transfer dialog uses the server counts', () => {
+    const b = body('openLibraryTransfer');
+    expect(b).toMatch(/done \+= Number\(r\?\.count/);
+    expect(b).toMatch(/skipped \+= Number\(r\?\.skipped/);
+    expect(b).toMatch(/toast\(transferSummary\(mode, done, skipped,/);
+  });
+});

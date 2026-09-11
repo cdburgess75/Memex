@@ -110,6 +110,26 @@ describe('each recipient hears only about files they can read', () => {
     expect(mail).not.toMatch(/hidden/);
   });
 
+  test('two recipients each hear only about their own readable files', async () => {
+    libraries.listMembers.mockResolvedValue([{ subject_email: 'member@x.com' }]);
+    folderNotifyPrefs.effectiveFor.mockResolvedValue(new Map([['member@x.com', true]]));
+    documentAccess.readersAmong.mockResolvedValueOnce(new Map([
+      ['owner@x.com', new Set(['d1'])],
+      ['member@x.com', new Set(['d2'])],
+    ]));
+    for (const [name, id] of [['for-owner.pdf', 'd1'], ['for-member.pdf', 'd2']]) {
+      uploadNotify.record({ libraryId: 'lib1', folderPath: 'Deals', uploaderEmail: 'owen@x.com', uploaderName: 'Owen', fileName: name, documentId: id });
+    }
+    await uploadNotify.flushAll();
+    const byRecipient = Object.fromEntries(notifications.create.mock.calls.map(([n]) => [n.userEmail, n]));
+    expect(Object.keys(byRecipient).sort()).toEqual(['member@x.com', 'owner@x.com']);
+    expect(byRecipient['owner@x.com'].body).toBe('for-owner.pdf');
+    expect(byRecipient['member@x.com'].body).toBe('for-member.pdf');
+    const mails = Object.fromEntries(emailEvents.send.mock.calls.map(([, m]) => [m.to, m.text]));
+    expect(mails['owner@x.com']).not.toContain('for-member.pdf');
+    expect(mails['member@x.com']).not.toContain('for-owner.pdf');
+  });
+
   test('a file recorded without its id cannot be checked, so it is never announced', async () => {
     uploadNotify.record({ libraryId: 'lib1', folderPath: 'Deals', uploaderEmail: 'owen@x.com', uploaderName: 'Owen', fileName: 'mystery.pdf' });
     await uploadNotify.flushAll();

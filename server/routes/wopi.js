@@ -8,6 +8,7 @@ const storage = require('../lib/storage');
 const { extractText } = require('../lib/textExtraction');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
+const { actingAs } = require('../lib/email');
 const auditLog = require('../lib/auditLog');
 const docFollows = require('../lib/docFollows');
 const documentAccess = require('../lib/documentAccess');
@@ -45,10 +46,13 @@ async function authorizeWopi(req, res, required) {
 }
 
 // PutFile's body is buffered (up to 50 MB) by express.raw; reject a missing or wrong
-// token before that happens, so an unauthenticated caller can't make the server hold
-// 50 MB per request. The full, live check still runs in the handler.
+// token -- or one never minted for editing -- before that happens, so no caller can
+// make the server hold 50 MB for a save that will be refused. The full, live check
+// still runs in the handler.
 function tokenBeforeBody(req, res, next) {
-  if (!tokenEntry(req)) return res.status(401).json({ error: 'Invalid or expired access token' });
+  const entry = tokenEntry(req);
+  if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
+  if (!entry.canWrite) return res.status(403).json({ error: 'No write permission for this document' });
   next();
 }
 
@@ -119,7 +123,9 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
     // access ended after they opened the editor, cannot overwrite the document.
     const ok = await authorizeWopi(req, res, 'write');
     if (!ok) return;
-    const { entry, doc } = ok;
+    const { entry, doc, actor } = ok;
+    // Named in notices, and mailed as, only by a verified address (email.actingAs).
+    const editor = actingAs(actor);
 
     const currentLock = getLock(req.params.fileId);
     const requestedLock = req.headers['x-wopi-lock'];
@@ -159,7 +165,7 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
           userId: doc.uploaded_by || null,
           userEmail: doc.uploaded_by_email,
           type: 'document_edited',
-          title: `${entry.userEmail} edited your file`,
+          title: `${editor.label} edited your file`,
           body: `"${doc.name}"`,
           refType: 'document',
           refId: doc.id,
@@ -168,11 +174,11 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
       } catch (e) { console.error('notification (document_edited) failed:', e.message); }
       emailEvents.send('document_edited', {
         to: doc.uploaded_by_email,
-        subject: `${entry.userEmail} edited your file: ${doc.name}`,
-        text: `${entry.userEmail} edited "${doc.name}" in Depot.\n\nSign in to Depot to review the changes.`,
-        // Collabora calls this endpoint, not the browser — the editing member's
-        // identity comes from the WOPI token, not req.user.
-        actorEmail: entry.userEmail,
+        subject: `${editor.label} edited your file: ${doc.name}`,
+        text: `${editor.label} edited "${doc.name}" in Depot.\n\nSign in to Depot to review the changes.`,
+        // Collabora calls this endpoint, not the browser — the editing member is the
+        // token's account, looked up live (authorizeWopi), not req.user.
+        actorEmail: editor.sendAs,
       }).catch(() => {});
     }
     // Also notify anyone FOLLOWING this file (the file bell), minus the editor.
@@ -181,7 +187,7 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
       for (const to of followers) {
         if (doc.uploaded_by_email && to.toLowerCase() === doc.uploaded_by_email.toLowerCase()) continue; // owner already notified
         notifications.create({ userEmail: to, type: 'document_edited', title: `A file you follow was edited: ${doc.name}`, body: `"${doc.name}"`, refType: 'document', refId: doc.id, dedupeMinutes: 30 }).catch(() => {});
-        emailEvents.send('document_edited', { to, subject: `A file you follow was edited: ${doc.name}`, text: `${entry.userEmail} edited "${doc.name}" in Depot.` }).catch(() => {});
+        emailEvents.send('document_edited', { to, subject: `A file you follow was edited: ${doc.name}`, text: `${editor.label} edited "${doc.name}" in Depot.` }).catch(() => {});
       }
     }).catch(() => {});
     res.status(200).end();
@@ -193,10 +199,12 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
 // POST /wopi/files/:fileId — Operations (Lock, Unlock, etc.)
 router.post('/files/:fileId', async (req, res) => {
   const override = req.headers['x-wopi-override'];
-  // Reading the lock is harmless; taking, refreshing or releasing one is an edit --
-  // otherwise a read-only session could lock the file and block everyone's saves.
+  // Reading a lock, or releasing one you hold (the lock id must match), is harmless;
+  // taking or refreshing one is an edit -- otherwise a read-only session could lock the
+  // file and block everyone's saves. Releasing stays open to a session that has lost
+  // write since it took the lock, so leaving doesn't strand a lock for 30 minutes.
   let ok;
-  try { ok = await authorizeWopi(req, res, override === 'GET_LOCK' ? 'read' : 'write'); }
+  try { ok = await authorizeWopi(req, res, override === 'GET_LOCK' || override === 'UNLOCK' ? 'read' : 'write'); }
   catch (e) { return serverError(res, e); }
   if (!ok) return;
 

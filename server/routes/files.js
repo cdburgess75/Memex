@@ -1367,7 +1367,7 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
         await notifications.create({
           userEmail: grant.subject_email,
           type: 'share_granted',
-          title: `${req.user.email} shared a file with you`,
+          title: `${email.actingAs(req.user).label} shared a file with you`,
           body: `"${doc.name}" · ${grant.permission} access`,
           refType: 'document',
           refId: doc.id,
@@ -1375,9 +1375,9 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
       } catch (e) { console.error('notification (share_granted) failed:', e.message); }
       emailEvents.send('share_granted', {
         to: grant.subject_email,
-        subject: `${req.user.email} shared a file with you`,
-        text: `${req.user.email} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
-        actorEmail: req.user.email,
+        subject: `${email.actingAs(req.user).label} shared a file with you`,
+        text: `${email.actingAs(req.user).label} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
+        actorEmail: email.actingAs(req.user).sendAs,
       }).catch(() => {});
     }
     res.json({ grant });
@@ -1501,7 +1501,9 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     const note = String(req.body?.message || '').slice(0, 2000).trim();
     const base = await publicAppBase(req);
     const sender = String(req.user.email || '').toLowerCase();
-    const senderName = req.user.email || 'A colleague';
+    // Named, and sent from their mailbox, only by a verified address (email.actingAs).
+    const sendingAs = email.actingAs(req.user);
+    const senderName = sendingAs.label;
     const senderDomain = sender.split('@')[1] || '';
 
     // Managing access (creating an ACL grant) requires admin on the document —
@@ -1559,7 +1561,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
               to,
               subject: `${senderName} shared a file with you`,
               text: `${senderName} gave you ${permission} access to "${doc.name}" in Depot.${note ? `\n\n${note}` : ''}\n\nOpen it here (sign in with your usual account):\n${base}\n`,
-              actorEmail: req.user.email,
+              actorEmail: sendingAs.sendAs,
             });
             sent = mail?.sent !== false;
             reason = mail?.sent === false ? mail.reason : undefined;
@@ -1599,7 +1601,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
           to,
           subject: `${senderName} sent you a file: ${doc.name}`,
           text: lines.join('\n'),
-          actorEmail: req.user.email,
+          actorEmail: sendingAs.sendAs,
         });
         results.push({ to, kind: 'link', sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined, url });
       } catch (e) {
