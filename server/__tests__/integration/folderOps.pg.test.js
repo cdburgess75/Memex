@@ -151,6 +151,63 @@ suite('folder operations against real Postgres', () => {
     expect(same.status).toBe(200);
   });
 
+  describe('an emptied shared folder stays', () => {
+    const keeps = async (lib = LIB) => (await db.query(
+      "SELECT name, uploaded_by, library_scoped FROM documents WHERE library_id = $1 AND name LIKE '%/.keep' AND deleted_at IS NULL ORDER BY name", [lib])).rows ?? [];
+    const rows = async (sql, params) => db.query(sql, params);
+
+    test('trashing the last file in a shared folder keeps the folder, empty and still shared', async () => {
+      await fixture({ docs: [{ name: 'Clients/Mender/only.pdf' }], shares: [{ path: 'Clients/Mender' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Mender/only.pdf'");
+      expect((await authed(as(OWNER).delete(`/api/files/${doc.id}`))).status).toBe(200);
+      const kept = await rows("SELECT name, uploaded_by, library_scoped FROM documents WHERE library_id = $1 AND deleted_at IS NULL", [LIB]);
+      expect(kept.map(r => r.name)).toEqual(['Clients/Mender/.keep']);
+      // it belongs to the library, has no uploader, and so gives nobody anything new
+      expect([kept[0].uploaded_by, kept[0].library_scoped]).toEqual([null, true]);
+      // and the share still points at a folder that exists
+      expect(await names()).toEqual(['Clients/Mender/.keep']);
+    });
+
+    test('moving the last file out of a shared folder keeps it too', async () => {
+      await fixture({ docs: [{ name: 'Clients/Mender/only.pdf' }, { name: 'Clients/Other/x.pdf' }], shares: [{ path: 'Clients/Mender' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Mender/only.pdf'");
+      const res = await authed(as(OWNER).put(`/api/files/${doc.id}/rename`)).send({ name: 'Clients/Other/only.pdf' });
+      expect(res.status).toBe(200);
+      expect(await names()).toEqual(['Clients/Mender/.keep', 'Clients/Other/only.pdf', 'Clients/Other/x.pdf']);
+    });
+
+    test('taking the last file to another library keeps it', async () => {
+      await fixture({ docs: [{ name: 'Clients/Mender/only.pdf' }], shares: [{ path: 'Clients/Mender' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Mender/only.pdf'");
+      const res = await authed(as(OWNER).post('/api/files/library-transfer')).send({ ids: [doc.id], libraryId: LIB2, mode: 'move' });
+      expect(res.status).toBe(200);
+      expect(await names()).toEqual(['Clients/Mender/.keep']);
+      expect(await names(LIB2)).toEqual(['Clients/Mender/only.pdf']);
+    });
+
+    test('a folder nobody shares is not kept alive', async () => {
+      await fixture({ docs: [{ name: 'Clients/Private/only.pdf' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Private/only.pdf'");
+      expect((await authed(as(OWNER).delete(`/api/files/${doc.id}`))).status).toBe(200);
+      expect(await names()).toEqual([]);
+    });
+
+    test('a folder that still holds something is not given a second marker', async () => {
+      await fixture({ docs: [{ name: 'Clients/Mender/a.pdf' }, { name: 'Clients/Mender/b.pdf' }], shares: [{ path: 'Clients/Mender' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Mender/a.pdf'");
+      expect((await authed(as(OWNER).delete(`/api/files/${doc.id}`))).status).toBe(200);
+      expect(await names()).toEqual(['Clients/Mender/b.pdf']);
+    });
+
+    test('the folder above is kept when a share sits on it', async () => {
+      await fixture({ docs: [{ name: 'Clients/Mender/Deep/only.pdf' }], shares: [{ path: 'Clients/Mender' }] });
+      const doc = await db.queryOne("SELECT id FROM documents WHERE name = 'Clients/Mender/Deep/only.pdf'");
+      expect((await authed(as(OWNER).delete(`/api/files/${doc.id}`))).status).toBe(200);
+      expect(await names()).toEqual(['Clients/Mender/.keep']);
+    });
+    void keeps;
+  });
+
   test('two renames of the same folder at once: one wins, and the library is left coherent', async () => {
     await fixture({ docs: [{ name: 'Clients/Mender/a.pdf' }, { name: 'Clients/Mender/b.pdf' }] });
     const [one, two] = await Promise.all([

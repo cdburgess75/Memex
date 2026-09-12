@@ -8,7 +8,8 @@ const express = require('express');
 
 const mockQueries = [];
 const mockRows = { share: null, folderShare: null, session: null, folderDocs: [] };
-jest.mock('../../lib/db', () => ({
+jest.mock('../../lib/db', () => {
+  const api = {
   query: jest.fn(async (sql, params) => {
     mockQueries.push({ sql, params });
     if (/FROM documents d\s+WHERE d\.id = ANY\(\$1::uuid\[\]\) AND d\.deleted_at IS NULL AND/.test(sql)) return mockRows.folderDocs;
@@ -21,8 +22,20 @@ jest.mock('../../lib/db', () => ({
     if (/FROM upload_sessions WHERE id = \$1 AND uploaded_by = \$2/.test(sql)) return mockRows.session;
     return null;
   }),
-  withTransaction: jest.fn(),
-}));
+  };
+  // Moves and deletes run inside one transaction holding the library's lock; the
+  // stand-in hands the callback a client backed by the same mocks.
+  api.withTransaction = jest.fn(async (fn) => fn({
+    query: async (sql, params = []) => {
+      const rows = await api.query(sql, params);
+      if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
+      const one = await api.queryOne(sql, params); // the single-row mock answers reads
+      return { rows: one ? [one] : [] };
+    },
+  }));
+  api.paramList = jest.requireActual('../../lib/db').paramList;
+  return api;
+});
 jest.mock('../../lib/storage', () => ({
   getUrl: jest.fn(), download: jest.fn().mockResolvedValue(Buffer.from('x')), isLocalProvider: jest.fn().mockResolvedValue(true),
   localBase: jest.fn(), validateLocalToken: jest.fn(), upload: jest.fn(), del: jest.fn(), copy: jest.fn(),

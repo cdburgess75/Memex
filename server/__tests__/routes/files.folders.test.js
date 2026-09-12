@@ -18,8 +18,8 @@ jest.mock('../../lib/db', () => {
     withTransaction: jest.fn(async (fn) => fn({
       query: async (sql, params = []) => {
         const rows = await query(sql, params);
-        if (rows && rows.length) return { rows };
-        const one = await queryOne(sql, params);
+        if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
+        const one = await queryOne(sql, params); // the single-row mock answers reads
         return { rows: one ? [one] : [] };
       },
     })),
