@@ -163,3 +163,34 @@ describe('the helpers can read inside a caller transaction', () => {
     spy.mockRestore();
   });
 });
+
+describe('the folder preview, in the small', () => {
+  const preview = require('../../lib/folderPreview');
+  const map = (o) => new Map(Object.entries(o));
+  const people = new Map([
+    ['a', { user_id: 'a', email: 'ana@x.test', name: 'Ana', is_admin: false }],
+    ['b', { user_id: 'b', email: 'bo@x.test', name: 'Bo', is_admin: false }],
+    ['c', { user_id: 'c', email: 'cy@x.test', name: 'Cy', is_admin: false }],
+    ['adm', { user_id: 'adm', email: 'admin@x.test', name: 'Admin', is_admin: true }],
+  ]);
+  test('who loses, who gains, who changes level -- admins counted, never named', () => {
+    const d = preview.diff(map({ a: 'write', b: 'read', adm: 'admin' }), map({ b: 'write', c: 'read', adm: 'admin' }), people);
+    expect(d.lose.map(x => x.email)).toEqual(['ana@x.test']);
+    expect(d.gain.map(x => x.email)).toEqual(['cy@x.test']);
+    expect(d.changed).toEqual([{ email: 'bo@x.test', name: 'Bo', before: 'read', after: 'write' }]);
+    expect(d.admins_unaffected).toBe(1);
+    expect(JSON.stringify(d)).not.toContain('admin@x.test');
+  });
+  test('the best of several ways in wins when maps are merged', () => {
+    expect(Object.fromEntries(preview.mergeLevels(map({ a: 'read' }), map({ a: 'write', b: 'read' })))).toEqual({ a: 'write', b: 'read' });
+  });
+  test('the fingerprint covers the answer, not just the paths', () => {
+    const op = { op: 'reparent', libraryId: 'L', path: 'A', newPath: 'B/A', targetLibraryId: 'L' };
+    const base = { before: map({ a: 'read' }), after: map({ a: 'read' }), carried: [{ id: 'g1', permission: 'read', folder_path: 'A' }], op };
+    const same = preview.fingerprint(base);
+    expect(preview.fingerprint(base)).toBe(same);
+    expect(preview.fingerprint({ ...base, after: map({ a: 'read', z: 'read' }) })).not.toBe(same); // somebody new at the destination
+    expect(preview.fingerprint({ ...base, carried: [{ id: 'g1', permission: 'write', folder_path: 'A' }] })).not.toBe(same);
+    expect(preview.fingerprint({ ...base, op: { ...op, newPath: 'C/A' } })).not.toBe(same);
+  });
+});
