@@ -26,6 +26,8 @@ jest.mock('../../lib/db', () => {
     if (/SELECT owner_id FROM libraries WHERE id = \$1/.test(sql)) return mockRows.library;
     if (/INSERT INTO folder_ops/.test(sql)) return { op_id: '99999999-0000-4000-8000-000000000009' };
     if (/FROM upload_sessions WHERE id = \$1 AND uploaded_by = \$2/.test(sql)) return mockRows.session;
+    // the name the row has NOW, read under the library's lock (restore-version)
+    if (/^\s*SELECT name FROM documents WHERE id = \$1$/.test(sql)) return mockRows.doc;
     if (/FROM document_versions\s+WHERE id = \$1 AND document_id = \$2/.test(sql)) return mockRows.version;
     if (/UPDATE documents\s+SET name = \$1, size = \$2/.test(sql)) return { id: 'd1', name: params[0] };
     if (/UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return { id: 'd1', name: params[1] };
@@ -35,13 +37,21 @@ jest.mock('../../lib/db', () => {
     return null;
   }),
   };
-  // The folder operations run inside one transaction; the stand-in hands the
-  // callback a client backed by the same mocks (a pg client answers { rows }).
+  // The folder operations, and every placement of a document by name, run inside one
+  // transaction; the stand-in hands the callback a client backed by the same mocks (a pg
+  // client answers { rows }).
   api.withTransaction = jest.fn(async (fn) => fn({ query: async (sql, params = []) => {
+      // The lock's own plumbing (lib/folderLocks) answers itself: it is not something a
+      // test mocks, and letting it reach the mocks would consume their queued rows.
+      if (/^\s*(SET LOCAL|SELECT DISTINCT hashtext|SELECT pg_advisory)/i.test(sql)) return { rows: [] };
       const rows = await api.query(sql, params);
-      if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
-      const one = await api.queryOne(sql, params); // the single-row mock answers reads
-      return { rows: one ? [one] : [] };
+      if (rows && rows.length) return { rows };
+      // the single-row mock answers reads, and the writes that RETURN the row they wrote
+      if (/^\s*SELECT/i.test(sql) || /RETURNING/i.test(sql)) {
+        const one = await api.queryOne(sql, params);
+        return { rows: one ? [one] : [] };
+      }
+      return { rows: [] };
     } }));
   api.paramList = jest.requireActual('../../lib/db').paramList;
   return api;
@@ -134,7 +144,9 @@ describe('uploads and new files', () => {
     expect(storage.upload).not.toHaveBeenCalled();
     mockRight.value = { right: 'grant', scoped: true };
     await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB });
-    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.anything(), LIB, 'Q1');
+    // asked before anything is stored, and again on the transaction's client, where the
+    // destination is resolved under the library's lock
+    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.anything(), LIB, 'Q1', expect.anything());
     expect(inserted().params[9]).toBe(true);
   });
   test('a chunked upload naming its library is refused at the start', async () => {
