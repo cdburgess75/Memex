@@ -1,7 +1,19 @@
 'use strict';
 // A byte-identical re-upload is folded into an existing document only where the
 // uploader could EDIT that document: folding is a change to it.
-jest.mock('../../lib/db', () => ({ query: jest.fn().mockResolvedValue([]), queryOne: jest.fn() }));
+jest.mock('../../lib/db', () => {
+  const api = { query: jest.fn().mockResolvedValue([]), queryOne: jest.fn() };
+  // The row goes in under the library's tree lock, inside one transaction; the stand-in
+  // hands the callback a client backed by the same mocks (a pg client answers { rows }).
+  // The lock's own plumbing (lib/folderLocks) is answered here rather than by the mocks,
+  // which queue their rows in order.
+  api.withTransaction = jest.fn(async (fn) => fn({ query: async (sql, params = []) => {
+    if (/^\s*(SET LOCAL|SELECT DISTINCT hashtext|SELECT pg_advisory)/i.test(sql)) return { rows: [] };
+    const one = await api.queryOne(sql, params);
+    return { rows: one ? [one] : [] };
+  } }));
+  return api;
+});
 jest.mock('../../lib/storage', () => ({ download: jest.fn().mockResolvedValue(Buffer.from('same bytes')), del: jest.fn().mockResolvedValue() }));
 jest.mock('../../lib/textExtraction', () => ({ extractText: jest.fn().mockResolvedValue('same bytes') }));
 jest.mock('../../lib/libraries', () => ({ defaultLibraryId: jest.fn().mockResolvedValue('lib-1') }));
