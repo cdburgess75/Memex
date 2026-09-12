@@ -7834,6 +7834,15 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     if (x.subject_type === 'group') pills.push(`<span>${x.group?.member_count ?? 0} ${x.group?.member_count === 1 ? 'person' : 'people'} · ${x.group?.owner_email ? `owned by ${esc(x.group.owner_email)}` : 'no owner'}</span>`);
     if (x.account === 'none') pills.push(`<span class="pill">Hasn't signed in</span>`);
     if (x.account === 'unverified') pills.push(`<span class="pill warn" title="Their email address hasn't been verified, so this share won't reach them until an admin verifies it">Email not verified</span>`);
+    // What the shared folder actually holds. An empty one is kept on purpose -- the share
+    // would otherwise be waiting for whatever takes that name next -- so the pill says it
+    // is still shared, and Remove is right there if it should not be.
+    const stateWords = {
+      empty_kept: ['Empty — still shared', 'There is nothing in this folder right now. It is kept so the share goes on meaning this folder, not whatever is next called that. Remove the share if it is finished with.'],
+      release_keep: ['Empty since release', 'This folder already had nothing in it when folder sharing was reworked. It was kept so the share kept its meaning — worth a look to see whether it is still wanted.'],
+      gone: ['Folder is gone', 'Nothing is at this path at all. Tell an admin: a share should never be left pointing at nothing.'],
+    }[x.folder_state];
+    if (stateWords) pills.push(`<span class="pill warn" title="${escAttr(stateWords[1])}">${stateWords[0]}</span>`);
     return `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)}</span>${pills.length ? `<span class="ls-who-sub">${pills.join('')}</span>` : ''}</div>`
       + `<select data-ls-level-for="${escAttr(String(x.id))}" aria-label="Level for ${escAttr(whoOf(x))}">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}"${x.permission === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
       + `<button class="file-library-tool" type="button" data-ls-remove="${escAttr(String(x.id))}" data-ls-who="${escAttr(whoOf(x))}" aria-label="Remove ${escAttr(whoOf(x))}">Remove</button></div>`;
@@ -7863,8 +7872,8 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
         parts.push(`<details class="share-existing"><summary>Folders shared inside this library (${folders.length})</summary>`
           + folders.map(f => {
             const rows = inside.filter(x => x.folder_path === f);
-            const gone = rows.some(x => x.folder_present === false);
-            return `<button type="button" class="ls-row ls-row-btn" data-ls-open="${escAttr(f)}" title="Open this folder's sharing"><span class="ls-who"><span class="ls-who-name">${esc(f)}</span><span class="ls-who-sub"><span>${rows.map(x => `${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)} · ${shareLevelLabel(x.permission)}`).join(', ')}</span>${gone ? '<span class="pill warn">Folder is empty or gone</span>' : ''}</span></span></button>`;
+            const empty = rows.find(x => x.folder_state && x.folder_state !== 'live');
+            return `<button type="button" class="ls-row ls-row-btn" data-ls-open="${escAttr(f)}" title="Open this folder's sharing"><span class="ls-who"><span class="ls-who-name">${esc(f)}</span><span class="ls-who-sub"><span>${rows.map(x => `${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)} · ${shareLevelLabel(x.permission)}`).join(', ')}</span>${empty ? `<span class="pill warn">${empty.folder_state === 'gone' ? 'Folder is gone' : 'Empty — still shared'}</span>` : ''}</span></span></button>`;
           }).join('') + `</details>`);
       }
     }
