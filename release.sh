@@ -25,7 +25,9 @@ for a in "$@"; do
   esac
 done
 
-[ -f VERSION ] && [ -d .git ] || die "Run this from the Memex repo root."
+# -e, not -d: in a git worktree .git is a FILE pointing at the real one, and a release
+# cut from a worktree is a perfectly ordinary release.
+[ -f VERSION ] && [ -e .git ] || die "Run this from the Memex repo root."
 
 # Auto-compute the next version for today if none was given.
 if [ -z "$VER" ]; then
