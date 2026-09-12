@@ -7240,9 +7240,10 @@ function fileCommandCreateUploadHtml() {
   // stays for anyone who may create one.
   const canAdd = canWriteHere(currentFolderPath);
   const canCreateLib = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  const legacy = currentLibrary()?.add_right === 'legacy' && canAdd;
+  // A library of your own: what you put in it is yours until you share it.
+  const mineAlone = currentLibrary()?.personal && !currentLibrary()?.shared && canAdd;
   const createItems = canAdd
-    ? `<button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button>${legacy ? '<div class="menu-rule"></div><div class="file-create-note">Only you (and admins) will see files you add here: this library isn\'t shared.</div>' : ''}${canCreateLib ? '<div class="menu-rule"></div>' : ''}`
+    ? `<button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button>${mineAlone ? '<div class="menu-rule"></div><div class="file-create-note">This library is yours. Only you (and admins) will see what you put in it, until you share it.</div>' : ''}${canCreateLib ? '<div class="menu-rule"></div>' : ''}`
     : '';
   const create = (createItems || canCreateLib)
     ? `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button><div class="file-upload-menu file-create-menu" id="file-create-menu">${createItems}${canCreateLib ? `<button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>` : ''}</div></div>`
@@ -7487,7 +7488,7 @@ function libraryRelation(l) {
     case 'rw': return 'Shared with you · Read-Write';
     case 'r': return 'Shared with you · Read-only';
     case 'folders': return 'Folders in it are shared with you';
-    case 'listed': return l.add_right === 'legacy' ? 'Not shared · files you add stay private to you' : 'You see only files shared with you';
+    case 'listed': return 'You see only your own files in here';
     default: return 'Library';
   }
 }
@@ -7698,7 +7699,7 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     + `<div data-ls-pane="group" hidden><select data-ls-group aria-label="Group"><option value="">Loading groups…</option></select></div>`
     + `<div class="ls-add-row"><select data-ls-level aria-label="Level">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select><button class="run-btn" type="button" data-ls-add disabled>Share</button></div>`
     + `<p class="file-share-hint" style="margin:0">${folderPath ? "People you add can open this folder's files, including files added to it later." : "People you add can open this library's files, including files added later."} Read-Write also lets them add, change and delete files and create public links. Neither lets them share it onward. Files other people added before the library was shared stay private to them.</p>`
-    + (!folderPath && lib0 && lib0.shared === false ? `<p class="file-share-hint" style="margin:0">Right now everyone can see this library in their list and add their own private files to it. Once it's shared, only you and the people you share it with will.</p>` : '')
+    + (!folderPath && lib0 && lib0.shared === false ? `<p class="file-share-hint" style="margin:0">Nobody but you and admins can see this library or anything in it. Sharing it puts it in their list too.</p>` : '')
     + `</div>`
     + `<div class="ls-list" data-ls-list><div class="ls-empty">Loading…</div></div>`
     + `<div data-ls-notes></div>`;
@@ -7886,7 +7887,7 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
       parts.push(`<p class="ls-note">Sharing ended when this folder was deleted on ${esc(when)}. <button type="button" class="link-btn" data-ls-again>Share again with ${who}?</button></p>`);
     }
     if (Array.isArray(data.legacy_members) && data.legacy_members.length) {
-      parts.push(`<p class="ls-note">Listed for ${data.legacy_members.map(x => esc(x.subject_email)).join(', ')}: a member list from before sharing existed. It only decides who sees the library in their list and gives no access to files.</p>`);
+      parts.push(`<p class="ls-note">Listed for ${data.legacy_members.map(x => esc(x.subject_email)).join(', ')}: a member list from before sharing existed. It decides nothing any more — it gave no access to files, and no longer puts the library in anybody's list either. Share it with them properly if they should have it.</p>`);
     }
     notes.innerHTML = parts.join('');
     const again = notes.querySelector('[data-ls-again]');

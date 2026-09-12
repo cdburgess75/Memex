@@ -646,7 +646,7 @@ async function guardExchangeUpload(req, res, next) {
     // Files sent back land beside the shared file, owned by the link's creator -- so the
     // creator must still be able to add files there (checked here, before multer reads
     // a byte). A subfolder in the upload is below that folder, which the same right covers.
-    const dest = await libraries.writeRight(share.creator, share.library_id || (await libraries.defaultLibraryId()), parentOf(share.name));
+    const dest = await libraries.writeRight(share.creator, share.library_id || (await libraries.defaultLibraryFor(share.creator)), parentOf(share.name));
     if (dest.status) return res.status(403).json({ error: 'This link can no longer receive files.' });
     req.exchangeDest = dest;
     // A password-protected link authorises uploads with a TICKET, not the raw
@@ -2011,7 +2011,7 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     // there -- keeps it in that folder; new folders and the file name are cleaned the
     // way uploads are (HTML-significant and control characters stripped, traversal
     // neutralized), so a rename cannot invent a name an upload could never have stored.
-    const libraryId = doc.library_id || (await libraries.defaultLibraryId());
+    const libraryId = doc.library_id || (await libraries.defaultLibraryFor(req.user));
     const raw = String(req.body?.name || '').replace(/\\/g, '/');
     const cut = raw.lastIndexOf('/');
     const base = cleanDisplayName(raw.slice(cut + 1)).slice(0, 255);
@@ -2093,7 +2093,7 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
     const blank = blankDocs.blankFile(ext, rawName);
 
     const path = require('path');
-    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
     // An existing (or shared) folder is kept exactly; a new one is named as before.
     const folder = await destinationFolder(req.body?.folder, libraryId, req.user);
     if (folder === null) return res.status(400).json({ error: 'invalid name' });

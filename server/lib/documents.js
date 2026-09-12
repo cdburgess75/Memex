@@ -153,7 +153,8 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
       console.error('Text extraction failed (non-fatal):', e.message);
     }
   }
-  const lib = libraryId || (await libraries.defaultLibraryId());
+  // Nobody said where: it lands in the uploader's own library, never in a shared one.
+  const lib = libraryId || (await libraries.defaultLibraryFor(user));
 
   // U6 dedupe: a byte-identical re-upload — same content hash, same name, same library,
   // that this user could EDIT — returns the existing document instead of creating a

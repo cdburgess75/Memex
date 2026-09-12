@@ -27,6 +27,8 @@ jest.mock('../../lib/db', () => ({
     if (/FROM user_roles WHERE lower\(email\)/.test(sql)) return mockState.account;
     if (/UPDATE libraries SET owner_id/.test(sql)) return mockState.updated;
     if (/count\(\*\)::int AS n FROM documents/.test(sql)) return { n: mockState.others };
+    if (/SELECT name FROM libraries WHERE id/.test(sql)) return { name: 'Ptech Workspace' };
+    if (/UPDATE libraries SET name/.test(sql)) return { id: LIB, name: params[1], owner_id: null, personal: false };
     return null;
   }),
   withTransaction: jest.fn(async (fn) => fn({ query: async () => ({ rows: [] }) })),
@@ -47,6 +49,7 @@ jest.mock('../../middleware/auth', () => (req, res, next) => {
 const auditLog = require('../../lib/auditLog');
 const app = () => { const a = express(); a.use(express.json()); a.use('/api/libraries', require('../../routes/libraries')); return a; };
 const setOwner = (body) => request(app()).post(`/api/libraries/${LIB}/owner`).send(body);
+const rename = (body) => request(app()).patch(`/api/libraries/${LIB}`).send(body);
 const adopt = (body) => request(app()).post(`/api/libraries/${LIB}/adopt`).send(body || {});
 
 beforeEach(() => {
@@ -146,6 +149,36 @@ describe('handing your own files to the library', () => {
     mockState.adopted = [];
     const res = await adopt();
     expect(res.body).toMatchObject({ ok: true, count: 0 });
+    expect(auditLog.append).not.toHaveBeenCalled();
+  });
+});
+
+describe('renaming a library', () => {
+  test('its manager can, and the change is written down', async () => {
+    const res = await rename({ name: '  Company Files ' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Company Files');
+    expect(auditLog.append).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.stringContaining('renamed'),
+    }));
+  });
+
+  test('an empty, over-long or control-character name is refused', async () => {
+    expect((await rename({ name: '   ' })).status).toBe(400);
+    expect((await rename({ name: 'x'.repeat(121) })).status).toBe(400);
+    expect((await rename({ name: 'Com\u0001pany' })).status).toBe(400);
+  });
+
+  test('somebody who does not manage it cannot', async () => {
+    mockState.visible = { id: LIB, name: 'x', can_manage: false };
+    expect((await rename({ name: 'Mine now' })).status).toBe(403);
+    mockState.visible = null;
+    expect((await rename({ name: 'Mine now' })).status).toBe(404);
+  });
+
+  test('renaming to the same name is not written down as a change', async () => {
+    const res = await rename({ name: 'Ptech Workspace' });
+    expect(res.status).toBe(200);
     expect(auditLog.append).not.toHaveBeenCalled();
   });
 });

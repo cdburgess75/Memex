@@ -302,7 +302,7 @@ const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploade
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
-    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
     // A new folder inside an existing (or shared) one keeps that folder's name exactly;
     // only the new part is named the way new folders are.
     const folderPath = await destinationFolder(req.body?.path, libraryId, req.user);

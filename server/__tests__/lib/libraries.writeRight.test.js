@@ -37,26 +37,32 @@ test('the owner, and a Read-Write share holder, write library content', async ()
   db.queryOne.mockResolvedValueOnce(row({ shared: true, rw_grant: true }));
   expect(await writeRight(contributor, LIB, 'a/b')).toEqual({ right: 'grant', scoped: true });
 });
-test("an unshared, open library keeps today's rule, and what lands there stays personal", async () => {
+// Private by default: a library nobody has shared with you is not yours to add to, even
+// though it used to be. Everybody has one of their own to put things in instead.
+test('a library nobody has shared with you is refused, however open it used to be', async () => {
   db.queryOne.mockResolvedValueOnce(row({}));
-  expect(await writeRight(contributor, LIB, '')).toEqual({ right: 'legacy', scoped: false });
+  const r = await writeRight(contributor, LIB, '');
+  expect(r.status).toBe(403);
+  expect(r.error).toMatch(/Ask the library owner for Read-Write access/);
 });
 test('once a library is shared, only its owner and Read-Write holders may add to it', async () => {
   db.queryOne.mockResolvedValueOnce(row({ shared: true }));
   expect((await writeRight(contributor, LIB, '')).status).toBe(403);
 });
-test('a member-restricted library the caller is not listed in is refused', async () => {
-  db.queryOne.mockResolvedValueOnce(row({ legacy_listed: false }));
+test('a library with a share, but not one of yours, is refused', async () => {
+  db.queryOne.mockResolvedValueOnce(row({ shared: true, rw_grant: false }));
   expect((await writeRight(contributor, LIB, '')).status).toBe(403);
 });
-// The old open-library rule is today's rule, unchanged: members are matched on the
-// address the account signs in with, as the library switcher matches them. Shares match
-// only the verified address, which the SQL looks up by account id ($2), not this slot.
-test('the legacy member match uses the address the switcher uses, even unverified', async () => {
+// Nothing is matched on an address an account merely CLAIMS any more. The old open rule
+// was the one place that did -- it matched the member list on the sign-in address -- and
+// it is gone, so the only address in play is the one the identity provider verified,
+// looked up by account id ($2) rather than sent in.
+test('only a verified address counts, and the claimed one is no longer sent at all', async () => {
   db.queryOne.mockResolvedValueOnce(row({}));
   await writeRight({ ...contributor, email: 'U@X.com', emailVerified: false }, LIB, 'Clients');
-  expect(db.queryOne.mock.calls[0][1]).toEqual([LIB, 'u1', 'Clients', 'u@x.com']);
+  expect(db.queryOne.mock.calls[0][1]).toEqual([LIB, 'u1', 'Clients']);
   expect(db.queryOne.mock.calls[0][0]).toMatch(/g\.subject_email = \(SELECT ur\.verified_email FROM user_roles ur WHERE ur\.user_id = \$2\)/);
+  expect(db.queryOne.mock.calls[0][0]).not.toMatch(/library_members/);
 });
 test('sharedFolderAt looks at and below the path, and ignores bad input', async () => {
   expect(await sharedFolderAt('nope', 'a')).toBe(false);
