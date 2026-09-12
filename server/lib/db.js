@@ -39,7 +39,17 @@ async function withTransaction(fn) {
   }
 }
 
+// A statement's parameters, numbered as it is written: p(value) appends and returns $n.
+// Statements that embed documentAccess.condition() (five parameters of its own) are far
+// easier to read this way than by hand-counting positions.
+function paramList() {
+  const vals = [];
+  const p = (v) => { vals.push(v); return `$${vals.length}`; };
+  p.vals = vals;
+  return p;
+}
+
 // Close the pool (integration-test teardown; the app itself never calls this).
 async function end() { if (_pool) { const p = _pool; _pool = null; await p.end(); } }
 
-module.exports = { query, queryOne, withTransaction, end };
+module.exports = { query, queryOne, withTransaction, paramList, end };

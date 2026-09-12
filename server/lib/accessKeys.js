@@ -187,13 +187,7 @@ async function sharedWithMe(user) {
 const B = documentAccess.branches;
 const KEY_FILES_SHOWN = 20;
 
-// A statement's parameters, numbered as it is written: p(value) appends and returns $n.
-function paramList() {
-  const vals = [];
-  const p = (v) => { vals.push(v); return `$${vals.length}`; };
-  p.vals = vals;
-  return p;
-}
+const paramList = db.paramList;
 
 // The rule's level for principal refs R on document alias `a`, highest set first.
 function levelWith(a, R, pw, pa) {

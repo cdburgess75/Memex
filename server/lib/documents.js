@@ -86,7 +86,8 @@ function canonicalFolderPath(raw) {
 // "Smith _ Co _2025_", and a file and a folder moved together into a new "R&D" both
 // land in the same "R_D". Returns '' for the root, or null for a path that can't name
 // a folder (a '..' segment, nothing left once cleaned).
-async function destinationFolder(raw, libraryId, user) {
+// `q`: readable inside a caller's transaction (the folder operations need that).
+async function destinationFolder(raw, libraryId, user, q = db) {
   const segs = tidyFolderPath(raw).split('/').map(seg => seg.trim()).filter(Boolean);
   if (!segs.length) return '';
   const prefixes = [];
@@ -96,7 +97,7 @@ async function destinationFolder(raw, libraryId, user) {
   }
   let keep = 0;
   if (prefixes.length) {
-    const found = await db.queryOne(
+    const found = await q.queryOne(
       `SELECT p FROM unnest($1::text[]) AS p
        WHERE EXISTS (SELECT 1 FROM documents d
                      WHERE d.deleted_at IS NULL AND d.library_id = $2 AND starts_with(d.name, p || '/')
@@ -194,7 +195,16 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   return { doc, canIngest };
 }
 
+// "Everything under this folder", as a RANGE rather than starts_with(), so the
+// (library_id, name text_pattern_ops) index can answer it. text_pattern_ops compares
+// byte by byte whatever the database collation is, so the range and a byte prefix agree
+// by construction. '0' is the byte right after '/'. Used only by the new existence
+// checks; every existing starts_with() stays exactly as it is, condition() above all.
+const prefixRange = (alias, prefixParam) =>
+  `${alias}.name ~>=~ (${prefixParam} || '/') AND ${alias}.name ~<~ (${prefixParam} || '0')`;
+
 module.exports = {
+  prefixRange,
   DOCUMENT_COLUMNS,
   TEXT_EXTRACTION_MAX_BYTES,
   fileSizeLabelForEvent,
