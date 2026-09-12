@@ -456,18 +456,12 @@ suite('library sharing groundwork against real Postgres', () => {
       ]);
     });
 
-    test('a shared folder now moves with its share, and only the operations that END one still refuse', async () => {
+    test('a shared folder now moves with its share, and the operations that END one say so', async () => {
       as(OWNER);
       await addDoc('Team/plan.txt', OWNER, LD, true);
-      // Ending somebody's share is the library owner's to do, and is asked separately:
-      // a move to another library and a delete to the Trash still refuse here.
-      for (const [url, body] of [['/delete', {}], ['/move', { library_id: LOPEN }]]) {
-        const res = await post('/api/files/folder' + url, { path: 'Team', source_library_id: LD, ...body });
-        expect([url, res.status, res.body.code]).toEqual([url, 409, 'FOLDER_SHARED']);
-      }
-      // A rename carries the share with the folder: the same people, at the same level.
       const before = await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Team' ORDER BY subject_email", [LD]);
       expect(before.length).toBeGreaterThan(0);
+      // A rename carries the share with the folder: the same people, at the same level.
       const ren = await post('/api/files/folder/rename', { path: 'Team', name: 'Team2', source_library_id: LD });
       expect([ren.status, ren.body.shares_moved]).toEqual([200, before.length]);
       expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Team2/plan.txt' AND library_id = $1 AND deleted_at IS NULL", [LD])).n).toBe(1);
@@ -478,8 +472,15 @@ suite('library sharing groundwork against real Postgres', () => {
       const rep = await post('/api/files/folder/reparent', { path: 'Team2', target: 'Archive', source_library_id: LD });
       expect([rep.status, rep.body.shares_moved]).toEqual([200, before.length]);
       expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Archive/Team2/plan.txt' AND library_id = $1", [LD])).n).toBe(1);
-      const moved = await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Archive/Team2' ORDER BY subject_email", [LD]);
-      expect(moved).toEqual(before);
+      expect(await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Archive/Team2' ORDER BY subject_email", [LD])).toEqual(before);
+      // Deleting it ENDS the sharing, and says whose it was -- and it can be undone.
+      const gone = await post('/api/files/folder/delete', { path: 'Archive/Team2', source_library_id: LD });
+      expect(gone.status).toBe(200);
+      expect(gone.body.shares_ended.length).toBe(before.length);
+      expect((await one("SELECT count(*)::int AS n FROM library_grants WHERE library_id = $1 AND folder_path = 'Archive/Team2'", [LD])).n).toBe(0);
+      const back = await post('/api/files/folder/restore', { op_id: gone.body.op_id });
+      expect([back.status, back.body.count]).toEqual([200, gone.body.count]);
+      expect(await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Archive/Team2' ORDER BY subject_email", [LD])).toEqual(before);
       // put it back, so the rest of the suite sees the library it expects
       expect((await post('/api/files/folder/reparent', { path: 'Archive/Team2', target: '', source_library_id: LD })).status).toBe(200);
       expect((await post('/api/files/folder/rename', { path: 'Team2', name: 'Team', source_library_id: LD })).status).toBe(200);

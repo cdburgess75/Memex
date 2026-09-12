@@ -5,7 +5,7 @@ const request = require('supertest');
 const express = require('express');
 
 const mockQueries = [];
-const mockRows = { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0 };
+const mockRows = { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0, grants: [], library: null };
 jest.mock('../../lib/db', () => {
   const api = {
   query: jest.fn(async (sql, params) => {
@@ -14,6 +14,7 @@ jest.mock('../../lib/db', () => {
     if (/^\s*UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return [{ id: 'd1', name: params[1] }];
     if (/WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(sql)) return mockRows.transfer;
     if (/SELECT DISTINCT d\.library_id/.test(sql)) return [{ library_id: 'aaaaaaaa-0000-4000-8000-000000000001' }];
+    if (/FROM library_grants g\b[\s\S]*FOR UPDATE/.test(sql)) return mockRows.grants;
     return [];
   }),
   queryOne: jest.fn(async (sql, params) => {
@@ -22,6 +23,8 @@ jest.mock('../../lib/db', () => {
     if (/INSERT INTO upload_sessions/.test(sql)) return { id: 's1', received_chunks: [] };
     if (/FROM document_share_links s\s+JOIN documents d/.test(sql)) return mockRows.share;
     if (/SELECT count\(\*\)::int AS n FROM documents d/.test(sql)) return { n: mockRows.keptCount };
+    if (/SELECT owner_id FROM libraries WHERE id = \$1/.test(sql)) return mockRows.library;
+    if (/INSERT INTO folder_ops/.test(sql)) return { op_id: '99999999-0000-4000-8000-000000000009' };
     if (/FROM upload_sessions WHERE id = \$1 AND uploaded_by = \$2/.test(sql)) return mockRows.session;
     if (/FROM document_versions\s+WHERE id = \$1 AND document_id = \$2/.test(sql)) return mockRows.version;
     if (/UPDATE documents\s+SET name = \$1, size = \$2/.test(sql)) return { id: 'd1', name: params[0] };
@@ -94,7 +97,7 @@ const REFUSED = { status: 403, error: "You can't add files here. Ask the library
 beforeEach(() => {
   mockQueries.length = 0;
   mockRight.value = { right: 'owner', scoped: true };
-  Object.assign(mockRows, { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0 });
+  Object.assign(mockRows, { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0, grants: [], library: null });
   mockAuth.user = USER;
   jest.clearAllMocks();
 });
@@ -220,17 +223,31 @@ describe('renames, restores and transfers', () => {
 
 describe('folders', () => {
   const post = (url, body) => request(app()).post(`/api/files/folder${url}`).send({ source_library_id: LIB, ...body });
-  // Ending a share still belongs to whoever manages the library (piece 4, part 9); a
-  // rename or a move within the library carries its shares instead of refusing.
-  test.each([
-    ['move', '/move', { path: 'Clients/Acme', library_id: LIB }],
-    ['delete', '/delete', { path: 'Clients/Acme' }],
-  ])('%s still refuses a folder with a share at or below it', async (_n, url, body) => {
-    libraries.sharedFolderAt.mockResolvedValueOnce(true);
-    const res = await post(url, body);
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('FOLDER_SHARED');
+  test('taking a shared folder to another library is refused to someone who does not manage it', async () => {
+    mockRows.grants = [{ id: 'g1', folder_path: 'Clients/Acme', permission: 'read' }];
+    const res = await post('/move', { path: 'Clients/Acme', library_id: 'bbbbbbbb-0000-4000-8000-000000000002' });
+    expect([res.status, res.body.code]).toEqual([403, 'FOLDER_MANAGER_ONLY']);
     expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
+  });
+  // Deleting a folder ENDS its sharing, so it is the library owner's to delete -- and
+  // whoever merely writes there is told that, rather than being told it can't be done.
+  test('deleting a shared folder is refused to someone who does not manage the library', async () => {
+    mockRows.grants = [{ id: 'g1', folder_path: 'Clients/Acme', permission: 'read' }];
+    const res = await post('/delete', { path: 'Clients/Acme' });
+    expect([res.status, res.body.code]).toEqual([403, 'FOLDER_MANAGER_ONLY']);
+    expect(res.body.error).toMatch(/owns this library/);
+    expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
+    expect(mockQueries.some(q => /INSERT INTO folder_ops/.test(q.sql))).toBe(false);
+  });
+  test('the library owner may delete it, and the shares end into the record', async () => {
+    mockRows.grants = [{ id: 'g1', folder_path: 'Clients/Acme', permission: 'read' }];
+    mockRows.library = { owner_id: USER.id };
+    const res = await post('/delete', { path: 'Clients/Acme' });
+    expect(res.status).toBe(200);
+    expect(res.body.op_id === null || typeof res.body.op_id === 'string').toBe(true);
+    expect(mockQueries.some(q => /INSERT INTO folder_ops/.test(q.sql))).toBe(true);
+    expect(mockQueries.some(q => /DELETE FROM library_grants g[\s\S]*INSERT INTO library_grants_ended/.test(q.sql))).toBe(true);
+    expect(res.body.undo_until).toEqual(expect.any(String));
   });
   test.each([
     ['rename', '/rename', { path: 'Clients/Acme', name: 'Acme2' }, 'Clients/Acme2'],
@@ -310,8 +327,8 @@ describe('folders', () => {
     mockRows.keptCount = 2;
     const res = await post('/move', { path: 'Clients/Acme', library_id: 'bbbbbbbb-0000-4000-8000-000000000002' });
     const upd = mockQueries.find(q => /UPDATE documents d SET library_id = \$2/.test(q.sql));
-    expect(upd.sql).toMatch(/AND \(NOT d\.library_scoped OR \$11::boolean\)/);
-    expect(upd.sql).toMatch(/library_scoped = d\.library_scoped OR \(\$9::boolean AND d\.uploaded_by IS NOT DISTINCT FROM \$10\)/);
+    expect(upd.sql).toMatch(/NOT d\.library_scoped OR \$11::boolean/);
+    expect(upd.sql).toMatch(/library_scoped = d\.library_scoped OR \(\$9::boolean AND d\.uploaded_by IS NOT DISTINCT FROM \$10::uuid\)/);
     expect(upd.params.slice(8)).toEqual([false, USER.id, false]);
     expect(res.body.kept).toBe(2);
   });
@@ -358,11 +375,11 @@ describe('an admin moving other people\'s files', () => {
   });
   test.each([
     ['reparent', '/reparent', { target: 'Archive' }, 9],
-    ['move', '/move', { library_id: LIB }, 8],
+    ['move', '/move', { library_id: LIB }, 8],   // $9 scoped, $10 the mover
   ])('a folder %s scopes only the admin\'s own files (no admin exception in the SQL)', async (_n, url, body, from) => {
     await post(url, { path: 'Clients/Acme', ...body });
-    const upd = mockQueries.find(q => /^\s*UPDATE documents d SET (name|library_id) = \$2/.test(q.sql));
-    expect(upd.sql).toMatch(/d\.uploaded_by IS NOT DISTINCT FROM \$\d+\)/);
+    const upd = mockQueries.find(q => /^\s*UPDATE documents d SET (name = \$2|library_id = \$2::uuid)/.test(q.sql));
+    expect(upd.sql).toMatch(/d\.uploaded_by IS NOT DISTINCT FROM \$\d+(::uuid)?\)/);
     expect(upd.sql).not.toMatch(/OR \$\d+::boolean\)\)/);
     expect(upd.params.slice(from, from + 2)).toEqual([true, ADMIN.id]);
   });
