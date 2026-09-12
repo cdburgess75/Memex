@@ -6,12 +6,14 @@ const { withFolderOp, FolderOpError, sendFolderOpError } = require('../lib/folde
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const libraries = require('../lib/libraries');
+const folderUndo = require('../lib/folderUndo');
 const shares = require('../lib/libraryShares');
+const db = require('../lib/db');
 const groups = require('../lib/groups');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const { actingAs } = require('../lib/email');
-const { canonicalFolderPath } = require('../lib/documents');
+const { canonicalFolderPath, folderLookupPath } = require('../lib/documents');
 
 // GET /api/libraries — list libraries the caller can access
 router.get('/', auth, async (req, res) => {
@@ -107,6 +109,11 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
       library: { id: lib.id, name: lib.name, owner_id: lib.owner_id, owner_email: lib.owner_email },
       shares: await shares.listShares(lib.id),
     };
+    // Sharing that ended when a folder was deleted, and could still be offered again --
+    // what makes the delete dialog's promise true after its Undo has faded. Only for a
+    // folder, and only for as long as the deletion can still be undone.
+    const folderPath = folderLookupPath(req.query?.path);
+    if (folderPath) body.ended_shares = await folderUndo.endedSharesAt(db, lib.id, folderPath);
     // The old member list only ever controlled who saw the library listed; admins see it
     // so it isn't mistaken for access.
     if (req.user.role === 'admin') body.legacy_members = await libraries.listMembers(lib.id);
