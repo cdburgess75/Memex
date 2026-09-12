@@ -23,6 +23,7 @@ const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fi
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
+const { withFolderOp, sendFolderOpError, FolderOpError } = require('../../lib/folderOps');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -96,17 +97,22 @@ async function destinationRight(res, user, libraryId, path) {
   return r;
 }
 
-// Folder shares are keyed by path. Until renames and moves carry them along (piece 4),
-// a folder with a share at or below it must not be renamed, moved or deleted: the share
-// would be orphaned, or re-attach to whatever next took the name.
-async function refuseIfShared(res, libraryId, ...paths) {
+// Folder shares are keyed by path, so until renames and moves carry them along, a folder
+// with a share at or below it must not be renamed, moved or deleted: the share would be
+// orphaned, or re-attach to whatever next took the name. These two run INSIDE a folder
+// operation's transaction, on its client, and refuse by throwing so it rolls back.
+const folderSharedError = () => new FolderOpError('FOLDER_SHARED', 409,
+  "This folder is shared. Remove its shares before renaming, moving or deleting it.");
+async function sharedAt(q, libraryId, ...paths) {
   for (const p of paths) {
-    if (p && await libraries.sharedFolderAt(libraryId, p)) {
-      res.status(409).json({ code: 'FOLDER_SHARED', error: "This folder is shared. Remove its shares before renaming, moving or deleting it." });
-      return true;
-    }
+    if (p && await libraries.sharedFolderAt(libraryId, p, q)) return true;
   }
   return false;
+}
+async function writeRightOrThrow(user, libraryId, path, q) {
+  const r = await libraries.writeRight(user, libraryId, path, q);
+  if (r.status) throw new FolderOpError(null, r.status, r.error);
+  return r;
 }
 
 // SQL for "is library content after the move" (see routes/files.js libraryScopeAfterMove),
@@ -151,23 +157,26 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     const newPath = parent ? `${parent}/${newName}` : newName;
     const libraryId = await folderLibraryId(req, oldPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
-    if (await refuseIfShared(res, libraryId, oldPath, newPath)) return;
-    const dest = await destinationRight(res, req.user, libraryId, newPath);
-    if (!dest) return;
-    // A rename keeps the folder where it is, under the same shares, so what is library
-    // content and what is personal doesn't change.
-    const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-       RETURNING d.id`,
-      // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
-      // a folder name with an emoji in it would otherwise be cut one character short.
-      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
-    );
+    // Everything from here happens inside one transaction holding the library's tree
+    // lock, and every check is re-run on that client: nothing may place a document by
+    // name, or rename anything else in this library, while this runs.
+    const rows = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
+      if (await sharedAt(q, libraryId, oldPath, newPath)) throw folderSharedError();
+      const dest = await writeRightOrThrow(req.user, libraryId, newPath, q);
+      void dest; // a rename keeps the folder where it is: what is library content doesn't change
+      return q.query(
+        `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
+         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+         RETURNING d.id`,
+        // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
+        // a folder name with an emoji in it would otherwise be cut one character short.
+        [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
+      );
+    });
     await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/delete — move a whole folder's contents to Trash
@@ -177,17 +186,19 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = await folderLibraryId(req, folderPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
-    if (await refuseIfShared(res, libraryId, folderPath)) return;
-    const rows = await db.query(
-      `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
-       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-       RETURNING d.id`,
-      [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write'), libraryId]
-    );
+    const rows = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
+      if (await sharedAt(q, libraryId, folderPath)) throw folderSharedError();
+      return q.query(
+        `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
+         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+         RETURNING d.id`,
+        [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write'), libraryId]
+      );
+    });
     await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${rows.length})`);
     res.json({ ok: true, count: rows.length });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
@@ -206,25 +217,26 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     const newPath = target ? `${target}/${base}` : base;
     if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
     if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
-    if (await refuseIfShared(res, srcLibraryId, oldPath)) return;
-    // Moving a folder INTO another one needs the right to add files there -- dragging a
-    // folder into a shared folder must not quietly share it with everyone who has access.
-    // Checked before whether a share sits at the new path, so the answer can't be used
-    // to probe for shares in places the caller can't write to.
-    const dest = await destinationRight(res, req.user, srcLibraryId, newPath);
-    if (!dest) return;
-    if (await refuseIfShared(res, srcLibraryId, newPath)) return;
-    const rows = await db.query(
-      `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
-       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-       RETURNING d.id`,
-      [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id]
-    );
+    const rows = await withFolderOp({ libraryIds: [srcLibraryId] }, async (q) => {
+      if (await sharedAt(q, srcLibraryId, oldPath)) throw folderSharedError();
+      // Moving a folder INTO another one needs the right to add files there -- dragging a
+      // folder into a shared folder must not quietly share it with everyone who has access.
+      // Checked before whether a share sits at the new path, so the answer can't be used
+      // to probe for shares in places the caller can't write to.
+      const dest = await writeRightOrThrow(req.user, srcLibraryId, newPath, q);
+      if (await sharedAt(q, srcLibraryId, newPath)) throw folderSharedError();
+      return q.query(
+        `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
+         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
+         RETURNING d.id`,
+        [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
+         dest.scoped, req.user.id]
+      );
+    });
     await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
     res.json({ ok: true, path: newPath, count: rows.length });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/folder/move — move a folder's contents to another library
@@ -237,43 +249,46 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     // (writeRight: 400 for a malformed id, 404 for an unknown one, 403 without a right).
     // documents.library_id has no foreign key, so without this a document could be
     // stamped with a library nobody can reach and drop out of every listing.
-    const dest = await destinationRight(res, req.user, libraryId, folderPath);
-    if (!dest) return;
+    const dest0 = await destinationRight(res, req.user, libraryId, folderPath);
+    if (!dest0) return;
     const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
-    if (await refuseIfShared(res, srcLibraryId, folderPath)) return;
-    if (await refuseIfShared(res, libraryId, folderPath)) return;
-    // Library content belongs to its library: taking it to ANOTHER library hands it to
-    // that library's owner and ends its shares, so only whoever manages the source (its
-    // owner while a contributor, or an admin) may, and never into a library held only
-    // under the old open rule ($11). Anyone else's move leaves it where it is, counted
-    // (kept) so the app can say why -- they can still copy it.
-    const src = await db.queryOne('SELECT owner_id FROM libraries WHERE id = $1', [srcLibraryId]);
-    const managesSource = req.user.role === 'admin'
-      || (req.user.role === 'contributor' && !!src?.owner_id && String(src.owner_id) === String(req.user.id));
-    const contentMoves = String(srcLibraryId) === String(libraryId) || (managesSource && dest.right !== 'legacy');
-    const rows = await db.query(
-      `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
-       WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
-         AND (NOT d.library_scoped OR $11::boolean)
-       RETURNING d.id`,
-      [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-       dest.scoped, req.user.id, contentMoves]
-    );
-    let kept = 0;
-    if (!contentMoves) {
-      const left = await db.queryOne(
-        `SELECT count(*)::int AS n FROM documents d
-         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $7 AND d.library_scoped
-           AND ${documentAccess.condition('d', 2)}`,
-        [folderPath, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+    // Both libraries are locked, in key order, so a move each way cannot deadlock.
+    const { rows, kept } = await withFolderOp({ libraryIds: [srcLibraryId, libraryId] }, async (q) => {
+      if (await sharedAt(q, srcLibraryId, folderPath)) throw folderSharedError();
+      if (await sharedAt(q, libraryId, folderPath)) throw folderSharedError();
+      const dest = await writeRightOrThrow(req.user, libraryId, folderPath, q);
+      // Library content belongs to its library: taking it to ANOTHER library hands it to
+      // that library's owner and ends its shares, so only whoever manages the source (its
+      // owner while a contributor, or an admin) may, and never into a library held only
+      // under the old open rule ($11). Anyone else's move leaves it where it is, counted
+      // (kept) so the app can say why -- they can still copy it.
+      const managesSource = await libraries.managesLibrary(req.user, srcLibraryId, q);
+      const contentMoves = String(srcLibraryId) === String(libraryId) || (managesSource && dest.right !== 'legacy');
+      const moved = await q.query(
+        `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
+         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
+           AND (NOT d.library_scoped OR $11::boolean)
+         RETURNING d.id`,
+        [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
+         dest.scoped, req.user.id, contentMoves]
       );
-      kept = left?.n || 0;
-    }
+      let left = 0;
+      if (!contentMoves) {
+        const row = await q.queryOne(
+          `SELECT count(*)::int AS n FROM documents d
+           WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $7 AND d.library_scoped
+             AND ${documentAccess.condition('d', 2)}`,
+          [folderPath, ...documentAccess.userParams(req.user, 'write'), srcLibraryId]
+        );
+        left = row?.n || 0;
+      }
+      return { rows: moved, kept: left };
+    });
     await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length}${kept ? `, ${kept} kept` : ''})`);
     res.json({ ok: true, count: rows.length, kept });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
 // GET /api/files/folder/zip?path=... — download a folder's files as a compressed zip

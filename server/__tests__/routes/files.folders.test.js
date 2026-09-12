@@ -7,11 +7,25 @@
 const request = require('supertest');
 const express = require('express');
 
-jest.mock('../../lib/db', () => ({
-  query: jest.fn().mockResolvedValue([]),
-  queryOne: jest.fn().mockResolvedValue(null),
-  withTransaction: jest.fn(),
-}));
+jest.mock('../../lib/db', () => {
+  const query = jest.fn().mockResolvedValue([]);
+  const queryOne = jest.fn().mockResolvedValue(null);
+  return {
+    query,
+    queryOne,
+    // The folder operations run inside one transaction; the stand-in hands the callback
+    // a client backed by the same two mocks (a pg client answers { rows }).
+    withTransaction: jest.fn(async (fn) => fn({
+      query: async (sql, params = []) => {
+        const rows = await query(sql, params);
+        if (rows && rows.length) return { rows };
+        const one = await queryOne(sql, params);
+        return { rows: one ? [one] : [] };
+      },
+    })),
+    paramList: jest.requireActual('../../lib/db').paramList,
+  };
+});
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/storage', () => ({
   upload: jest.fn().mockResolvedValue(undefined),
