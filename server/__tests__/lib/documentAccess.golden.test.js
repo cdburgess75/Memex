@@ -1,9 +1,12 @@
 'use strict';
 // The access rule is written once, in named parts (documentAccess.conditionWith), so the
 // "who has access, and why" lists can evaluate the very same rule for every account and
-// name the row behind each way in. Splitting it must not change a single byte of what
-// every document query in Depot sends: the text below was captured from condition()
-// before the split (v2026.09.11.004). Change the rule on purpose, then re-capture.
+// name the row behind each way in. What every document query in Depot sends must not
+// change by accident: the text below is captured from condition() and compared byte for
+// byte. Change the rule on purpose, then re-capture.
+//
+// Re-captured twice so far: at the split (v2026.09.11.004), and when switching people off
+// added the one term that wraps the whole rule (v2026.09.12.006).
 jest.mock('../../lib/db', () => ({ query: jest.fn(), queryOne: jest.fn() }));
 const da = require('../../lib/documentAccess');
 const golden = require('./documentAccess.golden.json').condition;
@@ -17,6 +20,9 @@ test('condition() is conditionWith() over the request parameters', () => {
   for (const [a, s] of [['d', 1], ['x', 7]]) expect(da.conditionWith(a, da.refsAt(s))).toBe(da.condition(a, s));
 });
 
+// Still five. The switched-off term is a subquery on the account id the rule already
+// carries, deliberately -- ten call sites hand-number their own parameters after these,
+// and a sixth would have shifted every one of them silently.
 test('the rule references only its five parameters', () => {
   const sql = da.condition('d', 4);
   const used = [...new Set([...sql.matchAll(/\$(\d+)/g)].map(m => Number(m[1])))].sort((x, y) => x - y);
