@@ -61,8 +61,10 @@ describe('switching somebody off', () => {
     // the row builder is inside renderAdmin's template, so read the file around it
     expect(html).toMatch(/Switched off<\/span>/);
     expect(html).toMatch(/String\(u\.user_id\) === String\(currentUser\?\.id\)/);
-    expect(html).toMatch(/confirmSwitchOff\('\$\{u\.user_id\}'/);
-    expect(html).toMatch(/switchBackOn\('\$\{u\.user_id\}'/);
+    // the address and id reach the handler through data-* attributes, never spliced into
+    // its JS string -- esc() protects an attribute, not a string literal inside one
+    expect(html).toMatch(/onclick="confirmSwitchOff\(this\.dataset\.uid, this\.dataset\.email\)"/);
+    expect(html).toMatch(/onclick="switchBackOn\(this\.dataset\.uid, this\.dataset\.email\)"/);
     // somebody switched off cannot have their role changed from the list either
     expect(html).toMatch(/\$\{off \? 'disabled ' : ''\}onchange="updateUserRole/);
   });
@@ -84,12 +86,12 @@ describe('a library that outlives somebody', () => {
     const set = fn('setLibraryArchived');
     expect(set).toMatch(/nothing can be added to it, by anybody/);
     expect(set).toMatch(/bring it back at any time/i);
-    expect(html).toMatch(/currentUser\?\.role === 'admin' \? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu\(\);setLibraryArchived/);
+    expect(html).toMatch(/onclick="closeLibraryMenu\(\);setLibraryArchived\(this\.dataset\.lib, !!this\.dataset\.away\)"/);
   });
 
   test('renaming exists at all now, and is offered to whoever manages it', () => {
     expect(fn('renameLibrary')).toMatch(/apiPatch\('\/libraries\//);
-    expect(html).toMatch(/cur\.can_manage \? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu\(\);renameLibrary/);
+    expect(html).toMatch(/onclick="closeLibraryMenu\(\);renameLibrary\(this\.dataset\.lib\)"/);
   });
 
   test('handing one on is the deliberate thing, and says who has it now', () => {
@@ -98,5 +100,34 @@ describe('a library that outlives somebody', () => {
     expect(re).toMatch(/now belongs to/);
     // the comment above it is the rule: only ever for somebody switched off
     expect(html).toMatch(/only ever offered for somebody who has been switched off/);
+  });
+});
+
+// The rule this file exists to keep, stated once for the whole app rather than per button:
+// esc()/escAttr() make a value safe as HTML text or as an attribute. They do NOT make it
+// safe inside a JS string that is itself inside an attribute -- an address with a quote in
+// it closes the string, and whatever follows runs. Dynamic handler arguments come from
+// data-* instead (CLAUDE.md, Escaping).
+//
+// Eight handlers written before this rule was enforced still splice an escaped value:
+// joinScheduledMeeting, attestControl (x2), connTest, connEdit, connDelete, connNew and
+// switchAiModel. They are a known backlog, not a licence -- this test fails on a NINTH, so
+// the class cannot grow while the old ones wait their turn.
+const KNOWN_SPLICED = 8;
+
+describe('no NEW inline handler carries a spliced-in argument', () => {
+  const spliced = [...html.matchAll(/\son(?:click|change|input|submit)="([^"]*)"/g)]
+    .map(m => m[1])
+    .filter(h => /\w+\([^)]*\$\{/.test(h));
+
+  test('the dangerous shape -- an escaped value inside a handler\'s JS string -- has not grown', () => {
+    const escaped = spliced.filter(h => /\$\{esc\(|\$\{escAttr\(/.test(h));
+    expect(escaped.length).toBeLessThanOrEqual(KNOWN_SPLICED);
+  });
+
+  test('nothing this work added splices at all', () => {
+    for (const name of ['confirmSwitchOff', 'switchBackOn', 'renameLibrary', 'setLibraryArchived', 'reassignLibrary']) {
+      expect(spliced.filter(h => h.includes(name))).toEqual([]);
+    }
   });
 });

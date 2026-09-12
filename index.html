@@ -4838,11 +4838,16 @@ async function renderAdmin() {
             <td>${esc(u.role || '')}</td>
             <td>${assigned}</td>
             <td><select ${off ? 'disabled ' : ''}onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
-            <td>${off
-              ? `<button class="file-library-tool" onclick="switchBackOn('${u.user_id}', ${JSON.stringify(esc(u.email || '')).replace(/"/g, '&quot;')})">Switch on</button>`
-              : (String(u.user_id) === String(currentUser?.id)
-                  ? '<span class="note">you</span>'
-                  : `<button class="file-library-tool" onclick="confirmSwitchOff('${u.user_id}', ${JSON.stringify(esc(u.email || '')).replace(/"/g, '&quot;')})">Switch off…</button>`)}</td>
+            <td>${(() => {
+              // The address and the id travel in data-* attributes, never spliced into the
+              // handler's JS string: esc() protects an attribute, not a string literal
+              // inside one, and an address with a quote in it would close the string and
+              // run whatever followed (CLAUDE.md, Escaping).
+              const d = `data-uid="${escAttr(String(u.user_id))}" data-email="${escAttr(u.email || '')}"`;
+              if (off) return `<button class="file-library-tool" ${d} onclick="switchBackOn(this.dataset.uid, this.dataset.email)">Switch on</button>`;
+              if (String(u.user_id) === String(currentUser?.id)) return '<span class="note">you</span>';
+              return `<button class="file-library-tool" ${d} onclick="confirmSwitchOff(this.dataset.uid, this.dataset.email)">Switch off…</button>`;
+            })()}</td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
@@ -7678,8 +7683,8 @@ function libraryMenuInnerHtml() {
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
-    + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();renameLibrary('${cur.id}')">Rename “${esc(cur.name)}”…</button>` : '')
-    + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setLibraryArchived('${cur.id}', ${cur.archived_at ? 'false' : 'true'})">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
+    + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
+    + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
 }
 // Share buttons carry the library id in data-share-lib (never spliced into an onclick).
