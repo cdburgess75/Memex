@@ -21,7 +21,29 @@ const SHARE_COLUMNS = `
        WHEN EXISTS (SELECT 1 FROM user_roles ur WHERE lower(ur.email) = g.subject_email) THEN 'unverified'
        ELSE 'none' END AS account,
   (g.folder_path = '' OR EXISTS (SELECT 1 FROM documents d
-     WHERE d.library_id = g.library_id AND d.deleted_at IS NULL AND starts_with(d.name, g.folder_path || '/'))) AS folder_present`;
+     WHERE d.library_id = g.library_id AND d.deleted_at IS NULL AND starts_with(d.name, g.folder_path || '/'))) AS folder_present,
+  /* What the shared folder actually holds, so a manager is never shown a share as live
+   * access when there is nothing behind it:
+   *   live          real files (a nested folder's own marker counts -- the folder is not empty)
+   *   empty_kept    only the hidden marker that keeps an emptied shared folder alive
+   *   release_keep  the same, but planted once by the piece-4 repair: the folder already
+   *                 had nothing in it before any of this, which is worth saying separately
+   *                 rather than quietly reading as "somebody emptied it"
+   *   gone          nothing at all -- invariant D says this cannot happen
+   */
+  CASE WHEN g.folder_path = '' THEN NULL
+       WHEN EXISTS (SELECT 1 FROM documents d
+                     WHERE d.library_id = g.library_id AND d.deleted_at IS NULL
+                       AND starts_with(d.name, g.folder_path || '/') AND d.name <> g.folder_path || '/.keep') THEN 'live'
+       WHEN EXISTS (SELECT 1 FROM documents d
+                      JOIN folder_op_documents od ON od.document_id = d.id
+                      JOIN folder_ops o ON o.op_id = od.op_id AND o.kind = 'release_keep'
+                     WHERE d.library_id = g.library_id AND d.deleted_at IS NULL
+                       AND d.name = g.folder_path || '/.keep') THEN 'release_keep'
+       WHEN EXISTS (SELECT 1 FROM documents d
+                     WHERE d.library_id = g.library_id AND d.deleted_at IS NULL
+                       AND d.name = g.folder_path || '/.keep') THEN 'empty_kept'
+       ELSE 'gone' END AS folder_state`;
 
 function shape(r) {
   if (!r) return null;
@@ -30,7 +52,7 @@ function shape(r) {
     subject_email: r.subject_email,
     group: r.subject_type === 'group' ? { id: r.group_id, name: r.group_name, owner_email: r.group_owner_email, member_count: r.group_member_count } : null,
     permission: r.permission, granted_by_email: r.granted_by_email, created_at: r.created_at, updated_at: r.updated_at,
-    account: r.account, folder_present: r.folder_present,
+    account: r.account, folder_present: r.folder_present, folder_state: r.folder_state,
   };
 }
 
