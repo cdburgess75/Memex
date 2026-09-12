@@ -218,6 +218,14 @@ describe('folder operations are scoped to one library', () => {
   });
 });
 
+// The value bound to the placeholder a statement matches the folder prefix with, whatever
+// its number (the delete statement grew parameters when folders learned to end their
+// shares).
+function prefixArg(q) {
+  const m = q.sql.match(/starts_with\(d\.name, \$(\d+) \|\| '\/'\)/);
+  return m ? q.params[Number(m[1]) - 1] : undefined;
+}
+
 // A folder is found by its exact stored name. Unusual characters are NOT rewritten on
 // the way in (that was safeDocName, which turned "Tax & Co" into "Tax _ Co", so an
 // exact match could never find it), and '_' / '%' are not wildcards.
@@ -233,15 +241,14 @@ describe('folders are matched exactly', () => {
     await request(makeApp()).post('/api/files/folder/delete').send({ path });
     const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
     expect(upd).toBeDefined();
-    expect(upd.params[0]).toBe(path);
-    expect(upd.sql).toMatch(/starts_with\(d\.name, \$1 \|\| '\/'\)/);
-    expect(upd.sql).not.toMatch(/d\.name LIKE \$1/);
+    expect(prefixArg(upd)).toBe(path);
+    expect(upd.sql).not.toMatch(/d\.name LIKE \$\d/);
   });
 
   test('separators are tidied but nothing else is', async () => {
     await request(makeApp()).post('/api/files/folder/delete').send({ path: '/Clients//Tax & Co/' });
     const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
-    expect(upd.params[0]).toBe('Clients/Tax & Co');
+    expect(prefixArg(upd)).toBe('Clients/Tax & Co');
   });
 
   // What no stored name can contain. (Odd-but-storable names -- a C1 control character
@@ -284,7 +291,7 @@ describe('folders are matched exactly', () => {
     const res = await request(makeApp()).post('/api/files/folder/delete').send({ path });
     expect(res.status).not.toBe(400);
     const upd = seen.find(q => /UPDATE documents d SET deleted_at/.test(q.sql));
-    expect(upd.params[0]).toBe(path);
+    expect(prefixArg(upd)).toBe(path);
   });
 
   test('a reparent counts the old path in characters too', async () => {
