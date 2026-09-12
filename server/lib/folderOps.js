@@ -9,6 +9,8 @@
 // that they are atomic and serialized.)
 const db = require('./db');
 const folderLocks = require('./folderLocks');
+const documentAccess = require('./documentAccess');
+const { prefixRange } = require('./documents');
 
 // Tests interleave a change between statements, as accessKeys.hooks does.
 const hooks = { beforeStatement: null };
@@ -33,6 +35,42 @@ async function withFolderOp({ libraryIds, kind = 'folder', mode = 'exclusive' },
   });
 }
 
+// Is there already something at the destination? A folder is only a name prefix, so
+// "already there" means: live documents under it, documents under it in the Trash (their
+// names are held for the whole retention window), or a share attached to it. The subtree
+// being moved is excluded, so moving 'P/P' up to 'P' is not a clash with itself.
+//
+// Live documents are counted only if they are library content or the caller can read
+// them: a stranger's personal folder of the same name neither blocks the move nor is
+// revealed by it, and no share can reach it, so sharing cannot change by merging with it.
+async function whatIsAt(q, { destLibraryId, newPath, fromLibraryId = null, fromPath = null, viewer }) {
+  const p = db.paramList();
+  const dst = p(destLibraryId);
+  const np = p(newPath);
+  const src = p(fromLibraryId);
+  const sp = p(fromPath || '');
+  const readable = documentAccess.condition('d', p.vals.length + 1);
+  p.vals.push(...documentAccess.userParams(viewer, 'read'));
+  const moving = `NOT (${src}::uuid IS NOT NULL AND d.library_id = ${src}::uuid AND ${sp}::text <> ''
+                       AND (d.name = ${sp} OR starts_with(d.name, ${sp} || '/')))`;
+  const movingShare = `NOT (${src}::uuid IS NOT NULL AND g.library_id = ${src}::uuid AND ${sp}::text <> ''
+                            AND (g.folder_path = ${sp} OR starts_with(g.folder_path, ${sp} || '/')))`;
+  return q.queryOne(
+    `SELECT
+       EXISTS (SELECT 1 FROM documents d
+                WHERE d.library_id = ${dst}::uuid AND ${prefixRange('d', np)} AND d.deleted_at IS NULL
+                  AND (d.library_scoped OR ${readable}) AND ${moving}) AS has_live,
+       (SELECT max(d.deleted_at) FROM documents d
+         WHERE d.library_id = ${dst}::uuid AND starts_with(d.name, ${np} || '/')
+           AND d.deleted_at IS NOT NULL AND d.library_scoped AND ${moving}) AS trashed_at,
+       EXISTS (SELECT 1 FROM library_grants g
+                WHERE g.library_id = ${dst}::uuid AND g.folder_path <> ''
+                  AND (g.folder_path = ${np} OR starts_with(g.folder_path, ${np} || '/'))
+                  AND ${movingShare}) AS has_shares`,
+    p.vals
+  );
+}
+
 // An operation's own refusal: the route sends it as it is.
 class FolderOpError extends Error {
   constructor(code, status, message, extra = {}) {
@@ -55,4 +93,4 @@ function sendFolderOpError(res, e) {
   return false;
 }
 
-module.exports = { withFolderOp, clientQ, FolderOpError, sendFolderOpError, hooks };
+module.exports = { withFolderOp, clientQ, whatIsAt, FolderOpError, sendFolderOpError, hooks };
