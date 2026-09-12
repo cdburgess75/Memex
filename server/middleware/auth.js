@@ -94,6 +94,15 @@ module.exports = async function auth(req, res, next) {
        RETURNING role, verified_email`,
       [userId, userEmail, assignedRole, verifiedEmail]
     ) ?? { role: assignedRole, verified_email: verifiedEmail };
+    // Somewhere of their own, from the first moment they are here: anything they upload
+    // without saying where lands in it, so nothing is ever shared with anybody by
+    // forgetting to choose. Conditional on a unique index, so two first requests racing
+    // make one library. Best-effort: a person who cannot be given one is not a person who
+    // should be refused entry.
+    require('../lib/libraries').ensurePersonalLibrary(
+      { id: userId, email: userEmail, role: roleRow.role },
+      payload?.name || payload?.given_name || null,
+    ).catch((e) => console.error('auth: could not make a personal library:', e.message));
     // Auto-provisioning assigns a role with no human approval, so record it in the
     // tamper-evident chain. Best-effort and fire-and-forget: auditing must never
     // block or fail authentication.

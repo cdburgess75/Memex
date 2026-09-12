@@ -100,6 +100,41 @@ async function loadManaged(req, res) {
   return lib;
 }
 
+/* PATCH /api/libraries/:id -- rename a library.
+ *
+ * There has never been a way to do this: a library is named once, at creation, and the
+ * one Depot seeds at install keeps that name forever. That is fine while a library is a
+ * filing drawer, and wrong the moment it is the company's shared space or somebody's own.
+ *
+ * Renaming changes nothing about who can open anything -- a library is identified by its
+ * id everywhere access is decided, and folder paths are untouched.
+ */
+router.patch('/:id', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const lib = await loadManaged(req, res);
+    if (!lib) return;
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (name.length > 120) return res.status(400).json({ error: 'That name is too long. Please keep it under 120 characters.' });
+    if (/\p{Cc}/u.test(name)) return res.status(400).json({ error: 'That name has characters in it that a name cannot have.' });
+    const before = await db.queryOne('SELECT name FROM libraries WHERE id = $1', [req.params.id]);
+    const updated = await db.queryOne(
+      'UPDATE libraries SET name = $2 WHERE id = $1 RETURNING id, name, owner_id, owner_email, personal',
+      [req.params.id, name]
+    );
+    if (!updated) return res.status(404).json({ error: 'Library not found' });
+    if (before && before.name !== updated.name) {
+      try {
+        await require('../lib/auditLog').append({
+          eventType: 'library_created', actorId: req.user.id, actorEmail: req.user.email,
+          detail: `renamed · library ${updated.id} ${q(before.name)} → ${q(updated.name)}`,
+        });
+      } catch (e) { console.error('audit library rename failed:', e.message); }
+    }
+    res.json(updated);
+  } catch (e) { serverError(res, e); }
+});
+
 /* POST /api/libraries/:id/owner -- give an ownerless library an owner (admin).
  *
  * Depot creates one library at install with nobody's name on it, and until now nothing

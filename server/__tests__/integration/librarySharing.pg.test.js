@@ -227,6 +227,12 @@ suite('library sharing groundwork against real Postgres', () => {
       'SELECT name FROM documents WHERE deleted_at IS NULL AND library_id = $1 AND uploaded_by = $2', [L, TAMMY.id])).map(r => r.name).sort();
     beforeAll(async () => {
       await db.query("INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, 'contributor', $2)", [TAMMY.id, TAMMY.email]);
+      // Private by default: Tammy needs a right here, where the old open rule used to
+      // give her one for nothing. These tests are about how a destination is NAMED, so
+      // she is given Read-Write on the library and the naming is what is measured.
+      await db.query(
+        `INSERT INTO library_grants (library_id, folder_path, subject_type, subject_email, permission)
+         VALUES ($1, '', 'user', $2, 'write') ON CONFLICT DO NOTHING`, [L, TAMMY.email]);
       await add('Smith & Co (2025)/old.txt', TAMMY);
       await add('Hidden & Co/secret.txt', RICHARD); // exists, but not for Tammy
       await add('Inbox/Sub/n.txt', TAMMY);
@@ -422,10 +428,12 @@ suite('library sharing groundwork against real Postgres', () => {
       ['a Read-Write share through a group (by verified address)', () => GRP, LD, 'Anything', { right: 'grant', scoped: true }],
       ['a share to an address its account has not verified', () => UNV, LD, '', { status: 403 }],
       ['a viewer, whatever the share says', () => VIEWER, LD, '', { status: 403 }],
-      ['anyone, in an open library nobody has shared', () => RW, LOPEN, 'x', { right: 'legacy', scoped: false }],
-      ['a listed member, in a members-only library', () => RO, LMEM, '', { right: 'legacy', scoped: false }],
+      // Private by default: a library nobody has shared with you is not yours to add to,
+      // whether it is wide open, members-only, or just somebody else's.
+      ['anyone, in a library nobody has shared', () => RW, LOPEN, 'x', { status: 403 }],
+      ['a listed member, in a members-only library', () => RO, LMEM, '', { status: 403 }],
       ['someone not listed there', () => RW, LMEM, '', { status: 403 }],
-      ['a listed member whose address is not verified (the old rule is unchanged)', () => UNV, LMEM, '', { right: 'legacy', scoped: false }],
+      ['a listed member whose address is not verified', () => UNV, LMEM, '', { status: 403 }],
       ['an unknown library', () => OWNER, 'aaaaaaaa-0000-4000-8000-0000000000ff', '', { status: 404 }],
       ['a malformed library id', () => OWNER, 'lib-1', '', { status: 400 }],
     ])('writeRight: %s', async (_label, who, lib, at, want) => {
@@ -446,12 +454,13 @@ suite('library sharing groundwork against real Postgres', () => {
       as(RW);
       expect((await post('/api/files/folder', { path: 'Team/New', library_id: LD })).status).toBe(200);
       expect((await post('/api/files/folder', { path: 'Elsewhere', library_id: LD })).status).toBe(403);
-      expect((await post('/api/files/folder', { path: 'Mine', library_id: LOPEN })).status).toBe(200);
+      // ...and a library nobody has shared with them is not theirs to put folders in,
+      // however open it used to be
+      expect((await post('/api/files/folder', { path: 'Mine', library_id: LOPEN })).status).toBe(403);
       as(RO);
       expect((await post('/api/files/folder', { path: 'Team/Nope', library_id: LD })).status).toBe(403);
       const marks = await db.query("SELECT name, library_id, library_scoped FROM documents WHERE name LIKE '%/.keep' AND uploaded_by IN ($1, $2)", [RW.id, RO.id]);
       expect(marks.map(m => [m.name, m.library_id, m.library_scoped]).sort()).toEqual([
-        ['Mine/.keep', LOPEN, false],
         ['Team/New/.keep', LD, true],
       ]);
     });
@@ -486,17 +495,18 @@ suite('library sharing groundwork against real Postgres', () => {
       expect((await post('/api/files/folder/rename', { path: 'Team2', name: 'Team', source_library_id: LD })).status).toBe(200);
     });
 
-    test('moving a folder to a library held only under the old open rule leaves library content behind', async () => {
+    // The old open rule used to make this a partial move: library content stayed, the
+    // mover's own personal file went. There is no such right any more, so the whole thing
+    // is refused at the destination and nothing moves at all.
+    test('a folder cannot be moved into a library nobody has shared with you', async () => {
       as(OWNER);
       const content = await addDoc('Outbox/content.txt', OWNER, LD, true);
       const personal = await addDoc('Outbox/personal.txt', OWNER, LD, false);
       const res = await post('/api/files/folder/move', { path: 'Outbox', library_id: LOPEN, source_library_id: LD });
-      expect(res.status).toBe(200);
-      expect(res.body.count).toBe(1);
-      expect(res.body.kept).toBe(1);
+      expect(res.status).toBe(403);
       const where = async (id) => (await one('SELECT library_id, library_scoped FROM documents WHERE id = $1', [id]));
       expect(await where(content)).toEqual({ library_id: LD, library_scoped: true });
-      expect(await where(personal)).toEqual({ library_id: LOPEN, library_scoped: false });
+      expect(await where(personal)).toEqual({ library_id: LD, library_scoped: false });
     });
 
     // An admin tidying folders must never turn a colleague's private file into library
@@ -759,11 +769,14 @@ suite('library sharing groundwork against real Postgres', () => {
       expect(await reads(MVIEW, 'granted')).toBe(true);
     });
 
-    test('the old rules still list open and members-only libraries as before', async () => {
+    // The old open rules are gone: a library is listed to its owner, to whoever it is
+    // shared with, to an admin, and to anyone whose own files are in it -- nobody else.
+    // A library's name is itself information, so an unreachable one is not shown at all.
+    test('a library nobody has shared with you is not listed to you at all', async () => {
       const mine = async (u) => (await auth(as(u).get('/api/libraries'))).body;
-      expect((await mine(MSTR)).find(l => l.id === LOPEN2)).toMatchObject({ my_access: 'listed', add_right: 'legacy' });
+      expect((await mine(MSTR)).find(l => l.id === LOPEN2)).toBeUndefined();
       expect((await mine(MSTR)).find(l => l.id === LMEM2)).toBeUndefined();
-      expect((await mine(MOWN)).find(l => l.id === LMEM2)).toMatchObject({ my_access: 'listed', add_right: 'legacy' });
+      expect((await mine(MOWN)).find(l => l.id === LMEM2)).toBeUndefined();
     });
 
     test("sharing a folder that holds only someone else's private files is 'not found'", async () => {
