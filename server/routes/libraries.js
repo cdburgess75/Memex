@@ -100,6 +100,94 @@ async function loadManaged(req, res) {
   return lib;
 }
 
+/* POST /api/libraries/:id/owner -- give an ownerless library an owner (admin).
+ *
+ * Depot creates one library at install with nobody's name on it, and until now nothing
+ * anywhere could put a name on it: it could not be shared (a share belongs to an owner),
+ * and once the old open rule goes it could not even be added to. Every install has one.
+ *
+ * This only ever FILLS IN a missing owner. Handing an owned library to somebody else is a
+ * different question -- it moves other people's access -- and belongs with the rest of
+ * "switching people off".
+ */
+router.post('/:id/owner', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const email = String(req.body?.owner_email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'owner_email required' });
+    const lib = await db.queryOne('SELECT id, name, owner_id FROM libraries WHERE id = $1', [req.params.id]);
+    if (!lib) return res.status(404).json({ error: 'Library not found' });
+    if (lib.owner_id) {
+      return res.status(409).json({ code: 'ALREADY_OWNED',
+        error: 'This library already has an owner. Changing who owns a library moves other people’s access with it, which is a separate job.' });
+    }
+    // The owner is matched by account id everywhere access is decided, so an owner works
+    // whether or not their address has been verified -- unlike a share, which matches
+    // only a verified address.
+    const account = await db.queryOne(
+      'SELECT user_id, email, role FROM user_roles WHERE lower(email) = $1 OR verified_email = $1', [email]);
+    if (!account) return res.status(404).json({ error: 'Nobody with that address has signed in yet, so they cannot own a library.' });
+    if (account.role === 'viewer') return res.status(400).json({ error: 'Someone who can only look at files cannot own a library.' });
+    const updated = await db.queryOne(
+      `UPDATE libraries SET owner_id = $2, owner_email = $3 WHERE id = $1 AND owner_id IS NULL
+       RETURNING id, name, owner_id, owner_email`,
+      [lib.id, account.user_id, String(account.email).toLowerCase()]
+    );
+    if (!updated) return res.status(409).json({ code: 'ALREADY_OWNED', error: 'Somebody gave this library an owner a moment ago.' });
+    try {
+      await require('../lib/auditLog').append({
+        eventType: 'library_created', actorId: req.user.id, actorEmail: req.user.email,
+        detail: `owner set · library ${updated.id} ${q(updated.name)} → ${q(updated.owner_email)} (${updated.owner_id})`,
+      });
+    } catch (e) { console.error('audit library owner failed:', e.message); }
+    res.json(updated);
+  } catch (e) { serverError(res, e); }
+});
+
+/* POST /api/libraries/:id/adopt -- put MY OWN files into the library's shared content.
+ *
+ * A file uploaded into a library before it had an owner is personal: it belongs to
+ * whoever put it there and nobody else can read it, the library's owner included. That is
+ * right for a file somebody parked in a workspace -- and wrong for a folder of company
+ * documents that was always meant to be shared.
+ *
+ * So the person who uploaded them can hand them to the library. ONLY their own: an admin
+ * cannot hand over somebody else's private files, and is told how many were left alone
+ * rather than being quietly given a smaller number.
+ */
+router.post('/:id/adopt', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const lib = await loadManaged(req, res);
+    if (!lib) return;
+    const folderPath = req.body?.path ? folderLookupPath(req.body.path) : '';
+    if (req.body?.path && !folderPath) return res.status(400).json({ error: 'Bad folder path' });
+    const scope = folderPath ? `AND starts_with(d.name, $3 || '/')` : '';
+    const params = folderPath ? [req.params.id, req.user.id, folderPath] : [req.params.id, req.user.id];
+    const mine = await db.query(
+      `UPDATE documents d SET library_scoped = true
+        WHERE d.library_id = $1 AND d.deleted_at IS NULL AND NOT d.library_scoped
+          AND d.uploaded_by = $2 ${scope}
+        RETURNING d.id`,
+      params
+    );
+    // What is left is other people's, and stays theirs. Counted for admins only, who are
+    // shown personal files everywhere else.
+    const theirs = req.user.role === 'admin' ? (await db.queryOne(
+      `SELECT count(*)::int AS n FROM documents d
+        WHERE d.library_id = $1 AND d.deleted_at IS NULL AND NOT d.library_scoped ${folderPath ? `AND starts_with(d.name, $2 || '/')` : ''}`,
+      folderPath ? [req.params.id, folderPath] : [req.params.id]
+    ))?.n : undefined;
+    if (mine.length) {
+      try {
+        await require('../lib/auditLog').append({
+          eventType: 'library_shared', actorId: req.user.id, actorEmail: req.user.email,
+          detail: `adopted · ${mine.length} of their own file(s) became content of library ${lib.id} ${q(lib.name)}${folderPath ? ` under ${q(folderPath)}` : ''}`,
+        });
+      } catch (e) { console.error('audit library adopt failed:', e.message); }
+    }
+    res.json({ ok: true, count: mine.length, ...(theirs === undefined ? {} : { left_with_their_owners: theirs }) });
+  } catch (e) { serverError(res, e); }
+});
+
 // GET /api/libraries/:id/shares — who it (and folders in it) are shared with
 router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
