@@ -23,7 +23,7 @@ const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fi
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
-const { withFolderOp, sendFolderOpError, FolderOpError } = require('../../lib/folderOps');
+const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt } = require('../../lib/folderOps');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -109,6 +109,27 @@ async function sharedAt(q, libraryId, ...paths) {
   }
   return false;
 }
+// Nothing may be moved or renamed ONTO an existing folder. Merging two folders would
+// mix their sharing: each side's people would gain the other's files, and no merge rule
+// can keep both boundaries, since the wider one always wins. A folder in the Trash keeps
+// its name for the whole retention window, so it blocks too -- and has to say so, or the
+// refusal would point at a folder nobody can see.
+async function refuseIfSomethingIsAt(q, { destLibraryId, newPath, fromLibraryId, fromPath, viewer, verb }) {
+  const at = await whatIsAt(q, { destLibraryId, newPath, fromLibraryId, fromPath, viewer });
+  const name = String(newPath).split('/').pop();
+  if (at?.has_live || at?.has_shares) {
+    throw new FolderOpError('FOLDER_EXISTS', 409,
+      `There is already a folder called “${name}” there, so this ${verb} would merge the two. Rename one of them first, or move the files instead.`,
+      { path: newPath });
+  }
+  if (at?.trashed_at) {
+    const when = new Date(at.trashed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    throw new FolderOpError('FOLDER_EXISTS_IN_TRASH', 409,
+      `A folder called “${name}” was deleted there on ${when} and is still in the Trash under that name. Choose another name, or ask an admin to empty it first.`,
+      { path: newPath, trashed_at: at.trashed_at });
+  }
+}
+
 async function writeRightOrThrow(user, libraryId, path, q) {
   const r = await libraries.writeRight(user, libraryId, path, q);
   if (r.status) throw new FolderOpError(null, r.status, r.error);
@@ -157,12 +178,15 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     const newPath = parent ? `${parent}/${newName}` : newName;
     const libraryId = await folderLibraryId(req, oldPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
+    if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // renamed to what it is called
     // Everything from here happens inside one transaction holding the library's tree
     // lock, and every check is re-run on that client: nothing may place a document by
     // name, or rename anything else in this library, while this runs.
     const rows = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
-      if (await sharedAt(q, libraryId, oldPath, newPath)) throw folderSharedError();
+      if (await sharedAt(q, libraryId, oldPath)) throw folderSharedError();
       const dest = await writeRightOrThrow(req.user, libraryId, newPath, q);
+      await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath, fromLibraryId: libraryId, fromPath: oldPath, viewer: req.user, verb: 'rename' });
+      if (await sharedAt(q, libraryId, newPath)) throw folderSharedError();
       void dest; // a rename keeps the folder where it is: what is library content doesn't change
       return q.query(
         `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
@@ -224,6 +248,7 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
       // Checked before whether a share sits at the new path, so the answer can't be used
       // to probe for shares in places the caller can't write to.
       const dest = await writeRightOrThrow(req.user, srcLibraryId, newPath, q);
+      await refuseIfSomethingIsAt(q, { destLibraryId: srcLibraryId, newPath, fromLibraryId: srcLibraryId, fromPath: oldPath, viewer: req.user, verb: 'move' });
       if (await sharedAt(q, srcLibraryId, newPath)) throw folderSharedError();
       return q.query(
         `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
@@ -258,6 +283,9 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
       if (await sharedAt(q, srcLibraryId, folderPath)) throw folderSharedError();
       if (await sharedAt(q, libraryId, folderPath)) throw folderSharedError();
       const dest = await writeRightOrThrow(req.user, libraryId, folderPath, q);
+      if (String(srcLibraryId) !== String(libraryId)) {
+        await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath: folderPath, fromLibraryId: srcLibraryId, fromPath: folderPath, viewer: req.user, verb: 'move' });
+      }
       // Library content belongs to its library: taking it to ANOTHER library hands it to
       // that library's owner and ends its shares, so only whoever manages the source (its
       // owner while a contributor, or an admin) may, and never into a library held only
