@@ -177,9 +177,9 @@ async function getAccessibleDocument({ id, user, required = 'read', columns = '*
   );
 }
 
-async function grantOwnerAdmin(documentId, user) {
+async function grantOwnerAdmin(documentId, user, q = db) {
   if (!documentId || !user?.id) return;
-  await db.query(
+  await q.query(
     `INSERT INTO document_acl
      (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
      VALUES ($1, 'user', $2, $3, 'admin', $4, $3)
