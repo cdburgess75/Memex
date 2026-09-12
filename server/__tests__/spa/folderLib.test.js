@@ -163,8 +163,9 @@ describe('library relationships and where you can add files', () => {
     [{ my_access: 'rw' }, 'Shared with you · Read-Write'],
     [{ my_access: 'r' }, 'Shared with you · Read-only'],
     [{ my_access: 'folders' }, 'Folders in it are shared with you'],
-    [{ my_access: 'listed', add_right: 'legacy' }, 'Not shared · files you add stay private to you'],
-    [{ my_access: 'listed', add_right: null }, 'You see only files shared with you'],
+    // 'listed' now means one thing only: your own files are in there. The old open rule,
+    // which also produced it, is gone.
+    [{ my_access: 'listed', add_right: null }, 'You see only your own files in here'],
     [{ my_access: 'admin', owner_email: 'dave@x.com' }, 'Owned by dave@x.com'],
   ])('%j reads "%s"', (lib, want) => expect(run(base()).libraryRelation(lib)).toBe(want));
 

@@ -14,14 +14,14 @@ const documentAccess = require('./documentAccess');
 //   grant   a contributor holding a Read-Write share on the library, or on a folder at
 //           or above `parentPath` (directly or through a group, matched on the verified
 //           address only)
-//   legacy  a contributor writing into a library nobody has shared, which is either
-//           open (no members) or lists them as a member -- today's rule, kept until
-//           private-by-default (piece 5) retires it
+// There is no fourth kind. Until private-by-default, a contributor could also write into
+// any library nobody had shared -- the old open rule. It is gone: a library is now
+// private unless its owner says otherwise, and everyone has one of their own to write in.
 //
 // `scoped` says whether what lands there becomes LIBRARY CONTENT (documents.
 // library_scoped): shared with the library, managed by its owner, and no longer the
-// uploader's alone. Writes under the legacy rule stay personal, exactly as today, so
-// nothing written before sharing exists is exposed when sharing arrives.
+// uploader's alone. A file uploaded before any of this stays personal, so nothing written
+// before sharing existed was exposed when sharing arrived.
 // A right at a folder covers every folder below it.
 //
 // Returns { right, scoped } or { status, error } (400 malformed id, 404 unknown
@@ -39,20 +39,17 @@ async function writeRight(user, libraryId, parentPath = '', q = db) {
                          OR (g.subject_type = 'group' AND g.group_id IN (
                               SELECT gm.group_id FROM group_members gm
                                WHERE lower(gm.member_email) = (SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $2))))) AS rw_grant,
-            (NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id)
-             OR EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id AND $4 <> '' AND lower(m.subject_email) = lower($4))) AS legacy_listed
+            l.personal
        FROM libraries l WHERE l.id = $1`,
-    // $4 is the address as the library switcher matches members (the address the
-    // account signs in with): the legacy rule is today's rule, unchanged. Shares
-    // (library_grants) match only the verified address, looked up by account id.
-    [libraryId, user?.id || null, String(parentPath || ''), String(user?.email || '').toLowerCase()]
+    // Shares match only the VERIFIED address, looked up by account id -- never the
+    // address an account merely claims.
+    [libraryId, user?.id || null, String(parentPath || '')]
   );
   if (!row) return { status: 404, error: 'Library not found' };
   if (user?.role === 'admin') return { right: 'admin', scoped: !!row.owner_id || !!row.shared };
   if (user?.role !== 'contributor') return { status: 403, error: "You can't add files here." };
   if (row.is_owner) return { right: 'owner', scoped: true };
   if (row.rw_grant) return { right: 'grant', scoped: true };
-  if (!row.shared && row.legacy_listed) return { right: 'legacy', scoped: false };
   return { status: 403, error: "You can't add files here. Ask the library owner for Read-Write access." };
 }
 
@@ -101,9 +98,45 @@ async function removeMember(libraryId, memberId) {
   return db.queryOne('DELETE FROM library_members WHERE id = $1 AND library_id = $2 RETURNING id', [memberId, libraryId]);
 }
 
+/* Where something lands when nobody said where: the person's OWN library.
+ *
+ * It used to be "the oldest library in the install", which was an accident of history --
+ * on every box that is the one Depot seeds at setup, so an unaddressed upload went to a
+ * shared place by default. Landing in your own library instead means nothing is ever
+ * shared with anybody by forgetting to choose.
+ *
+ * The fallback is that same oldest library, for the cases that have no person at all
+ * (and for a viewer, who has none of their own).
+ */
+async function defaultLibraryFor(user) {
+  if (user?.id) {
+    const mine = await db.queryOne('SELECT id FROM libraries WHERE owner_id = $1 AND personal LIMIT 1', [user.id]);
+    if (mine) return mine.id;
+  }
+  return defaultLibraryId();
+}
+
+// The install's first library. Only a fallback now -- prefer defaultLibraryFor(user).
 async function defaultLibraryId() {
   const row = await db.queryOne('SELECT id FROM libraries ORDER BY created_at ASC LIMIT 1');
   return row ? row.id : null;
+}
+
+// Somebody's own library, made the first time they sign in. Conditional on the partial
+// unique index (migration 0011), so two requests arriving together make one library, not
+// two, and a second call is a no-op.
+async function ensurePersonalLibrary(user, name) {
+  if (!user?.id || user.role === 'viewer') return null;
+  const email = String(user.email || '').toLowerCase() || null;
+  const label = String(name || '').trim() || (email ? email.split('@')[0] : 'My files');
+  const row = await db.queryOne(
+    `INSERT INTO libraries (name, created_by, created_by_email, owner_id, owner_email, personal)
+     VALUES ($1, $2, $3, $2, $3, true)
+     ON CONFLICT (owner_id) WHERE personal DO NOTHING
+     RETURNING id, name`,
+    [label, user.id, email]
+  );
+  return row || null;
 }
 
 // The caller as shares see them: their verified address, looked up by account id ($idx).
@@ -117,40 +150,39 @@ function shareSubject(t, idIdx) {
 // Which libraries a caller sees in their list, and their relationship to each.
 // Parameters: $1 role, $2 the address they sign in with (lower-cased), $3 user id, then
 // the five userParams() at $4..$8 for "can open any file in it".
-// A library is listed to: an admin; its owner; everyone, while it has no members and
-// no shares (the old open rule -- a shared library leaves that list); a listed member
-// (the old rule, matched as the switcher always has); anyone it or a folder in it is
-// shared with; and anyone who can open any file in it -- their own personal files, or
-// files shared with them one by one -- so sharing a library never hides it from them.
+// A library is listed to: an admin; its owner; anyone it or a folder in it is shared
+// with; and anyone who can open any file in it -- their own personal files, or files
+// shared with them one by one -- so sharing a library never hides it from them.
+//
+// Nothing else. A library's NAME is information ("Mender - payroll" says a good deal), so
+// a library you have nothing to do with is not listed at all rather than shown locked.
 const LISTING = `
   SELECT v.* FROM (
-    SELECT l.id, l.name, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
+    SELECT l.id, l.name, l.personal, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
            EXISTS (SELECT 1 FROM library_grants x WHERE x.library_id = l.id) AS shared,
-           NOT EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id) AS no_members,
-           EXISTS (SELECT 1 FROM library_members m WHERE m.library_id = l.id AND $2 <> '' AND lower(m.subject_email) = $2) AS member_listed,
            (SELECT max(g.permission) FROM library_grants g
-             WHERE g.library_id = l.id AND g.folder_path = '' AND ${shareSubject('g', 3)}) AS root_level,
+             WHERE g.library_id = l.id AND g.folder_path = '' AND ${shareSubject('g', 2)}) AS root_level,
            (SELECT json_agg(json_build_object('path', f.folder_path, 'level', f.level) ORDER BY f.folder_path)
               FROM (SELECT g.folder_path, max(g.permission) AS level FROM library_grants g
-                     WHERE g.library_id = l.id AND g.folder_path <> '' AND ${shareSubject('g', 3)}
+                     WHERE g.library_id = l.id AND g.folder_path <> '' AND ${shareSubject('g', 2)}
                      GROUP BY g.folder_path) f) AS folders,
            EXISTS (SELECT 1 FROM documents d
-                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 4)}) AS can_read_any,
+                    WHERE d.library_id = l.id AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 3)}) AS can_read_any,
            (SELECT json_agg(DISTINCT g.folder_path) FROM library_grants g
              WHERE g.library_id = l.id AND g.folder_path <> '') AS shared_folders
       FROM libraries l
   ) v
-  WHERE ($1 = 'admin' OR v.owner_id = $3 OR (v.no_members AND NOT v.shared) OR v.member_listed
+  WHERE ($1 = 'admin' OR v.owner_id = $2
          OR v.root_level IS NOT NULL OR v.folders IS NOT NULL OR v.can_read_any)`;
 
 // One listed row, as the caller may see it.
 //   can_manage  may share it: an admin, or its owner while a contributor
 //   my_access   'admin' | 'owner' | 'rw' | 'r' (a share of the whole library) |
-//               'folders' (shares of folders in it only) | 'listed' (the old rules, or
-//               personal files) -- viewers are capped at read
+//               'folders' (shares of folders in it only) | 'listed' (their own files are
+//               in it, nothing more) -- viewers are capped at read
 //   my_folders  [{ path, level: 'rw' | 'r' }] the folders shared with them
 //   add_right   what writeRight answers at the root: 'admin' | 'owner' | 'grant' |
-//               'legacy' | null (folder shares are in my_folders)
+//               null (folder shares are in my_folders)
 //   shared      whether it is shared at all -- only to someone who manages it
 //   shared_folders  the folders in it that are shared -- only to someone who manages it.
 //               A rename or a move within the library carries a folder's shares with it;
@@ -168,16 +200,15 @@ function shapeLibrary(user, r) {
   else if (admin) myAccess = 'admin';
   else if (r.root_level) myAccess = level(r.root_level);
   else if (myFolders.length) myAccess = 'folders';
-  else if ((r.no_members && !r.shared) || r.member_listed || r.can_read_any) myAccess = 'listed';
+  else if (r.can_read_any) myAccess = 'listed';
   let addRight = null;
   if (admin) addRight = 'admin';
   else if (contributor) {
     if (isOwner) addRight = 'owner';
     else if (r.root_level === 'write') addRight = 'grant';
-    else if (!r.shared && (r.no_members || r.member_listed)) addRight = 'legacy';
   }
   const out = {
-    id: r.id, name: r.name, created_by_email: r.created_by_email, created_at: r.created_at,
+    id: r.id, name: r.name, personal: !!r.personal, created_by_email: r.created_by_email, created_at: r.created_at,
     owner_id: r.owner_id, owner_email: r.owner_email,
     can_manage: canManage, my_access: myAccess, my_folders: myFolders, add_right: addRight,
   };
@@ -185,7 +216,10 @@ function shapeLibrary(user, r) {
   return out;
 }
 
-const listingParams = (user) => [user?.role || '', String(user?.email || '').toLowerCase(), user?.id || null,
+// $1 role, $2 the account id, then the access rule's five at $3..$7. The address an
+// account merely claims is no longer part of listing at all: the old open rule was the
+// only thing that used it.
+const listingParams = (user) => [user?.role || '', user?.id || null,
   ...documentAccess.userParams(user, 'read')];
 
 async function listLibraries(user) {
@@ -199,11 +233,11 @@ async function visibleLibrary(user, libraryId) {
   const row = await visibleLibraryRow(user, libraryId);
   return row ? shapeLibrary(user, row) : null;
 }
-// The same, unshaped: also says WHY it is listed (no_members, shared, member_listed,
-// can_read_any) -- "who has access" tells someone listed only by the old rules so.
+// The same, unshaped: also says WHY it is listed (shared, can_read_any) -- "who has
+// access" tells someone listed only because their own files are in it so.
 async function visibleLibraryRow(user, libraryId) {
   if (!isUuid(libraryId)) return null;
-  return db.queryOne(`${LISTING} AND v.id = $9`, [...listingParams(user), libraryId]);
+  return db.queryOne(`${LISTING} AND v.id = $8`, [...listingParams(user), libraryId]);
 }
 
 // The creator owns the library (by user id, as with groups). Ownership is what lets
@@ -224,7 +258,7 @@ async function createLibrary({ name, user }) {
 async function resolveLibraryId(req) {
   const id = req.headers['x-library-id'] || req.query?.libraryId || req.body?.libraryId || null;
   if (id && !isUuid(id)) { const e = new Error('Bad library id'); e.status = 400; throw e; }
-  return id || (await defaultLibraryId());
+  return id || (await defaultLibraryFor(req?.user));
 }
 
 // Owner + name for a library id (null id → no row). Used by upload notifications.
@@ -234,4 +268,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { defaultLibraryId, defaultLibraryFor, ensurePersonalLibrary, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };
