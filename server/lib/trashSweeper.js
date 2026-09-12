@@ -42,26 +42,48 @@ async function sweepOnce({ days } = {}) {
   } catch { docs = []; }
 
   for (const d of docs) {
-    // Version blobs first (their rows go via CASCADE when the document is deleted).
-    let versions = [];
-    try { versions = await db.query('SELECT storage_path FROM document_versions WHERE document_id = $1', [d.id]); }
-    catch { versions = []; }
-    for (const v of versions) {
-      if (v.storage_path) { await storage.del(v.storage_path).catch(() => {}); result.blobsDeleted += 1; }
-    }
-    if (d.storage_path) { await storage.del(d.storage_path).catch(() => {}); result.blobsDeleted += 1; }
-
+    /* The row goes FIRST, and only while it is still expired.
+     *
+     * Deleting the blobs first was a way to destroy a file somebody had just restored:
+     * between reading the batch and deleting the row, a restore sets deleted_at to NULL
+     * -- and an unconditional DELETE then removed a live document whose objects were
+     * already gone. The condition is repeated inside the delete, so a restore that
+     * landed in the meantime simply leaves nothing to purge.
+     *
+     * No lock is taken. Nothing else deletes these rows, and a restore either lands
+     * before the DELETE (which then matches nothing) or after it (and finds the row
+     * gone, which every restore path already treats as "not in the trash").
+     */
+    let objects = null;
     try {
-      await db.query('DELETE FROM documents WHERE id = $1', [d.id]);
-      result.documentsPurged += 1;
-      await auditLog.append({
-        documentId: d.id,
-        eventType: 'purged',
-        actorId: null,
-        actorEmail: 'system@retention',
-        detail: `auto-purged after ${retention}d retention · ${d.name || ''}`.trim(),
-      }).catch(() => {});
-    } catch { /* keep going with the rest of the batch */ }
+      objects = await db.withTransaction(async (client) => {
+        // Version objects are read BEFORE the delete: their rows CASCADE away with the
+        // document, and afterwards nothing is left to say which objects to remove.
+        const { rows: versions } = await client.query('SELECT storage_path FROM document_versions WHERE document_id = $1', [d.id]);
+        const { rows: gone } = await client.query(
+          `DELETE FROM documents
+            WHERE id = $1 AND deleted_at IS NOT NULL AND deleted_at < NOW() - make_interval(days => $2::int)
+            RETURNING storage_path`,
+          [d.id, retention]
+        );
+        if (!gone.length) return null;   // restored, or already purged, meanwhile
+        return [...versions.map(v => v.storage_path), gone[0].storage_path].filter(Boolean);
+      });
+    } catch { objects = null; /* keep going with the rest of the batch */ }
+    if (!objects) continue;
+
+    // Only now, with the row committed away, are the objects removed. A crash here
+    // leaves objects nobody points at -- countable and cleanable -- rather than rows
+    // pointing at objects that are already gone.
+    for (const objectPath of objects) { await storage.del(objectPath).catch(() => {}); result.blobsDeleted += 1; }
+    result.documentsPurged += 1;
+    await auditLog.append({
+      documentId: d.id,
+      eventType: 'purged',
+      actorId: null,
+      actorEmail: 'system@retention',
+      detail: `auto-purged after ${retention}d retention · ${d.name || ''}`.trim(),
+    }).catch(() => {});
   }
 
   return result;
