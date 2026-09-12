@@ -234,6 +234,13 @@ if [ "$ok" = "1" ]; then info "Depot is up. 🎉"; else warn "Stack started but 
 # still be starting); on any failure the realm keeps its default — no worse than
 # before. LAN/local installs are left as-is (lower risk, and their access origins
 # aren't known at install time).
+# Every `docker compose exec` below redirects stdin from /dev/null. The documented
+# way to run this script is `curl … | bash`, which puts the SCRIPT ITSELF on stdin —
+# so any command that reads stdin eats the rest of the script, bash reaches EOF and
+# exits 0 having silently skipped everything after it. That is not hypothetical: it
+# swallowed the seed-admin password reset and the whole closing banner, leaving public
+# installs on the realm's well-known bootstrap password with nothing said about it.
+# Prompts read from /dev/tty, never stdin, so nothing here legitimately needs it.
 if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
   info "Locking Keycloak sign-in redirects to ${APP_URL}…"
   kc_locked=0
@@ -245,7 +252,7 @@ if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
         cid=$("$kc" get clients -r memex -q clientId=memex-app --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
         [ -n "$cid" ] || exit 1
         "$kc" update "clients/$cid" -r memex -s "redirectUris=[\"$APPURL/*\"]" -s "webOrigins=[\"+\"]" >/dev/null 2>&1
-      '; then kc_locked=1; break; fi
+      ' </dev/null; then kc_locked=1; break; fi
     sleep 3
   done
   if [ "$kc_locked" = "1" ]; then info "Keycloak redirects locked to ${APP_URL}."
@@ -266,7 +273,7 @@ for _ in $(seq 1 20); do
       uid=$("$kc" get users -r memex -q username=admin --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
       [ -n "$uid" ] || exit 1
       "$kc" set-password -r memex --userid "$uid" --new-password "$SEEDPW" --temporary >/dev/null 2>&1
-    '; then seed_pw_set=1; break; fi
+    ' </dev/null; then seed_pw_set=1; break; fi
   sleep 3
 done
 
