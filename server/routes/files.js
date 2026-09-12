@@ -17,6 +17,8 @@ const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
 const { isUuid } = require('../lib/groups');
+const { withFolderOp, sendFolderOpError, FolderOpError } = require('../lib/folderOps');
+const { keepSharedFoldersAlive } = require('../lib/keepMarker');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const email = require('../lib/email');
@@ -878,8 +880,22 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       const kept = accessible.length - movable.length;
       const toScoped = movable.filter(d => libraryScopeAfterMove(d, rights.get(parentOf(d.name)), req.user)).map(d => d.id);
       const toPersonal = movable.filter(d => !toScoped.includes(d.id)).map(d => d.id);
-      if (toScoped.length) await db.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[])', [libraryId, toScoped]);
-      if (toPersonal.length) await db.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[])', [libraryId, toPersonal]);
+      // One transaction, holding every library involved (the selection can span several
+      // sources) so nothing moves under a folder operation; and each source library's
+      // shared folders are kept alive when this empties one.
+      const sources = [...new Set(movable.map(d => String(d.library_id)).filter(Boolean))];
+      const planted = await withFolderOp({ libraryIds: [...sources, libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+        if (toScoped.length) await q.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, toScoped]);
+        if (toPersonal.length) await q.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, toPersonal]);
+        const out = [];
+        for (const src of sources) {
+          if (String(src) === String(libraryId)) continue; // it never left that library
+          const names = movable.filter(d => String(d.library_id) === src).map(d => d.name);
+          out.push(...await keepSharedFoldersAlive(q, src, names));
+        }
+        return out;
+      });
+      for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
       return res.json({ ok: true, mode, count: movable.length, skipped, kept });
     }
 
@@ -1945,11 +1961,23 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    await db.query('UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1', [req.params.id, req.user.id, req.user.email]);
+    // Under the library's lock, so a folder operation cannot be half-way through; and if
+    // this was the last live file under a shared folder, the folder is kept (empty and
+    // still shared) rather than left as a name a future folder could inherit.
+    const planted = await withFolderOp({ libraryIds: [doc.library_id], kind: 'placement', mode: 'shared' }, async (q) => {
+      const gone = await q.query(
+        'UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1 AND deleted_at IS NULL RETURNING name',
+        [req.params.id, req.user.id, req.user.email]
+      );
+      if (!gone.length) throw new FolderOpError('FILE_MOVED', 409, 'That file has just changed. Refresh and try again.');
+      return keepSharedFoldersAlive(q, doc.library_id, gone.map(r => r.name));
+    });
+    for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
     await logDocumentEvent(doc.id, 'trashed', req.user.id, req.user.email, `retention ${await trashRetentionDays()} days`);
     await logEvent(`trash · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
@@ -1983,10 +2011,24 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
       if (!dest) return;
       scoped = libraryScopeAfterMove(doc, dest, req.user);
     }
-    const updated = await db.queryOne('UPDATE documents SET name = $2, library_scoped = $3 WHERE id = $1 RETURNING *', [req.params.id, name, scoped]);
+    // Conditional on the name it had when we read it: a folder rename in between would
+    // otherwise make this think the parent was unchanged and skip the destination check.
+    // Under the library's lock, and keeping any shared folder this empties.
+    const { updated, planted } = await withFolderOp({ libraryIds: [libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+      const rows = await q.query(
+        `UPDATE documents SET name = $2, library_scoped = $3
+          WHERE id = $1 AND name = $4 AND deleted_at IS NULL RETURNING *`,
+        [req.params.id, name, scoped, doc.name]
+      );
+      if (!rows.length) throw new FolderOpError('FILE_MOVED', 409, 'That file has just moved or been renamed. Refresh and try again.');
+      const left = parentOf(doc.name) !== parentOf(name) ? await keepSharedFoldersAlive(q, libraryId, [doc.name]) : [];
+      return { updated: rows[0], planted: left };
+    });
+    for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
     await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
     res.json({ success: true, name: updated.name });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });

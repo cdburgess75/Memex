@@ -10,6 +10,8 @@ jest.mock('../../lib/db', () => {
   const api = {
   query: jest.fn(async (sql, params) => {
     mockQueries.push({ sql, params });
+    // the per-file rename/move is a conditional UPDATE now, and runs on the client
+    if (/^\s*UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return [{ id: 'd1', name: params[1] }];
     if (/WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(sql)) return mockRows.transfer;
     if (/SELECT DISTINCT d\.library_id/.test(sql)) return [{ library_id: 'aaaaaaaa-0000-4000-8000-000000000001' }];
     return [];
@@ -34,8 +36,8 @@ jest.mock('../../lib/db', () => {
   // callback a client backed by the same mocks (a pg client answers { rows }).
   api.withTransaction = jest.fn(async (fn) => fn({ query: async (sql, params = []) => {
       const rows = await api.query(sql, params);
-      if (rows && rows.length) return { rows };
-      const one = await api.queryOne(sql, params);
+      if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
+      const one = await api.queryOne(sql, params); // the single-row mock answers reads
       return { rows: one ? [one] : [] };
     } }));
   api.paramList = jest.requireActual('../../lib/db').paramList;
