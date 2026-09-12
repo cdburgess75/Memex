@@ -13,6 +13,7 @@ const { folderLookupPath } = require('../lib/documents');
 const { isUuid } = require('../lib/groups');
 const db = require('../lib/db');
 const folderPreview = require('../lib/folderPreview');
+const folderPaths = require('../lib/folderPaths');
 const { canonicalFolderPath } = require('../lib/documents');
 
 // GET /api/access/shared-with-me -- libraries, folders and files shared with the caller
@@ -93,10 +94,10 @@ router.post('/folder-preview', auth, async (req, res) => {
       let newPath = null;
       let targetLibraryId = libraryId;
       if (op === 'rename') {
-        const name = String(raw?.name || '').trim();
-        if (!name || /[\\/]/.test(name)) return res.status(400).json({ error: 'invalid name' });
-        const parent = path.split('/').slice(0, -1).join('/');
-        newPath = parent ? `${parent}/${name}` : name;
+        // the same naming rule the rename itself applies, or the answer shown here would
+        // be for a folder name the operation never creates
+        newPath = folderPaths.renamedPath(path, raw?.name);
+        if (!newPath) return res.status(400).json({ error: 'invalid name' });
       } else if (op === 'reparent') {
         const target = raw?.target === '' ? '' : folderLookupPath(raw?.target);
         if (target === null) return res.status(400).json({ error: 'invalid target' });

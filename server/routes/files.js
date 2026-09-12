@@ -1255,11 +1255,14 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
       if (!(await destinationRight(req, res, req.user, lib, parentOf(displayName)))) return;
     }
     const session = await db.queryOne(
+      // The library is stored with the session: a folder renamed while the bytes are
+      // still arriving carries the session's name along with the files, and that can
+      // only be found by library.
       `INSERT INTO upload_sessions
-       (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email, library_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [displayName, size, mimetype, storagePath, chunkSize, totalChunks, req.user.id, req.user.email]
+      [displayName, size, mimetype, storagePath, chunkSize, totalChunks, req.user.id, req.user.email, lib]
     );
     await fs.mkdir(await chunkDir(session.id), { recursive: true });
     res.json({ session: uploadSessionClientShape(session) });
@@ -1375,8 +1378,22 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     const stream = await chunkedFileStream(session);
     const result = await storage.uploadStream(session.storage_path, stream, session.mime_type);
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
+    // The bytes may have taken a long time to arrive, and the folder they were headed
+    // for can have been renamed meanwhile -- in which case the session's name came along
+    // with it (lib/folderCarry.js). Land the file where the folder is NOW, not where it
+    // was when the upload started, and prove the right again at the new place: a folder
+    // can move somewhere this person may not write.
+    const fresh = await db.queryOne('SELECT name FROM upload_sessions WHERE id = $1', [session.id]);
+    const landingPath = fresh?.name || session.name;
+    if (landingPath !== session.name) {
+      const moved = await libraries.writeRight(req.user, completeLibraryId, parentOf(landingPath));
+      if (moved.status) {
+        return res.status(409).json({ code: 'FOLDER_MOVED', path: landingPath,
+          error: 'The folder this was going into was moved somewhere you can\'t add files. Nothing was lost -- choose another folder and upload it again.' });
+      }
+    }
     const { doc, canIngest } = await createDocumentRecord({
-      displayName: session.name,
+      displayName: landingPath,
       storagePath: session.storage_path,
       mimetype: session.mime_type,
       storedSize,

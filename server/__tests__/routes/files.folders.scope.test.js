@@ -397,16 +397,23 @@ describe('destination folders', () => {
 describe('folder links made before exact matching', () => {
   test('are listed under the folder they were made for', async () => {
     const db = require('../../lib/db');
-    db.query.mockImplementationOnce(async (sql, params) => {
+    // the route also looks the folder's library up first, so the stand-in answers by
+    // statement rather than by call order
+    const real = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params) => {
+      if (!/FROM folder_share_links/.test(sql)) return real(sql, params);
       seen.push({ sql, params });
       return params[0].includes('Tax _ Co') ? [{ id: 'l1', folder_path: 'Tax _ Co', document_ids: [], created_at: new Date().toISOString() }] : [];
     });
     const res = await request(makeApp()).get('/api/files/folder/links').query({ path: 'Tax & Co' });
+    db.query.mockImplementation(real);
     expect(res.status).toBe(200);
     expect(res.body.shares.map(x => x.id)).toEqual(['l1']);
     const q = seen.find(x => /FROM folder_share_links/.test(x.sql));
     expect(q.params[0]).toEqual(['Tax & Co', 'Tax _ Co']);
     expect(q.params[1]).toBe(mockUser.id); // still only the caller's own links
+    // ...and a link whose folder was renamed is found by where its documents are now
+    expect(q.sql).toMatch(/d\.id = ANY\(l\.document_ids\)/);
   });
 
   test('a plain folder name is looked up once', async () => {

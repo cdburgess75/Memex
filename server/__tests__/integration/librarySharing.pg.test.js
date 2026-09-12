@@ -456,14 +456,33 @@ suite('library sharing groundwork against real Postgres', () => {
       ]);
     });
 
-    test('a shared folder cannot be renamed, moved or deleted out from under its share', async () => {
+    test('a shared folder now moves with its share, and only the operations that END one still refuse', async () => {
       as(OWNER);
       await addDoc('Team/plan.txt', OWNER, LD, true);
-      for (const [url, body] of [['/rename', { name: 'Team2' }], ['/reparent', { target: 'Archive' }], ['/delete', {}], ['/move', { library_id: LOPEN }]]) {
+      // Ending somebody's share is the library owner's to do, and is asked separately:
+      // a move to another library and a delete to the Trash still refuse here.
+      for (const [url, body] of [['/delete', {}], ['/move', { library_id: LOPEN }]]) {
         const res = await post('/api/files/folder' + url, { path: 'Team', source_library_id: LD, ...body });
         expect([url, res.status, res.body.code]).toEqual([url, 409, 'FOLDER_SHARED']);
       }
-      expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Team/plan.txt' AND library_id = $1 AND deleted_at IS NULL", [LD])).n).toBe(1);
+      // A rename carries the share with the folder: the same people, at the same level.
+      const before = await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Team' ORDER BY subject_email", [LD]);
+      expect(before.length).toBeGreaterThan(0);
+      const ren = await post('/api/files/folder/rename', { path: 'Team', name: 'Team2', source_library_id: LD });
+      expect([ren.status, ren.body.shares_moved]).toEqual([200, before.length]);
+      expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Team2/plan.txt' AND library_id = $1 AND deleted_at IS NULL", [LD])).n).toBe(1);
+      expect((await one("SELECT count(*)::int AS n FROM library_grants WHERE library_id = $1 AND folder_path = 'Team'", [LD])).n).toBe(0);
+      const after = await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Team2' ORDER BY subject_email", [LD]);
+      expect(after).toEqual(before);
+      // ...and so does a move within the library.
+      const rep = await post('/api/files/folder/reparent', { path: 'Team2', target: 'Archive', source_library_id: LD });
+      expect([rep.status, rep.body.shares_moved]).toEqual([200, before.length]);
+      expect((await one("SELECT count(*)::int AS n FROM documents WHERE name = 'Archive/Team2/plan.txt' AND library_id = $1", [LD])).n).toBe(1);
+      const moved = await db.query("SELECT subject_type, subject_email, group_id, permission FROM library_grants WHERE library_id = $1 AND folder_path = 'Archive/Team2' ORDER BY subject_email", [LD]);
+      expect(moved).toEqual(before);
+      // put it back, so the rest of the suite sees the library it expects
+      expect((await post('/api/files/folder/reparent', { path: 'Archive/Team2', target: '', source_library_id: LD })).status).toBe(200);
+      expect((await post('/api/files/folder/rename', { path: 'Team2', name: 'Team', source_library_id: LD })).status).toBe(200);
     });
 
     test('moving a folder to a library held only under the old open rule leaves library content behind', async () => {
