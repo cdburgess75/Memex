@@ -12,6 +12,8 @@ const documentAccess = require('../lib/documentAccess');
 const { folderLookupPath } = require('../lib/documents');
 const { isUuid } = require('../lib/groups');
 const db = require('../lib/db');
+const folderPreview = require('../lib/folderPreview');
+const { canonicalFolderPath } = require('../lib/documents');
 
 // GET /api/access/shared-with-me -- libraries, folders and files shared with the caller
 router.get('/shared-with-me', auth, async (req, res) => {
@@ -62,6 +64,58 @@ router.get('/files/:id', auth, async (req, res) => {
       || (req.user.role === 'contributor' && !!library?.owner_id && String(library.owner_id) === String(req.user.id));
     const detail = !doc.library_scoped || managesLibrary ? 'full' : 'hidden';
     res.json(await accessKeys.fileDoor(req.user, { doc, library, full, detail }));
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /api/access/folder-preview -- what moving, renaming or deleting a folder would do
+// to who can open it, worked out without doing it. A batch, so dragging five folders is
+// one round trip and one question.
+//
+// Each side is only shown to whoever manages that library: who would LOSE access belongs
+// to the source's manager, who would GAIN it to the destination's. Otherwise someone with
+// a Read-Write share on a folder in another person's library could use this to list
+// everyone who has access there. A count is a probe too, so counts go with the side.
+const OPS = new Set(['rename', 'reparent', 'delete', 'library_move']);
+router.post('/folder-preview', auth, async (req, res) => {
+  try {
+    const ops = Array.isArray(req.body?.ops) ? req.body.ops.slice(0, 20) : [];
+    if (!ops.length) return res.status(400).json({ error: 'ops required' });
+    const out = [];
+    for (const raw of ops) {
+      const op = String(raw?.op || '');
+      if (!OPS.has(op)) return res.status(400).json({ error: 'Unknown folder operation' });
+      const libraryId = String(raw?.library_id || '');
+      const path = folderLookupPath(raw?.path);
+      if (!path) return res.status(400).json({ error: 'Bad folder path' });
+      const source = await libraries.visibleLibrary(req.user, libraryId);
+      if (!source) return res.status(404).json({ error: 'Library not found' });
+
+      let newPath = null;
+      let targetLibraryId = libraryId;
+      if (op === 'rename') {
+        const name = String(raw?.name || '').trim();
+        if (!name || /[\\/]/.test(name)) return res.status(400).json({ error: 'invalid name' });
+        const parent = path.split('/').slice(0, -1).join('/');
+        newPath = parent ? `${parent}/${name}` : name;
+      } else if (op === 'reparent') {
+        const target = raw?.target === '' ? '' : folderLookupPath(raw?.target);
+        if (target === null) return res.status(400).json({ error: 'invalid target' });
+        newPath = target ? `${target}/${path.split('/').pop()}` : path.split('/').pop();
+      } else if (op === 'library_move') {
+        targetLibraryId = String(raw?.target_library_id || '');
+        const target = await libraries.visibleLibrary(req.user, targetLibraryId);
+        if (!target) return res.status(404).json({ error: 'Library not found' });
+        newPath = path;
+      }
+      if (newPath && !canonicalFolderPath(newPath)) return res.status(400).json({ error: 'Bad folder path' });
+
+      const targetLib = targetLibraryId === libraryId ? source : await libraries.visibleLibrary(req.user, targetLibraryId);
+      out.push(await folderPreview.preview(
+        { op, libraryId, path, newPath, targetLibraryId },
+        { canManageSource: !!source.can_manage, canManageTarget: !!targetLib?.can_manage }
+      ));
+    }
+    res.json({ previews: out });
   } catch (e) { serverError(res, e); }
 });
 

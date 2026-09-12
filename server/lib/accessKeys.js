@@ -190,10 +190,12 @@ const KEY_FILES_SHOWN = 20;
 const paramList = db.paramList;
 
 // The rule's level for principal refs R on document alias `a`, highest set first.
-function levelWith(a, R, pw, pa) {
-  return `CASE WHEN ${documentAccess.conditionWith(a, { ...R, perms: pa })} THEN 'admin'
-            WHEN ${documentAccess.conditionWith(a, { ...R, perms: pw })} THEN 'write'
-            WHEN ${documentAccess.conditionWith(a, R)} THEN 'read' END`;
+// `opts` is passed straight to conditionWith (the folder-share predicate), so a caller
+// can ask "what would this give people if these shares were not there?".
+function levelWith(a, R, pw, pa, opts = undefined) {
+  return `CASE WHEN ${documentAccess.conditionWith(a, { ...R, perms: pa }, opts)} THEN 'admin'
+            WHEN ${documentAccess.conditionWith(a, { ...R, perms: pw }, opts)} THEN 'write'
+            WHEN ${documentAccess.conditionWith(a, R, opts)} THEN 'read' END`;
 }
 const levelParams = (p) => ['read', 'write', 'admin'].map(l => p(documentAccess.permissionsFor(l)));
 
@@ -230,15 +232,52 @@ async function gates(q, door, who = null) {
   const src = doorRow(door, p);
   const [pr, pw, pa] = levelParams(p);
   const principal = who ? who(p) : everyone;
+  // "as if these shares were gone", for showing what a delete would leave behind
+  const opts = door.excludeGrantIds?.length ? { folderShareWhen: `pv_lf.id <> ALL(${p(door.excludeGrantIds)}::uuid[])` } : undefined;
   const rows = await q.query(
     `WITH d AS (${src})
      SELECT x.user_id, x.gate FROM (
-       SELECT (${principal.uid})::uuid AS user_id, ${levelWith('d', principal.R(pr), pw, pa)} AS gate
+       SELECT (${principal.uid})::uuid AS user_id, ${levelWith('d', principal.R(pr), pw, pa, opts)} AS gate
          FROM d CROSS JOIN ${principal.from}) x
       WHERE x.gate IS NOT NULL`,
     p.vals
   );
   return new Map(rows.map(r => [String(r.user_id), r.gate]));
+}
+
+// What named shares would give each account, if they applied: the rule's own subject
+// match and level, over the grant rows named. Used to work out what a folder move would
+// do without doing it -- the shares that travel with the folder land at the new door.
+async function grantLevels(q, grantIds) {
+  const ids = [...new Set((grantIds || []).map(String))];
+  if (!ids.length) return new Map();
+  const R = documentAccess.acctRefs('u', 'NULL');
+  const rows = await q.query(
+    `SELECT u.user_id, max(${documentAccess.shareLevel(R, 'g.permission')}) AS level
+       FROM library_grants g JOIN user_roles u ON ${documentAccess.shareSubject('g', R)}
+      WHERE g.id = ANY($1::uuid[])
+      GROUP BY u.user_id`,
+    [ids]
+  );
+  // 'write' sorts after 'read' and before... nothing: max() over text gives 'write' the
+  // edge over 'read', which is the order that matters here (a share is never 'admin').
+  return new Map(rows.map(r => [String(r.user_id), r.level]));
+}
+
+// Names and addresses for a set of accounts, for saying who gains or loses.
+async function peopleAt(q, userIds) {
+  const ids = [...new Set((userIds || []).map(String))];
+  if (!ids.length) return new Map();
+  const rows = await q.query(
+    `SELECT u.user_id, u.role, u.email, u.verified_email,
+            (SELECT p.display_name FROM user_profiles p WHERE p.user_id = u.user_id AND coalesce(p.display_name, '') <> '') AS name
+       FROM user_roles u WHERE u.user_id = ANY($1::uuid[])`,
+    [ids]
+  );
+  return new Map(rows.map(r => [String(r.user_id), {
+    user_id: r.user_id, email: r.verified_email || r.email || null, name: r.name || null,
+    is_admin: r.role === 'admin', view_only: r.role !== 'admin' && r.role !== 'contributor',
+  }]));
 }
 
 // Why: one row per way in that the rule matched at the door, from the rule's own parts.
@@ -975,5 +1014,6 @@ async function fileDoor(user, { doc, library, full, detail }) {
 module.exports = {
   sharedWithMe, libraryDoor, fileDoor, withSnapshot, callerLevel, callerParams, probe, effectiveFor, maxLevel, RANK,
   reconcile, impactOf, stillOpen, shareRelation, levelWith, hooks,
+  gates, grantLevels, peopleAt,
 };
 

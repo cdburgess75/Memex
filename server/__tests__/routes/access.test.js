@@ -10,7 +10,7 @@ const express = require('express');
 const LIB = 'aaaaaaaa-0000-4000-8000-000000000001';
 const DOC = 'dddddddd-0000-4000-8000-000000000001';
 const ME = { id: '11111111-1111-4111-8111-111111111111', email: 'me@acme.test', verifiedEmail: 'me@acme.test', role: 'contributor' };
-const mockState = { user: ME, listed: null, readable: null, admin: false, library: null, folderVisible: false, sharedAt: false };
+const mockState = { user: ME, listed: null, readable: null, admin: false, library: null, folderVisible: false, sharedAt: false, otherLibrary: null };
 
 jest.mock('../../middleware/auth', () => (req, res, next) => {
   if (!mockState.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -24,7 +24,12 @@ jest.mock('../../lib/libraries', () => ({
   visibleLibraryRow: jest.fn(async (_u, id) => (mockState.listed && id === LIB ? mockState.listed : null)),
   shapeLibrary: jest.fn((_u, r) => ({ id: r.id, name: r.name, can_manage: !!r.manage })),
   sharedFolderAt: jest.fn(async () => mockState.sharedAt),
+  visibleLibrary: jest.fn(async (_u, id) => {
+    const r = id === LIB ? mockState.listed : mockState.otherLibrary;
+    return r ? { id: r.id, name: r.name, can_manage: !!r.manage } : null;
+  }),
 }));
+jest.mock('../../lib/folderPreview', () => ({ preview: jest.fn(async () => ({ op: 'preview' })) }));
 jest.mock('../../lib/libraryShares', () => ({ folderVisibleTo: jest.fn(async () => mockState.folderVisible) }));
 jest.mock('../../lib/documentAccess', () => ({
   getAccessibleDocument: jest.fn(async ({ required }) => (required === 'admin' ? (mockState.admin ? { id: DOC } : null) : mockState.readable)),
@@ -34,13 +39,14 @@ jest.mock('../../lib/db', () => ({ queryOne: jest.fn(async () => mockState.libra
 const accessKeys = require('../../lib/accessKeys');
 const libraryShares = require('../../lib/libraryShares');
 const documentAccess = require('../../lib/documentAccess');
+const folderPreview = require('../../lib/folderPreview');
 const db = require('../../lib/db');
 const app = () => { const a = express(); a.use('/api/access', require('../../routes/access')); return a; };
 const get = (url) => request(app()).get(url);
 
 beforeEach(() => {
   jest.clearAllMocks();
-  Object.assign(mockState, { user: ME, listed: null, readable: null, admin: false, library: null, folderVisible: false, sharedAt: false });
+  Object.assign(mockState, { user: ME, listed: null, readable: null, admin: false, library: null, folderVisible: false, sharedAt: false, otherLibrary: null });
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => console.error.mockRestore());
@@ -169,5 +175,37 @@ describe('GET /api/access/files/:id', () => {
     await get(`/api/access/files/${DOC}`);
     expect(db.queryOne).not.toHaveBeenCalled();
     expect(accessKeys.fileDoor.mock.calls[0][1]).toMatchObject({ library: null, detail: 'full' });
+  });
+});
+
+describe('POST /api/access/folder-preview', () => {
+  beforeEach(() => { mockState.listed = { id: LIB, name: 'Clients', manage: true }; });
+  const post = (body) => {
+    const a = express();
+    a.use(express.json());
+    a.use('/api/access', require('../../routes/access'));
+    return request(a).post('/api/access/folder-preview').send(body);
+  };
+  test('needs ops, and only knows the four folder operations', async () => {
+    expect((await post({})).status).toBe(400);
+    expect((await post({ ops: [{ op: 'explode', library_id: LIB, path: 'A' }] })).status).toBe(400);
+  });
+  test('a library the caller does not see is a 404', async () => {
+    mockState.listed = null;
+    expect((await post({ ops: [{ op: 'rename', library_id: LIB, path: 'A', name: 'B' }] })).status).toBe(404);
+  });
+  test('a bad path or name is refused before anything is read', async () => {
+    for (const op of [{ op: 'rename', library_id: LIB, path: '../x', name: 'B' }, { op: 'rename', library_id: LIB, path: 'A', name: 'a/b' }]) {
+      expect((await post({ ops: [op] })).status).toBe(400);
+    }
+  });
+  test('each side is visible only to whoever manages that library', async () => {
+    await post({ ops: [{ op: 'reparent', library_id: LIB, path: 'A', target: 'B' }] });
+    expect(folderPreview.preview).toHaveBeenCalledWith(
+      expect.objectContaining({ op: 'reparent', path: 'A', newPath: 'B/A' }),
+      { canManageSource: true, canManageTarget: true });
+    mockState.listed = { id: LIB, name: 'Clients', manage: false };
+    await post({ ops: [{ op: 'rename', library_id: LIB, path: 'A', name: 'B' }] });
+    expect(folderPreview.preview).toHaveBeenLastCalledWith(expect.anything(), { canManageSource: false, canManageTarget: false });
   });
 });
