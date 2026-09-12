@@ -60,7 +60,7 @@ const LIB = 'aaaaaaaa-0000-4000-8000-000000000001';
 const mockRight = { value: { right: 'owner', scoped: true } };
 jest.mock('../../lib/libraries', () => ({
   ...jest.requireActual('../../lib/libraries'),
-  writeRight: jest.fn(async () => mockRight.value),
+  writeRight: jest.fn(async (_u, _lib, path) => (typeof mockRight.value === 'function' ? mockRight.value(String(path ?? '')) : mockRight.value)),
   sharedFolderAt: jest.fn(async () => false),
   defaultLibraryId: jest.fn(async () => 'aaaaaaaa-0000-4000-8000-000000000001'),
 }));
@@ -220,38 +220,73 @@ describe('renames, restores and transfers', () => {
 
 describe('folders', () => {
   const post = (url, body) => request(app()).post(`/api/files/folder${url}`).send({ source_library_id: LIB, ...body });
+  // Ending a share still belongs to whoever manages the library (piece 4, part 9); a
+  // rename or a move within the library carries its shares instead of refusing.
   test.each([
-    ['rename', '/rename', { path: 'Clients/Acme', name: 'Acme2' }],
-    ['reparent', '/reparent', { path: 'Clients/Acme', target: 'Archive' }],
     ['move', '/move', { path: 'Clients/Acme', library_id: LIB }],
     ['delete', '/delete', { path: 'Clients/Acme' }],
-  ])('%s refuses a folder with a share at or below it (until shares follow renames)', async (_n, url, body) => {
+  ])('%s still refuses a folder with a share at or below it', async (_n, url, body) => {
     libraries.sharedFolderAt.mockResolvedValueOnce(true);
     const res = await post(url, body);
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('FOLDER_SHARED');
     expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
   });
+  test.each([
+    ['rename', '/rename', { path: 'Clients/Acme', name: 'Acme2' }, 'Clients/Acme2'],
+    ['reparent', '/reparent', { path: 'Clients/Acme', target: 'Archive' }, 'Archive/Acme'],
+  ])('%s carries the shares instead of refusing, and never asks whether one is there', async (_n, url, body, to) => {
+    const res = await post(url, body);
+    expect(res.status).toBe(200);
+    expect(libraries.sharedFolderAt).not.toHaveBeenCalled();
+    // the files, then the shares at and below, in that order: moving the grants first
+    // would strip coverage from the very people whose shares are moving
+    const names = mockQueries.map(q => q.sql);
+    const docs = names.findIndex(sql => /^\s*UPDATE documents d SET name = \$2/.test(sql));
+    const grants = names.findIndex(sql => /^\s*UPDATE library_grants g/.test(sql));
+    expect(docs).toBeGreaterThan(-1);
+    expect(grants).toBeGreaterThan(docs);
+    const upd = mockQueries[grants];
+    expect(upd.sql).toMatch(/folder_path = \$2 \|\| substring\(g\.folder_path from \$3::int\)/);
+    expect(upd.params).toEqual([LIB, to, 'Clients/Acme'.length + 1, 'Clients/Acme']);
+    expect(res.body.shares_moved).toBe(0); // the stand-in library has none
+  });
+  test('a folder operation needs the right where the folder SITS, not inside it', async () => {
+    // Read-Write on the folder itself is the right to fill and reorganise what is in it;
+    // its own name and place belong to whoever can write in the folder above.
+    mockRight.value = (path) => (path === 'Clients' ? REFUSED : { right: 'grant', scoped: true });
+    for (const [url, body] of [['/rename', { path: 'Clients/Acme', name: 'Acme2' }], ['/reparent', { path: 'Clients/Acme', target: 'Archive' }]]) {
+      mockQueries.length = 0;
+      expect((await post(url, body)).status).toBe(403);
+      expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
+    }
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Clients');
+  });
   test('moving a folder into another needs the right to add files there', async () => {
-    mockRight.value = REFUSED;
+    mockRight.value = (path) => (path === 'Shared/Acme' ? REFUSED : { right: 'owner', scoped: true });
     expect((await post('/reparent', { path: 'Clients/Acme', target: 'Shared' })).status).toBe(403);
     expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Shared/Acme', expect.anything());
+    expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
   });
   test('a folder rename keeps the folder where it is, so nothing changes scope', async () => {
     await post('/rename', { path: 'Clients/Acme', name: 'Acme2' });
     const upd = mockQueries.find(q => /UPDATE documents d SET name = \$2/.test(q.sql));
     expect(upd.sql).toMatch(/^\s*UPDATE documents d SET name = \$2 \|\| substring\(d\.name from \$3::int\)\s+WHERE/);
-    expect(upd.params).toHaveLength(9);
+    // ...and somebody else's personal file inside it is not part of the folder: the
+    // rule's five parameters, then the mover, and nothing about scope
+    expect(upd.sql).toMatch(/AND \(d\.library_scoped OR d\.uploaded_by IS NOT DISTINCT FROM \$10::uuid\)/);
+    expect(upd.params).toHaveLength(10);
+    expect(upd.params[9]).toBe(USER.id);
   });
   test('a folder rename still needs a right to change files there', async () => {
-    mockRight.value = REFUSED;
+    mockRight.value = (path) => (path === 'Clients/Acme2' ? REFUSED : { right: 'owner', scoped: true });
     expect((await post('/rename', { path: 'Clients/Acme', name: 'Acme2' })).status).toBe(403);
     expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Clients/Acme2', expect.anything());
     expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
   });
   test("a reparent without a right at the destination says so, whether or not a share sits there", async () => {
     // (answering FOLDER_SHARED first would let anyone probe for shares where they can't write)
-    mockRight.value = REFUSED;
+    mockRight.value = (path) => (path === 'Shared/Acme' ? REFUSED : { right: 'owner', scoped: true });
     libraries.sharedFolderAt.mockImplementation(async (_lib, p) => p === 'Shared/Acme');
     try {
       const res = await post('/reparent', { path: 'Clients/Acme', target: 'Shared' });
@@ -263,7 +298,8 @@ describe('folders', () => {
     await post('/reparent', { path: 'Clients/Acme', target: 'Archive' });
     const upd = mockQueries.find(q => /UPDATE documents d SET name = \$2/.test(q.sql));
     expect(upd.sql).toMatch(/library_scoped = d\.library_scoped OR \(\$10::boolean AND d\.uploaded_by IS NOT DISTINCT FROM \$11\)/);
-    expect(upd.params.slice(9)).toEqual([true, USER.id]);
+    expect(upd.sql).toMatch(/AND \(d\.library_scoped OR d\.uploaded_by IS NOT DISTINCT FROM \$12::uuid\)/);
+    expect(upd.params.slice(9)).toEqual([true, USER.id, USER.id]);
   });
   test('a folder moved to a library held only under the old open rule leaves library content behind, and says how much', async () => {
     mockRight.value = { right: 'legacy', scoped: false };

@@ -1255,11 +1255,14 @@ router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, r
       if (!(await destinationRight(req, res, req.user, lib, parentOf(displayName)))) return;
     }
     const session = await db.queryOne(
+      // The library is stored with the session: a folder renamed while the bytes are
+      // still arriving carries the session's name along with the files, and that can
+      // only be found by library.
       `INSERT INTO upload_sessions
-       (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (name, size, mime_type, storage_path, chunk_size, total_chunks, uploaded_by, uploaded_by_email, library_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [displayName, size, mimetype, storagePath, chunkSize, totalChunks, req.user.id, req.user.email]
+      [displayName, size, mimetype, storagePath, chunkSize, totalChunks, req.user.id, req.user.email, lib]
     );
     await fs.mkdir(await chunkDir(session.id), { recursive: true });
     res.json({ session: uploadSessionClientShape(session) });
