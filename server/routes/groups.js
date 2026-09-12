@@ -209,6 +209,7 @@ router.put('/:id/owner', auth, async (req, res) => {
       if (candidate.status === 'unknown') return res.status(400).json({ error: `${email} hasn't signed in to Depot yet, so they can't own a group` });
       if (req.user.role !== 'admin') return res.status(400).json({ error: `${email} can't own this group. Ask an admin for help.` });
       if (candidate.status === 'viewer') return res.status(400).json({ error: `${email} can only view files, so they can't own a group` });
+      if (candidate.status === 'disabled') return res.status(400).json({ error: `${email}'s account has been switched off, so it can't be given a group` });
       return res.status(409).json({ error: `More than one Depot account uses ${email}. Sort that out in Admin before handing this group over.` });
     }
     // Already theirs: nothing to change or record.

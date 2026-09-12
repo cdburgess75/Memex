@@ -115,7 +115,7 @@ const SQL = {
       return i < 0 ? [] : store.members.splice(i, 1).map(m => pick(m, ['id', 'member_email']));
     },
   // resolveOwnerCandidate — every account using the address
-  'SELECT user_id, email, role FROM user_roles WHERE lower(email) = lower($1)':
+  'SELECT user_id, email, role, disabled_at FROM user_roles WHERE lower(email) = lower($1)':
     ([email]) => store.users.filter(u => lc(u.email) === lc(email)).map(u => ({ ...u })),
   // transferOwner — conditional on the owner the caller was authorised against
   'UPDATE groups SET owner_id = $2, owner_email = $3, updated_at = NOW() WHERE id = $1 AND owner_id IS NOT DISTINCT FROM $4 RETURNING id, name, owner_id, owner_email, created_at':
@@ -343,6 +343,22 @@ describe('the manage rule, route by route', () => {
 });
 
 describe('who owns a group', () => {
+  // Handing a group to somebody who has gone is how it ends up with nobody able to
+  // manage it -- the same rule libraries follow.
+  test('a group cannot be handed to an account that has been switched off', async () => {
+    const g = await seedAcctg();
+    store.users.push({ user_id: '77777777-7777-4777-8777-777777777777', email: 'gone@ptechllc.com', role: 'contributor', disabled_at: new Date().toISOString() });
+    const res = await as(DAVE).put(`/api/groups/${g.id}/owner`).send({ email: 'gone@ptechllc.com' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/switched off/);
+    // an owner who is not an admin is told it cannot be done, not why -- the existing
+    // rule, so a group owner cannot use a handover to probe for accounts
+    const quiet = await as(RICHARD).put(`/api/groups/${g.id}/owner`).send({ email: 'gone@ptechllc.com' });
+    expect([quiet.status, quiet.body.error]).toEqual([400, "gone@ptechllc.com can't own this group. Ask an admin for help."]);
+    expect((await as(RICHARD).get(`/api/groups/${g.id}`)).body.owner_email).toBe(RICHARD.email);
+  });
+
+
   test('an owner demoted to viewer still sees the group, and the list agrees, but loses the controls', async () => {
     const g = await seedAcctg();
     const list = (await as(RICHARD_DEMOTED).get('/api/groups')).body;

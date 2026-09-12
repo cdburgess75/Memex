@@ -239,12 +239,15 @@ async function removeMember(groupId, memberId) {
 // transfer must not be a way round that.
 async function resolveOwnerCandidate(email) {
   const rows = await db.query(
-    'SELECT user_id, email, role FROM user_roles WHERE lower(email) = lower($1)',
+    'SELECT user_id, email, role, disabled_at FROM user_roles WHERE lower(email) = lower($1)',
     [email]
   );
   if (!rows.length) return { status: 'unknown' };
   if (new Set(rows.map(r => String(r.user_id))).size > 1) return { status: 'ambiguous' };
   const row = rows[0];
+  // An account that has been switched off cannot be given anything: handing a group to
+  // somebody who is gone is how a group ends up with nobody able to manage it.
+  if (row.disabled_at) return { status: 'disabled' };
   if (row.role !== 'admin' && row.role !== 'contributor') return { status: 'viewer' };
   return { status: 'ok', user: row };
 }

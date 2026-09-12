@@ -212,6 +212,30 @@ suite('switching somebody off', () => {
     expect(off.body.error).toMatch(/switched off/);
   });
 
+  // The rule itself, not just the doors in front of it. Everything in Depot that asks
+  // "may this account open this?" goes through condition(), including the lists that
+  // answer for OTHER people -- so a switched-off account has to be nobody there too.
+  test('the access rule opens nothing for a switched-off account, admin or not', async () => {
+    await fixture();
+    const doc = (await db.query(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id, library_scoped)
+       VALUES ('plan.pdf', 5, 'text/plain', 's/1', $1, $2, $3, true) RETURNING id`,
+      [LEAVER.id, LEAVER.email, LIB]))[0].id;
+    const canRead = async (who) => !!(await one(
+      `SELECT 1 FROM documents d WHERE d.id = $1 AND ${documentAccess.condition('d', 2)}`,
+      [doc, ...documentAccess.userParams({ ...who, emailVerified: true }, 'read')]));
+
+    expect(await canRead(LEAVER)).toBe(true);          // its owner
+    expect(await canRead(ADMIN)).toBe(true);           // and an admin
+    await setOff(ADMIN, LEAVER, { disabled: true });
+    expect(await canRead(LEAVER)).toBe(false);         // owning it is not enough any more
+    // ...and being an admin is not either: the term wraps the whole rule
+    await db.query('UPDATE user_roles SET disabled_at = NOW() WHERE user_id = $1', [ADMIN2.id]);
+    expect(await canRead(ADMIN2)).toBe(false);
+    await db.query('UPDATE user_roles SET disabled_at = NULL WHERE user_id = $1', [ADMIN2.id]);
+    expect(await canRead(ADMIN2)).toBe(true);
+  });
+
   test('only an administrator may ask, or switch', async () => {
     await fixture();
     expect((await setOff(LEAVER, ADMIN2, { disabled: true })).status).toBe(403);
