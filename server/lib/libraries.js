@@ -56,10 +56,6 @@ async function writeRight(user, libraryId, parentPath = '', q = db) {
   return { status: 403, error: "You can't add files here. Ask the library owner for Read-Write access." };
 }
 
-// Is a share attached at `path` or anywhere below it? Folder shares are keyed by path,
-// and until renames and moves carry them (piece 4), a shared folder must not be
-// renamed, moved or deleted out from under its share -- which would orphan the share,
-// or re-attach it to whatever next took that name.
 // Who manages a library's sharing: an admin, or its owner while a contributor.
 async function managesLibrary(user, libraryId, q = db) {
   if (user?.role === 'admin') return true;
@@ -68,6 +64,11 @@ async function managesLibrary(user, libraryId, q = db) {
   return !!row?.owner_id && String(row.owner_id) === String(user.id);
 }
 
+// Is a share attached at `path` or anywhere below it? The two operations that would END
+// a share -- deleting a folder to the Trash, and taking it to another library -- ask this
+// before they run, because ending somebody's share belongs to whoever manages the
+// library. Renaming and moving within the library carry their shares instead, and no
+// longer ask (lib/folderCarry.js).
 async function sharedFolderAt(libraryId, path, q = db) {
   if (!isUuid(libraryId) || !path) return false;
   const row = await q.queryOne(
@@ -151,8 +152,10 @@ const LISTING = `
 //   add_right   what writeRight answers at the root: 'admin' | 'owner' | 'grant' |
 //               'legacy' | null (folder shares are in my_folders)
 //   shared      whether it is shared at all -- only to someone who manages it
-//   shared_folders  the folders in it that are shared (they can't be renamed, moved or
-//               deleted until shares follow them) -- only to someone who manages it
+//   shared_folders  the folders in it that are shared -- only to someone who manages it.
+//               A rename or a move within the library carries a folder's shares with it;
+//               deleting it, or taking it to another library, ends them, so those two
+//               belong to whoever manages the library
 function shapeLibrary(user, r) {
   const admin = user?.role === 'admin';
   const contributor = user?.role === 'contributor';

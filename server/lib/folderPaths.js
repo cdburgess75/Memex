@@ -28,7 +28,20 @@ function rekey(path, oldPath, newPath) {
   return p;
 }
 
+// The path a folder gets when somebody renames it. A folder name is one segment, and the
+// characters that mean something in HTML or in a path are replaced -- so the name that
+// comes back is not always the name that was typed. The preview and the rename itself
+// both go through here, because an answer shown for one name and carried out on another
+// is not an answer at all. null when the name cannot be a folder name.
+function renamedPath(oldPath, rawName) {
+  const name = String(rawName || '').trim();
+  if (!name || /[\\/]/.test(name) || name === '.' || name === '..') return null;
+  const parent = parentOf(oldPath);
+  const safe = name.replace(/[^a-zA-Z0-9._ -]/g, '_');
+  return parent ? `${parent}/${safe}` : safe;
+}
+
 // Moving a folder into itself (or into its own child) is not a move.
 const movesIntoItself = (oldPath, target) => target === oldPath || isUnder(target, oldPath);
 
-module.exports = { codePoints, cutFor, parentOf, baseOf, isAtOrUnder, isUnder, rekey, movesIntoItself };
+module.exports = { codePoints, cutFor, parentOf, baseOf, isAtOrUnder, isUnder, rekey, renamedPath, movesIntoItself };

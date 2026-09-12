@@ -24,6 +24,10 @@ const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, p
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
 const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt } = require('../../lib/folderOps');
+const folderPaths = require('../../lib/folderPaths');
+const folderCarry = require('../../lib/folderCarry');
+const folderPreview = require('../../lib/folderPreview');
+const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -50,11 +54,11 @@ const FOLDER_COPY_MAX_FILES = 5000;
  * folder: one that doesn't hold it (for this caller) is the same 404 as a folder that
  * can't be found, not a 200 that quietly touched nothing.
  */
-async function folderLibraryId(req, folderPath, user) {
+async function folderLibraryId(req, folderPath, user, q = db) {
   const explicit = req.headers['x-library-id'] || req.body?.source_library_id || req.query?.source_library_id;
   if (explicit) {
     if (!isUuid(explicit)) { const e = new Error('Bad library id'); e.status = 400; throw e; }
-    const held = await db.queryOne(
+    const held = await q.queryOne(
       `SELECT 1 FROM documents d
        WHERE d.deleted_at IS NULL AND d.library_id = $1 AND starts_with(d.name, $2 || '/') AND ${documentAccess.condition('d', 3)}
        LIMIT 1`,
@@ -62,7 +66,7 @@ async function folderLibraryId(req, folderPath, user) {
     );
     return held ? String(explicit) : null;
   }
-  const rows = await db.query(
+  const rows = await q.query(
     `SELECT DISTINCT d.library_id FROM documents d
      WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND ${documentAccess.condition('d', 2)}`,
     [folderPath, ...documentAccess.userParams(user, 'read')]
@@ -97,12 +101,13 @@ async function destinationRight(res, user, libraryId, path) {
   return r;
 }
 
-// Folder shares are keyed by path, so until renames and moves carry them along, a folder
-// with a share at or below it must not be renamed, moved or deleted: the share would be
-// orphaned, or re-attach to whatever next took the name. These two run INSIDE a folder
-// operation's transaction, on its client, and refuse by throwing so it rolls back.
+// Renaming a folder, or moving it within its library, carries its shares along
+// (lib/folderCarry.js). The two operations that would END a share -- deleting it to the
+// Trash, and taking it to another library -- still refuse, because ending somebody's
+// share belongs to whoever manages the library. These run INSIDE a folder operation's
+// transaction, on its client, and refuse by throwing so it rolls back.
 const folderSharedError = () => new FolderOpError('FOLDER_SHARED', 409,
-  "This folder is shared. Remove its shares before renaming, moving or deleting it.");
+  "This folder is shared with other people. Ask the library's owner to delete it, or stop sharing it first.");
 async function sharedAt(q, libraryId, ...paths) {
   for (const p of paths) {
     if (p && await libraries.sharedFolderAt(libraryId, p, q)) return true;
@@ -136,6 +141,157 @@ async function writeRightOrThrow(user, libraryId, path, q) {
   return r;
 }
 
+// A folder path that is already too long can still be SHORTENED -- that is the only way
+// out of one -- but a rename that makes it longer and pushes it past what a share can
+// hold is refused, with the numbers. Silently allowing it would make the folder one
+// nobody can ever share, for a reason the app never said out loud.
+function tooLongToShare(oldPath, newPath, kind) {
+  const chars = folderPaths.codePoints(newPath);
+  const bytes = Buffer.byteLength(newPath, 'utf8');
+  if (chars <= 400 && bytes <= 1024) return null;
+  if (chars <= folderPaths.codePoints(oldPath) && bytes <= Buffer.byteLength(oldPath, 'utf8')) return null;
+  const size = `${chars} characters (${bytes} bytes)`;
+  return {
+    code: 'NAME_TOO_LONG',
+    error: kind === 'rename'
+      ? `That name would make this folder's full path ${size} long. A folder can only be shared up to 400 characters and 1024 bytes, so please use a shorter name.`
+      : `That would put this folder ${size} deep. A folder can only be shared up to 400 characters and 1024 bytes, so please move it somewhere less deep, or shorten the names on the way.`,
+  };
+}
+
+// The answer the caller was shown (POST /api/access/folder-preview), checked against what
+// is true now. A share added above the destination, or a group gaining a member, changes
+// who this move would affect -- so the confirmation they gave was to a different question,
+// and they are asked again rather than surprised.
+async function refuseIfAnswerChanged(q, req, { kind, libraryId, oldPath, newPath }) {
+  const sent = String(req.body?.fingerprint || '');
+  if (!sent) return;
+  const op = { op: kind, libraryId, path: oldPath, newPath, targetLibraryId: libraryId };
+  const { before, after, carried } = await folderPreview.levelsAround(q, op);
+  const now = folderPreview.fingerprint({ before, after, carried, op });
+  if (now === sent) return;
+  throw new FolderOpError('CHANGED', 409,
+    'Who can open this folder changed while you were deciding, so this is no longer the move you were shown. Have another look.',
+    { fingerprint: now });
+}
+
+/* Move a folder to a new path, with everything that belongs to it.
+ *
+ * This is the whole of a rename and of a move within a library; they differ only in
+ * whether the folder changes parents -- and so whether the mover's own personal files
+ * become library content, and whether an upload still arriving follows the folder.
+ *
+ * The order is the point. Nothing about a share, and nothing about what is at the
+ * destination, is revealed before the right to write at that end has been proven -- and
+ * every check runs on the transaction's client, under the library's tree lock, so what
+ * was checked is what is written.
+ */
+async function carryFolder(q, { req, libraryId, oldPath, newPath, kind, dest }) {
+  const user = req.user;
+  // The shares that travel with the folder, held for the length of the operation: what
+  // moves has to be exactly what was counted.
+  const carried = await folderCarry.grantsUnder(q, libraryId, oldPath);
+  await refuseIfAnswerChanged(q, req, { kind, libraryId, oldPath, newPath });
+  await folderCarry.refuseIfTooBig(q, libraryId, oldPath, user.id);
+  await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath, fromLibraryId: libraryId, fromPath: oldPath, viewer: user, verb: kind === 'rename' ? 'rename' : 'move' });
+  folderCarry.planSharePaths(carried, oldPath, newPath);
+  if (carried.length) await folderCarry.assertTotal(q, { libraryId, path: oldPath, user });
+
+  /* The files. Trashed ones are deliberately included -- a folder's Trash moves with it,
+   * so restoring one later lands it back inside the folder, under the share that moved
+   * too -- and they are authorised by the TRASH rule, not the plain one.
+   *
+   * That distinction is the whole point. A folder share opens a trashed document only if
+   * the share already existed when the document was deleted (documentAccess.
+   * conditionInTrash). Without it, somebody holding a newer share here and an older one
+   * somewhere else could move this folder under the older share and find, in their Trash,
+   * files that were deleted before they had anything to do with them -- and restore them.
+   * A trashed file the mover may not see therefore stays exactly where it is, which is
+   * also where it was when it was deleted. On a live document the trash rule is the plain
+   * rule, so nothing else changes.
+   */
+  const p = db.paramList();
+  const old = p(oldPath);
+  const np = p(newPath);
+  const cut = p(folderPaths.cutFor(oldPath));
+  const lib = p(libraryId);
+  const rule = documentAccess.conditionInTrash('d', p.vals.length + 1);
+  p.vals.push(...documentAccess.userParams(user, 'write'));
+  // Moving into a shared folder makes the mover's OWN personal files library content; a
+  // rename leaves the folder where it is, so nothing about scope changes.
+  const scope = kind === 'reparent'
+    ? `, library_scoped = d.library_scoped OR (${p(!!dest?.scoped)}::boolean AND d.uploaded_by IS NOT DISTINCT FROM ${p(user.id)})`
+    : '';
+  // Somebody else's personal file inside this folder is not part of it: it is theirs,
+  // no share has ever reached it, and moving it would relocate a private file on their
+  // behalf. It stays where they left it -- for an admin too, who could otherwise move
+  // every one of them without anybody asking. What stays is counted, not named.
+  const mine = p(user.id);
+  const moved = await q.query(
+    `UPDATE documents d SET name = ${np} || substring(d.name from ${cut}::int)${scope}
+      WHERE d.library_id = ${lib}::uuid AND starts_with(d.name, ${old} || '/')
+        AND (d.library_scoped OR d.uploaded_by IS NOT DISTINCT FROM ${mine}::uuid) AND ${rule}
+      RETURNING d.id, d.name, (d.deleted_at IS NOT NULL) AS trashed`,
+    p.vals
+  );
+  const state = await folderCarry.carryPathState(q, { libraryId, oldPath, newPath, kind });
+  // Moving a folder out from under a shared ancestor can leave that ancestor empty, and
+  // an empty shared folder is a trap: keep it.
+  const kept = kind === 'reparent' ? await keepSharedFoldersAlive(q, libraryId, [`${oldPath}/`]) : [];
+  const opId = await folderCarry.recordOp(q, { libraryId, kind, path: oldPath, newPath, user });
+  // Anything still at the old path is somebody else's personal file: never the caller's to
+  // move, never reached by a share, and still where its uploader left it. Only an admin is
+  // told, matching who is shown personal files everywhere else.
+  const leftBehind = await folderCarry.countUnder(q, libraryId, oldPath);
+  return { opId, moved, shares: state.shares, kept, leftBehind, manages: await libraries.managesLibrary(user, libraryId, q) };
+}
+
+// After the transaction has committed: the empty objects behind any planted markers, and
+// the record of what happened. All best-effort -- the move is already done, and a folder
+// that moved must not be reported as a failure because a log line did not land.
+async function announce(kind, { user, oldPath, newPath, out, live }) {
+  try {
+    for (const marker of out.kept) {
+      await storage.upload(marker.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
+    }
+    const verb = kind === 'rename' ? 'rename' : 'move';
+    await logEvent(`folder ${verb} · ${oldPath} → ${newPath}`, user.id, user.email);
+    await logDocumentEvent(null, kind === 'rename' ? 'folder_renamed' : 'folder_moved', user.id, user.email,
+      `${oldPath} → ${newPath} (${live})`);
+    if (out.shares.length) {
+      await logDocumentEvent(null, 'folder_share_moved', user.id, user.email,
+        `${oldPath} → ${newPath} · ${out.shares.length} share${out.shares.length === 1 ? '' : 's'}`);
+    }
+  } catch (e) { console.error('folder operation committed, but recording it did not:', e.message); }
+}
+
+/* What the caller is told.
+ *
+ * The number of files they moved is theirs. The other three counts are about things they
+ * may not be able to see for themselves -- how many shares sit at or below a folder, how
+ * much of its Trash came along, and how many personal files of other people's stayed
+ * behind -- so they go to whoever manages the library, and `left_behind` to admins, who
+ * are shown personal files everywhere else. This is the same line the preview draws: a
+ * count is a probe too.
+ */
+function folderOpResult(user, newPath, out) {
+  const live = out.moved.filter(r => !r.trashed && !r.name.endsWith('/.keep')).length;
+  return {
+    body: {
+      ok: true, path: newPath, op_id: out.opId, count: live,
+      shares_kept: out.shares.length > 0,
+      ...(out.manages ? { trashed: out.moved.filter(r => r.trashed).length, shares_moved: out.shares.length } : {}),
+      ...(user.role === 'admin' ? { left_behind: out.leftBehind } : {}),
+    },
+    live,
+  };
+}
+
+// A folder renamed to the name it already has, or moved to where it already is, is not a
+// refusal and not an error -- but it must not look like a different kind of success
+// either, or a client reading the counts gets undefined from a perfectly good 200.
+const nothingToDo = (path) => ({ ok: true, path, op_id: null, count: 0, shares_kept: false });
+
 // SQL for "is library content after the move" (see routes/files.js libraryScopeAfterMove),
 // with its two parameters starting at $n: the destination is scoped, and the mover's id.
 // Only the mover's own files change -- admins included. IS NOT DISTINCT FROM keeps a row
@@ -165,41 +321,38 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// POST /api/files/folder/rename — rename a folder (re-prefix every file under it)
+// POST /api/files/folder/rename -- rename a folder, and everything that belongs to it
 router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const oldPath = existingFolder(req.body?.path);
     const rawName = String(req.body?.name || '').trim();
     if (!oldPath || !rawName) return res.status(400).json({ error: 'path and name required' });
-    if (/[\/\\]/.test(rawName) || rawName === '..' || rawName === '.') return res.status(400).json({ error: 'invalid name' });
-    // Strip HTML-significant and control characters (single folder segment).
-    const newName = rawName.replace(/[^a-zA-Z0-9._ -]/g, '_');
-    const parent = oldPath.split('/').slice(0, -1).join('/');
-    const newPath = parent ? `${parent}/${newName}` : newName;
+    const newPath = folderPaths.renamedPath(oldPath, rawName);
+    if (!newPath) return res.status(400).json({ error: 'invalid name' });
+    const parent = folderPaths.parentOf(oldPath);
     const libraryId = await folderLibraryId(req, oldPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
-    if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // renamed to what it is called
+    if (newPath === oldPath) return res.json(nothingToDo(oldPath)); // renamed to what it is called
+    const tooLong = tooLongToShare(oldPath, newPath, 'rename');
+    if (tooLong) return res.status(400).json(tooLong);
+    // Renaming a folder changes its entry in the folder ABOVE it, so that is the right it
+    // needs -- not a right inside the folder. Someone given Read-Write on a folder fills
+    // and reorganises what is in it; its own name belongs to whoever can write where it
+    // sits. Answered before anything share-shaped, so a refusal reveals nothing.
+    const first = await libraries.writeRight(req.user, libraryId, parent);
+    if (first.status) return res.status(first.status).json({ error: first.error });
     // Everything from here happens inside one transaction holding the library's tree
     // lock, and every check is re-run on that client: nothing may place a document by
     // name, or rename anything else in this library, while this runs.
-    const rows = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
-      if (await sharedAt(q, libraryId, oldPath)) throw folderSharedError();
+    const out = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
+      if (await folderLibraryId(req, oldPath, req.user, q) !== libraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await writeRightOrThrow(req.user, libraryId, parent, q);
       const dest = await writeRightOrThrow(req.user, libraryId, newPath, q);
-      await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath, fromLibraryId: libraryId, fromPath: oldPath, viewer: req.user, verb: 'rename' });
-      if (await sharedAt(q, libraryId, newPath)) throw folderSharedError();
-      void dest; // a rename keeps the folder where it is: what is library content doesn't change
-      return q.query(
-        `UPDATE documents d SET name = $2 || substring(d.name from $3::int)
-         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-         RETURNING d.id`,
-        // substring() counts characters, and JavaScript's .length counts UTF-16 units, so
-        // a folder name with an emoji in it would otherwise be cut one character short.
-        [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), libraryId]
-      );
+      return carryFolder(q, { req, libraryId, oldPath, newPath, kind: 'rename', dest });
     });
-    await logEvent(`folder rename · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_renamed', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
-    res.json({ ok: true, path: newPath, count: rows.length });
+    const { body, live } = folderOpResult(req.user, newPath, out);
+    await announce('rename', { user: req.user, oldPath, newPath, out, live });
+    res.json(body);
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
@@ -225,7 +378,7 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// POST /api/files/folder/reparent — move a folder under a different parent (drag-drop)
+// POST /api/files/folder/reparent -- move a folder under a different parent (drag-drop)
 router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const oldPath = existingFolder(req.body?.path);
@@ -237,30 +390,26 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     // new part is named the way the files moved alongside it are ('' = the root).
     const target = await destinationFolder(req.body?.target, srcLibraryId, req.user);
     if (target === null) return res.status(400).json({ error: 'invalid target' });
-    const base = oldPath.split('/').pop();
-    const newPath = target ? `${target}/${base}` : base;
-    if (newPath === oldPath) return res.json({ ok: true, path: oldPath, count: 0 }); // already there
-    if (target === oldPath || target.startsWith(oldPath + '/')) return res.status(400).json({ error: "Can't move a folder into itself" });
-    const rows = await withFolderOp({ libraryIds: [srcLibraryId] }, async (q) => {
-      if (await sharedAt(q, srcLibraryId, oldPath)) throw folderSharedError();
-      // Moving a folder INTO another one needs the right to add files there -- dragging a
-      // folder into a shared folder must not quietly share it with everyone who has access.
-      // Checked before whether a share sits at the new path, so the answer can't be used
-      // to probe for shares in places the caller can't write to.
+    const newPath = target ? `${target}/${folderPaths.baseOf(oldPath)}` : folderPaths.baseOf(oldPath);
+    if (newPath === oldPath) return res.json(nothingToDo(oldPath)); // already there
+    if (folderPaths.movesIntoItself(oldPath, target)) return res.status(400).json({ error: "Can't move a folder into itself" });
+    const tooDeep = tooLongToShare(oldPath, newPath, 'reparent');
+    if (tooDeep) return res.status(400).json(tooDeep);
+    // Moving a folder needs the right at BOTH ends: where it is now (its name and place
+    // belong to the folder above it) and where it is going (dragging a folder into a
+    // shared folder must not quietly share it with everyone who has access there).
+    const parent = folderPaths.parentOf(oldPath);
+    const first = await libraries.writeRight(req.user, srcLibraryId, parent);
+    if (first.status) return res.status(first.status).json({ error: first.error });
+    const out = await withFolderOp({ libraryIds: [srcLibraryId] }, async (q) => {
+      if (await folderLibraryId(req, oldPath, req.user, q) !== srcLibraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await writeRightOrThrow(req.user, srcLibraryId, parent, q);
       const dest = await writeRightOrThrow(req.user, srcLibraryId, newPath, q);
-      await refuseIfSomethingIsAt(q, { destLibraryId: srcLibraryId, newPath, fromLibraryId: srcLibraryId, fromPath: oldPath, viewer: req.user, verb: 'move' });
-      if (await sharedAt(q, srcLibraryId, newPath)) throw folderSharedError();
-      return q.query(
-        `UPDATE documents d SET name = $2 || substring(d.name from $3::int), library_scoped = ${scopeAfterMove(10)}
-         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-         RETURNING d.id`,
-        [oldPath, newPath, Array.from(oldPath).length + 1, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-         dest.scoped, req.user.id]
-      );
+      return carryFolder(q, { req, libraryId: srcLibraryId, oldPath, newPath, kind: 'reparent', dest });
     });
-    await logEvent(`folder move · ${oldPath} → ${newPath}`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_moved', req.user.id, req.user.email, `${oldPath} → ${newPath} (${rows.length})`);
-    res.json({ ok: true, path: newPath, count: rows.length });
+    const { body, live } = folderOpResult(req.user, newPath, out);
+    await announce('reparent', { user: req.user, oldPath, newPath, out, live });
+    res.json(body);
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
@@ -350,10 +499,17 @@ router.get('/zip', auth, async (req, res) => {
 // Lazy ZIP entries for a folder's documents, each named relative to the folder's
 // own parent so the archive unpacks into a single top-level folder. load() fetches
 // one file's bytes on demand, so zipStream only ever holds one file in memory.
+// The names inside the archive, taken from where each document IS now. A link holds a
+// frozen list of document ids and a folder path that is only a label -- and the folder
+// can be renamed or moved after the link is made, which the link is meant to survive. So
+// a document that no longer sits under the label falls back to its own file name rather
+// than being cut by a length that no longer means anything (which produced entries like
+// "er/tax.pdf", or bare ".pdf" collisions).
 function folderZipEntries(docs, folderPath) {
   const parent = folderPath.split('/').slice(0, -1).join('/');
+  const pre = parent ? `${parent}/` : '';
   return docs.map(d => ({
-    name: parent ? d.name.slice(parent.length + 1) : d.name,
+    name: pre && d.name.startsWith(pre) ? d.name.slice(pre.length) : (pre ? folderPaths.baseOf(d.name) : d.name),
     load: () => storage.download(d.storage_path),
   }));
 }
@@ -368,14 +524,24 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
     // rewritten name ("Tax _ Co" for "Tax & Co"); list those too, or a live link would
     // drop out of the only place it can be seen and revoked.
     const keys = [...new Set([folderPath, safeDocName(folderPath, '')].filter(Boolean))];
+    // A link's folder_path is a label, frozen when it was made; what it actually serves
+    // is a list of document ids. So a link belongs to this folder if its label says so
+    // OR if any document it serves lives here now -- which is how a link stays findable,
+    // and revocable, after the folder it came from is renamed or moved.
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
     const rows = await db.query(
-      `SELECT id, folder_path, document_ids, expires_at, revoked_at, created_at,
-              created_by_email, last_accessed_at, access_count, password_hash
-       FROM folder_share_links
-       WHERE folder_path = ANY($1::text[]) ${adminAll ? '' : 'AND created_by = $2'}
-       ORDER BY revoked_at IS NULL DESC, created_at DESC
+      `SELECT l.id, l.folder_path, l.document_ids, l.expires_at, l.revoked_at, l.created_at,
+              l.created_by_email, l.last_accessed_at, l.access_count, l.password_hash
+       FROM folder_share_links l
+       WHERE (l.folder_path = ANY($1::text[])
+              OR ($3::uuid IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM documents d
+                     WHERE d.id = ANY(l.document_ids) AND d.library_id = $3::uuid
+                       AND d.deleted_at IS NULL AND starts_with(d.name, $4 || '/'))))
+         ${adminAll ? '' : 'AND l.created_by = $2'}
+       ORDER BY l.revoked_at IS NULL DESC, l.created_at DESC
        LIMIT 100`,
-      adminAll ? [keys] : [keys, req.user.id]
+      adminAll ? [keys, null, libraryId, folderPath] : [keys, req.user.id, libraryId, folderPath]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
