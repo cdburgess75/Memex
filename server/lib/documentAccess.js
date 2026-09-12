@@ -270,7 +270,12 @@ async function resolveActor(userId, q = db) {
   if (!userId) return null;
   let row;
   try {
-    row = await q.queryOne('SELECT user_id, role, email, verified_email FROM user_roles WHERE user_id = $1', [userId]);
+    // disabled_at IS NULL in the query, not a check afterwards: this is the one place the
+    // rest of the system asks "who is this account, really", and everything acting on
+    // somebody's behalf without them -- a public link, an editing session, an upload
+    // notice -- comes through here. A switched-off account is nobody.
+    row = await q.queryOne(
+      'SELECT user_id, role, email, verified_email FROM user_roles WHERE user_id = $1 AND disabled_at IS NULL', [userId]);
   } catch { return null; }
   return actorOf(row);
 }
