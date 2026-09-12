@@ -6,7 +6,8 @@ const express = require('express');
 
 const mockQueries = [];
 const mockRows = { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0 };
-jest.mock('../../lib/db', () => ({
+jest.mock('../../lib/db', () => {
+  const api = {
   query: jest.fn(async (sql, params) => {
     mockQueries.push({ sql, params });
     if (/WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(sql)) return mockRows.transfer;
@@ -28,8 +29,18 @@ jest.mock('../../lib/db', () => ({
     if (/SELECT 1 FROM documents d\s+WHERE d\.deleted_at IS NULL AND d\.library_id = \$1 AND starts_with/.test(sql)) return { '?column?': 1 };
     return null;
   }),
-  withTransaction: jest.fn(),
-}));
+  };
+  // The folder operations run inside one transaction; the stand-in hands the
+  // callback a client backed by the same mocks (a pg client answers { rows }).
+  api.withTransaction = jest.fn(async (fn) => fn({ query: async (sql, params = []) => {
+      const rows = await api.query(sql, params);
+      if (rows && rows.length) return { rows };
+      const one = await api.queryOne(sql, params);
+      return { rows: one ? [one] : [] };
+    } }));
+  api.paramList = jest.requireActual('../../lib/db').paramList;
+  return api;
+});
 jest.mock('../../lib/storage', () => ({
   upload: jest.fn().mockResolvedValue(undefined), uploadStream: jest.fn().mockResolvedValue({ size: 3 }),
   download: jest.fn().mockResolvedValue(Buffer.from('abc')), del: jest.fn().mockResolvedValue(undefined),
@@ -222,7 +233,7 @@ describe('folders', () => {
   test('moving a folder into another needs the right to add files there', async () => {
     mockRight.value = REFUSED;
     expect((await post('/reparent', { path: 'Clients/Acme', target: 'Shared' })).status).toBe(403);
-    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Shared/Acme');
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Shared/Acme', expect.anything());
   });
   test('a folder rename keeps the folder where it is, so nothing changes scope', async () => {
     await post('/rename', { path: 'Clients/Acme', name: 'Acme2' });
@@ -233,7 +244,7 @@ describe('folders', () => {
   test('a folder rename still needs a right to change files there', async () => {
     mockRight.value = REFUSED;
     expect((await post('/rename', { path: 'Clients/Acme', name: 'Acme2' })).status).toBe(403);
-    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Clients/Acme2');
+    expect(libraries.writeRight).toHaveBeenCalledWith(expect.anything(), LIB, 'Clients/Acme2', expect.anything());
     expect(mockQueries.some(q => /^\s*UPDATE documents/.test(q.sql))).toBe(false);
   });
   test("a reparent without a right at the destination says so, whether or not a share sits there", async () => {

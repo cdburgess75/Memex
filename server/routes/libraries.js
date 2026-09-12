@@ -2,6 +2,7 @@
 const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
+const { withFolderOp, FolderOpError, sendFolderOpError } = require('../lib/folderOps');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const libraries = require('../lib/libraries');
@@ -145,8 +146,18 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
 
     let share;
     try {
-      share = await shares.createShare({ libraryId: lib.id, folderPath, email, groupId: group?.id, permission, user: req.user });
+      // Under the library's tree lock, and checking the folder again inside it: without
+      // that, a share could be made on a folder that a rename is moving, or on one whose
+      // last file is being deleted in another transaction -- leaving a share on a name
+      // with nothing under it, which the next folder of that name would inherit.
+      share = await withFolderOp({ libraryIds: [lib.id] }, async (q) => {
+        if (folderPath && !(await shares.folderVisibleTo(lib.id, folderPath, req.user, q))) {
+          throw new FolderOpError(null, 404, 'Folder not found in this library');
+        }
+        return shares.createShare({ libraryId: lib.id, folderPath, email, groupId: group?.id, permission, user: req.user }, q);
+      });
     } catch (e) {
+      if (sendFolderOpError(res, e)) return;
       if (e && e.code === '23505') {
         const existing = await shares.findShare(lib.id, folderPath, { email, groupId: group?.id });
         return res.status(409).json({ error: `Already shared with ${email || group.name}. Change the level in the list.`, share: existing });

@@ -33,13 +33,12 @@ jest.mock('../../lib/db', () => {
       throw new Error(`bind mismatch: SQL references $${highest} but only ${params.length} parameters were passed`);
     }
   };
-  return {
-    query: jest.fn(async (sql, params = []) => {
+  const query = jest.fn(async (sql, params = []) => {
       bindCheck(sql, params);
       // Satisfy folderLibraryId()'s lookup; everything else can come back empty.
-      return /SELECT DISTINCT d\.library_id/.test(sql) ? [{ library_id: 'lib-1' }] : [];
-    }),
-    queryOne: jest.fn(async (sql, params = []) => {
+    return /SELECT DISTINCT d\.library_id/.test(sql) ? [{ library_id: 'lib-1' }] : [];
+  });
+  const queryOne = jest.fn(async (sql, params = []) => {
       bindCheck(sql, params);
       // folderLibraryId() with an explicit library: does that library hold the folder?
       if (/SELECT 1 FROM documents d\s+WHERE d\.deleted_at IS NULL AND d\.library_id = \$1 AND starts_with\(d\.name, \$2/.test(sql)) {
@@ -53,9 +52,22 @@ jest.mock('../../lib/db', () => {
       // getAccessibleDocument() for the file rename below
       if (/FROM documents d\s+WHERE d\.id = \$1/.test(sql)) return { id: params[0], name: 'Inbox/report.pdf', library_id: 'lib-1' };
       if (/UPDATE documents SET name = \$2(, library_scoped = \$3)? WHERE id = \$1/.test(sql)) return { name: params[1] };
-      return null;
-    }),
-    withTransaction: jest.fn(),
+    return null;
+  });
+  return {
+    query,
+    queryOne,
+    // The folder operations run inside one transaction; the stand-in hands the callback a
+    // client backed by the same mocks (a pg client answers { rows }).
+    withTransaction: jest.fn(async (fn) => fn({
+      query: async (sql, params = []) => {
+        const rows = await query(sql, params);
+        if (rows && rows.length) return { rows };
+        const one = await queryOne(sql, params);
+        return { rows: one ? [one] : [] };
+      },
+    })),
+    paramList: jest.requireActual('../../lib/db').paramList,
   };
 });
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
