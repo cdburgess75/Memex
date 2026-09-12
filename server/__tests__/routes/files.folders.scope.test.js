@@ -36,6 +36,8 @@ jest.mock('../../lib/db', () => {
   const query = jest.fn(async (sql, params = []) => {
       bindCheck(sql, params);
       // Satisfy folderLibraryId()'s lookup; everything else can come back empty.
+    // the per-file rename/move is a conditional UPDATE now, and runs on the client
+    if (/^\s*UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return [{ id: params[0], name: params[1] }];
     return /SELECT DISTINCT d\.library_id/.test(sql) ? [{ library_id: 'lib-1' }] : [];
   });
   const queryOne = jest.fn(async (sql, params = []) => {
@@ -62,8 +64,8 @@ jest.mock('../../lib/db', () => {
     withTransaction: jest.fn(async (fn) => fn({
       query: async (sql, params = []) => {
         const rows = await query(sql, params);
-        if (rows && rows.length) return { rows };
-        const one = await queryOne(sql, params);
+        if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
+        const one = await queryOne(sql, params); // the single-row mock answers reads
         return { rows: one ? [one] : [] };
       },
     })),
@@ -81,6 +83,7 @@ jest.mock('../../lib/libraries', () => ({
   defaultLibraryId: jest.fn().mockResolvedValue('lib-1'),
   writeRight: jest.fn().mockResolvedValue({ right: 'owner', scoped: true }),
   sharedFolderAt: jest.fn().mockResolvedValue(false),
+  managesLibrary: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
