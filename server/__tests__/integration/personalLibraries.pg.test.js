@@ -107,6 +107,17 @@ suite('a library of your own', () => {
     expect(await libraries.defaultLibraryFor(LOOKER)).toBe(shared);
   });
 
+  // The destination of a move or a copy counts too. Left at "the install's oldest
+  // library" it is the seeded one -- which is the SHARED one on every box -- so a request
+  // that forgot to name a destination would quietly publish a folder company-wide.
+  test('a move or copy with no destination named goes to the person\'s own library', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../routes/files/folders.js'), 'utf8');
+    expect(src).not.toMatch(/defaultLibraryId\(\)/);
+    const moveAndCopy = [...src.matchAll(/req\.body\?\.library_id \|\| \(await libraries\.(\w+)\(([^)]*)\)\)/g)];
+    expect(moveAndCopy.length).toBeGreaterThanOrEqual(2);
+    for (const m of moveAndCopy) expect([m[1], m[2]]).toEqual(['defaultLibraryFor', 'req.user']);
+  });
+
   test('a personal library is private: nobody else gets in, and it is not listed to them', async () => {
     const documentAccess = require('../../lib/documentAccess');
     const daves = (await db.query('SELECT id FROM libraries WHERE owner_id = $1 AND personal', [DAVE.id]))[0].id;
