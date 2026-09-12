@@ -28,6 +28,7 @@ const folderPaths = require('../../lib/folderPaths');
 const folderCarry = require('../../lib/folderCarry');
 const folderPreview = require('../../lib/folderPreview');
 const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
+const folderUndo = require('../../lib/folderUndo');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -356,25 +357,194 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// POST /api/files/folder/delete — move a whole folder's contents to Trash
+// The people a share names, for saying whose access an operation ended. A group is named
+// by its name, never by its members.
+async function endedShareNames(q, ended) {
+  const groupIds = [...new Set(ended.filter(e => e.group_id).map(e => String(e.group_id)))];
+  const names = new Map();
+  if (groupIds.length) {
+    for (const g of await q.query('SELECT id, name FROM groups WHERE id = ANY($1::uuid[])', [groupIds])) {
+      names.set(String(g.id), g.name);
+    }
+  }
+  return ended.map(e => ({
+    path: e.folder_path,
+    permission: e.permission,
+    subject_type: e.subject_type,
+    subject: e.subject_type === 'group' ? (names.get(String(e.group_id)) || 'a group') : e.subject_email,
+  }));
+}
+
+/* POST /api/files/folder/delete -- move a whole folder to the Trash.
+ *
+ * Deleting a folder ENDS whatever it was shared with, which is why this one is not the
+ * mirror of a rename. A share is keyed by a path, and a path with nothing under it is a
+ * trap; the access rule has no notion of "deleted", so leaving the shares in place would
+ * also leave Read-Write holders with write on trashed content at a name that is gone.
+ *
+ * So the shares end -- and are written down, with the files they covered, so the whole
+ * thing can be put back for as long as the window lasts.
+ */
 router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const libraryId = await folderLibraryId(req, folderPath, req.user);
     if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
-    const rows = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
-      if (await sharedAt(q, libraryId, folderPath)) throw folderSharedError();
-      return q.query(
-        `UPDATE documents d SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3
-         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $9 AND ${documentAccess.condition('d', 4)}
-         RETURNING d.id`,
-        [folderPath, req.user.id, req.user.email, ...documentAccess.userParams(req.user, 'write'), libraryId]
+    // Deleting a folder changes the folder ABOVE it, so that is the right it needs --
+    // until now this route asked for no right at all, which left a Read-Write recipient
+    // able to trash the very folder that had been shared with them.
+    const parent = folderPaths.parentOf(folderPath);
+    const first = await libraries.writeRight(req.user, libraryId, parent);
+    if (first.status) return res.status(first.status).json({ error: first.error });
+    const out = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
+      if (await folderLibraryId(req, folderPath, req.user, q) !== libraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await writeRightOrThrow(req.user, libraryId, parent, q);
+      const carried = await folderCarry.grantsUnder(q, libraryId, folderPath);
+      // Ending somebody else's access is the library owner's to do.
+      if (carried.length && !(await libraries.managesLibrary(req.user, libraryId, q))) {
+        throw new FolderOpError('FOLDER_MANAGER_ONLY', 403,
+          "This folder is shared with other people. Deleting it would end that sharing, so it belongs to whoever owns this library.");
+      }
+      await folderCarry.refuseIfTooBig(q, libraryId, folderPath, req.user.id);
+      const opId = await folderCarry.recordOp(q, {
+        libraryId, kind: 'delete', path: folderPath, user: req.user,
+        expiresAt: new Date(Date.now() + folderUndo.windowMinutes() * 60000),
+      });
+      const p = db.paramList();
+      const lib = p(libraryId);
+      const fp = p(folderPath);
+      const by = p(req.user.id);
+      const byEmail = p(req.user.email);
+      const rule = documentAccess.condition('d', p.vals.length + 1);
+      p.vals.push(...documentAccess.userParams(req.user, 'write'));
+      // Somebody else's personal file inside this folder is theirs, and no share ever
+      // reached it: it stays where they left it, as it does on a rename.
+      const trashed = await q.query(
+        `UPDATE documents d SET deleted_at = NOW(), deleted_by = ${by}::uuid, deleted_by_email = ${byEmail}
+          WHERE d.library_id = ${lib}::uuid AND starts_with(d.name, ${fp} || '/') AND d.deleted_at IS NULL
+            AND (d.library_scoped OR d.uploaded_by IS NOT DISTINCT FROM ${by}::uuid) AND ${rule}
+          RETURNING d.id, d.name`,
+        p.vals
       );
+      await folderCarry.recordOpDocuments(q, opId, trashed.map(r => r.id));
+      const ended = await folderCarry.endShares(q, { libraryId, path: folderPath, opId, user: req.user, cause: 'folder_deleted' });
+      // A folder deleted out of a shared ancestor can leave that ancestor empty.
+      const kept = await keepSharedFoldersAlive(q, libraryId, [`${folderPath}/`]);
+      const leftBehind = await folderCarry.countUnder(q, libraryId, folderPath, { liveOnly: true });
+      return { opId, trashed, ended: await endedShareNames(q, ended), kept, leftBehind };
     });
-    await logEvent(`folder trash · ${folderPath} (${rows.length})`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${rows.length})`);
-    res.json({ ok: true, count: rows.length });
+    for (const marker of out.kept) await storage.upload(marker.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
+    const count = out.trashed.filter(r => !r.name.endsWith('/.keep')).length;
+    try {
+      await logEvent(`folder trash · ${folderPath} (${count})`, req.user.id, req.user.email);
+      await logDocumentEvent(null, 'folder_trashed', req.user.id, req.user.email, `${folderPath} (${count})`);
+      if (out.ended.length) {
+        await logDocumentEvent(null, 'library_unshared', req.user.id, req.user.email,
+          `${folderPath} · ${out.ended.length} share${out.ended.length === 1 ? '' : 's'} ended by deleting the folder (op ${out.opId})`);
+      }
+    } catch (e) { console.error('folder deleted, but recording it did not:', e.message); }
+    res.json({
+      ok: true, op_id: out.opId, count,
+      shares_ended: out.ended,
+      undo_until: new Date(Date.now() + folderUndo.windowMinutes() * 60000).toISOString(),
+      ...(req.user.role === 'admin' ? { left_behind: out.leftBehind } : {}),
+    });
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
+});
+
+/* POST /api/files/folder/restore -- undo one folder deletion, by its id and nothing else.
+ *
+ * The files and the shares both come from the operation's own record. A list of ids from
+ * the caller would let one deletion's id be paired with somebody else's files, and would
+ * make the window a fiction the moment a page was reloaded.
+ */
+router.post('/restore', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const opId = String(req.body?.op_id || '');
+    if (!isUuid(opId)) return res.status(400).json({ error: 'op_id required' });
+    const op = await folderUndo.opRow(db, opId);
+    if (!op || op.kind !== 'delete') return res.status(404).json({ error: 'That deletion could not be found.' });
+    // The right the deletion itself needed: write where the folder sat -- and, when it
+    // ended somebody's sharing, the library to be yours to manage, because putting that
+    // sharing back is the same decision as ending it.
+    const parent = folderPaths.parentOf(op.path);
+    const right = await libraries.writeRight(req.user, op.library_id, parent);
+    if (right.status) return res.status(right.status).json({ error: right.error });
+    const out = await withFolderOp({ libraryIds: [op.library_id] }, async (q) => {
+      await writeRightOrThrow(req.user, op.library_id, parent, q);
+      const endedAny = await q.queryOne('SELECT EXISTS (SELECT 1 FROM library_grants_ended WHERE op_id = $1) AS any', [opId]);
+      if (endedAny?.any && !(await libraries.managesLibrary(req.user, op.library_id, q))) {
+        throw new FolderOpError('FOLDER_MANAGER_ONLY', 403,
+          "This folder was shared when it was deleted, so putting it back is for whoever owns this library.");
+      }
+      return folderUndo.undo(q, { opId, user: req.user });
+    });
+    if (!out.already) {
+      try {
+        await logEvent(`folder restore · ${op.path} (${out.documents.length})`, req.user.id, req.user.email);
+        await logDocumentEvent(null, 'folder_restored', req.user.id, req.user.email,
+          `${op.path} (${out.documents.length}, ${out.shares.length} share${out.shares.length === 1 ? '' : 's'} back) (op ${opId})`);
+      } catch (e) { console.error('folder restored, but recording it did not:', e.message); }
+    }
+    res.json({
+      ok: true, path: op.path, already_undone: out.already,
+      // the same kind of number the deletion reported: files, not the hidden markers
+      // that keep an empty shared folder alive
+      count: out.documents.filter(d => !d.name.endsWith('/.keep')).length,
+      shares_restored: await endedShareNames({ query: (sql, params) => db.query(sql, params) }, out.shares),
+      shares_not_restored: out.missed.map(m => ({ path: m.folder_path, permission: m.permission, reason: m.reason })),
+    });
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
+});
+
+/* POST /api/files/folder/purge-trashed -- empty one folder's Trash for good.
+ *
+ * A folder deleted to the Trash keeps its name for the whole retention window, so it goes
+ * on blocking anything else being called that -- and the only other way out was to wait a
+ * month or find an admin willing to purge files one at a time. This is the remedy the
+ * refusal points at, and it belongs to whoever manages the library.
+ */
+router.post('/purge-trashed', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const folderPath = existingFolder(req.body?.path);
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = req.body?.library_id || req.headers['x-library-id'] || req.body?.source_library_id;
+    if (!isUuid(String(libraryId || ''))) return res.status(400).json({ error: 'Bad library id' });
+    if (!(await libraries.managesLibrary(req.user, libraryId))) {
+      return res.status(403).json({ error: "Emptying a folder's Trash for good is for whoever owns this library." });
+    }
+    const gone = await withFolderOp({ libraryIds: [String(libraryId)] }, async (q) => {
+      if (!(await libraries.managesLibrary(req.user, libraryId, q))) throw new FolderOpError(null, 403, 'Not yours to empty.');
+      // Every version's object is read BEFORE the delete: document_versions CASCADEs, so
+      // afterwards there is nothing left to say which objects to remove, and they would
+      // sit in storage forever.
+      const paths = await q.query(
+        `SELECT d.storage_path FROM documents d
+          WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/') AND d.deleted_at IS NOT NULL AND d.library_scoped
+          UNION ALL
+         SELECT v.storage_path FROM document_versions v
+          WHERE v.document_id IN (SELECT d.id FROM documents d
+                                   WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/')
+                                     AND d.deleted_at IS NOT NULL AND d.library_scoped)`,
+        [libraryId, folderPath]
+      );
+      const rows = await q.query(
+        `DELETE FROM documents d
+          WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/') AND d.deleted_at IS NOT NULL AND d.library_scoped
+          RETURNING d.id`,
+        [libraryId, folderPath]
+      );
+      return { count: rows.length, objects: paths.map(p => p.storage_path).filter(Boolean) };
+    });
+    // After the commit: a crash here leaves objects nobody points at, which the access
+    // self-check counts, rather than rows pointing at objects that are already gone.
+    for (const objectPath of gone.objects) await storage.del(objectPath).catch(() => {});
+    try {
+      await logEvent(`folder purge · ${folderPath} (${gone.count})`, req.user.id, req.user.email);
+      await logDocumentEvent(null, 'folder_purged', req.user.id, req.user.email, `${folderPath} (${gone.count})`);
+    } catch (e) { console.error('folder purged, but recording it did not:', e.message); }
+    res.json({ ok: true, count: gone.count });
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
@@ -428,27 +598,45 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     const srcLibraryId = await folderLibraryId(req, folderPath, req.user);
     if (!srcLibraryId) return res.status(404).json({ error: 'Folder not found' });
     // Both libraries are locked, in key order, so a move each way cannot deadlock.
-    const { rows, kept } = await withFolderOp({ libraryIds: [srcLibraryId, libraryId] }, async (q) => {
-      if (await sharedAt(q, srcLibraryId, folderPath)) throw folderSharedError();
-      if (await sharedAt(q, libraryId, folderPath)) throw folderSharedError();
+    const out = await withFolderOp({ libraryIds: [srcLibraryId, libraryId] }, async (q) => {
       const dest = await writeRightOrThrow(req.user, libraryId, folderPath, q);
       if (String(srcLibraryId) !== String(libraryId)) {
         await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath: folderPath, fromLibraryId: srcLibraryId, fromPath: folderPath, viewer: req.user, verb: 'move' });
       }
-      // Library content belongs to its library: taking it to ANOTHER library hands it to
-      // that library's owner and ends its shares, so only whoever manages the source (its
-      // owner while a contributor, or an admin) may, and never into a library held only
-      // under the old open rule ($11). Anyone else's move leaves it where it is, counted
-      // (kept) so the app can say why -- they can still copy it.
+      // Sharing belongs to the library it was made in, and to that library's owner. A
+      // folder taken to ANOTHER library therefore leaves its shares behind -- they END,
+      // they do not travel -- which is a decision only whoever manages the source may make.
+      const carried = await folderCarry.grantsUnder(q, srcLibraryId, folderPath);
       const managesSource = await libraries.managesLibrary(req.user, srcLibraryId, q);
+      if (carried.length && !managesSource) {
+        throw new FolderOpError('FOLDER_MANAGER_ONLY', 403,
+          "This folder is shared with other people. Taking it to another library ends that sharing, so it belongs to whoever owns this library.");
+      }
+      // Library content belongs to its library: taking it to ANOTHER library hands it to
+      // that library's owner, so only whoever manages the source may, and never into a
+      // library held only under the old open rule ($11). Anyone else's move leaves it
+      // where it is, counted (kept) so the app can say why -- they can still copy it.
       const contentMoves = String(srcLibraryId) === String(libraryId) || (managesSource && dest.right !== 'legacy');
+      // When shares are ending, the folder's Trash goes too: otherwise "nothing is left
+      // here" is never true, and the shares could never end cleanly.
+      const withTrash = carried.length > 0 && contentMoves;
+      const p = db.paramList();
+      const fp = p(folderPath);
+      const toLib = p(libraryId);
+      const rule = documentAccess.condition('d', p.vals.length + 1);
+      p.vals.push(...documentAccess.userParams(req.user, 'write'));
+      const src = p(srcLibraryId);
+      const scoped = p(dest.scoped);
+      const me = p(req.user.id);
+      const moves = p(contentMoves);
       const moved = await q.query(
-        `UPDATE documents d SET library_id = $2, library_scoped = ${scopeAfterMove(9)}
-         WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.library_id = $8 AND ${documentAccess.condition('d', 3)}
-           AND (NOT d.library_scoped OR $11::boolean)
-         RETURNING d.id`,
-        [folderPath, libraryId, ...documentAccess.userParams(req.user, 'write'), srcLibraryId,
-         dest.scoped, req.user.id, contentMoves]
+        `UPDATE documents d SET library_id = ${toLib}::uuid,
+                library_scoped = d.library_scoped OR (${scoped}::boolean AND d.uploaded_by IS NOT DISTINCT FROM ${me}::uuid)
+          WHERE d.library_id = ${src}::uuid AND starts_with(d.name, ${fp} || '/')
+            AND (${withTrash ? 'TRUE' : 'd.deleted_at IS NULL'})
+            AND ${rule} AND (NOT d.library_scoped OR ${moves}::boolean)
+          RETURNING d.id`,
+        p.vals
       );
       let left = 0;
       if (!contentMoves) {
@@ -460,11 +648,37 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
         );
         left = row?.n || 0;
       }
-      return { rows: moved, kept: left };
+      // The shares end only once nothing of the library's own is left under that name --
+      // while content stays, the shares still cover something and must stay with it.
+      let ended = [];
+      let opId = null;
+      if (carried.length) {
+        const remaining = await folderCarry.countUnder(q, srcLibraryId, folderPath);
+        if (!remaining) {
+          opId = await folderCarry.recordOp(q, {
+            libraryId: srcLibraryId, targetLibraryId: libraryId, kind: 'library_move', path: folderPath,
+            newPath: folderPath, user: req.user,
+          });
+          ended = await folderCarry.endShares(q, { libraryId: srcLibraryId, path: folderPath, opId, user: req.user, cause: 'moved_to_library' });
+        }
+      }
+      // What people asked to hear about follows the folder into its new library.
+      if (String(srcLibraryId) !== String(libraryId)) {
+        await folderCarry.carryNotifyPrefs(q, { libraryId: srcLibraryId, destLibraryId: libraryId, oldPath: folderPath, newPath: folderPath });
+      }
+      const kept = await keepSharedFoldersAlive(q, srcLibraryId, [`${folderPath}/`]);
+      return { rows: moved, kept: left, ended: await endedShareNames(q, ended), opId, markers: kept };
     });
-    await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${rows.length})`, req.user.id, req.user.email);
-    await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${rows.length}${kept ? `, ${kept} kept` : ''})`);
-    res.json({ ok: true, count: rows.length, kept });
+    for (const marker of out.markers) await storage.upload(marker.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
+    try {
+      await logEvent(`folder move to library · ${folderPath} → ${libraryId} (${out.rows.length})`, req.user.id, req.user.email);
+      await logDocumentEvent(null, 'folder_moved_library', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${out.rows.length}${out.kept ? `, ${out.kept} kept` : ''})`);
+      if (out.ended.length) {
+        await logDocumentEvent(null, 'library_unshared', req.user.id, req.user.email,
+          `${folderPath} · ${out.ended.length} share${out.ended.length === 1 ? '' : 's'} ended by moving the folder to another library (op ${out.opId})`);
+      }
+    } catch (e) { console.error('folder moved, but recording it did not:', e.message); }
+    res.json({ ok: true, count: out.rows.length, kept: out.kept, ...(out.ended.length ? { op_id: out.opId, shares_ended: out.ended } : {}) });
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 

@@ -41,15 +41,17 @@ async function grantsUnder(q, libraryId, path) {
   );
 }
 
-// How many documents are under the path, trashed ones included: they move too. `mover`
-// counts only what would actually be rewritten -- somebody else's personal file stays
-// where it is, so it is neither work to do nor a number to quote at anyone.
-async function countUnder(q, libraryId, path, mover = null) {
+// How many documents are under the path, trashed ones included by default: a rename moves
+// those too. `mover` counts only what would actually be rewritten -- somebody else's
+// personal file stays where it is, so it is neither work to do nor a number to quote at
+// anyone. `liveOnly` is for afterwards: what is still sitting there.
+async function countUnder(q, libraryId, path, { mover = null, liveOnly = false } = {}) {
   const row = await q.queryOne(
     `SELECT count(*)::int AS n FROM documents d
       WHERE d.library_id = $1 AND ${prefixRange('d', '$2')}
-        AND ($3::uuid IS NULL OR d.library_scoped OR d.uploaded_by IS NOT DISTINCT FROM $3::uuid)`,
-    [libraryId, path, mover]
+        AND ($3::uuid IS NULL OR d.library_scoped OR d.uploaded_by IS NOT DISTINCT FROM $3::uuid)
+        AND ($4::boolean IS NOT TRUE OR d.deleted_at IS NULL)`,
+    [libraryId, path, mover, liveOnly]
   );
   return row ? row.n : 0;
 }
@@ -58,7 +60,7 @@ async function countUnder(q, libraryId, path, mover = null) {
 // it says how big.
 async function refuseIfTooBig(q, libraryId, path, mover) {
   const max = maxRows();
-  const n = await countUnder(q, libraryId, path, mover);
+  const n = await countUnder(q, libraryId, path, { mover });
   if (n > max) {
     throw new FolderOpError('FOLDER_TOO_LARGE', 409,
       `This folder holds ${n.toLocaleString('en-GB')} files, counting what is in its Trash -- more than the ${max.toLocaleString('en-GB')} one move can rewrite at once. Move some of what is inside it first, or ask an admin.`,
@@ -138,6 +140,39 @@ function asRefusal(e) {
   return e;
 }
 
+// Notification preferences follow the folder, including into another library -- the
+// person asked to hear about that folder, and it still exists. Two statements, never
+// one: the unique index is immediate, so a row already sitting at a path something is
+// moving onto has to go before the rest are moved -- the moving one wins, since it is
+// the folder the person asked about. library_id is nullable ("any library"), hence IS
+// NOT DISTINCT FROM. A row that is ITSELF moving is never the one deleted: moving 'P/P'
+// up onto 'P' makes 'P/P/P/x' land on 'P/P/x', which is moving too.
+async function carryNotifyPrefs(q, { libraryId, destLibraryId, oldPath, newPath }) {
+  const cut = folderPaths.cutFor(oldPath);
+  await q.query(
+    `DELETE FROM folder_notify_prefs t
+      USING folder_notify_prefs s
+      WHERE s.library_id IS NOT DISTINCT FROM $1
+        AND (s.folder_path = $4 OR starts_with(s.folder_path, $4 || '/'))
+        AND t.library_id IS NOT DISTINCT FROM $5
+        AND lower(t.subscriber_email) = lower(s.subscriber_email)
+        AND t.folder_path = $2 || substring(s.folder_path from $3::int)
+        AND t.id <> s.id
+        AND NOT (t.library_id IS NOT DISTINCT FROM $1
+                 AND (t.folder_path = $4 OR starts_with(t.folder_path, $4 || '/')))`,
+    [libraryId, newPath, cut, oldPath, destLibraryId]
+  );
+  const moved = await q.query(
+    `UPDATE folder_notify_prefs s
+        SET folder_path = $2 || substring(s.folder_path from $3::int), library_id = $5
+      WHERE s.library_id IS NOT DISTINCT FROM $1
+        AND (s.folder_path = $4 OR starts_with(s.folder_path, $4 || '/'))
+      RETURNING s.id`,
+    [libraryId, newPath, cut, oldPath, destLibraryId]
+  );
+  return moved.length;
+}
+
 // Everything that is keyed by the folder's path and is NOT a document: the shares, the
 // notification preferences, and any chunked upload still arriving.
 //
@@ -164,33 +199,7 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
     [libraryId, newPath, cut, oldPath]
   );
 
-  // Notification preferences follow the folder. Two statements, never one: the unique
-  // index is immediate, so a row already sitting at a path something is moving onto has
-  // to go before the rest are moved -- the moving one wins, since it is the folder the
-  // person asked to hear about. library_id is nullable ("any library"), hence IS NOT
-  // DISTINCT FROM. A row that is ITSELF moving is never the one deleted: moving 'P/P' up
-  // onto 'P' makes 'P/P/P/x' land on 'P/P/x', which is moving too.
-  await q.query(
-    `DELETE FROM folder_notify_prefs t
-      USING folder_notify_prefs s
-      WHERE s.library_id IS NOT DISTINCT FROM $1
-        AND (s.folder_path = $4 OR starts_with(s.folder_path, $4 || '/'))
-        AND t.library_id IS NOT DISTINCT FROM $5
-        AND lower(t.subscriber_email) = lower(s.subscriber_email)
-        AND t.folder_path = $2 || substring(s.folder_path from $3::int)
-        AND t.id <> s.id
-        AND NOT (t.library_id IS NOT DISTINCT FROM $1
-                 AND (t.folder_path = $4 OR starts_with(t.folder_path, $4 || '/')))`,
-    [libraryId, newPath, cut, oldPath, destLibraryId]
-  );
-  const prefs = await q.query(
-    `UPDATE folder_notify_prefs s
-        SET folder_path = $2 || substring(s.folder_path from $3::int), library_id = $5
-      WHERE s.library_id IS NOT DISTINCT FROM $1
-        AND (s.folder_path = $4 OR starts_with(s.folder_path, $4 || '/'))
-      RETURNING s.id`,
-    [libraryId, newPath, cut, oldPath, destLibraryId]
-  );
+  const prefs = await carryNotifyPrefs(q, { libraryId, destLibraryId, oldPath, newPath });
 
   // A chunked upload still arriving into a renamed folder: its name is the full path it
   // will land at, so it is re-prefixed like everything else.
@@ -202,7 +211,51 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
     [libraryId, newPath, cut, oldPath]
   ) : [];
 
-  return { shares, prefs: prefs.length, uploads: uploads.length };
+  return { shares, prefs, uploads: uploads.length };
+}
+
+// Ending the shares a folder carried, recorded so they can be put back. The rows move
+// from library_grants into library_grants_ended in one statement: a share that is gone
+// from one and missing from the other would be a share nobody could restore and nobody
+// could see had existed.
+//
+// Why the shares end at all, rather than waiting in place while the files sit in the
+// Trash: a share is keyed by a path, and a path with nothing under it is a trap -- the
+// next folder to take that name would be shared with whoever the old share named. The
+// access rule has no notion of "deleted", so Read-Write holders would also keep write on
+// trashed content at a name that no longer exists.
+async function endShares(q, { libraryId, path, opId, user, cause }) {
+  if (!path) return [];
+  return q.query(
+    `WITH gone AS (
+       DELETE FROM library_grants g
+        WHERE g.library_id = $1 AND g.folder_path <> ''
+          AND (g.folder_path = $2 OR starts_with(g.folder_path, $2 || '/'))
+       RETURNING g.*)
+     INSERT INTO library_grants_ended
+       (op_id, grant_id, library_id, folder_path, subject_type, subject_email, group_id,
+        permission, granted_at, cause, ended_by, ended_by_email)
+     SELECT $3, gone.id, gone.library_id, gone.folder_path, gone.subject_type, gone.subject_email,
+            gone.group_id, gone.permission, gone.created_at, $4, $5, $6
+       FROM gone
+     RETURNING folder_path, subject_type, subject_email, group_id, permission`,
+    [libraryId, path, opId, cause, user?.id || null, String(user?.email || '').toLowerCase() || null]
+  );
+}
+
+// Which documents an operation moved to the Trash. Taken from the operation itself, never
+// from whoever asks to undo it: a list from the client would let one operation's id be
+// paired with an unrelated set of files. A purged document drops out on its own
+// (folder_op_documents.document_id CASCADEs), which is exactly what the undo needs to
+// know when it asks whether anything actually came back.
+async function recordOpDocuments(q, opId, ids) {
+  if (!opId || !ids.length) return 0;
+  const rows = await q.query(
+    `INSERT INTO folder_op_documents (op_id, document_id)
+     SELECT $1, x FROM unnest($2::uuid[]) AS x ON CONFLICT DO NOTHING RETURNING document_id`,
+    [opId, ids]
+  );
+  return rows.length;
 }
 
 // The record of a structural operation. Written inside the transaction, so an operation
@@ -218,4 +271,4 @@ async function recordOp(q, { libraryId, targetLibraryId = null, kind, path, newP
   return row?.op_id || null;
 }
 
-module.exports = { maxRows, grantsUnder, countUnder, refuseIfTooBig, planSharePaths, assertTotal, carryPathState, recordOp };
+module.exports = { maxRows, grantsUnder, countUnder, refuseIfTooBig, planSharePaths, assertTotal, carryPathState, carryNotifyPrefs, endShares, recordOpDocuments, recordOp };
