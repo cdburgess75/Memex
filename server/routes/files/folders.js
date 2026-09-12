@@ -293,12 +293,6 @@ function folderOpResult(user, newPath, out) {
 // either, or a client reading the counts gets undefined from a perfectly good 200.
 const nothingToDo = (path) => ({ ok: true, path, op_id: null, count: 0, shares_kept: false });
 
-// SQL for "is library content after the move" (see routes/files.js libraryScopeAfterMove),
-// with its two parameters starting at $n: the destination is scoped, and the mover's id.
-// Only the mover's own files change -- admins included. IS NOT DISTINCT FROM keeps a row
-// with no recorded uploader false rather than NULL (the column is NOT NULL).
-const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploaded_by IS NOT DISTINCT FROM $${n + 1})`;
-
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
@@ -598,7 +592,10 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
   try {
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
-    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // Nobody said where to move it: their OWN library, never the install's oldest --
+    // which on every box is the one Depot seeds, i.e. the shared one. Nothing is shared
+    // with anybody by forgetting to choose.
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
     // The destination must be a library the caller can add files to, at this path
     // (writeRight: 400 for a malformed id, 404 for an unknown one, 403 without a right).
     // documents.library_id has no foreign key, so without this a document could be
@@ -960,7 +957,8 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
   try {
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
-    const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
+    // As with a move: unsaid means their own library, not the shared one.
+    const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
     // The copies are new files in the target: the caller needs the right to add them there.
     const dest = await destinationRight(res, req.user, libraryId, folderPath);
     if (!dest) return;
