@@ -39,13 +39,16 @@ async function writeRight(user, libraryId, parentPath = '', q = db) {
                          OR (g.subject_type = 'group' AND g.group_id IN (
                               SELECT gm.group_id FROM group_members gm
                                WHERE lower(gm.member_email) = (SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $2))))) AS rw_grant,
-            l.personal
+            l.personal, l.archived_at
        FROM libraries l WHERE l.id = $1`,
     // Shares match only the VERIFIED address, looked up by account id -- never the
     // address an account merely claims.
     [libraryId, user?.id || null, String(parentPath || '')]
   );
   if (!row) return { status: 404, error: 'Library not found' };
+  // An archived library is kept, not used: nothing goes into it, not even by an admin,
+  // until somebody brings it back.
+  if (row.archived_at) return { status: 403, error: 'This library is archived, so nothing can be added to it.' };
   if (user?.role === 'admin') return { right: 'admin', scoped: !!row.owner_id || !!row.shared };
   if (user?.role !== 'contributor') return { status: 403, error: "You can't add files here." };
   if (row.is_owner) return { right: 'owner', scoped: true };
@@ -110,7 +113,8 @@ async function removeMember(libraryId, memberId) {
  */
 async function defaultLibraryFor(user) {
   if (user?.id) {
-    const mine = await db.queryOne('SELECT id FROM libraries WHERE owner_id = $1 AND personal LIMIT 1', [user.id]);
+    const mine = await db.queryOne(
+      'SELECT id FROM libraries WHERE owner_id = $1 AND personal AND archived_at IS NULL LIMIT 1', [user.id]);
     if (mine) return mine.id;
   }
   return defaultLibraryId();
@@ -158,7 +162,7 @@ function shareSubject(t, idIdx) {
 // a library you have nothing to do with is not listed at all rather than shown locked.
 const LISTING = `
   SELECT v.* FROM (
-    SELECT l.id, l.name, l.personal, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
+    SELECT l.id, l.name, l.personal, l.archived_at, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
            EXISTS (SELECT 1 FROM library_grants x WHERE x.library_id = l.id) AS shared,
            (SELECT max(g.permission) FROM library_grants g
              WHERE g.library_id = l.id AND g.folder_path = '' AND ${shareSubject('g', 2)}) AS root_level,
@@ -172,7 +176,8 @@ const LISTING = `
              WHERE g.library_id = l.id AND g.folder_path <> '') AS shared_folders
       FROM libraries l
   ) v
-  WHERE ($1 = 'admin' OR v.owner_id = $2
+  WHERE (v.archived_at IS NULL OR $1 = 'admin')
+    AND ($1 = 'admin' OR v.owner_id = $2
          OR v.root_level IS NOT NULL OR v.folders IS NOT NULL OR v.can_read_any)`;
 
 // One listed row, as the caller may see it.
@@ -208,7 +213,7 @@ function shapeLibrary(user, r) {
     else if (r.root_level === 'write') addRight = 'grant';
   }
   const out = {
-    id: r.id, name: r.name, personal: !!r.personal, created_by_email: r.created_by_email, created_at: r.created_at,
+    id: r.id, name: r.name, personal: !!r.personal, archived_at: r.archived_at || null, created_by_email: r.created_by_email, created_at: r.created_at,
     owner_id: r.owner_id, owner_email: r.owner_email,
     can_manage: canManage, my_access: myAccess, my_folders: myFolders, add_right: addRight,
   };

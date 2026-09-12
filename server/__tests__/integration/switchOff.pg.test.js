@@ -64,6 +64,7 @@ suite('switching somebody off', () => {
   const setOff = (who, target, body) => authed(as(who).put(`/api/admin/users/${target.id}/disabled`)).send(body);
   const departure = (who, target) => authed(as(who).get(`/api/admin/users/${target.id}/departure`));
   const one = async (sql, params) => (await db.query(sql, params))[0];
+  const libraries2 = () => require('../../lib/libraries');
 
   async function fixture() {
     await db.query('TRUNCATE library_grants, document_share_links, folder_share_links, groups, group_members, documents, libraries, user_roles CASCADE');
@@ -161,6 +162,54 @@ suite('switching somebody off', () => {
     expect(res.body.personal_files).toBe(1);
     // it decides nothing: asking does not switch anybody off
     expect((await one('SELECT disabled_at FROM user_roles WHERE user_id = $1', [LEAVER.id])).disabled_at).toBeNull();
+  });
+
+  test('their own library goes away with them, and comes back if they do', async () => {
+    await fixture();
+    const own = (await db.query(
+      `INSERT INTO libraries (name, owner_id, owner_email, personal) VALUES ('leaver', $1, $2, true) RETURNING id`,
+      [LEAVER.id, LEAVER.email]))[0].id;
+    const off = await setOff(ADMIN, LEAVER, { disabled: true });
+    expect(off.body.own_library_archived).toBe(true);
+    expect((await one('SELECT archived_at FROM libraries WHERE id = $1', [own])).archived_at).toEqual(expect.any(Date));
+    // the library they SHARED is deliberately left alone: handing that over moves other
+    // people's access, which is a decision somebody makes, not a side effect
+    expect((await one('SELECT archived_at FROM libraries WHERE id = $1', [LIB])).archived_at).toBeNull();
+    // an archived library takes nothing, from anybody
+    const libraries = require('../../lib/libraries');
+    expect((await libraries.writeRight({ ...ADMIN, emailVerified: true }, own, '')).status).toBe(403);
+    await setOff(ADMIN, LEAVER, { disabled: false });
+    expect((await one('SELECT archived_at FROM libraries WHERE id = $1', [own])).archived_at).toBeNull();
+  });
+
+  test('a switched-off person\'s shared library can be handed to somebody still here', async () => {
+    await fixture();
+    // not while they are still here
+    const early = await authed(as(ADMIN).post(`/api/libraries/${LIB}/reassign`)).send({ owner_email: ADMIN2.email });
+    expect([early.status, early.body.code]).toEqual([409, 'OWNER_STILL_HERE']);
+
+    await setOff(ADMIN, LEAVER, { disabled: true });
+    const res = await authed(as(ADMIN).post(`/api/libraries/${LIB}/reassign`)).send({ owner_email: ADMIN2.email });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ owner_id: ADMIN2.id, owner_email: ADMIN2.email, personal: false });
+    // ...and it can be managed again: an unmanageable library cannot be shared at all.
+    // (An admin's write right reads 'admin' whoever owns it, so ownership is what is
+    // measured here, not that.)
+    expect(await libraries2().managesLibrary({ ...ADMIN2, role: 'contributor' }, LIB)).toBe(true);
+    expect(await libraries2().managesLibrary({ ...LEAVER, role: 'contributor' }, LIB)).toBe(false);
+  });
+
+  test('a library cannot be handed to somebody who is switched off, or who only looks', async () => {
+    await fixture();
+    await setOff(ADMIN, LEAVER, { disabled: true });
+    await db.query("UPDATE user_roles SET role = 'viewer' WHERE user_id = $1", [ADMIN2.id]);
+    const viewer = await authed(as(ADMIN).post(`/api/libraries/${LIB}/reassign`)).send({ owner_email: ADMIN2.email });
+    expect(viewer.status).toBe(400);
+    await db.query("UPDATE user_roles SET role = 'admin' WHERE user_id = $1", [ADMIN2.id]);
+    await setOff(ADMIN, ADMIN2, { disabled: true });
+    const off = await authed(as(ADMIN).post(`/api/libraries/${LIB}/reassign`)).send({ owner_email: ADMIN2.email });
+    expect(off.status).toBe(400);
+    expect(off.body.error).toMatch(/switched off/);
   });
 
   test('only an administrator may ask, or switch', async () => {

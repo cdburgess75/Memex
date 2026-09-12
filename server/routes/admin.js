@@ -84,15 +84,31 @@ router.put('/users/:userId/disabled', auth, requireRole('admin'), async (req, re
         RETURNING user_id, email, role, disabled_at, disabled_reason`,
       [userId, off, req.user.id, reason]
     );
+    /* Their own library goes with them.
+     *
+     * A library that was theirs alone has nobody to hand it to, and deleting it would
+     * destroy the only copy of whatever they parked in it -- so it is kept, out of the
+     * way, and comes back if they do. Libraries they SHARED are deliberately left alone:
+     * handing those over moves other people's access, which is somebody's decision to
+     * make (POST /api/libraries/:id/reassign), not a side effect of a toggle.
+     */
+    const theirOwn = await db.query(
+      `UPDATE libraries SET archived_at = CASE WHEN $2::boolean THEN NOW() END,
+                            archived_by = CASE WHEN $2::boolean THEN $3::uuid END
+        WHERE owner_id = $1 AND personal RETURNING id, name`,
+      [userId, off, req.user.id]
+    );
     if (!!before.disabled_at !== off) {
       try {
         await require('../lib/auditLog').append({
           eventType: 'role_changed', actorId: req.user.id, actorEmail: req.user.email,
-          detail: `user ${userId} ${JSON.stringify(before.email || '')} ${off ? 'switched off' : 'switched back on'}${reason ? ` · ${JSON.stringify(reason)}` : ''}`,
+          detail: `user ${userId} ${JSON.stringify(before.email || '')} ${off ? 'switched off' : 'switched back on'}`
+            + `${reason ? ` · ${JSON.stringify(reason)}` : ''}`
+            + `${theirOwn.length ? ` · their own library ${off ? 'archived' : 'brought back'}` : ''}`,
         });
       } catch (e) { console.error('audit switch-off failed:', e.message); }
     }
-    res.json(row);
+    res.json({ ...row, own_library_archived: off && theirOwn.length > 0 });
   } catch (e) { serverError(res, e); }
 });
 

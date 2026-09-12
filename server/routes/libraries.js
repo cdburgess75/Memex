@@ -178,6 +178,82 @@ router.post('/:id/owner', auth, requireRole('admin'), async (req, res) => {
   } catch (e) { serverError(res, e); }
 });
 
+/* PUT /api/libraries/:id/archived -- put a library away, or bring it back (admin).
+ *
+ * A library that was somebody's alone has nobody to hand it to when they go, and deleting
+ * it would destroy the only copy of whatever they parked in it. So it is kept exactly as
+ * it is, out of everybody's way: nothing can be added to it, it is listed to nobody but an
+ * administrator, and whoever could read what is in it still can.
+ */
+router.put('/:id/archived', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const away = req.body?.archived === true;
+    const row = await db.queryOne(
+      `UPDATE libraries
+          SET archived_at = CASE WHEN $2::boolean THEN NOW() END,
+              archived_by = CASE WHEN $2::boolean THEN $3::uuid END
+        WHERE id = $1
+        RETURNING id, name, personal, owner_email, archived_at`,
+      [req.params.id, away, req.user.id]
+    );
+    if (!row) return res.status(404).json({ error: 'Library not found' });
+    try {
+      await require('../lib/auditLog').append({
+        eventType: 'library_created', actorId: req.user.id, actorEmail: req.user.email,
+        detail: `${away ? 'archived' : 'brought back'} · library ${row.id} ${q(row.name)}`,
+      });
+    } catch (e) { console.error('audit library archive failed:', e.message); }
+    res.json(row);
+  } catch (e) { serverError(res, e); }
+});
+
+/* POST /api/libraries/:id/reassign -- hand a switched-off person's library to somebody
+ * who is still here (admin).
+ *
+ * Deliberately NOT a general transfer. Handing over a library moves other people's access
+ * with it, and the one case where that is unambiguous is the one this piece exists for:
+ * the owner is switched off, so nobody can manage what they held, and an ownerless or
+ * unmanageable library cannot be shared, cannot be renamed and cannot be tidied.
+ */
+router.post('/:id/reassign', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const email = String(req.body?.owner_email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'owner_email required' });
+    const lib = await db.queryOne('SELECT id, name, owner_id, owner_email, personal FROM libraries WHERE id = $1', [req.params.id]);
+    if (!lib) return res.status(404).json({ error: 'Library not found' });
+    if (!lib.owner_id) return res.status(409).json({ code: 'NO_OWNER', error: 'This library has no owner to take it from. Set one instead.' });
+
+    const current = await db.queryOne('SELECT user_id, disabled_at FROM user_roles WHERE user_id = $1', [lib.owner_id]);
+    if (current && !current.disabled_at) {
+      return res.status(409).json({
+        code: 'OWNER_STILL_HERE',
+        error: `${lib.owner_email} still has an account here. Switch it off first, or ask them to hand it over.`,
+      });
+    }
+
+    const account = await db.queryOne(
+      'SELECT user_id, email, role, disabled_at FROM user_roles WHERE lower(email) = $1 OR verified_email = $1', [email]);
+    if (!account) return res.status(404).json({ error: 'Nobody with that address has signed in yet, so they cannot own a library.' });
+    if (account.disabled_at) return res.status(400).json({ error: 'That account is switched off, so it cannot be given anything.' });
+    if (account.role === 'viewer') return res.status(400).json({ error: 'Someone who can only look at files cannot own a library.' });
+
+    const updated = await db.queryOne(
+      `UPDATE libraries SET owner_id = $2, owner_email = $3, personal = false
+        WHERE id = $1 AND owner_id = $4
+        RETURNING id, name, owner_id, owner_email, personal, archived_at`,
+      [lib.id, account.user_id, String(account.email).toLowerCase(), lib.owner_id]
+    );
+    if (!updated) return res.status(409).json({ error: 'Somebody changed this library a moment ago. Have another look.' });
+    try {
+      await require('../lib/auditLog').append({
+        eventType: 'library_created', actorId: req.user.id, actorEmail: req.user.email,
+        detail: `reassigned · library ${updated.id} ${q(updated.name)} ${q(lib.owner_email)} → ${q(updated.owner_email)} (${account.user_id})`,
+      });
+    } catch (e) { console.error('audit library reassign failed:', e.message); }
+    res.json(updated);
+  } catch (e) { serverError(res, e); }
+});
+
 /* POST /api/libraries/:id/adopt -- put MY OWN files into the library's shared content.
  *
  * A file uploaded into a library before it had an owner is personal: it belongs to
