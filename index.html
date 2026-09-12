@@ -1700,6 +1700,8 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ls-who-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ls-who-sub { font-size: 12px; color: var(--ink-faint); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .ls-empty { padding: 12px 2px; color: var(--ink-faint); font-size: 13px; }
+.user-off td { opacity: .62; }
+.user-off td:first-child { opacity: 1; }
 .ls-note { font-size: 12.5px; color: var(--ink-faint); margin: 10px 2px 0; }
 /* A sentence that ends in something to do: the action reads as part of the sentence. */
 .ls-note .link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
@@ -3670,6 +3672,15 @@ async function apiPost(path, body, signal) {
   return res.json();
 }
 
+async function apiPatch(path, body) {
+  const res = await fetch('/api' + path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiError(res);
+  return res.json();
+}
 async function apiPut(path, body) {
   const res = await fetch('/api' + path, {
     method: 'PUT',
@@ -4820,11 +4831,18 @@ async function renderAdmin() {
           const opts = roleOptions.map(r =>
             `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`
           ).join('');
-          return `<tr>
-            <td>${esc(u.email || '')}</td>
+          const off = !!u.disabled_at;
+          const when = off ? new Date(u.disabled_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+          return `<tr${off ? ' class="user-off"' : ''}>
+            <td>${esc(u.email || '')}${off ? `<span class="pill warn" title="${escAttr(u.disabled_reason ? `Switched off on ${when} · ${u.disabled_reason}` : `Switched off on ${when}`)}">Switched off</span>` : ''}</td>
             <td>${esc(u.role || '')}</td>
             <td>${assigned}</td>
-            <td><select onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
+            <td><select ${off ? 'disabled ' : ''}onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
+            <td>${off
+              ? `<button class="file-library-tool" onclick="switchBackOn('${u.user_id}', ${JSON.stringify(esc(u.email || '')).replace(/"/g, '&quot;')})">Switch on</button>`
+              : (String(u.user_id) === String(currentUser?.id)
+                  ? '<span class="note">you</span>'
+                  : `<button class="file-library-tool" onclick="confirmSwitchOff('${u.user_id}', ${JSON.stringify(esc(u.email || '')).replace(/"/g, '&quot;')})">Switch off…</button>`)}</td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
@@ -4832,7 +4850,7 @@ async function renderAdmin() {
     const teamHtml = `<div class="usage-section">
       <h3>Team</h3>
       <div class="table-scroll"><table class="data-table">
-        <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th></tr></thead>
+        <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th><th>Account</th></tr></thead>
         <tbody>${userRows}</tbody>
       </table></div>
     </div>`;
@@ -4906,6 +4924,53 @@ async function renderAdmin() {
   } catch (e) {
     setWorkspacePanel(`<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`, 'admin');
   }
+}
+
+/* Switching somebody off, from the Team list.
+ *
+ * The list first: what only they can do, and what stops the moment they go. Nobody should
+ * be asked to decide this from a name and a role -- the libraries and groups only they can
+ * manage need a new owner afterwards, and the links they made stop serving immediately.
+ */
+async function confirmSwitchOff(userId, email) {
+  let d = null;
+  try { d = await apiGet('/admin/users/' + userId + '/departure'); } catch { /* the list is a courtesy */ }
+  const lines = [];
+  if (d) {
+    const libs = (d.owns_libraries || []).filter(l => !l.personal);
+    const own = (d.owns_libraries || []).find(l => l.personal);
+    if (libs.length) lines.push(`${libs.length === 1 ? 'A library' : libs.length + ' libraries'} nobody else can manage: ${libs.map(l => `${l.name} (${l.files} file${l.files === 1 ? '' : 's'})`).join(', ')}. Hand ${libs.length === 1 ? 'it' : 'them'} to somebody afterwards.`);
+    if ((d.owns_groups || []).length) lines.push(`${d.owns_groups.length === 1 ? 'A group' : d.owns_groups.length + ' groups'} only they can change: ${d.owns_groups.map(g => g.name).join(', ')}.`);
+    if (own) lines.push(`Their own library (${own.files} file${own.files === 1 ? '' : 's'}) is kept and put away, and comes back if you switch them on again.`);
+    const links = (d.live_file_links || 0) + (d.live_folder_links || 0);
+    if (links) lines.push(`${links} link${links === 1 ? '' : 's'} they shared with people outside will stop working straight away.`);
+    if (d.shares_to_them) lines.push(`${d.shares_to_them} thing${d.shares_to_them === 1 ? '' : 's'} shared with them will sit there doing nothing until they come back.`);
+    if (d.personal_files) lines.push(`${d.personal_files} file${d.personal_files === 1 ? '' : 's'} only they can read stay where they are.`);
+  }
+  if (!lines.length) lines.push('Nothing else in Depot depends on this account.');
+  lines.push('You can switch them back on at any time.');
+  if (!await askConfirm(`Switch off ${email}?`, {
+    title: 'Switch off this account', okLabel: 'Switch off', danger: true, detailLines: lines,
+  })) return;
+  const reason = (await askPrompt('Why? (optional — it is kept with the record)', '') || '').trim();
+  try {
+    const r = await apiPut('/admin/users/' + userId + '/disabled', { disabled: true, reason: reason || undefined });
+    toast(r.own_library_archived ? 'Switched off · their own library is put away' : 'Switched off');
+    renderAdmin();
+  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); }
+}
+
+async function switchBackOn(userId, email) {
+  if (!await askConfirm(`Switch ${email} back on?`, {
+    okLabel: 'Switch on',
+    detailLines: ['They can sign in again, and anything that was theirs alone comes back with them.',
+      'Anything you handed to somebody else while they were gone stays where you put it.'],
+  })) return;
+  try {
+    await apiPut('/admin/users/' + userId + '/disabled', { disabled: false });
+    toast('Switched back on');
+    renderAdmin();
+  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); }
 }
 
 async function updateUserRole(userId, role) {
@@ -7544,9 +7609,59 @@ function canDeleteFolder(path) {
 // A library can be shared by whoever manages it -- once it has an owner.
 function canShareLibrary(l) { return !!(l && l.id && l.can_manage && l.owner_id); }
 const LIBRARY_PILL = { rw: 'Read-Write', r: 'Read-only', folders: 'Folders' };
+/* Renaming a library, putting one away, and handing one on.
+ *
+ * None of these existed: a library was named once at creation and kept that name forever,
+ * there was no way to retire one, and a library whose owner had gone could not be managed
+ * by anybody. Renaming changes nothing about who can open what -- a library is identified
+ * by its id everywhere access is decided.
+ */
+async function renameLibrary(id) {
+  const lib = librariesList.find(l => String(l.id) === String(id));
+  const next = (await askPrompt('Rename library:', lib?.name || '') || '').trim();
+  if (!next || next === lib?.name) return;
+  try {
+    await apiPatch('/libraries/' + encodeURIComponent(id), { name: next });
+    toast('Renamed');
+    await loadLibraries();
+    renderFileLibrary?.();
+  } catch (e) { toast('Rename failed: ' + (e.body?.error || e.message)); }
+}
+
+async function setLibraryArchived(id, away) {
+  const lib = librariesList.find(l => String(l.id) === String(id));
+  if (away && !await askConfirm(`Put “${lib?.name || 'this library'}” away?`, {
+    title: 'Archive this library', okLabel: 'Put it away', danger: true,
+    detailLines: ['It is kept exactly as it is: nothing can be added to it, by anybody.',
+      'Only administrators will see it listed, and whoever could read what is in it still can.',
+      'You can bring it back at any time.'],
+  })) return;
+  try {
+    await apiPut('/libraries/' + encodeURIComponent(id) + '/archived', { archived: away });
+    toast(away ? 'Put away' : 'Brought back');
+    await loadLibraries();
+    renderFileLibrary?.();
+  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); }
+}
+
+// Handing a library on is only ever offered for somebody who has been switched off: it
+// moves other people's access with it, and that is the one case where it is unambiguous.
+async function reassignLibrary(id, name) {
+  const to = (await askPrompt(`Who should own “${name}” now? (their email address)`, '') || '').trim();
+  if (!to) return;
+  try {
+    const r = await apiPost('/libraries/' + encodeURIComponent(id) + '/reassign', { owner_email: to });
+    toast(`“${r.name}” now belongs to ${r.owner_email}`);
+    await loadLibraries();
+    renderAdmin?.();
+  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); }
+}
+
 function libraryMenuRow(l) {
   const pinned = pinnedLibraryIds.has(String(l.id));
-  const pill = LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '';
+  const pill = l.archived_at
+    ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
+    : (LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
   return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
 }
@@ -7563,6 +7678,8 @@ function libraryMenuInnerHtml() {
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
+    + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();renameLibrary('${cur.id}')">Rename “${esc(cur.name)}”…</button>` : '')
+    + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setLibraryArchived('${cur.id}', ${cur.archived_at ? 'false' : 'true'})">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
 }
 // Share buttons carry the library id in data-share-lib (never spliced into an onclick).

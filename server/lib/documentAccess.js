@@ -114,8 +114,24 @@ const B = {
 // `folderShareWhen` adds one conjunct inside the FOLDER-share branch only. Left out,
 // the text is byte for byte what it has always been, so condition() -- and the golden
 // test that pins it -- are untouched.
+/* Switched off, and therefore nobody.
+ *
+ * Written as a subquery on the account id the rule already carries, NOT as a sixth
+ * parameter: ten call sites hand-number their own parameters after the rule's five, and a
+ * sixth would shift every one of them silently. It costs nothing on the hot path either --
+ * it never mentions the document, so Postgres settles it once per query rather than once
+ * per row.
+ *
+ * It wraps EVERYTHING, the admin branch included. An account that has been switched off
+ * opens nothing at all, whatever it was given and whatever it used to be.
+ */
+const notSwitchedOff = (r) => `NOT EXISTS (SELECT 1 FROM user_roles pv_off
+      WHERE pv_off.user_id = ${r.uid} AND pv_off.disabled_at IS NOT NULL)`;
+
 function conditionWith(alias, r, { folderShareWhen = '' } = {}) {
   return `(
+    ${notSwitchedOff(r)}
+    AND (
     ${B.admin(r)}
     OR ${B.uploader(alias, r)}
     OR EXISTS (
@@ -139,7 +155,7 @@ function conditionWith(alias, r, { folderShareWhen = '' } = {}) {
               AND ${shareLevel(r, 'pv_lf.permission')} = ANY(${r.perms}::text[]) AND ${shareSubject('pv_lf', r)}${folderShareWhen ? `
               AND ${folderShareWhen}` : ''})
     ))
-  )`;
+  ))`;
 }
 
 function condition(alias = 'd', s = 1) {
