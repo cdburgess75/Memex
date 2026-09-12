@@ -124,7 +124,7 @@ suite('folder operations against real Postgres', () => {
     await fixture({ docs: [{ name: 'Clients/Mender/a.pdf' }] });
     const res = await authed(as(OWNER).post('/api/files/folder/rename')).send({ path: 'Clients/Mender', name: 'Mender' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, path: 'Clients/Mender', count: 0 });
+    expect(res.body).toEqual({ ok: true, path: 'Clients/Mender', op_id: null, count: 0, shares_kept: false });
     expect(await names()).toEqual(['Clients/Mender/a.pdf']);
   });
 

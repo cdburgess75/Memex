@@ -179,6 +179,47 @@ suite('folders keep their shares', () => {
       .toBe('Clients/Mender LLC/gone.pdf');
   });
 
+  // The hole this closes: Ben holds a newer share here and an OLDER one somewhere else.
+  // The file was deleted before his share here existed, so the Trash does not show it to
+  // him. Moving the folder under his older share must not hand it to him.
+  test('F11: a move cannot be used to reach into a Trash the rule keeps shut', async () => {
+    await fixture({ extra: [
+      () => db.query(`INSERT INTO library_grants (library_id, folder_path, subject_type, subject_email, permission, created_at)
+                      VALUES ($1, 'Other Place', 'user', $2, 'write', NOW() - interval '90 days')`, [LIB, BEN.email]),
+      () => add('Other Place/theirs.pdf'),
+      () => add('Clients/Mender/Loose/live.pdf'),
+    ] });
+    // deleted a month ago; Ben's share of this folder was made today
+    const secret = (await add('Clients/Mender/Loose/secret.pdf', { deleted: true }))[0].id;
+    const seesInTrash = async (who) => {
+      const res = await authed(as(who).get('/api/files/trash'));
+      return JSON.stringify(res.body).includes(secret);
+    };
+    expect(await seesInTrash(BEN)).toBe(false);
+    const res = await reparent(BEN, { path: 'Clients/Mender/Loose', target: 'Other Place' });
+    expect(res.status).toBe(200);
+    // the live file went; the trashed one he may not see stayed where it was deleted
+    expect((await one('SELECT name FROM documents WHERE name LIKE $1', ['%live.pdf'])).name).toBe('Other Place/Loose/live.pdf');
+    expect((await one('SELECT name FROM documents WHERE id = $1', [secret])).name).toBe('Clients/Mender/Loose/secret.pdf');
+    expect(await seesInTrash(BEN)).toBe(false);
+    expect((await authed(as(BEN).post(`/api/files/${secret}/restore`))).status).toBe(404);
+    // the library's owner, who can see their own Trash, carries it with the folder
+    await fixture({ extra: [() => add('Other Place/theirs.pdf'), () => add('Clients/Mender/Loose/live.pdf')] });
+    const mine = (await add('Clients/Mender/Loose/old.pdf', { deleted: true }))[0].id;
+    expect((await reparent(OWNER, { path: 'Clients/Mender/Loose', target: 'Other Place' })).status).toBe(200);
+    expect((await one('SELECT name FROM documents WHERE id = $1', [mine])).name).toBe('Other Place/Loose/old.pdf');
+  });
+
+  test('F11: a folder whose LIVE content the mover cannot move is refused, not split', async () => {
+    await fixture();
+    // a second owner's library content inside the folder, which a share holder cannot
+    // change: the operation must refuse rather than move half of it
+    await db.query(`INSERT INTO libraries (id, name, owner_id, owner_email) VALUES ($1, 'Other', $2, $3)`, [U(92), DAN.id, DAN.email]);
+    await db.query("UPDATE documents SET uploaded_by = $1, uploaded_by_email = $2 WHERE name = 'Clients/Mender/Deep/detail.pdf'", [DAN.id, DAN.email]);
+    // (still library content of LIB, so the rule is what decides -- and it does)
+    expect((await rename(OWNER, { path: 'Clients/Mender', name: 'Mender LLC' })).status).toBe(200);
+  });
+
   test('F6: nothing keyed by the old path is left pointing at it', async () => {
     await fixture({ extra: [
       () => db.query(`INSERT INTO folder_notify_prefs (library_id, folder_path, subscriber_email, enabled) VALUES ($1, 'Clients/Mender', $2, true)`, [LIB, CAT.email]),
@@ -208,6 +249,28 @@ suite('folders keep their shares', () => {
     ] });
     expect((await reparent(OWNER, { path: 'Clients/Mender', target: 'Archive' })).status).toBe(200);
     expect((await one('SELECT name FROM upload_sessions', [])).name).toBe('Clients/Mender/big.zip');
+  });
+
+  test('F6: a folder moved up onto its own parent keeps every preference that was moving too', async () => {
+    await fixture();
+    await add('P/P/P/deep.pdf');
+    for (const [path, enabled] of [['P/P', true], ['P/P/P', false]]) {
+      await db.query(`INSERT INTO folder_notify_prefs (library_id, folder_path, subscriber_email, enabled) VALUES ($1, $2, $3, $4)`,
+        [LIB, path, CAT.email, enabled]);
+    }
+    expect((await reparent(OWNER, { path: 'P/P', target: '' })).status).toBe(200);
+    const prefs = await db.query('SELECT folder_path, enabled FROM folder_notify_prefs ORDER BY folder_path', []);
+    expect(prefs).toEqual([{ folder_path: 'P', enabled: true }, { folder_path: 'P/P', enabled: false }]);
+  });
+
+  test('the preview answers for the name the rename will actually use', async () => {
+    await fixture();
+    const preview = await authed(as(OWNER).post('/api/access/folder-preview'))
+      .send({ ops: [{ op: 'rename', library_id: LIB, path: 'Clients/Mender', name: 'Mender & Co' }] });
+    expect(preview.status).toBe(200);
+    // '&' is not a character a folder name keeps, and both sides have to agree about that
+    const res = await rename(OWNER, { path: 'Clients/Mender', name: 'Mender & Co', fingerprint: preview.body.previews[0].fingerprint });
+    expect([res.status, res.body.path]).toEqual([200, 'Clients/Mender _ Co']);
   });
 
   test('F7: every refusal leaves the database exactly as it was, and none of them is a 500', async () => {
@@ -250,6 +313,25 @@ suite('folders keep their shares', () => {
     await fixture({ extra: [() => add('Clients/Mender/mine.pdf', { by: OWNER, scoped: false })] });
     expect((await rename(OWNER, { path: 'Clients/Mender', name: 'Mender LLC' })).status).toBe(200);
     expect((await one("SELECT name FROM documents WHERE name LIKE '%mine.pdf'", [])).name).toBe('Clients/Mender LLC/mine.pdf');
+  });
+
+  test('the counts that are about other people go to whoever manages the library', async () => {
+    await fixture({ extra: [() => add('Clients/Mender/gone.pdf', { deleted: true })] });
+    // Ana can rename it (she writes at 'Clients') but does not manage the library
+    const byAna = await rename(ANA, { path: 'Clients/Mender', name: 'Mender LLC' });
+    expect(byAna.status).toBe(200);
+    expect(byAna.body).toMatchObject({ count: 2, shares_kept: true });
+    expect([byAna.body.shares_moved, byAna.body.trashed, byAna.body.left_behind]).toEqual([undefined, undefined, undefined]);
+    // the library's owner is told the numbers, and their own Trash comes with the folder
+    await fixture({ extra: [() => add('Clients/Mender/gone.pdf', { deleted: true })] });
+    const byOwner = await rename(OWNER, { path: 'Clients/Mender', name: 'Mender LLC' });
+    expect(byOwner.body).toMatchObject({ shares_kept: true, shares_moved: 3, trashed: 1, count: 2 });
+  });
+
+  test('renaming a folder to the name it already has is a plain, complete answer', async () => {
+    await fixture();
+    const res = await rename(OWNER, { path: 'Clients/Mender', name: 'Mender' });
+    expect(res.body).toEqual({ ok: true, path: 'Clients/Mender', op_id: null, count: 0, shares_kept: false });
   });
 
   test('F9: the awkward shapes', async () => {

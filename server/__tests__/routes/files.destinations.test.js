@@ -249,7 +249,11 @@ describe('folders', () => {
     const upd = mockQueries[grants];
     expect(upd.sql).toMatch(/folder_path = \$2 \|\| substring\(g\.folder_path from \$3::int\)/);
     expect(upd.params).toEqual([LIB, to, 'Clients/Acme'.length + 1, 'Clients/Acme']);
-    expect(res.body.shares_moved).toBe(0); // the stand-in library has none
+    // how many shares moved is a count of things the caller may not be able to see, so
+    // it goes to whoever manages the library; everyone else is told only that the
+    // sharing came along
+    expect(res.body).toMatchObject({ shares_kept: false });
+    expect(res.body.shares_moved).toBeUndefined();
   });
   test('a folder operation needs the right where the folder SITS, not inside it', async () => {
     // Read-Write on the folder itself is the right to fill and reorganise what is in it;

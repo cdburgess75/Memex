@@ -41,23 +41,27 @@ async function grantsUnder(q, libraryId, path) {
   );
 }
 
-// How many documents are under the path, trashed ones included: they move too.
-async function countUnder(q, libraryId, path) {
+// How many documents are under the path, trashed ones included: they move too. `mover`
+// counts only what would actually be rewritten -- somebody else's personal file stays
+// where it is, so it is neither work to do nor a number to quote at anyone.
+async function countUnder(q, libraryId, path, mover = null) {
   const row = await q.queryOne(
-    `SELECT count(*)::int AS n FROM documents d WHERE d.library_id = $1 AND ${prefixRange('d', '$2')}`,
-    [libraryId, path]
+    `SELECT count(*)::int AS n FROM documents d
+      WHERE d.library_id = $1 AND ${prefixRange('d', '$2')}
+        AND ($3::uuid IS NULL OR d.library_scoped OR d.uploaded_by IS NOT DISTINCT FROM $3::uuid)`,
+    [libraryId, path, mover]
   );
   return row ? row.n : 0;
 }
 
 // Refuse before anything is written, with the real number: "too big" is only useful if
 // it says how big.
-async function refuseIfTooBig(q, libraryId, path) {
+async function refuseIfTooBig(q, libraryId, path, mover) {
   const max = maxRows();
-  const n = await countUnder(q, libraryId, path);
+  const n = await countUnder(q, libraryId, path, mover);
   if (n > max) {
     throw new FolderOpError('FOLDER_TOO_LARGE', 409,
-      `This folder holds ${n.toLocaleString('en-GB')} files, more than the ${max.toLocaleString('en-GB')} one move can rewrite at once. Move some of what is inside it first, or ask an admin.`,
+      `This folder holds ${n.toLocaleString('en-GB')} files, counting what is in its Trash -- more than the ${max.toLocaleString('en-GB')} one move can rewrite at once. Move some of what is inside it first, or ask an admin.`,
       { count: n, max });
   }
   return n;
@@ -83,11 +87,16 @@ function planSharePaths(grants, oldPath, newPath) {
   return moved;
 }
 
-// Invariant T, as an assertion. When shares travel, ALL the library content under the
-// folder has to travel with them -- half a folder moving would silently strip the share
-// from the other half. The right that authorises the operation (libraries.writeRight)
-// always covers the whole subtree, so this cannot fire; it runs anyway, because an
-// argument that is checked every time is worth more than one that is only written down.
+// Invariant T, as an assertion. When shares travel, ALL the LIVE library content under
+// the folder has to travel with them -- half a folder moving would silently strip the
+// share from the other half. The right that authorises the operation (libraries.
+// writeRight) always covers the whole subtree, so this cannot fire; it runs anyway,
+// because an argument that is checked every time is worth more than one that is only
+// written down.
+//
+// Live content only, deliberately. A trashed file the mover may not see stays where it
+// was deleted (see the rewrite in routes/files/folders.js), and that is not a split: it
+// is not shown to anyone new, and the share that used to cover it went with the folder.
 //
 // Runs BEFORE the documents are rewritten: afterwards the moved rows would look like
 // strangers to a path that no longer exists. `IS NOT TRUE`, not NOT: the rule is NULL,
@@ -96,11 +105,13 @@ async function assertTotal(q, { libraryId, path, user }) {
   const p = db.paramList();
   const lib = p(libraryId);
   const old = p(path);
-  const rule = documentAccess.condition('d', p.vals.length + 1);
+  // The same rule the rewrite uses, trash guard and all, so what this asserts is exactly
+  // what would move.
+  const rule = documentAccess.conditionInTrash('d', p.vals.length + 1);
   p.vals.push(...documentAccess.userParams(user, 'write'));
   const row = await q.queryOne(
     `SELECT EXISTS (SELECT 1 FROM documents d
-                     WHERE d.library_id = ${lib}::uuid AND d.library_scoped
+                     WHERE d.library_id = ${lib}::uuid AND d.library_scoped AND d.deleted_at IS NULL
                        AND ${prefixRange('d', old)}
                        AND (${rule}) IS NOT TRUE) AS partial`,
     p.vals
@@ -154,9 +165,11 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
   );
 
   // Notification preferences follow the folder. Two statements, never one: the unique
-  // index is immediate, so a row that would collide with one already at the new path has
-  // to go before the rest are moved -- and the person keeps the preference they already
-  // had there. library_id is nullable ("any library"), hence IS NOT DISTINCT FROM.
+  // index is immediate, so a row already sitting at a path something is moving onto has
+  // to go before the rest are moved -- the moving one wins, since it is the folder the
+  // person asked to hear about. library_id is nullable ("any library"), hence IS NOT
+  // DISTINCT FROM. A row that is ITSELF moving is never the one deleted: moving 'P/P' up
+  // onto 'P' makes 'P/P/P/x' land on 'P/P/x', which is moving too.
   await q.query(
     `DELETE FROM folder_notify_prefs t
       USING folder_notify_prefs s
@@ -165,7 +178,9 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
         AND t.library_id IS NOT DISTINCT FROM $5
         AND lower(t.subscriber_email) = lower(s.subscriber_email)
         AND t.folder_path = $2 || substring(s.folder_path from $3::int)
-        AND t.id <> s.id`,
+        AND t.id <> s.id
+        AND NOT (t.library_id IS NOT DISTINCT FROM $1
+                 AND (t.folder_path = $4 OR starts_with(t.folder_path, $4 || '/')))`,
     [libraryId, newPath, cut, oldPath, destLibraryId]
   );
   const prefs = await q.query(
@@ -191,8 +206,8 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
 }
 
 // The record of a structural operation. Written inside the transaction, so an operation
-// that rolled back left no trace of itself; read by the Trash's Undo, and by anyone
-// asking later what happened to a folder.
+// that rolled back leaves no trace of itself. Nothing reads it yet: the Trash's Undo,
+// which needs an operation to point at, is the next part of this piece.
 async function recordOp(q, { libraryId, targetLibraryId = null, kind, path, newPath = null, user, expiresAt = null }) {
   const row = await q.queryOne(
     `INSERT INTO folder_ops (library_id, target_library_id, kind, path, new_path, actor, actor_email, expires_at)
@@ -203,4 +218,4 @@ async function recordOp(q, { libraryId, targetLibraryId = null, kind, path, newP
   return row?.op_id || null;
 }
 
-module.exports = { maxRows, asRefusal, grantsUnder, countUnder, refuseIfTooBig, planSharePaths, assertTotal, carryPathState, recordOp };
+module.exports = { maxRows, grantsUnder, countUnder, refuseIfTooBig, planSharePaths, assertTotal, carryPathState, recordOp };
