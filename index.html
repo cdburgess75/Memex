@@ -1701,6 +1701,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ls-who-sub { font-size: 12px; color: var(--ink-faint); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .ls-empty { padding: 12px 2px; color: var(--ink-faint); font-size: 13px; }
 .ls-note { font-size: 12.5px; color: var(--ink-faint); margin: 10px 2px 0; }
+/* A sentence that ends in something to do: the action reads as part of the sentence. */
+.ls-note .link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ls-note .link-btn:hover { text-decoration-thickness: 2px; }
+.ls-note .link-btn:disabled { color: var(--ink-faint); cursor: default; text-decoration: none; }
 .library-menu-item .pill { margin-left: 6px; vertical-align: 1px; }
 .swm-sub { margin: -6px 0 14px; color: var(--ink-soft); font-size: 13.5px; }
 .acc-tabs { margin-bottom: 14px; }
@@ -7839,7 +7843,7 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     const seq = ++st.seq;
     const listEl = $('[data-ls-list]'); const notes = $('[data-ls-notes]');
     let data;
-    try { data = await apiGet(`/libraries/${encodeURIComponent(libraryId)}/shares`); }
+    try { data = await apiGet(`/libraries/${encodeURIComponent(libraryId)}/shares${folderPath ? `?path=${encodeURIComponent(folderPath)}` : ''}`); }
     catch (err) { if (seq === st.seq) { listEl.innerHTML = `<div class="ls-empty">${esc(groupErr(err, 'Could not load who this is shared with.'))}</div>`; notes.innerHTML = ''; } return; }
     if (seq !== st.seq) return; // a newer load is on its way
     const here = data.shares.filter(x => x.folder_path === folderPath);
@@ -7864,10 +7868,34 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
           }).join('') + `</details>`);
       }
     }
+    // Sharing that ended when this folder was deleted, and can still be offered again --
+    // what makes the delete dialog's promise true once its Undo has faded.
+    const ended = (data.ended_shares || []).filter(e => e.folder_path === folderPath);
+    if (ended.length) {
+      const when = new Date(ended[0].ended_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      const who = ended.map(e => `${esc(e.subject_type === 'group' ? (e.group_name || 'a group') : e.subject_email)} (${shareLevelLabel(e.permission)})`).join(', ');
+      parts.push(`<p class="ls-note">Sharing ended when this folder was deleted on ${esc(when)}. <button type="button" class="link-btn" data-ls-again>Share again with ${who}?</button></p>`);
+    }
     if (Array.isArray(data.legacy_members) && data.legacy_members.length) {
       parts.push(`<p class="ls-note">Listed for ${data.legacy_members.map(x => esc(x.subject_email)).join(', ')}: a member list from before sharing existed. It only decides who sees the library in their list and gives no access to files.</p>`);
     }
     notes.innerHTML = parts.join('');
+    const again = notes.querySelector('[data-ls-again]');
+    if (again) {
+      again.onclick = async () => {
+        again.disabled = true;
+        let made = 0;
+        for (const e of ended) {
+          const body = { permission: e.permission, folder_path: e.folder_path };
+          if (e.subject_type === 'group') body.group_id = e.group_id; else body.email = e.subject_email;
+          try { await apiPost(`/libraries/${encodeURIComponent(libraryId)}/shares`, body); made++; }
+          catch (err) { toast(groupErr(err, 'That one could not be shared again.')); }
+        }
+        if (made) toast(made === 1 ? 'Shared again' : `Shared again with ${made} people`);
+        load();
+        loadLibraries().catch(() => {});
+      };
+    }
   }
 
   renderChips();
@@ -9174,20 +9202,28 @@ async function deleteSelectedItems() {
     });
     return;
   }
-  if (!await askConfirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`, { danger: true })) return;
+  // Deleting a folder ends whatever it is shared with, so the dialog says whose access
+  // it ends before anyone agrees to it.
+  const ending = (await Promise.all(folders.map(p => folderDeleteWords(p)))).flat();
+  if (!await askConfirm(`Move ${label} to Trash? You can restore ${total === 1 ? 'it' : 'them'} later.`, {
+    danger: true, okLabel: 'Move to Trash', detailLines: [...new Set(ending)],
+  })) return;
   for (const f of files) {
     await apiDelete('/files/' + f.id);
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
   }
   let refused = 0;
+  const ops = [];
   for (const p of folders) {
-    try { await apiPost('/files/folder/delete', inFolderLib({ path: p }, lib)); }
+    try { const r = await apiPost('/files/folder/delete', inFolderLib({ path: p }, lib)); if (r?.op_id) ops.push(r.op_id); }
     catch (e) { refused++; toast('Could not move that folder to Trash: ' + folderOpMessage(e)); }
   }
   clearFileSelection(false);
   await afterFolderChange();
   // ...but only say it worked for what actually moved
-  if (refused < folders.length + files.length) toast(`${label} moved to Trash`);
+  if (refused >= folders.length + files.length) return;
+  if (ops.length) toastUndo(`${label} moved to Trash`, async () => { for (const op of ops) await undoFolderDelete(op); });
+  else toast(`${label} moved to Trash`);
 }
 
 function toggleDetailsPane() {
@@ -10814,21 +10850,66 @@ async function renameFolder(path) {
     toast(`Renamed (${r.count} item${r.count === 1 ? '' : 's'})${r.shares_kept ? ' — the sharing came with it' : ''}`);
   } catch (e) { toast('Rename failed: ' + folderOpMessage(e)); }
 }
+/* What deleting this folder would end, asked before the dialog is shown.
+ *
+ * The same preview the move confirmation uses (POST /api/access/folder-preview), with
+ * op "delete": it answers who would lose access and which shares would end, worked out
+ * from reads alone. Only whoever manages the library is told names, so when that half is
+ * withheld the dialog says what is true without naming anyone.
+ */
+async function folderDeleteWords(path) {
+  const lines = [];
+  let p = null;
+  try {
+    const r = await apiPost('/access/folder-preview', { ops: [{ op: 'delete', library_id: currentLibraryId, path }] });
+    p = r?.previews?.[0] || null;
+  } catch { /* the preview is a courtesy, never a gate */ }
+  const ending = p?.shares_ending || [];
+  const lose = p?.lose || [];
+  if (ending.length) {
+    lines.push(`This ends ${howMany(ending.length, 'share')} on this folder.`);
+    if (lose.length) lines.push(`${howMany(lose.length)} lose access: ${peopleList(lose)}.`);
+    lines.push('Undo brings it all back. After that you can restore the files from the Trash, and share the folder again from its Share panel for the next day.');
+  } else if (p?.lose_visible === false && folderIsShared(path)) {
+    lines.push('This folder is shared. Deleting it ends that sharing.');
+  }
+  return lines;
+}
+
 async function deleteFolder(path) {
   const name = path.split('/').pop();
-  const shared = folderIsShared(path);
-  if (!await askConfirm(`Move folder "${name}" and everything inside it to Trash?`, {
-    danger: true,
-    detailLines: shared ? ['This folder is shared. Deleting it ends that sharing, and the people it was shared with lose access.'] : [],
+  const detailLines = await folderDeleteWords(path);
+  if (!await askConfirm(`Move folder “${name}” and everything inside it to Trash?`, {
+    danger: true, okLabel: 'Move to Trash', detailLines,
   })) return;
   try {
     const r = await apiPost('/files/folder/delete', inFolderLib({ path }));
     if (currentFolderPath === path || currentFolderPath.startsWith(path + '/')) currentFolderPath = path.split('/').slice(0, -1).join('/');
     await afterFolderChange();
-    toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`);
+    const what = `Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`;
+    const ended = (r.shares_ended || []).length;
+    if (r.op_id) {
+      toastUndo(ended ? `${what} · ${howMany(ended, 'share')} ended` : what, () => undoFolderDelete(r.op_id));
+    } else {
+      toast(what);
+    }
   } catch (e) { toast('Delete failed: ' + folderOpMessage(e)); }
 }
-function transferTargets() { return (librariesList || []).filter(l => l.id && String(l.id) !== String(currentLibraryId) && l.add_right); }
+
+// Putting a deleted folder back: the files AND whoever it was shared with, from the
+// deletion's own record. Anything that could not come back is said out loud rather than
+// left for somebody to notice.
+async function undoFolderDelete(opId) {
+  try {
+    const r = await apiPost('/files/folder/restore', { op_id: opId });
+    await afterFolderChange();
+    const back = (r.shares_restored || []).length;
+    const missed = (r.shares_not_restored || []).length;
+    toast(r.already_undone ? 'That was already put back'
+      : `${r.count} item${r.count === 1 ? '' : 's'} back${back ? `, ${howMany(back, 'share')} restored` : ''}${missed ? ` — ${missed} could not be` : ''}`);
+  } catch (e) { toast("Couldn't put it back: " + folderOpMessage(e)); }
+}
+
 function moveFolderToLibrary(path) {
   const targets = transferTargets();
   if (!targets.length) { toast('No other library you can add files to'); return; }
