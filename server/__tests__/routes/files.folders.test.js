@@ -13,14 +13,22 @@ jest.mock('../../lib/db', () => {
   return {
     query,
     queryOne,
-    // The folder operations run inside one transaction; the stand-in hands the callback
-    // a client backed by the same two mocks (a pg client answers { rows }).
+    // The folder operations, and every placement of a document by name, run inside one
+    // transaction; the stand-in hands the callback a client backed by the same two mocks
+    // (a pg client answers { rows }).
     withTransaction: jest.fn(async (fn) => fn({
       query: async (sql, params = []) => {
+        // The lock's own plumbing (lib/folderLocks) answers itself: it is not something
+        // a test mocks, and letting it reach the mocks would consume their queued rows.
+        if (/^\s*(SET LOCAL|SELECT DISTINCT hashtext|SELECT pg_advisory)/i.test(sql)) return { rows: [] };
         const rows = await query(sql, params);
-        if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
-        const one = await queryOne(sql, params); // the single-row mock answers reads
-        return { rows: one ? [one] : [] };
+        if (rows && rows.length) return { rows };
+        // the single-row mock answers reads, and the writes that RETURN what they wrote
+        if (/^\s*SELECT/i.test(sql) || /RETURNING/i.test(sql)) {
+          const one = await queryOne(sql, params);
+          return { rows: one ? [one] : [] };
+        }
+        return { rows: [] };
       },
     })),
     paramList: jest.requireActual('../../lib/db').paramList,
@@ -79,12 +87,13 @@ describe('folder sub-router mount (ST-1)', () => {
   test('POST /api/files/folder creates the folder marker for a valid path', async () => {
     db.queryOne
       .mockResolvedValueOnce(null) // destinationFolder: no existing folder by that name
+      .mockResolvedValueOnce(null) // and asked again under the library's lock, where it counts
       .mockResolvedValueOnce({ id: 'doc-1', name: 'Reports/.keep' });
     const res = await request(makeApp()).post('/api/files/folder').send({ path: 'Reports' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, path: 'Reports' });
     // the new name was cleaned (destinationFolder -> safeDocName); the INSERT ran; owner ACL granted.
-    expect(db.queryOne).toHaveBeenCalledTimes(2);
+    expect(db.queryOne).toHaveBeenCalledTimes(3);
     expect(require('../../lib/documentAccess').grantOwnerAdmin).toHaveBeenCalledTimes(1);
   });
 

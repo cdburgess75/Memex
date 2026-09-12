@@ -12,6 +12,11 @@ const documentAccess = require('./documentAccess');
 const { extractText } = require('./textExtraction');
 const { logEvent, logDocumentEvent } = require('./fileEvents');
 
+// lib/folderOps requires THIS module (prefixRange), so it is required lazily inside the
+// function that needs it: at the top, the two would be a cycle and whichever loaded
+// second would see half a module.
+const folderOps = () => require('./folderOps');
+
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, uploaded_by,
   uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
@@ -139,7 +144,7 @@ function recordUploadNotify(user, displayName, libraryId, documentId = null) {
 // libraryScoped: whether the new file is library content (see libraries.writeRight and
 // migration 0008). The caller decides it from the destination right it checked; it
 // defaults to false, a personal file, which is today's behaviour.
-async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false, libraryScoped = false }) {
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false, libraryScoped = false, resolve = null }) {
   let canIngest = false;
   let documentText = null;
   let contentHash = null;
@@ -154,46 +159,73 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
     }
   }
   // Nobody said where: it lands in the uploader's own library, never in a shared one.
+  // Settled BEFORE the transaction, because it is the lock's key: which library this
+  // lands in cannot be something the transaction discovers halfway through.
   const lib = libraryId || (await libraries.defaultLibraryFor(user));
 
-  // U6 dedupe: a byte-identical re-upload — same content hash, same name, same library,
-  // that this user could EDIT — returns the existing document instead of creating a
-  // duplicate. Edit, not merely read: absorbing an upload into a document is a change
-  // to that document, and at read level one person's upload could land as someone
-  // else's file, owned by them, in a place the uploader can only look at. Conservative by design: a changed file has a different hash and is never
-  // skipped, so nothing is ever silently dropped. Only computed for files up to the
-  // text-extraction size, where we already have the bytes in hand (no extra read).
-  // Only into a file of the same kind: an upload meant as library content must not be
-  // folded into the uploader's older personal copy (which the library's shares never
-  // reach), nor a personal upload into library content.
-  if (contentHash) {
-    const existing = await db.queryOne(
-      `SELECT ${DOCUMENT_COLUMNS} FROM documents d
-       WHERE d.deleted_at IS NULL AND d.content_hash = $1 AND d.name = $2 AND d.library_id = $3
-         AND ${documentAccess.condition('d', 4)}
-         AND d.library_scoped = $9
-       LIMIT 1`,
-      [contentHash, displayName, lib, ...documentAccess.userParams(user, 'write'), !!libraryScoped]
-    );
-    if (existing) {
-      await storage.del(storagePath).catch(() => {}); // discard the redundant blob
-      await logEvent(`upload dedupe · ${displayName}`, user.id, user.email);
-      return { doc: existing, canIngest: false, deduped: true };
-    }
-  }
+  /* Placing a document BY NAME is the other half of piece 4's invariant: nothing may
+   * place a document by name while a folder operation is rewriting this library's
+   * paths. So the row goes in inside ONE transaction holding the library's tree lock in
+   * SHARED mode -- any number of placements run together, and none of them runs while a
+   * folder operation holds it exclusively.
+   *
+   * What is deliberately NOT in here is the expensive part above: downloading the bytes
+   * to hash and index them. An upload holds somebody's file, not the library.
+   *
+   * `resolve`, when given, works out where this lands on the transaction's client. What
+   * the caller resolved before the lock is only a guess: the folder it named can have
+   * been renamed while we waited. It may throw a FolderOpError to refuse.
+   */
+  const placed = await folderOps().withFolderOp({ libraryIds: [lib], kind: 'placement', mode: 'shared' }, async (q) => {
+    const at = resolve ? await resolve(q, { libraryId: lib }) : null;
+    const name = at ? at.displayName : displayName;
+    const scoped = at ? !!at.libraryScoped : !!libraryScoped;
 
-  const doc = await db.queryOne(
-    `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, content_hash, library_scoped)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${DOCUMENT_COLUMNS}`,
-    [displayName, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, lib, contentHash, !!libraryScoped]
-  );
-  await documentAccess.grantOwnerAdmin(doc.id, user);
-  await logDocumentEvent(doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
-  await logEvent(`upload · ${displayName}`, user.id, user.email);
+    // U6 dedupe: a byte-identical re-upload — same content hash, same name, same library,
+    // that this user could EDIT — returns the existing document instead of creating a
+    // duplicate. Edit, not merely read: absorbing an upload into a document is a change
+    // to that document, and at read level one person's upload could land as someone
+    // else's file, owned by them, in a place the uploader can only look at. Conservative by design: a changed file has a different hash and is never
+    // skipped, so nothing is ever silently dropped. Only computed for files up to the
+    // text-extraction size, where we already have the bytes in hand (no extra read).
+    // Only into a file of the same kind: an upload meant as library content must not be
+    // folded into the uploader's older personal copy (which the library's shares never
+    // reach), nor a personal upload into library content. Asked on the transaction's
+    // client, so the answer and the INSERT that follows it see one state of the tree.
+    if (contentHash) {
+      const existing = await q.queryOne(
+        `SELECT ${DOCUMENT_COLUMNS} FROM documents d
+         WHERE d.deleted_at IS NULL AND d.content_hash = $1 AND d.name = $2 AND d.library_id = $3
+           AND ${documentAccess.condition('d', 4)}
+           AND d.library_scoped = $9
+         LIMIT 1`,
+        [contentHash, name, lib, ...documentAccess.userParams(user, 'write'), scoped]
+      );
+      if (existing) return { doc: existing, name, deduped: true };
+    }
+
+    const doc = await q.queryOne(
+      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, content_hash, library_scoped)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${DOCUMENT_COLUMNS}`,
+      [name, storedSize || 0, mimetype, storagePath, user.id, user.email, documentText, lib, contentHash, scoped]
+    );
+    await documentAccess.grantOwnerAdmin(doc.id, user, q);
+    return { doc, name, deduped: false };
+  });
+
+  // After the commit. The audit chain takes a lock of its own, and the redundant blob is
+  // only safe to drop once the row that supersedes it is actually committed.
+  if (placed.deduped) {
+    await storage.del(storagePath).catch(() => {}); // discard the redundant blob
+    await logEvent(`upload dedupe · ${placed.name}`, user.id, user.email);
+    return { doc: placed.doc, canIngest: false, deduped: true };
+  }
+  await logDocumentEvent(placed.doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
+  await logEvent(`upload · ${placed.name}`, user.id, user.email);
   // Notify the library owner + folder followers (summary-batched), on real user
   // uploads only — not copies/migrations, which pass notifyUpload:false.
-  if (notifyUpload) recordUploadNotify(user, displayName, lib, doc.id);
-  return { doc, canIngest };
+  if (notifyUpload) recordUploadNotify(user, placed.name, lib, placed.doc.id);
+  return { doc: placed.doc, canIngest };
 }
 
 // "Everything under this folder", as a RANGE rather than starts_with(), so the
