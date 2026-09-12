@@ -39,7 +39,13 @@ jest.mock('../../lib/groups', () => ({
 jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
-jest.mock('../../lib/db', () => ({ query: jest.fn(), queryOne: jest.fn() }));
+jest.mock('../../lib/db', () => ({
+  query: jest.fn(async () => []),
+  queryOne: jest.fn(async () => null),
+  // Creating a share runs under the library's tree lock, in a transaction.
+  withTransaction: jest.fn(async (fn) => fn({ query: jest.fn(async () => ({ rows: [] })) })),
+  paramList: jest.requireActual('../../lib/db').paramList,
+}));
 
 const shares = require('../../lib/libraryShares');
 const notifications = require('../../lib/notifications');
