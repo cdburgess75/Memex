@@ -75,7 +75,22 @@ module.exports = async function auth(req, res, next) {
   const emailVerified = emailVerifiedClaim(payload);
   const verifiedEmail = emailVerified === true && userEmail ? userEmail : null;
 
-  let roleRow = await db.queryOne('SELECT role, verified_email FROM user_roles WHERE user_id = $1', [userId]);
+  let roleRow = await db.queryOne('SELECT role, verified_email, disabled_at FROM user_roles WHERE user_id = $1', [userId]);
+
+  /* Switched off: refused here, before anything else happens.
+   *
+   * Before the provisioning branch below, deliberately -- a disabled account must not get
+   * a role row rewritten, a personal library made, or its verified address recorded, all
+   * of which would quietly undo the switch. The identity provider is what stops a
+   * sign-in; this is what stops a token that was issued before somebody left, or one from
+   * a session still open somewhere.
+   */
+  if (roleRow?.disabled_at) {
+    return res.status(403).json({
+      code: 'ACCOUNT_DISABLED',
+      error: 'This account has been switched off. Ask an administrator if you think that is wrong.',
+    });
+  }
 
   // ADMIN_EMAILS bootstraps the first admin by address, so it must be an address the
   // identity provider has verified — otherwise anyone able to put that address on an

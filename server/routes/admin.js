@@ -36,12 +36,102 @@ router.get('/stats', auth, requireRole('admin'), async (req, res) => {
 router.get('/users', auth, requireRole('admin'), async (req, res) => {
   try {
     const rows = await db.query(
-      'SELECT user_id, email, role, assigned_at FROM user_roles ORDER BY assigned_at DESC'
+      'SELECT user_id, email, role, assigned_at, disabled_at, disabled_reason FROM user_roles ORDER BY assigned_at DESC'
     );
     res.json(rows);
   } catch (e) {
     serverError(res, e);
   }
+});
+
+/* PUT /api/admin/users/:userId/disabled -- switch somebody off, or back on.
+ *
+ * Depot had no "off". The nearest thing was demoting somebody to viewer, which still let
+ * them read everything they had ever been given; deleting their row was worse, because
+ * the next valid token put it straight back as a contributor with their libraries intact.
+ *
+ * Switching off is reversible and keeps its own history -- when, who, and why. It does NOT
+ * touch what they own, what they were shared, or what they uploaded: those are somebody's
+ * decisions to make, not a side effect of a toggle. What it does is make the account
+ * nobody: sign-in is refused, and resolveActor answers with nothing, which is what stops
+ * their public links, their editing sessions and anything else still acting on their
+ * behalf.
+ */
+router.put('/users/:userId/disabled', auth, requireRole('admin'), async (req, res) => {
+  const { userId } = req.params;
+  const off = req.body?.disabled === true;
+  const reason = String(req.body?.reason || '').trim().slice(0, 500) || null;
+  try {
+    if (off && String(userId) === String(req.user.id)) {
+      return res.status(400).json({ error: "You can't switch off your own account." });
+    }
+    const before = await db.queryOne('SELECT user_id, email, role, disabled_at FROM user_roles WHERE user_id = $1', [userId]);
+    if (!before) return res.status(404).json({ error: 'No such account' });
+    // The last administrator must not be able to lock everybody out of administration.
+    if (off && before.role === 'admin') {
+      const others = await db.queryOne(
+        "SELECT count(*)::int AS n FROM user_roles WHERE role = 'admin' AND disabled_at IS NULL AND user_id <> $1", [userId]);
+      if (!others || others.n === 0) {
+        return res.status(409).json({ code: 'LAST_ADMIN', error: 'This is the only administrator left. Make somebody else an administrator first.' });
+      }
+    }
+    const row = await db.queryOne(
+      `UPDATE user_roles
+          SET disabled_at = CASE WHEN $2::boolean THEN NOW() END,
+              disabled_by = CASE WHEN $2::boolean THEN $3::uuid END,
+              disabled_reason = CASE WHEN $2::boolean THEN $4::text END
+        WHERE user_id = $1
+        RETURNING user_id, email, role, disabled_at, disabled_reason`,
+      [userId, off, req.user.id, reason]
+    );
+    if (!!before.disabled_at !== off) {
+      try {
+        await require('../lib/auditLog').append({
+          eventType: 'role_changed', actorId: req.user.id, actorEmail: req.user.email,
+          detail: `user ${userId} ${JSON.stringify(before.email || '')} ${off ? 'switched off' : 'switched back on'}${reason ? ` · ${JSON.stringify(reason)}` : ''}`,
+        });
+      } catch (e) { console.error('audit switch-off failed:', e.message); }
+    }
+    res.json(row);
+  } catch (e) { serverError(res, e); }
+});
+
+/* GET /api/admin/users/:userId/departure -- what only this person can do.
+ *
+ * Read-only, and the thing to look at BEFORE switching anybody off: what stops working,
+ * and what nobody else can pick up. Nothing here decides anything; it is the list a
+ * person needs in front of them to decide.
+ */
+router.get('/users/:userId/departure', auth, requireRole('admin'), async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const who = await db.queryOne('SELECT user_id, email, role, verified_email, disabled_at FROM user_roles WHERE user_id = $1', [userId]);
+    if (!who) return res.status(404).json({ error: 'No such account' });
+    const [libraries, groups, links, folderLinks, shares, personalFiles] = await Promise.all([
+      // Libraries nobody else can manage: an ownerless library cannot be shared at all.
+      db.query('SELECT id, name, personal, (SELECT count(*)::int FROM documents d WHERE d.library_id = l.id AND d.deleted_at IS NULL) AS files FROM libraries l WHERE l.owner_id = $1 ORDER BY l.personal, l.name', [userId]),
+      db.query('SELECT id, name, (SELECT count(*)::int FROM group_members m WHERE m.group_id = g.id) AS members FROM groups g WHERE g.owner_id = $1 ORDER BY g.name', [userId]),
+      // Links stop serving the moment their creator stops being anybody.
+      db.query("SELECT count(*)::int AS n FROM document_share_links WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())", [userId]),
+      db.query("SELECT count(*)::int AS n FROM folder_share_links WHERE created_by = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())", [userId]),
+      // What they were given stays sitting there, addressed to them, until somebody removes it.
+      db.query("SELECT count(*)::int AS n FROM library_grants WHERE subject_type = 'user' AND subject_email = $1", [who.verified_email || '']),
+      db.query('SELECT count(*)::int AS n FROM documents WHERE uploaded_by = $1 AND NOT library_scoped AND deleted_at IS NULL', [userId]),
+    ]);
+    res.json({
+      user: { user_id: who.user_id, email: who.email, role: who.role, disabled_at: who.disabled_at },
+      // Nobody else can manage these while they are gone, and an ownerless library cannot be shared.
+      owns_libraries: libraries,
+      owns_groups: groups,
+      // These stop working the moment the account is switched off.
+      live_file_links: links[0].n,
+      live_folder_links: folderLinks[0].n,
+      // These do nothing while the account is off, and wake up if it comes back.
+      shares_to_them: shares[0].n,
+      // Only they can read these, and only they can hand them to a library.
+      personal_files: personalFiles[0].n,
+    });
+  } catch (e) { serverError(res, e); }
 });
 
 // PUT /api/admin/users/:userId/role
