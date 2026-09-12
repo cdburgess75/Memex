@@ -2174,9 +2174,22 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
     });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
+    // The row goes first, and only while it is still in the Trash: deleting the object
+    // first was a way to destroy a file somebody restored in between, and to record a
+    // purge that then failed. Version objects are read BEFORE the delete, because their
+    // rows CASCADE away with the document and nothing would be left pointing at them --
+    // which is why every version's object used to be orphaned by an admin purge.
+    const objects = await db.withTransaction(async (client) => {
+      const { rows: versions } = await client.query('SELECT storage_path FROM document_versions WHERE document_id = $1', [req.params.id]);
+      const { rows: gone } = await client.query(
+        'DELETE FROM documents WHERE id = $1 AND deleted_at IS NOT NULL RETURNING storage_path', [req.params.id]);
+      if (!gone.length) return null;
+      return [...versions.map(v => v.storage_path), gone[0].storage_path].filter(Boolean);
+    });
+    if (!objects) return res.status(404).json({ error: 'Document not found in trash' });
     await logDocumentEvent(doc.id, 'purged', req.user.id, req.user.email, 'permanent delete');
-    await storage.del(doc.storage_path);
-    await db.query('DELETE FROM documents WHERE id = $1', [req.params.id]);
+    // Best effort: an object that is already gone must not leave the row un-purgeable.
+    for (const objectPath of objects) await storage.del(objectPath).catch(() => {});
     await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
