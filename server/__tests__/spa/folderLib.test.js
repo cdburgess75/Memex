@@ -70,7 +70,7 @@ describe('every folder request names its library', () => {
 // in is captured once, so switching library halfway can't send the rest elsewhere.
 describe('multi-folder loops keep the library they started in', () => {
   test.each([
-    ['moveItemsIntoFolder', /const lib = currentLibraryId;/, /inFolderLib\(\{ path: p, target: targetPath \}, lib\)/],
+    ['moveItemsIntoFolder', /const lib = currentLibraryId;/, /inFolderLib\(\{ path: p, target: targetPath, fingerprint: [^}]+\}, lib\)/],
     ['deleteSelectedItems', /const lib = currentLibraryId;/, /inFolderLib\(\{ path: p \}, lib\)/],
     ['downloadSelectedItems', /const lib = currentLibraryId;/, /downloadFolderZip\(p, lib\)/],
     ['openLibraryTransfer', /const srcLib = currentLibraryId;/, /inFolderLib\(\{ path: p, library_id: b\.dataset\.lib \}, srcLib\)/],

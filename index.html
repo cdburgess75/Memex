@@ -1205,6 +1205,13 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
   font: 500 11px var(--ui); padding: 1px 7px; border-radius: 999px;
   color: var(--ink-soft); background: var(--surface); border: 1px solid var(--rule);
 }
+.folder-shared-tag { display: inline-flex; align-items: center; margin-left: 8px; padding: 0 6px; height: 17px;
+  border: 1px solid var(--rule); border-radius: 9px; font-size: 10px; font-weight: 600; letter-spacing: .02em;
+  color: var(--ink-soft); background: var(--surface); vertical-align: 1px; white-space: nowrap; }
+/* On a card the name is clipped and the sub line is narrow, so the marker sits in the
+   corner of the tile instead, where no width can swallow it -- on the raised surface,
+   which is the one that reads against a tile in both themes. */
+.file-card-preview .folder-shared-tag { position: absolute; left: 8px; top: 8px; margin: 0; background: var(--surface-raised); }
 .pill.ok   { color: var(--success); background: color-mix(in srgb, var(--success) 10%, var(--paper)); border-color: color-mix(in srgb, var(--success) 30%, var(--rule)); }
 .pill.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
 
@@ -6878,7 +6885,7 @@ function folderLibraryRow(folder) {
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
     `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title">${esc(folder.name)}${folderSharedTag(folder.path)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
@@ -7067,8 +7074,9 @@ function fileLibraryCommandBarHtml() {
     const label = `${total} selected`;
     const fileOnly = folderCount === 0;
     const parentOf = (name) => String(name || '').split('/').slice(0, -1).join('/');
-    const canChange = selected.every(f => canChangeFile(f)) && [...selectedFolderPaths].every(p => canWriteHere(p) && !folderIsShared(p));
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" data-share-folder="${escAttr([...selectedFolderPaths][0])}" onclick="openFolderShare(this.dataset.shareFolder)">Share</button>${canChange ? `<button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button>${canChange ? `<button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button><button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>` : ''}${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}${canChange ? `<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button>` : ''}</div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    const canChange = selected.every(f => canChangeFile(f)) && [...selectedFolderPaths].every(p => canChangeFolder(p));
+  const canEnd = canChange && [...selectedFolderPaths].every(p => canDeleteFolder(p));
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" data-share-folder="${escAttr([...selectedFolderPaths][0])}" onclick="openFolderShare(this.dataset.shareFolder)">Share</button>${canChange ? `<button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button>${canChange ? `<button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>` : ''}${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button>` : ''}</div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
   const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
@@ -7496,13 +7504,37 @@ function canChangeFile(f) {
   const parent = String(f.name || '').split('/').slice(0, -1).join('/');
   return canWriteHere(parent) || (!f.library_scoped && !!currentUser?.id && String(f.uploaded_by || '') === String(currentUser.id));
 }
-// A folder with a share at or below it can't be renamed, moved or deleted until shares
-// follow renames (the server refuses with FOLDER_SHARED). Managers are told which
-// folders are shared; everyone else knows the ones shared with them.
+// Is this folder shared, or is anything inside it? Managers are told which folders are
+// shared; everyone else knows the ones shared with them.
 function folderIsShared(path) {
   const l = currentLibrary();
   const shared = [...(l?.shared_folders || []), ...(l?.my_folders || []).map(f => f.path)];
   return shared.some(f => f === path || f.startsWith(path + '/'));
+}
+// A folder that is shared says so wherever it is listed, so nobody renames or moves one
+// without knowing other people are looking at it. Managers see every share; everyone else
+// sees the ones they were given.
+function folderSharedTag(path) {
+  if (!folderIsSharedHere(path)) return '';
+  const mine = (currentLibrary()?.my_folders || []).find(f => f.path === path);
+  const title = mine ? `Shared with you (${mine.level === 'rw' ? 'Read-Write' : 'Read-only'})` : 'Shared with other people';
+  return `<span class="folder-shared-tag" title="${escAttr(title)}">Shared</span>`;
+}
+// Is this exact folder shared? (For the badge: a folder is not marked shared because
+// something deep inside it is.)
+function folderIsSharedHere(path) {
+  const l = currentLibrary();
+  return [...(l?.shared_folders || []), ...(l?.my_folders || []).map(f => f.path)].includes(path);
+}
+// Renaming a folder, or moving it within the library, carries its shares with it -- so
+// what it needs is the right where the folder SITS, in the folder above. Read-Write on a
+// folder is the right to fill and reorganise what is IN it, not to move the folder
+// itself. (The server decides; this is what the menu offers.)
+function canChangeFolder(path) { return canWriteHere(String(path || '').split('/').slice(0, -1).join('/')); }
+// Deleting a folder, or taking it to another library, ENDS whatever it is shared with --
+// so those two belong to whoever manages the library.
+function canDeleteFolder(path) {
+  return canChangeFolder(path) && (!folderIsShared(path) || !!currentLibrary()?.can_manage);
 }
 // A library can be shared by whoever manages it -- once it has an owner.
 function canShareLibrary(l) { return !!(l && l.id && l.can_manage && l.owner_id); }
@@ -8748,7 +8780,7 @@ function folderCardHtml(folder) {
   const on = folderBellOn(folder.path);
   const p = esc(folder.path);
   return `<div class="file-card file-card--folder" data-folder="${p}" onclick="openFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)">`
-    + `<div class="file-card-preview file-card-preview--folder"><span class="cover-folder-glyph">${folderIconSvg(40)}</span>`
+    + `<div class="file-card-preview file-card-preview--folder"><span class="cover-folder-glyph">${folderIconSvg(40)}</span>${folderSharedTag(folder.path)}`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></div>`
@@ -8966,10 +8998,90 @@ async function pointerDragEnd() {
   }
 }
 function maybeOpenFolder(path) { if (!suppressRowClick) openFolder(path); }
+/* "Who does this change?", asked before a folder is moved.
+ *
+ * The server works the answer out from reads alone (POST /api/access/folder-preview) and
+ * hands back a fingerprint of it. Sending that fingerprint back with the move refuses it
+ * if anything the answer depended on changed while the person was deciding, so what they
+ * agreed to is what happens.
+ *
+ * Each half of the answer belongs to whoever manages that end: who would lose access is
+ * the source's, who would gain it the destination's. When a half is withheld, the
+ * confirmation says what is true without naming anyone.
+ *
+ * The preview is a courtesy, never a gate: if it cannot be fetched, the move goes ahead
+ * and the server decides, exactly as before.
+ */
+// After a folder operation: the files, and the library's own shape -- which folders are
+// shared, and what the caller may do -- have both moved. Nothing else refreshes the
+// second, so a renamed folder would otherwise keep its old menu until the next reload.
+async function afterFolderChange() {
+  await loadFiles();
+  loadLibraries().catch(() => {});
+}
+async function folderMovePreview(paths, target) {
+  const ops = paths.map(path => ({ op: 'reparent', library_id: currentLibraryId, path, target }));
+  if (!ops.length) return { previews: [], prints: new Map() };
+  try {
+    const r = await apiPost('/access/folder-preview', { ops });
+    const previews = r?.previews || [];
+    return { previews, prints: new Map(paths.map((p, i) => [p, previews[i]?.fingerprint || null])) };
+  } catch { return { previews: [], prints: new Map() }; }
+}
+
+const peopleList = (list) => list.slice(0, 4).map(x => x.name || x.email).join(', ') + (list.length > 4 ? `, and ${list.length - 4} more` : '');
+const howMany = (n, word = 'person') => `${n} ${n === 1 ? word : (word === 'person' ? 'people' : word + 's')}`;
+
+// One confirmation for the whole batch: a person dragging five folders is asked once.
+async function confirmFolderMove(paths, target, previews) {
+  const lose = [], gain = [], changed = [];
+  let hidGain = false, hidLose = false, kept = false;
+  for (const p of previews) {
+    if (!p) continue;
+    if (p.shares_kept || p.shares_moving) kept = true;
+    if (p.gain) gain.push(...p.gain); else if (p.gain_visible === false) hidGain = true;
+    if (p.lose) lose.push(...p.lose); else if (p.lose_visible === false) hidLose = true;
+    if (p.changed) changed.push(...p.changed);
+  }
+  const uniq = (list) => [...new Map(list.map(x => [x.email, x])).values()];
+  const [g, l, c] = [uniq(gain), uniq(lose), uniq(changed)];
+  const lines = [];
+  if (g.length) lines.push(`${howMany(g.length)} will be able to open it who can't now: ${peopleList(g)}.`);
+  if (l.length) lines.push(`${howMany(l.length)} will lose access: ${peopleList(l)}.`);
+  if (c.length) lines.push(`${howMany(c.length)} will have a different level of access: ${peopleList(c)}.`);
+  if (hidGain) lines.push('Anyone the folder you are moving it into is shared with will be able to open it.');
+  if (hidLose) lines.push('People who could open it where it is now may lose access.');
+  if (!lines.length) return true;                       // nothing changes for anybody
+  if (kept) lines.push('Whoever this folder is already shared with keeps their access — the sharing moves with it.');
+  const what = paths.length === 1 ? `“${paths[0].split('/').pop()}”` : `${paths.length} folders`;
+  const where = target ? `“${target.split('/').pop()}”` : 'All files';
+  return askConfirm(`Moving ${what} into ${where} changes who can open it.`, {
+    title: 'Check who this affects', okLabel: 'Move it', detailLines: lines,
+  });
+}
+
+// What a folder operation's refusal means, in words worth reading. Everything else falls
+// through to the server's own message, which is written for the person too.
+function folderOpMessage(e) {
+  const code = e?.body?.code;
+  if (code === 'LIBRARY_BUSY') return 'Someone else is moving things in this library right now. Give it a moment and try again.';
+  if (code === 'CHANGED') return 'Who can open this folder changed while you were deciding. Have another look and try again.';
+  return e?.message || 'Something went wrong.';
+}
+
 async function moveItemsIntoFolder(payload, targetPath) {
   const { files = [], folders = [] } = payload || {};
   if (!files.length && !folders.length) return;
   const lib = currentLibraryId;
+  // Folders that are actually going somewhere (dropping one where it already is, or into
+  // itself, is not a move) -- and what that would do to who can open them, asked once.
+  const moving = folders.filter(p => !(p === targetPath || targetPath === p.split('/').slice(0, -1).join('/') || targetPath.startsWith(p + '/')));
+  let prints = new Map();
+  if (moving.length) {
+    const { previews, prints: fp } = await folderMovePreview(moving, targetPath);
+    if (!await confirmFolderMove(moving, targetPath, previews)) return;
+    prints = fp;
+  }
   let moved = 0;
   try {
     for (const id of files) {
@@ -8980,16 +9092,16 @@ async function moveItemsIntoFolder(payload, targetPath) {
       await apiPut('/files/' + id + '/rename', { name: newName });
       moved++;
     }
-    for (const p of folders) {
-      if (p === targetPath || targetPath === p.split('/').slice(0, -1).join('/') || targetPath.startsWith(p + '/')) continue;
-      await apiPost('/files/folder/reparent', inFolderLib({ path: p, target: targetPath }, lib));
+    for (const p of moving) {
+      await apiPost('/files/folder/reparent', inFolderLib({ path: p, target: targetPath, fingerprint: prints.get(p) || undefined }, lib));
       moved++;
     }
     clearFileSelection(false);
-    await loadFiles();
+    await afterFolderChange();
     if (moved) toast(`Moved ${moved} item${moved === 1 ? '' : 's'} into ${targetPath.split('/').pop() || 'All files'}`);
-  } catch (e) { toast('Move failed: ' + e.message); }
+  } catch (e) { toast('Move failed: ' + folderOpMessage(e)); await afterFolderChange(); }
 }
+
 // Folder picker — the reliable, click-based way to move items into a folder.
 function openFolderPicker(title, excludePaths, onPick) {
   const exclude = new Set(excludePaths || []);
@@ -9067,12 +9179,15 @@ async function deleteSelectedItems() {
     await apiDelete('/files/' + f.id);
     filesList = filesList.filter(x => String(x.id) !== String(f.id));
   }
+  let refused = 0;
   for (const p of folders) {
-    try { await apiPost('/files/folder/delete', inFolderLib({ path: p }, lib)); } catch (e) { toast('Could not move that folder to Trash: ' + e.message); }
+    try { await apiPost('/files/folder/delete', inFolderLib({ path: p }, lib)); }
+    catch (e) { refused++; toast('Could not move that folder to Trash: ' + folderOpMessage(e)); }
   }
   clearFileSelection(false);
-  await loadFiles();
-  toast(`${label} moved to Trash`);
+  await afterFolderChange();
+  // ...but only say it worked for what actually moved
+  if (refused < folders.length + files.length) toast(`${label} moved to Trash`);
 }
 
 function toggleDetailsPane() {
@@ -10643,7 +10758,8 @@ function openFolderMenu(path, event) {
   folderMenuPath = path;
   closeFileMenu();
   const canShare = currentUser?.role !== 'viewer';
-  const canChange = canWriteHere(path) && !folderIsShared(path);
+  const canChange = canChangeFolder(path);
+  const canEnd = canDeleteFolder(path);
   const items = [
     `<button class="file-menu-item" onclick="closeFileMenu();openFolder(folderMenuPath)">Open</button>`,
     `<div class="file-menu-rule"></div>`,
@@ -10654,11 +10770,11 @@ function openFolderMenu(path, event) {
     `<div class="file-menu-rule"></div>`,
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>` : '',
-    canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
+    canEnd ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>`,
-    canChange ? `<div class="file-menu-rule"></div>` : '',
-    canChange ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
-    canWriteHere(path) && folderIsShared(path) ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder (or one inside it) is shared, so it can't be renamed, moved or deleted. Remove its shares first.</div>` : '',
+    canEnd ? `<div class="file-menu-rule"></div>` : '',
+    canEnd ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
+    canChange && !canEnd ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder is shared with other people. Renaming it or moving it here keeps the sharing; deleting it would end it, so that is the library owner's to do.</div>` : '',
   ].filter(Boolean).join('');
   const menu = document.createElement('div');
   menu.className = 'file-row-menu'; menu.id = 'file-row-menu'; menu.innerHTML = items;
@@ -10694,19 +10810,23 @@ async function renameFolder(path) {
     const r = await apiPost('/files/folder/rename', inFolderLib({ path, name: next }));
     if (currentFolderPath === path) currentFolderPath = r.path;
     else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
-    await loadFiles();
-    toast(`Renamed (${r.count} item${r.count === 1 ? '' : 's'})`);
-  } catch (e) { toast('Rename failed: ' + e.message); }
+    await afterFolderChange();
+    toast(`Renamed (${r.count} item${r.count === 1 ? '' : 's'})${r.shares_kept ? ' — the sharing came with it' : ''}`);
+  } catch (e) { toast('Rename failed: ' + folderOpMessage(e)); }
 }
 async function deleteFolder(path) {
   const name = path.split('/').pop();
-  if (!await askConfirm(`Move folder "${name}" and everything inside it to Trash?`, { danger: true })) return;
+  const shared = folderIsShared(path);
+  if (!await askConfirm(`Move folder "${name}" and everything inside it to Trash?`, {
+    danger: true,
+    detailLines: shared ? ['This folder is shared. Deleting it ends that sharing, and the people it was shared with lose access.'] : [],
+  })) return;
   try {
     const r = await apiPost('/files/folder/delete', inFolderLib({ path }));
     if (currentFolderPath === path || currentFolderPath.startsWith(path + '/')) currentFolderPath = path.split('/').slice(0, -1).join('/');
-    await loadFiles();
+    await afterFolderChange();
     toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'} to Trash`);
-  } catch (e) { toast('Delete failed: ' + e.message); }
+  } catch (e) { toast('Delete failed: ' + folderOpMessage(e)); }
 }
 function transferTargets() { return (librariesList || []).filter(l => l.id && String(l.id) !== String(currentLibraryId) && l.add_right); }
 function moveFolderToLibrary(path) {
@@ -10724,13 +10844,15 @@ function moveFolderToLibrary(path) {
 // picker, excluding the folder itself and its own descendants.
 async function moveFolderToParent(path) {
   openFolderPicker('Move to folder', [path], async dest => {
+    const { previews, prints } = await folderMovePreview([path], dest);
+    if (!await confirmFolderMove([path], dest, previews)) return;
     try {
-      const r = await apiPost('/files/folder/reparent', inFolderLib({ path, target: dest }));
+      const r = await apiPost('/files/folder/reparent', inFolderLib({ path, target: dest, fingerprint: prints.get(path) || undefined }));
       if (currentFolderPath === path) currentFolderPath = r.path;
       else if (currentFolderPath.startsWith(path + '/')) currentFolderPath = r.path + currentFolderPath.slice(path.length);
-      await loadFiles();
-      toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}`);
-    } catch (e) { toast('Move failed: ' + e.message); }
+      await afterFolderChange();
+      toast(`Moved ${r.count} item${r.count === 1 ? '' : 's'}${r.shares_kept ? ' — the sharing came with it' : ''}`);
+    } catch (e) { toast('Move failed: ' + folderOpMessage(e)); }
   });
 }
 // Copy every file in a folder into another library (originals stay in place).
