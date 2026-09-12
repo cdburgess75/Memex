@@ -86,9 +86,32 @@ async function main() {
   }
 
   const blank = (await db.queryOne("SELECT count(*)::int AS n FROM document_acl WHERE subject_id = ''")).n;
+
+  /* The two invariants piece 4 rests on, counted on the live data. Both must read 0
+   * forever after: they are not "how much has drifted", they are "has the model held".
+   *
+   * D  no share sits on a folder with nothing in it -- a name with nothing under it is
+   *    a trap, because the next folder to take it inherits the share.
+   * T  no library content sits under a shared folder that the library's own owner
+   *    cannot change -- that is the half-moved folder the totality check refuses.
+   */
+  const dormant = (await db.queryOne(
+    `SELECT count(*)::int AS n FROM library_grants g
+      WHERE g.folder_path <> ''
+        AND NOT EXISTS (SELECT 1 FROM documents d
+                         WHERE d.library_id = g.library_id AND d.deleted_at IS NULL
+                           AND d.name ~>=~ (g.folder_path || '/') AND d.name ~<~ (g.folder_path || '0'))`)).n;
+  const unwritable = (await db.queryOne(
+    `SELECT count(*)::int AS n FROM documents d
+      WHERE d.library_scoped AND d.deleted_at IS NULL
+        AND EXISTS (SELECT 1 FROM library_grants g
+                     WHERE g.library_id = d.library_id AND g.folder_path <> ''
+                       AND starts_with(d.name, g.folder_path || '/'))
+        AND NOT EXISTS (SELECT 1 FROM libraries l WHERE l.id = d.library_id AND l.owner_id IS NOT NULL)`)).n;
+
   console.error = origError;
-  const ok = !drift.length && !mismatch.length && !blank;
-  console.log(`ACCESS SELF-CHECK ${ok ? 'OK' : 'FAILED'} accounts=${actors.length} libraries=${libs.length} doors=${doors} files=${files.length} drift=${drift.length} mismatch=${mismatch.length} blank_subjects=${blank}`);
+  const ok = !drift.length && !mismatch.length && !blank && !dormant && !unwritable;
+  console.log(`ACCESS SELF-CHECK ${ok ? 'OK' : 'FAILED'} accounts=${actors.length} libraries=${libs.length} doors=${doors} files=${files.length} drift=${drift.length} mismatch=${mismatch.length} blank_subjects=${blank} dormant_shares=${dormant} ownerless_shared=${unwritable}`);
   for (const d of drift.slice(0, 20)) console.log('  drift', JSON.stringify(d));
   for (const m of mismatch.slice(0, 20)) console.log('  mismatch', JSON.stringify(m));
   return ok;
