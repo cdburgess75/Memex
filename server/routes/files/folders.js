@@ -21,9 +21,9 @@ const emailEvents = require('../../lib/emailEvents');
 const { zipStream } = require('../../lib/zip');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
-const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
+const { safeDocName, folderLookupPath, destinationFolder, insertDocumentRow, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
-const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt } = require('../../lib/folderOps');
+const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt, writeRightOrThrow } = require('../../lib/folderOps');
 const folderPaths = require('../../lib/folderPaths');
 const folderCarry = require('../../lib/folderCarry');
 const folderPreview = require('../../lib/folderPreview');
@@ -134,12 +134,6 @@ async function refuseIfSomethingIsAt(q, { destLibraryId, newPath, fromLibraryId,
       `A folder called “${name}” was deleted there on ${when} and is still in the Trash under that name. Choose another name, or ask an admin to empty it first.`,
       { path: newPath, trashed_at: at.trashed_at });
   }
-}
-
-async function writeRightOrThrow(user, libraryId, path, q) {
-  const r = await libraries.writeRight(user, libraryId, path, q);
-  if (r.status) throw new FolderOpError(null, r.status, r.error);
-  return r;
 }
 
 // A folder path that is already too long can still be SHORTENED -- that is the only way
@@ -301,6 +295,7 @@ const scopeAfterMove = (n) => `d.library_scoped OR ($${n}::boolean AND d.uploade
 
 // POST /api/files/folder — create an (empty) folder via a hidden .keep marker
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  let storagePath = null;
   try {
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryId());
     // A new folder inside an existing (or shared) one keeps that folder's name exactly;
@@ -309,17 +304,28 @@ router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => 
     if (!folderPath) return res.status(400).json({ error: 'path required' });
     const dest = await destinationRight(res, req.user, libraryId, folderPath);
     if (!dest) return;
-    const markerName = `${folderPath}/.keep`;
-    const storagePath = `documents/${Date.now()}-keep`;
+    // its own path: a failed create deletes it, and must not take a neighbour's marker along
+    storagePath = `documents/${Date.now()}-${crypto.randomBytes(3).toString('hex')}-keep`;
     await storage.upload(storagePath, Buffer.alloc(0), 'application/octet-stream');
-    const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, library_id, library_scoped)
-       VALUES ($1, 0, $2, $3, $4, $5, $6, $7) RETURNING ${DOCUMENT_COLUMNS}`,
-      [markerName, 'application/octet-stream', storagePath, req.user.id, req.user.email, libraryId, dest.scoped]
-    );
-    await documentAccess.grantOwnerAdmin(doc.id, req.user);
-    res.json({ ok: true, path: folderPath });
-  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+    // The marker is a document placed BY NAME, so it goes in under the library's tree
+    // lock, held in SHARED mode -- alongside other placements, never while a folder
+    // operation is rewriting these names. The path is resolved again on that client: the
+    // folder this is being created inside can have been renamed while we resolved it,
+    // and the new folder would then be made at a name that folder has just vacated.
+    const made = await withFolderOp({ libraryIds: [libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+      const pathNow = await destinationFolder(req.body?.path, libraryId, req.user, q);
+      if (!pathNow) throw new FolderOpError(null, 400, 'path required');
+      const right = await writeRightOrThrow(req.user, libraryId, pathNow, q);
+      await insertDocumentRow(q, { name: `${pathNow}/.keep`, size: 0, mimetype: 'application/octet-stream', storagePath, user: req.user, libraryId, libraryScoped: right.scoped });
+      return pathNow;
+    });
+    res.json({ ok: true, path: made });
+  } catch (e) {
+    // the marker's blob was stored before the placement; refused or busy, nothing points at it
+    if (storagePath) await storage.del(storagePath).catch(() => {});
+    if (sendFolderOpError(res, e) || folderScopeError(res, e)) return;
+    serverError(res, e);
+  }
 });
 
 // POST /api/files/folder/rename -- rename a folder, and everything that belongs to it
@@ -972,7 +978,7 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);
     res.json({ ok: true, count: docs.length });
-  } catch (e) { if (folderScopeError(res, e)) return; console.error('folder copy failed:', e); serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; console.error('folder copy failed:', e); serverError(res, e); }
 });
 
 module.exports = router;
