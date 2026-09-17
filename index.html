@@ -17,9 +17,10 @@
   font-display: swap;
   src: url('/vendor/fonts/inter-var.woff2') format('woff2');
 }
-/* ---- Schemes. Depot ships five curated schemes, each a complete light AND dark
-   palette set by hand. Ledger is the default and lives on :root / html.dark; the
-   other four are html[data-scheme="…"] blocks below, selected by applyScheme().
+/* ---- Schemes. Depot ships nine curated schemes, each a complete light AND dark
+   palette. The first five were set by hand; Crest, Iris, Tide and Dune were generated
+   in OKLCH on the same lightness ladder (hue held per ramp, chroma clamped to sRGB). Ledger is the default and lives on :root / html.dark; the
+   others are html[data-scheme="…"] blocks below, selected by applyScheme().
    The .scheme-swatch aliases let the picker's preview tiles render from the same
    tokens as the app. Rule: a scheme's dark block defines exactly the token set its
    light block does, so no light value can leak into dark through source order. ---- */
@@ -156,6 +157,69 @@ html[data-scheme="ember"].dark, .scheme-swatch[data-scheme="ember"].dark {
   --line-strong: #3D3A36; --rule: #292826; --rule-soft: #211F1D;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #292826;
 }
+/* Crest — ParaTech's shield: crimson on warm charcoal. The signal is red, so in this
+   scheme alone "destructive" moves to raspberry, 30° of hue away, and the two stay tellable apart. */
+html[data-scheme="crest"], .scheme-swatch[data-scheme="crest"] {
+  --paper: #FDF9F9; --surface: #FFFFFF; --surface-2: #F5F0F0; --surface-raised: #FFFFFF;
+  --ink: #1C1818; --ink-soft: #625A59; --ink-faint: #867E7D;
+  --accent: #AD2F30; --accent-soft: #8A2424; --accent-wash: #FBEAE8; --accent-ink: #FFFFFF; --focus: #AD2F30;
+  --line-strong: #CFC7C6; --rule: #E7E1E1; --rule-soft: #EFEAEA;
+  --danger: #93315F; --danger-strong: #76264B; --state-restricted: #93315F; --danger-fill: #93315F; --danger-fill-strong: #76264B;
+  --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E7E1E1;
+}
+html[data-scheme="crest"].dark, .scheme-swatch[data-scheme="crest"].dark {
+  --paper: #110E0E; --surface: #1B1616; --surface-2: #0E0A09; --surface-raised: #241E1D;
+  --ink: #F3EAE9; --ink-soft: #C4B7B6; --ink-faint: #897D7C;
+  --accent: #FB6862; --accent-soft: #E2514E; --accent-wash: #351D1B; --accent-ink: #1C0D0C; --focus: #FB6862;
+  --line-strong: #443B3A; --rule: #2E2828; --rule-soft: #25201F;
+  --danger: #EC91B5; --danger-strong: #EFAAC4; --state-restricted: #EC91B5; --danger-fill: #93315F; --danger-fill-strong: #76264B;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2E2828;
+}
+/* Iris — cool grey with a violet signal; lavender at night. */
+html[data-scheme="iris"], .scheme-swatch[data-scheme="iris"] {
+  --paper: #FAFAFD; --surface: #FFFFFF; --surface-2: #F1F1F6; --surface-raised: #FFFFFF;
+  --ink: #19191D; --ink-soft: #5B5B63; --ink-faint: #7F7F87;
+  --accent: #6948BC; --accent-soft: #533896; --accent-wash: #EEEDFA; --accent-ink: #FFFFFF; --focus: #6948BC;
+  --line-strong: #C8C8D0; --rule: #E2E2E7; --rule-soft: #EBEBF0;
+  --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E2E2E7;
+}
+html[data-scheme="iris"].dark, .scheme-swatch[data-scheme="iris"].dark {
+  --paper: #0E0E14; --surface: #16161E; --surface-2: #0A0A11; --surface-raised: #1F1F29;
+  --ink: #EBEBFA; --ink-soft: #B8B8CD; --ink-faint: #7E7E91;
+  --accent: #B3A2F8; --accent-soft: #9D8CE1; --accent-wash: #252135; --accent-ink: #120E20; --focus: #B3A2F8;
+  --line-strong: #3C3C4B; --rule: #292932; --rule-soft: #202028;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #292932;
+}
+/* Tide — sea-glass teal on cool white; bright aqua on deep water at night. */
+html[data-scheme="tide"], .scheme-swatch[data-scheme="tide"] {
+  --paper: #F7FBFC; --surface: #FFFFFF; --surface-2: #EDF3F4; --surface-raised: #FFFFFF;
+  --ink: #151A1C; --ink-soft: #555E60; --ink-faint: #798285;
+  --accent: #247073; --accent-soft: #1B585C; --accent-wash: #E1F2F3; --accent-ink: #FFFFFF; --focus: #247073;
+  --line-strong: #C1CBCD; --rule: #DEE4E6; --rule-soft: #E7EDEE;
+  --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #DEE4E6;
+}
+html[data-scheme="tide"].dark, .scheme-swatch[data-scheme="tide"].dark {
+  --paper: #091012; --surface: #0F191C; --surface-2: #040C0F; --surface-raised: #152225;
+  --ink: #DFF0F5; --ink-soft: #A7C0C6; --ink-faint: #6D858B;
+  --accent: #4AD0D7; --accent-soft: #41B8BE; --accent-wash: #082A2C; --accent-ink: #0C1313; --focus: #4AD0D7;
+  --line-strong: #2E4146; --rule: #202C2F; --rule-soft: #192326;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #202C2F;
+}
+/* Dune — sand neutrals with a plum signal; orchid on warm charcoal at night. */
+html[data-scheme="dune"], .scheme-swatch[data-scheme="dune"] {
+  --paper: #F9F3EB; --surface: #FFFBF7; --surface-2: #F0E9DF; --surface-raised: #FFFFFF;
+  --ink: #1F180F; --ink-soft: #665A4A; --ink-faint: #8B7E6E;
+  --accent: #904181; --accent-soft: #733367; --accent-wash: #F7EAF3; --accent-ink: #FFFFFF; --focus: #904181;
+  --line-strong: #CEC2B2; --rule: #E5DDD2; --rule-soft: #EDE6DC;
+  --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E5DDD2;
+}
+html[data-scheme="dune"].dark, .scheme-swatch[data-scheme="dune"].dark {
+  --paper: #110F0B; --surface: #1A1712; --surface-2: #0D0A06; --surface-raised: #231F19;
+  --ink: #F2ECE4; --ink-soft: #C2B9AD; --ink-faint: #877F74;
+  --accent: #DF94CF; --accent-soft: #C87EB8; --accent-wash: #301D2C; --accent-ink: #190D16; --focus: #DF94CF;
+  --line-strong: #433C34; --rule: #2D2924; --rule-soft: #24211C;
+  --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2D2924;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--body);
@@ -187,8 +251,10 @@ html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: var(--ink);
-  color: var(--paper);
+  /* The signal colour, lit from above: oklab keeps the blend from going muddy in the middle. */
+  background: linear-gradient(in oklab 165deg, color-mix(in oklab, var(--accent) 92%, white), var(--accent-soft));
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.16);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -889,8 +955,8 @@ html.dark .chip { color: var(--accent-soft); }
   height: 48px;
   margin: 0 auto 14px;
   border-radius: 14px;
-  background: var(--ink);
-  color: var(--paper);
+  background: linear-gradient(in oklab 165deg, color-mix(in oklab, var(--accent) 92%, white), var(--accent-soft));
+  color: var(--accent-ink);
   display: grid;
   place-items: center;
   font: 700 22px var(--ui);
@@ -902,7 +968,9 @@ html.dark .chip { color: var(--accent-soft); }
    coloured logo. The tile is a ground we paint ourselves, so the art never has to
    survive our surface. A square-ish upload fills it; anything else gets the
    monogram over a tint sampled from the logo (see classifyBrandMark). */
-.brand-logo { overflow: hidden; background: var(--brand-tint, var(--ink)); }
+.brand-logo { overflow: hidden; }
+.brand-logo[style*="--brand-tint"] { background: var(--brand-tint); color: #FFFFFF; }
+.depot-mark { width: 70%; height: 70%; display: block; }
 /* A real mark gets a deep ground mixed from its own dominant colour, fixed across
    both themes. Marks are usually transparent PNGs, so a ground that flipped with
    the theme would show through differently in each; and a deep ground is what makes
@@ -915,7 +983,7 @@ html.dark .chip { color: var(--accent-soft); }
    looks boxed-in inside a second rounded square. `contain` because there is no tile
    left to fill and its silhouette is the point. Marks that are all-dark or all-light
    keep the ground above; without it they would disappear into one theme. */
-.brand-logo.has-logo.mark-float { background: none; overflow: visible; }
+.brand-logo.has-logo.mark-float { background: none; overflow: visible; box-shadow: none; }
 .brand-logo.has-logo.mark-float img { object-fit: contain; border-radius: 0; }
 /* The sign-in screen is where a wide lockup belongs — it has the room, and it is
    the first thing anyone sees. In dark mode it keeps a light plaque, because here
@@ -2737,7 +2805,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
 <!-- Login screen — shown until auth is confirmed -->
 <div class="scrim open" id="login-scrim">
   <div class="modal login-modal">
-    <div class="login-mark" aria-hidden="true">D</div>
+    <div class="login-mark" aria-hidden="true"><svg class="depot-mark" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M12 2.4l8 3v6.2c0 4.9-3.3 8.9-8 10.4-4.7-1.5-8-5.5-8-10.4V5.4zM8.9 8.1h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM8.9 11.8h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM10.7 15.5h2.6a1 1 0 0 1 0 2h-2.6a1 1 0 0 1 0-2z"/></svg></div>
     <h2>Depot</h2>
     <p class="sub">Share everything. Risk nothing. Intelligence built into every file.</p>
     <div class="login-providers">
@@ -2767,7 +2835,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   <div class="masthead-left">
     <div class="brand-block">
       <div class="brand" role="button" tabindex="0" title="Home" style="cursor:pointer" onclick="goHome()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goHome()}">
-        <span class="brand-logo" aria-hidden="true">D</span>
+        <span class="brand-logo" aria-hidden="true"><svg class="depot-mark" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M12 2.4l8 3v6.2c0 4.9-3.3 8.9-8 10.4-4.7-1.5-8-5.5-8-10.4V5.4zM8.9 8.1h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM8.9 11.8h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM10.7 15.5h2.6a1 1 0 0 1 0 2h-2.6a1 1 0 0 1 0-2z"/></svg></span>
         <h1>Depot</h1>
       </div>
     </div>
@@ -3160,7 +3228,7 @@ async function initApp() {
     appConfig = config; // expose globally for functions outside initApp (previewFile, checkForUpdate)
     applyBranding(config.brand); // brand the login card + header before anything renders
   } catch (e) {
-    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">D</div><h2>Depot is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
+    document.getElementById('login-scrim').innerHTML = `<div class="modal login-modal"><div class="login-mark" aria-hidden="true">${DEPOT_MARK}</div><h2>Depot is offline</h2><p class="sub" style="color:var(--accent)">Could not reach the server. Check that the app container is running, then refresh this page.</p></div>`;
     setTheme(localStorage.getItem('memex_theme') || 'auto');
     return;
   }
@@ -3245,7 +3313,7 @@ function showSetupLocked() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim')?.classList.remove('open');
   if (document.getElementById('setup-scrim')) return;
-  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="setup-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">D</div><h2>Setup in progress</h2><p class="sub">An administrator is finishing the initial setup of this Depot instance. Please check back shortly.</p></div></div>`);
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="setup-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">${DEPOT_MARK}</div><h2>Setup in progress</h2><p class="sub">An administrator is finishing the initial setup of this Depot instance. Please check back shortly.</p></div></div>`);
 }
 
 async function openSetupWizard() {
@@ -3264,7 +3332,7 @@ function renderSetupWizard() {
   const dots = SETUP_STEPS.map((label, i) => `<div class="setup-dot${i === step ? ' active' : ''}${i < step ? ' done' : ''}"><span class="setup-dot-n">${i < step ? '✓' : i + 1}</span>${label}</div>`).join('');
   const last = step === SETUP_STEPS.length - 1;
   const html = `<div class="scrim open" id="setup-scrim"><div class="modal setup-modal">
-    <div class="setup-head"><div class="login-mark" aria-hidden="true">D</div><div><h2>Welcome — let's set up Depot</h2><p class="sub">Step ${step + 1} of ${SETUP_STEPS.length}: ${SETUP_STEPS[step]}</p></div></div>
+    <div class="setup-head"><div class="login-mark" aria-hidden="true">${DEPOT_MARK}</div><div><h2>Welcome — let's set up Depot</h2><p class="sub">Step ${step + 1} of ${SETUP_STEPS.length}: ${SETUP_STEPS[step]}</p></div></div>
     <div class="setup-steps">${dots}</div>
     <div class="setup-body">${setupStepHtml(step, s)}</div>
     <div class="setup-foot">
@@ -3286,7 +3354,7 @@ function setupLogoInner(s) {
   const logo = brandLogoDraft !== null ? brandLogoDraft : ((s && s.tenant && s.tenant.logo) || '');
   if (logo) return `<img src="${esc(logo)}" alt="">`;
   const org = (((s && s.tenant && s.tenant.orgName) || 'Depot').trim() || 'Depot');
-  return (org[0] || 'D').toUpperCase();
+  return DEPOT_MARK;
 }
 // Accept almost any image and normalize it to a small, header-ready data URL.
 // Vector SVG is kept as-is; raster formats are decoded and downscaled (max 160px
@@ -3345,7 +3413,7 @@ function setupOnLogoPick(ev) {
 function setupClearLogo() {
   brandLogoDraft = '';
   const prev = document.getElementById('setup-logo-preview');
-  if (prev) { const org = (document.getElementById('setup-org')?.value || 'Depot').trim() || 'Depot'; prev.textContent = (org[0] || 'D').toUpperCase(); prev.classList.remove('has-logo'); }
+  if (prev) { prev.innerHTML = DEPOT_MARK; prev.classList.remove('has-logo'); }
   const rm = document.getElementById('setup-logo-remove'); if (rm) rm.style.display = 'none';
 }
 function setupStepHtml(step, s) {
@@ -3786,6 +3854,10 @@ const SCHEMES = [
   { id: 'linen',    name: 'Linen',    note: 'Warm neutrals, forest green' },
   { id: 'harbor',   name: 'Harbor',   note: 'Navy by day, brass by night' },
   { id: 'ember',    name: 'Ember',    note: 'Zinc with burnt orange' },
+  { id: 'crest',    name: 'Crest',    note: 'Crimson on charcoal' },
+  { id: 'iris',     name: 'Iris',     note: 'Cool grey, violet signal' },
+  { id: 'tide',     name: 'Tide',     note: 'Sea-glass teal' },
+  { id: 'dune',     name: 'Dune',     note: 'Sand with plum' },
 ];
 const DEFAULT_SCHEME = 'ledger';
 function schemeOf(id) { return SCHEMES.find(s => s.id === id) || null; }
@@ -3859,6 +3931,9 @@ function setTheme(theme) {
 // Header quick-toggle icon: a moon in light mode (click to go dark), a sun in
 // dark mode (click to go light). Keeps theme switching one click from the top,
 // without opening the account menu.
+// The mark Depot wears until a workspace uploads its own: a shield holding shelved
+// files. One path, even-odd, so the shelves are true holes and the tile shows through.
+const DEPOT_MARK = '<svg class="depot-mark" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M12 2.4l8 3v6.2c0 4.9-3.3 8.9-8 10.4-4.7-1.5-8-5.5-8-10.4V5.4zM8.9 8.1h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM8.9 11.8h6.2a1 1 0 0 1 0 2h-6.2a1 1 0 0 1 0-2zM10.7 15.5h2.6a1 1 0 0 1 0 2h-2.6a1 1 0 0 1 0-2z"/></svg>';
 const MOON_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
 const SUN_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 function renderThemeToggle(theme) {
@@ -3992,13 +4067,14 @@ function applyBranding(brand) {
   // Sign-in keeps the full lockup; the masthead gets the tile.
   document.querySelectorAll('.login-mark').forEach(el => {
     if (brandDefaults.logo) { el.innerHTML = `<img src="${esc(brandDefaults.logo)}" alt="${esc(name)}">`; el.classList.add('has-logo'); }
-    else { el.textContent = letter; el.classList.remove('has-logo', 'login-mark--wide'); }
+    else { el.innerHTML = DEPOT_MARK; el.classList.remove('has-logo', 'login-mark--wide'); }
   });
   document.querySelectorAll('.brand-logo').forEach(el => {
     el.classList.remove('has-logo', 'mark-float');
     el.style.removeProperty('--brand-tint');
     el.style.removeProperty('--mark-ground');
-    el.textContent = letter; // monogram first; the mark replaces it once classified
+    // No logo: Depot's own mark. With one: the monogram first, and the mark replaces it once classified.
+    if (brandDefaults.logo) el.textContent = letter; else el.innerHTML = DEPOT_MARK;
   });
   if (brandDefaults.logo) {
     classifyBrandMark(brandDefaults.logo).then(mark => {
@@ -6335,7 +6411,7 @@ function workspaceSettingsHtml() {
   const logo = brandLogoDraft !== null ? brandLogoDraft : (s.brand_logo || '');
   const brandName = s.brand_name || '';
   const scheme = brandSchemeDraft !== null ? brandSchemeDraft : (s.brand_scheme || DEFAULT_SCHEME);
-  const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : ((brandName.trim()[0] || 'D').toUpperCase());
+  const logoInner = logo ? `<img src="${esc(logo)}" alt="">` : DEPOT_MARK;
   return `<div class="settings-sub">Workspace branding</div>
       <p class="settings-notice">Sets the name, logo and scheme everyone sees, including on the sign-in screen. Members can pick a different scheme for themselves under Appearance.</p>
       <div class="settings-grid">

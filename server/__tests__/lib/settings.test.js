@@ -92,7 +92,7 @@ describe('refresh', () => {
 // route validators; a rename on either side must fail here before it fails a customer.
 test('exposes the curated scheme ids and the brand_scheme setting, not the retired accent', () => {
   const real = jest.requireActual('../../lib/settings');
-  expect(real.SCHEME_IDS).toEqual(['ledger', 'graphite', 'linen', 'harbor', 'ember']);
+  expect(real.SCHEME_IDS).toEqual(['ledger', 'graphite', 'linen', 'harbor', 'ember', 'crest', 'iris', 'tide', 'dune']);
   expect(real.ENV_MAP.brand_scheme).toBe('BRAND_SCHEME');
   expect(real.ENV_MAP.brand_accent).toBeUndefined();
 });
