@@ -6,7 +6,7 @@ const MOCK_ENV_MAP = { anthropic_api_key: 'ANTHROPIC_API_KEY', tenant_id: 'TENAN
 
 jest.mock('../../lib/settings', () => ({
   ENV_MAP: MOCK_ENV_MAP,
-  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember'],
+  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember', 'crest', 'iris', 'tide', 'dune'],
   get: jest.fn().mockResolvedValue(null),
   getOrEnv: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),

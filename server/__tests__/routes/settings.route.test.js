@@ -16,7 +16,7 @@ const MOCK_ENV_MAP = {
 
 jest.mock('../../lib/settings', () => ({
   ENV_MAP:    MOCK_ENV_MAP,
-  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember'],
+  SCHEME_IDS: ['ledger', 'graphite', 'linen', 'harbor', 'ember', 'crest', 'iris', 'tide', 'dune'],
   getOrEnv:   jest.fn(),
   set:        jest.fn().mockResolvedValue(undefined),
   refresh:    jest.fn().mockResolvedValue(undefined),
