@@ -1816,59 +1816,94 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-share-btn { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); line-height: 0; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
 .library-share-btn:hover { color: var(--accent); background: var(--surface-2); }
 .library-share-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* Widget dashboard — modular start screen, two columns above 1024px */
-.wdash { display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; align-items: start; margin-top: 22px; }
-.wdash-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-.wdash-w { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
+/* Dashboard. One stat strip, then a wide column (libraries, recent files) beside a narrow
+   one (feeds). Breakpoints are container queries on .home-view, because the space the
+   dashboard gets depends on the rail, not the window. Logical properties throughout. */
+.home-view { container: dash / inline-size; }
+.dash-head { margin-block-end: 20px; }
+.dash-head .home-lede { margin: 0; }
+.dash-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); }
+.dash-stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; min-width: 0; }
+.dash-stat + .dash-stat { border-inline-start: 1px solid var(--rule-soft); }
+.dash-stat-txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dash-stat-label { font: 600 12px var(--ui); color: var(--ink-faint); }
+.dash-stat-value { font: 700 24px/1 var(--ui); letter-spacing: -.02em; color: var(--ink); }
+.dash-stat-sub { font-size: 12px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-stat-viz { flex: none; display: flex; }
+.dash-stat-viz text { display: none; } /* the value beside it already says the number */
+.dash-trend { font-weight: 700; } .dash-trend.up { color: var(--success); } .dash-trend.down { color: var(--danger); }
+.dash-attn { display: flex; align-items: flex-start; gap: 10px; margin-block-start: 16px; padding: 10px 14px; border: 1px solid color-mix(in oklab, var(--state-expiring) 35%, var(--rule)); border-radius: 10px; background: color-mix(in oklab, var(--state-expiring) 8%, var(--surface)); }
+.dash-attn-ic { flex: none; width: 16px; height: 16px; margin-block-start: 3px; color: var(--state-expiring); }
+.dash-attn-ic svg { width: 16px; height: 16px; display: block; }
+.dash-attn-list { display: flex; flex-wrap: wrap; gap: 2px 18px; min-width: 0; }
+.dash-attn-item { border: 0; background: transparent; padding: 2px 0; font: 13px var(--ui); color: var(--ink-soft); cursor: pointer; text-align: start; }
+.dash-attn-item b { font-weight: 600; color: var(--ink); }
+.dash-attn-item:hover { text-decoration: underline; }
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-block-start: 20px; }
+.dash-main, .dash-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.dash-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px 18px; min-width: 0; }
+.dash-card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-block-end: 8px; }
+.dash-card-h .wdash-h { margin: 0; }
+.dash-card .file-empty-home { padding-block: 22px; }
+/* A library is a row. The whole row opens it; its two actions sit at the trailing edge,
+   always visible (touch has no hover) and bordered so they read as controls, not text. */
+.dash-libs { margin-inline: -8px; }
+.dash-lib { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.dash-lib + .dash-lib { margin-block-start: 2px; }
+.dash-lib:hover { background: var(--surface-2); }
+.dash-lib:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.dash-lib-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.dash-lib-name { font: 600 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-lib-stats { font-size: 12.5px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-lib-acts { display: flex; gap: 8px; flex: none; }
+.dash-act { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: 600 12.5px var(--ui); cursor: pointer; white-space: nowrap; transition: background-color .12s, border-color .12s, scale .12s; }
+.dash-act:hover { background: var(--surface-raised); border-color: var(--line-strong); }
+.dash-act:active { scale: 0.96; }
+.dash-act:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.dash-act-ic { width: 14px; height: 14px; color: var(--ink-soft); display: inline-flex; }
+.dash-act-ic svg { width: 14px; height: 14px; display: block; }
+.dash-tbl-wrap { margin-inline: -10px; }
+.dash-tbl th { text-align: start; padding-block: 2px 8px; }
+.dash-tbl th.num, .dash-tbl td.num { text-align: end; }
+.dash-tbl td { padding-block: 9px; border-top-color: var(--rule-soft); white-space: nowrap; }
+.dash-tbl td:first-child { white-space: normal; max-width: 0; width: 60%; }
+.dash-tbl .home-tbl-name .file-icon { width: 26px; height: 26px; flex: none; }
+.dash-tbl tbody tr:hover td { background: var(--surface-2); }
+/* In the narrow column a notification's title wraps to two lines rather than losing its point to an ellipsis. */
+.dash-side .wdash-notif-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.dash-side .home-act { padding-block: 9px; border-bottom-color: var(--rule-soft); }
+@container dash (max-width: 880px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+  .dash-col-owner, .dash-stat-viz { display: none; }
+}
+@container dash (max-width: 620px) {
+  .dash-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-stat:nth-child(3) { border-inline-start: 0; }
+  .dash-stat:nth-child(n+3) { border-block-start: 1px solid var(--rule-soft); }
+  .dash-col-type { display: none; }
+  /* On a phone the row is the control: tapping it opens the library, where Upload and New
+     folder already live. Repeating both under every row is what made the old page so long. */
+  .dash-lib-acts { display: none; }
+}
 .wdash-h { font: 600 14px var(--ui); color: var(--ink); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .wdash-h-ic { flex: 0 0 auto; width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-faint); }
 .wdash-h-ic svg { width: 15px; height: 15px; display: block; }
-.wdash-feed { display: flex; flex-direction: column; }
-.wdash-hub, .wdash-attn { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
-.wdash-hub + .wdash-hub, .wdash-attn + .wdash-attn { border-top: 1px solid var(--rule-soft); }
-.wdash-hub:hover, .wdash-attn:hover { background: var(--surface-2); }
 .wdash-hub-glyph { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--ink-soft); display: grid; place-items: center; font: 600 13px var(--ui); }
-.wdash-hub-meta, .wdash-attn-txt { display: flex; flex-direction: column; min-width: 0; }
-.wdash-hub-name, .wdash-attn-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wdash-hub-sub { font-size: 12px; color: var(--ink-faint); }
-/* Shared hub workspace card (Layout A): stats up top, scoped actions in a footer. */
-.wdash-hub-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); overflow: hidden; cursor: pointer; transition: border-color .1s; }
-.wdash-hub-card + .wdash-hub-card { margin-top: 10px; }
-.wdash-hub-card:hover { border-color: var(--line-strong); }
-.wdash-hub-top { display: flex; align-items: center; gap: 12px; padding: 13px 14px 11px; min-width: 0; }
-.wdash-hub-top .wdash-hub-glyph { width: 38px; height: 38px; }
-.wdash-hub-card .wdash-hub-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.wdash-hub-stats { font: 400 12.5px var(--mono); color: var(--ink-faint); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wdash-hub-stats2 { font: 400 12px var(--ui); color: var(--ink-faint); }
 .wdash-hub-live { color: var(--state-expiring); }
-.wdash-hub-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule-soft); background: var(--surface-2); flex-wrap: wrap; }
-.wdash-hub-act { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: 600 12.5px var(--ui); cursor: pointer; }
-.wdash-hub-act:hover { background: var(--surface-2); border-color: var(--line-strong); }
-.wdash-hub-act .ic { color: var(--ink-soft); font-size: 14px; font-weight: 700; line-height: 1; }
-.wdash-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: var(--state-expiring); }
-.wdash-attn-sub { font-size: 12px; color: var(--state-expiring); }
 .wdash-pins.file-card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 0; }
 .wdash-empty { font-size: 13px; color: var(--ink-faint); padding: 4px 2px; }
-/* Home: quick-action bar */
-.home-quick { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 2px; }
-.home-quick-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 9px; padding: 10px 16px; font: 600 13.5px var(--ui); cursor: pointer; }
-.home-quick-btn:hover { border-color: var(--line-strong); background: var(--surface-2); }
-.home-quick-ic { color: var(--accent); font-size: 15px; font-weight: 700; line-height: 1; }
 /* Home: notification / recent-file / share rows */
-.wdash-notif, .wdash-recent, .wdash-share { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
-.wdash-notif + .wdash-notif, .wdash-recent + .wdash-recent, .wdash-share + .wdash-share { border-top: 1px solid var(--rule-soft); }
-.wdash-notif:hover, .wdash-recent:hover, .wdash-share:hover { background: var(--surface-2); }
+.wdash-notif, .wdash-share { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent; padding: 9px 6px; border-radius: 8px; cursor: pointer; text-align: left; }
+.wdash-notif + .wdash-notif, .wdash-share + .wdash-share { border-top: 1px solid var(--rule-soft); }
+.wdash-notif:hover, .wdash-share:hover { background: var(--surface-2); }
 .wdash-notif-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 999px; background: transparent; margin-top: 5px; align-self: flex-start; }
 .wdash-notif.unread .wdash-notif-dot { background: var(--accent); }
-.wdash-notif-txt, .wdash-recent-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
-.wdash-notif-title, .wdash-recent-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wdash-notif-body, .wdash-recent-sub, .wdash-share-sub { font-size: 12px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-notif-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.wdash-notif-title { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdash-notif-body, .wdash-share-sub { font-size: 12px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wdash-notif-time { flex: 0 0 auto; font-size: 11px; color: var(--ink-faint); font-family: var(--mono); align-self: flex-start; margin-top: 2px; }
 .wdash-share { flex-direction: column; align-items: flex-start; gap: 2px; }
 .wdash-share-name { font: 500 14px var(--ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.wdash-shares-sum { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 6px 6px 10px; font: 600 13px var(--ui); color: var(--accent); cursor: pointer; }
-.wdash-shares-sum:hover { text-decoration: underline; }
-@media (max-width: 1024px) { .wdash { grid-template-columns: 1fr; } }
 .file-preview-frame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 .file-preview-img { margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview-media { margin: auto; max-width: 100%; max-height: 100%; background: #000; }
@@ -2144,25 +2179,10 @@ html.dark .file-card-preview img, html.dark .file-icon--thumb .file-row-thumb { 
 .file-card-grid .file-card-star:hover { color: var(--ink); opacity: 1; }
 .file-card-grid .file-card-star.on { color: #E8A317; border-color: #E8A317; opacity: 1; } /* gold is the star's own meaning; deliberately literal, same in every scheme */
 /* Dashboard Home */
-.home-view { padding: 8px 4px 20px; max-width: 1000px; }
+.home-view { padding: 8px 4px 20px; max-width: 1180px; }
 .home-h1 { font-size: 26px; font-weight: 800; margin: 4px 0 4px; letter-spacing: -.02em; }
 .home-lede { color: var(--ink-faint); font-size: 14px; margin: 0 0 24px; }
-.home-section-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 26px 0 14px; }
-.home-section-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
-.home-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-.home-kpi { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 18px 18px 16px; }
-.home-kpi-top { display: flex; align-items: center; justify-content: space-between; }
-.home-kpi-label { font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
-.home-kpi-ic { color: var(--ink-faint); opacity: .55; display: flex; }
-.home-kpi-ic svg { width: 18px; height: 18px; }
-.home-kpi-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: 14px; }
-.home-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
-.home-kpi-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; }
-.home-kpi-delta { font-size: 12px; font-weight: 700; margin-top: 7px; display: inline-flex; align-items: center; gap: 3px; }
-.home-kpi-delta.up { color: var(--success); } .home-kpi-delta.down { color: var(--danger); }
 .home-act-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
-.home-grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
-.home-grid2.single { grid-template-columns: 1fr; }
 .home-card { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); padding: 16px 18px; }
 .home-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .home-card-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
@@ -2180,17 +2200,11 @@ html.dark .file-card-preview img, html.dark .file-icon--thumb .file-row-thumb { 
 .home-tbl-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* One neutral chip, not a rainbow per file type — restraint reads as premium. */
 .type-pill { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--rule); white-space: nowrap; }
-.home-file { display: flex; align-items: center; gap: 11px; padding: 8px 4px; border-radius: 8px; cursor: pointer; }
-.home-file:hover { background: var(--rule); }
-.home-file-icon .file-icon { width: 30px; height: 30px; }
-.home-file-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-file-sub { font-size: 11px; color: var(--ink-faint); }
 .home-act { display: flex; align-items: center; gap: 11px; padding: 11px 2px; border-bottom: 1px solid var(--rule); }
 .home-act:last-child { border-bottom: 0; }
 .home-act-body { flex: 1; min-width: 0; }
 .home-act-t { font-size: 12.5px; line-height: 1.4; }
 .home-act-time { font-size: 11px; color: var(--ink-faint); white-space: nowrap; flex: none; }
-@media (max-width: 900px) { .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .home-grid2 { grid-template-columns: 1fr; } }
 .file-owner { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
 .file-owner-avatar { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; font: 600 10px var(--ui); }
 .file-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
@@ -2744,12 +2758,10 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   .file-preview-head strong { flex: 1 1 100%; font-size: 14px; }
   .file-preview-head-actions { flex: 1 1 100%; flex-wrap: wrap; }
   .file-preview-head-actions > * { flex: 1 1 auto; }
-  .home-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .home-kpi { padding: 14px 14px 12px; }
-  .home-kpi-value { font-size: 26px; }
   .home-card { min-width: 0; overflow: hidden; padding: 14px; }
   .home-tbl { table-layout: fixed; }
-  .home-tbl th:nth-child(n+3), .home-tbl td:nth-child(n+3) { display: none; } /* Name + Type only */
+  .dash-tbl th:nth-child(4) { width: 104px; } /* fixed layout: the name takes the rest instead of half */
+  .home-tbl th.num, .home-tbl td.num { display: none; } /* phone: Name + Modified; Type and Added-by already went with the container */
   .home-tbl td { padding: 10px 6px; }
   .home-act-t { overflow-wrap: anywhere; }
   .toast { left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateY(20px); text-align: center; }
@@ -7347,6 +7359,8 @@ function scheduleFileSearch() {
    second accent. Per-item color coding is deliberately avoided: that is the
    rainbow file-type treatment the ledger spec retired. */
 const NAV_ICON_PATHS = {
+  upload: 'M12 16V4M6 10l6-6 6 6M4 20h16',
+  'folder-plus': 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 11v5M9.5 13.5h5',
   home: 'M3.2 10.4 12 3.3l8.8 7.1M5.6 9.4V20h12.8V9.4',
   files: 'M3.2 6.6A1.6 1.6 0 0 1 4.8 5h3.9l2 2.6h8.5A1.6 1.6 0 0 1 20.8 9.2v8.2A1.6 1.6 0 0 1 19.2 19H4.8a1.6 1.6 0 0 1-1.6-1.6z',
   favorites: 'M12 3.8l2.6 5.2 5.8.9-4.2 4 1 5.7-5.2-2.7-5.2 2.7 1-5.7-4.2-4 5.8-.9z',
@@ -8905,84 +8919,75 @@ async function renderHome() {
     const now = Date.now(), DAY = 86400000;
     const bucket = (pred) => { const arr = new Array(14).fill(0); files.forEach(f => { const t = new Date(f.created_at || 0).getTime(); const idx = 13 - Math.floor((now - t) / DAY); if (idx >= 0 && idx < 14 && pred(f)) arr[idx]++; }); return arr; };
     const filesSeries = (uploads14 && uploads14.length > 1) ? uploads14 : bucket(() => true);
-    const sharedSeries = bucket(isSharedFile);
-    const filesDelta = homeDelta(filesSeries), sharedDelta = homeDelta(sharedSeries);
+    const filesDelta = homeDelta(filesSeries);
     const sparkColor = (d) => d ? (d.up ? 'var(--success)' : 'var(--danger)') : 'var(--accent)';
-    const deltaHtml = (d, label) => d ? `<div class="home-kpi-delta ${d.up ? 'up' : 'down'}">${d.up ? '▲' : '▼'} ${d.pct}%${label ? ` <span style="color:var(--ink-faint);font-weight:500">${label}</span>` : ''}</div>` : '';
 
-    const IC_DB = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>';
-    const IC_FILES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
-    const IC_SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
-    const IC_USERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11"/></svg>';
-    const IC_LAYERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>';
 
-    const kpi = (label, value, icon, valueCol, viz) => `<div class="home-kpi"><div class="home-kpi-top"><span class="home-kpi-label">${label}</span><span class="home-kpi-ic">${icon}</span></div><div class="home-kpi-row"><div><div class="home-kpi-value tnum">${value}</div>${valueCol}</div>${viz || ''}</div></div>`;
-    const storageTile = totalBytes > 0
-      ? kpi('Storage used', `${Math.round(pct)}%`, IC_DB, `<div class="home-kpi-sub">${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}</div>`, homeDonut(pct))
-      : kpi('Storage used', fileSizeLabel(usedBytes), IC_DB, `<div class="home-kpi-sub">across ${files.length.toLocaleString()} files</div>`, '');
-
-    const recentRows = recentFiles.length
-      ? recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); const ti = fileTypeInfo(ext); const acc = esc(fileOwner(f)); return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileIconHtml(ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td><span class="type-pill">${ti.label}</span></td><td class="num">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="home-access">${acc}</td></tr>`; }).join('')
-      : `<tr><td colspan="5">${emptyState('No files yet', 'Upload files to see them here.')}</td></tr>`;
-    const recentCard = `<div class="home-card"><table class="home-tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Size</th><th>Modified</th><th>Added by</th></tr></thead><tbody>${recentRows}</tbody></table></div>`;
-
-    const activityCard = isAdmin
-      ? `<div class="home-card">${activity.length ? activity.map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || a.document_name || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(a.actor_email || 'Someone')}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('') : emptyState('No recent activity', 'Activity across the workspace will appear here.')}</div>`
-      : '';
-
+    // ---- Layout. Reading order is importance order: the numbers, anything that needs
+    // you, then the two things people come here for (libraries, recent files) in the wide
+    // column, with the quieter feeds beside them. A library is one row, not a card: three
+    // libraries used to fill the whole first screen with three copies of the same buttons.
     const canCreate = currentUser && currentUser.role !== 'viewer';
-    // Each Shared Hub is a workspace card (Layout A): stats up top, its own
-    // Upload / New folder in a footer. The old global quick-action bar is gone.
     const libKey = (x) => String(x == null ? '' : x);
     const docLib = new Map(files.map(f => [String(f.id), libKey(f.library_id)]));
-    const hubCard = (l) => {
+    const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+
+    const stat = (label, value, sub, viz) => `<div class="dash-stat"><div class="dash-stat-txt"><span class="dash-stat-label">${label}</span><span class="dash-stat-value tnum">${value}</span><span class="dash-stat-sub">${sub}</span></div>${viz ? `<span class="dash-stat-viz">${viz}</span>` : ''}</div>`;
+    const trend = (d) => d ? `<span class="dash-trend ${d.up ? 'up' : 'down'}">${d.up ? '▲' : '▼'} ${d.pct}%</span> vs prior week` : 'last 14 days';
+    const statsStrip = `<div class="dash-stats">${[
+      stat('Files', files.length.toLocaleString(), trend(filesDelta), files.length ? homeSpark(filesSeries, sparkColor(filesDelta), 84, 34) : ''),
+      totalBytes > 0
+        ? stat('Storage', `${Math.round(pct)}%`, `${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}`, homeDonut(pct, 44))
+        : stat('Storage', fileSizeLabel(usedBytes), `across ${plural(files.length, 'file')}`, ''),
+      stat('Shared', shared.toLocaleString(), `${plural(liveShares.length, 'active link')}`, ''),
+      stat('Libraries', libs.toLocaleString(), isAdmin ? 'in this workspace' : 'you can open', ''),
+    ].join('')}</div>`;
+
+    const attentionBar = attention.length ? `<section class="dash-attn" aria-label="Needs attention">${navIcon('attention', 'dash-attn-ic')}<div class="dash-attn-list">${attention.slice(0, 4).map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="dash-attn-item" onclick="setFileView('links')"><b>${esc(nm)}</b> link expires ${when}</button>`; }).join('')}${attention.length > 4 ? `<button class="dash-attn-item" onclick="setFileView('links')">and ${attention.length - 4} more</button>` : ''}</div></section>` : '';
+
+    const libRow = (l) => {
       const hid = libKey(l.id);
       const hf = files.filter(f => libKey(f.library_id) === hid && !isFolderMarker(f));
-      const fileCount = hf.length;
       const folderCount = allFoldersForFiles(hf).length;
       const size = hf.reduce((a, f) => a + (Number(f.size) || 0), 0);
       const lastTs = hf.reduce((mx, f) => Math.max(mx, new Date(f.created_at || 0).getTime()), 0);
       const links = liveShares.filter(s => docLib.get(String(s.document_id)) === hid).length;
-      const stats = `${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'} · ${folderCount} folder${folderCount === 1 ? '' : 's'} · ${fileSizeLabel(size)}`;
-      const m2 = [];
-      if (lastTs) m2.push(`updated ${esc(fileDate(lastTs))}`);
-      if (links) m2.push(`<span class="wdash-hub-live">${links} active link${links === 1 ? '' : 's'}</span>`);
-      const foot = canCreate && (l.add_right || !l.id) ? `<div class="wdash-hub-foot"><button class="wdash-hub-act" onclick="event.stopPropagation();hubUpload(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">↑</span> Upload files</button><button class="wdash-hub-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.wdash-hub-card').dataset.lib)"><span class="ic">+</span> New folder</button></div>` : '';
-      return `<div class="wdash-hub-card" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)"><div class="wdash-hub-top"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><div class="wdash-hub-meta"><span class="wdash-hub-name">${esc(l.name || 'Library')}</span><span class="wdash-hub-stats">${stats}</span>${m2.length ? `<span class="wdash-hub-stats2">${m2.join(' · ')}</span>` : ''}</div></div>${foot}</div>`;
+      const bits = [plural(hf.length, 'file'), plural(folderCount, 'folder'), fileSizeLabel(size)];
+      if (lastTs) bits.push(`updated ${fileDate(new Date(lastTs).toISOString())}`);
+      const acts = canCreate && (l.add_right || !l.id)
+        ? `<span class="dash-lib-acts"><button class="dash-act" onclick="event.stopPropagation();hubUpload(this.closest('.dash-lib').dataset.lib)">${navIcon('upload', 'dash-act-ic')}Upload</button><button class="dash-act" onclick="event.stopPropagation();hubNewFolder(this.closest('.dash-lib').dataset.lib)">${navIcon('folder-plus', 'dash-act-ic')}New folder</button></span>`
+        : '';
+      return `<div class="dash-lib" role="button" tabindex="0" data-lib="${esc(String(l.id))}" onclick="switchLibrary(this.dataset.lib)" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();switchLibrary(this.dataset.lib)}"><span class="wdash-hub-glyph">${esc((l.name || '?').charAt(0).toUpperCase())}</span><span class="dash-lib-meta"><span class="dash-lib-name">${esc(l.name || 'Library')}</span><span class="dash-lib-stats tnum">${bits.join(' · ')}${links ? ` · <span class="wdash-hub-live">${plural(links, 'active link')}</span>` : ''}</span></span>${acts}</div>`;
     };
+    const card = (label, icon, body, link) => `<section class="dash-card"><div class="dash-card-h">${wdashHead(label, icon)}${link || ''}</div>${body}</section>`;
+    const more = (label, view) => `<button class="home-link" onclick="setFileView('${view}')">${label}</button>`;
 
-    const hubsWidget = `<section class="wdash-w">${wdashHead('Libraries','libraries')}${
-      hubs.length ? hubs.map(hubCard).join('') : `<p class="wdash-empty">No shared libraries yet.</p>`
-    }</section>`;
+    const libsCard = card('Libraries', 'libraries', hubs.length ? `<div class="dash-libs">${hubs.map(libRow).join('')}</div>` : `<p class="wdash-empty">No libraries yet.</p>`);
 
-    const attentionWidget = attention.length ? `<section class="wdash-w">${wdashHead('Needs attention','attention')}${attention.map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'A share').split('/').filter(Boolean).pop(); const when = new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' }); return `<button class="wdash-attn" onclick="setFileView('links')"><span class="wdash-dot"></span><span class="wdash-attn-txt"><span class="wdash-attn-name">${esc(nm)}</span><span class="wdash-attn-sub">link expires ${when}</span></span></button>`; }).join('')}</section>` : '';
+    const recentCardNew = card('Recent files', 'recent', recentFiles.length
+      ? `<div class="dash-tbl-wrap"><table class="home-tbl dash-tbl"><thead><tr><th>Name</th><th class="dash-col-type">Type</th><th class="num">Size</th><th>Modified</th><th class="dash-col-owner">Added by</th></tr></thead><tbody>${recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileRowIconHtml(f, ext)}<span>${esc(fileDisplayName(f))}</span></div></td><td class="dash-col-type"><span class="type-pill">${fileTypeInfo(ext).label}</span></td><td class="num tnum">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="dash-col-owner">${esc(fileOwner(f))}</td></tr>`; }).join('')}</tbody></table></div>`
+      : emptyState('No files yet', 'Files you and your team add will show up here.', canCreate ? `<button class="file-action-btn primary" onclick="chooseUpload('files')">Upload files</button>` : ''),
+      recentFiles.length ? more('All files', 'all') : '');
 
-    const notifWidget = `<section class="wdash-w">${wdashHead('Notifications','notifications')}${
-      notifList.length
-        ? notifList.slice(0, 6).map(n => { const unread = !n.read_at; const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
-        : `<p class="wdash-empty">You're all caught up.</p>`
-    }</section>`;
+    const notifCard = card('Notifications', 'notifications', notifList.length
+      ? notifList.slice(0, 5).map(n => { const unread = !n.read_at; const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
+      : `<p class="wdash-empty">You're all caught up.</p>`);
 
-    const favWidget = pinned.length ? `<section class="wdash-w">${wdashHead('Favorites','favorites')}<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div></section>` : '';
+    const favCard = pinned.length ? card('Favorites', 'favorites', `<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div>`) : '';
 
-    const recentWidget = `<section class="wdash-w">${wdashHead('Recent files','recent')}${
-      recentFiles.length
-        ? recentFiles.map(f => `<button class="wdash-recent" data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)">${fileRowIconHtml(f, fileExt(fileDisplayName(f)))}<span class="wdash-recent-txt"><span class="wdash-recent-name">${esc(fileDisplayName(f))}</span><span class="wdash-recent-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</span></span></button>`).join('')
-        : `<p class="wdash-empty">No files yet — upload something to get started.</p>`
-    }</section>`;
+    const linksCard = card('Active links', 'links', liveShares.length
+      ? liveShares.slice(0, 5).map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
+      : `<p class="wdash-empty">No active links. Share a file to create one.</p>`,
+      liveShares.length ? more(`All ${liveShares.length}`, 'links') : '');
 
-    const sharesWidget = `<section class="wdash-w">${wdashHead('Active links','links')}${
-      liveShares.length
-        ? `<button class="wdash-shares-sum" onclick="setFileView('links')">${liveShares.length} active link${liveShares.length === 1 ? '' : 's'} →</button>` + liveShares.slice(0, 5).map(s => { const nm = s.name_hidden ? 'A file you can no longer open' : String(s.document_name || s.name || 'Shared file').split('/').filter(Boolean).pop(); const exp = s.expires_at ? `expires ${new Date(s.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'no expiry'; return `<button class="wdash-share" onclick="setFileView('links')"><span class="wdash-share-name">${esc(nm)}</span><span class="wdash-share-sub">${esc(exp)}</span></button>`; }).join('')
-        : `<p class="wdash-empty">No active links yet.</p>`
-    }</section>`;
+    const activityCardNew = isAdmin && activity.length ? card('Workspace activity', 'recent', activity.slice(0, 6).map(a => { const base = String(a.document_name || '').split('/').filter(Boolean).pop() || ''; return `<div class="home-act"><span class="home-act-avatar">${esc(initialsOf(a.actor_email))}</span><div class="home-act-body"><div class="home-act-t"><b>${esc(String(a.actor_email || 'Someone').split('@')[0])}</b> ${esc(String(a.event_type || '').replace(/_/g, ' '))}${base ? ` <b style="font-weight:600">${esc(base)}</b>` : ''}</div></div><span class="home-act-time">${fileDate(a.created_at)}</span></div>`; }).join('')) : '';
 
     document.getElementById('home-view').innerHTML = `
-      <h1 class="home-h1">${greet}, ${esc(name)}</h1>
-      <p class="home-lede">Here's what's moving in ${wsLabel}.</p>
-      <div class="wdash">
-        <div class="wdash-col">${hubsWidget}${attentionWidget}${notifWidget}</div>
-        <div class="wdash-col">${favWidget}${recentWidget}${sharesWidget}</div>
+      <header class="dash-head"><h1 class="home-h1">${greet}, ${esc(name)}</h1><p class="home-lede">Here's what's moving in ${wsLabel}.</p></header>
+      ${statsStrip}${attentionBar}
+      <div class="dash-grid">
+        <div class="dash-main">${libsCard}${recentCardNew}</div>
+        <aside class="dash-side">${notifCard}${favCard}${linksCard}${activityCardNew}</aside>
       </div>`;
   } catch (e) {
     const el = document.getElementById('home-view');
