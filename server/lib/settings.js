@@ -155,6 +155,6 @@ async function set(key, value, userId) {
 function _reset() { cache.clear(); lastFetch = 0; }
 
 // The curated color schemes the client ships; brand_scheme must be one of these.
-const SCHEME_IDS = ['ledger', 'graphite', 'linen', 'harbor', 'ember'];
+const SCHEME_IDS = ['ledger', 'graphite', 'linen', 'harbor', 'ember', 'crest', 'iris', 'tide', 'dune'];
 
 module.exports = { get, getOrEnv, set, refresh, ENV_MAP, SCHEME_IDS, _reset };
