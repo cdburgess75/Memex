@@ -26,6 +26,11 @@ jest.mock('../../lib/db', () => {
     if (/SELECT owner_id FROM libraries WHERE id = \$1/.test(sql)) return mockRows.library;
     if (/INSERT INTO folder_ops/.test(sql)) return { op_id: '99999999-0000-4000-8000-000000000009' };
     if (/FROM upload_sessions WHERE id = \$1 AND uploaded_by = \$2/.test(sql)) return mockRows.session;
+    // an exchange link's slot, reserved before the bytes are stored
+    if (/UPDATE document_share_links\s+SET upload_count = upload_count \+ 1/.test(sql)) return { id: params[0] };
+    // a document as it is NOW, read under the library's lock (exchange upload; and every
+    // placement that changes one existing document -- lib/folderOps withDocumentPlacement)
+    if (/^\s*SELECT name, library_id(, deleted_at)? FROM documents WHERE id = \$1/.test(sql)) return mockRows.doc && { library_id: 'aaaaaaaa-0000-4000-8000-000000000001', ...mockRows.doc };
     if (/FROM document_versions\s+WHERE id = \$1 AND document_id = \$2/.test(sql)) return mockRows.version;
     if (/UPDATE documents\s+SET name = \$1, size = \$2/.test(sql)) return { id: 'd1', name: params[0] };
     if (/UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return { id: 'd1', name: params[1] };
@@ -35,14 +40,11 @@ jest.mock('../../lib/db', () => {
     return null;
   }),
   };
-  // The folder operations run inside one transaction; the stand-in hands the
-  // callback a client backed by the same mocks (a pg client answers { rows }).
-  api.withTransaction = jest.fn(async (fn) => fn({ query: async (sql, params = []) => {
-      const rows = await api.query(sql, params);
-      if ((rows && rows.length) || !/^\s*SELECT/i.test(sql)) return { rows: rows || [] };
-      const one = await api.queryOne(sql, params); // the single-row mock answers reads
-      return { rows: one ? [one] : [] };
-    } }));
+  // The folder operations, and every placement of a document by name, run inside one
+  // transaction (see the stand-in: it answers the lock's plumbing itself, and records it).
+  const tx = require('../helpers/txStandIn').txStandIn({ query: (...a) => api.query(...a), queryOne: (...a) => api.queryOne(...a) });
+  api.withTransaction = tx.withTransaction;
+  api.mockLocks = tx.locks;
   api.paramList = jest.requireActual('../../lib/db').paramList;
   return api;
 });
@@ -121,7 +123,7 @@ describe('uploads and new files', () => {
   test.each([[true], [false]])('library_scoped is recorded as the right says (%p)', async (scoped) => {
     mockRight.value = { right: scoped ? 'owner' : 'legacy', scoped };
     await stream();
-    expect(inserted().params[8]).toBe(scoped);
+    expect(inserted().params[9]).toBe(scoped);
   });
   test('a malformed library id is a 400 before anything is stored', async () => {
     const res = await stream('displayName=a.txt&libraryId=lib-1');
@@ -134,7 +136,9 @@ describe('uploads and new files', () => {
     expect(storage.upload).not.toHaveBeenCalled();
     mockRight.value = { right: 'grant', scoped: true };
     await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB });
-    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.anything(), LIB, 'Q1');
+    // asked before anything is stored, and again on the transaction's client, where the
+    // destination is resolved under the library's lock
+    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.anything(), LIB, 'Q1', expect.anything());
     expect(inserted().params[9]).toBe(true);
   });
   test('a chunked upload naming its library is refused at the start', async () => {
@@ -148,6 +152,90 @@ describe('uploads and new files', () => {
     mockRight.value = REFUSED;
     expect((await request(app()).post('/api/files/uploads/s1/complete').send({ libraryId: LIB })).status).toBe(403);
     expect(storage.uploadStream).not.toHaveBeenCalled();
+  });
+});
+
+// The mocked suites answer the lock's plumbing themselves, so THIS is where a placement
+// is held to actually asking for it: delete the lock, or take it in the wrong mode or on
+// no library, and these fail.
+describe('a placement holds the library\'s tree lock, shared', () => {
+  const { treeLocks } = require('../helpers/txStandIn');
+  const db = require('../../lib/db');
+  beforeEach(() => { db.mockLocks.length = 0; });
+  const SHARED_ON_LIB = [{ mode: 'shared', ids: [LIB] }];
+  test('a streamed upload', async () => {
+    await request(app()).post(`/api/files/upload-stream?displayName=Clients/Acme/a.txt&libraryId=${LIB}`).set('Content-Type', 'text/plain').send('abc');
+    expect(inserted()).toBeDefined();
+    expect(treeLocks(db.mockLocks)).toEqual(SHARED_ON_LIB);
+  });
+  test('"New file" (createDocumentRecord)', async () => {
+    await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB });
+    expect(inserted()).toBeDefined();
+    expect(treeLocks(db.mockLocks)).toEqual(SHARED_ON_LIB);
+  });
+  test('a new folder\'s marker', async () => {
+    await request(app()).post('/api/files/folder').send({ path: 'New', library_id: LIB });
+    expect(inserted()).toBeDefined();
+    expect(treeLocks(db.mockLocks)).toEqual(SHARED_ON_LIB);
+  });
+  test('restoring a version -- and the bytes go back only once it is held', async () => {
+    mockRows.doc = { id: 'd1', name: 'Now/report.docx', library_id: LIB, uploaded_by: USER.id, storage_path: 'p', mime_type: 'x' };
+    mockRows.version = { id: 'v1', version_number: 2, name: 'report-v2.docx', size: 1, mime_type: 'x', storage_path: 'vp' };
+    // (the first copy is the snapshot of what is there now; the second puts the version back)
+    const heldAtCopy = [];
+    storage.copy.mockImplementation(async (from) => { heldAtCopy.push([from, treeLocks(db.mockLocks).length]); });
+    await request(app()).post('/api/files/d1/restore-version/v1');
+    storage.copy.mockResolvedValue(undefined);
+    expect(heldAtCopy).toEqual([['p', 0], ['vp', 1]]);
+    expect(treeLocks(db.mockLocks)).toEqual(SHARED_ON_LIB);
+  });
+});
+
+describe('a placement that changes one document locks the library the row is in NOW', () => {
+  const { treeLocks } = require('../helpers/txStandIn');
+  const db = require('../../lib/db');
+  const OTHER_LIB = 'bbbbbbbb-0000-4000-8000-000000000002';
+  const trashed = (over) => ({ id: 'd1', name: 'Clients/a.txt', library_id: LIB, uploaded_by: USER.id, storage_path: 'p', mime_type: 'x', deleted_at: new Date(), ...over });
+  const rowNow = (row) => db.queryOne.mockImplementationOnce(async () => row); // the re-read on the transaction's client
+  beforeEach(() => { db.mockLocks.length = 0; });
+  test('a row from before libraries is locked in the default library, not in none', async () => {
+    mockRows.doc = trashed({ library_id: null });
+    const res = await request(app()).post('/api/files/d1/restore');
+    expect(res.status).toBe(200);
+    expect(treeLocks(db.mockLocks)).toEqual([{ mode: 'shared', ids: [LIB] }]);
+  });
+  test('a file carried to another library while we waited is not written under the wrong lock', async () => {
+    mockRows.doc = trashed();
+    rowNow({ name: 'Clients/a.txt', library_id: OTHER_LIB, deleted_at: new Date() });
+    const res = await request(app()).post('/api/files/d1/restore');
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('FILE_MOVED');
+    expect(mockQueries.some(q => /UPDATE documents\s+SET deleted_at = NULL/.test(q.sql))).toBe(false);
+  });
+});
+
+describe('a placement refused under the lock leaves nothing behind', () => {
+  // allowed before anything is stored, refused on the transaction's client
+  const refusedUnderLock = () => { let n = 0; mockRight.value = () => (++n === 1 ? { right: 'owner', scoped: true } : REFUSED); };
+  test('"New file" drops the blob it stored', async () => {
+    refusedUnderLock();
+    const res = await request(app()).post('/api/files/create').send({ name: 'Plan', type: 'docx', folder: 'Q1', library_id: LIB });
+    expect(res.status).toBe(403);
+    expect(inserted()).toBeUndefined();
+    expect(storage.del).toHaveBeenCalledWith(storage.upload.mock.calls[0][0]);
+  });
+  test('a new folder drops its marker\'s blob', async () => {
+    refusedUnderLock();
+    const res = await request(app()).post('/api/files/folder').send({ path: 'New', library_id: LIB });
+    expect(res.status).toBe(403);
+    expect(storage.del).toHaveBeenCalledWith(storage.upload.mock.calls[0][0]);
+  });
+  test('a chunked upload takes its kind from the right proved where it lands', async () => {
+    mockRows.session = { id: 's1', status: 'active', name: 'Q1/big.bin', total_chunks: 0, received_chunks: [], storage_path: 'p', mime_type: 'x', size: 3 };
+    let n = 0;
+    mockRight.value = () => (++n === 1 ? { right: 'owner', scoped: true } : { right: 'legacy', scoped: false });
+    await request(app()).post('/api/files/uploads/s1/complete').send({ libraryId: LIB });
+    expect(insertedValue('library_scoped')).toBe(false);
   });
 });
 
@@ -344,7 +432,7 @@ describe('folders', () => {
     expect(storage.upload).not.toHaveBeenCalled();
     mockRight.value = { right: 'owner', scoped: true };
     await request(app()).post('/api/files/folder').send({ path: 'New', library_id: LIB });
-    expect(inserted().params[6]).toBe(true);
+    expect(inserted().params[9]).toBe(true);
   });
 });
 
@@ -412,5 +500,17 @@ describe('the plain upload and the public-link upload', () => {
     expect(res.body.error).toBe('This link can no longer receive files.');
     expect(libraries.writeRight).toHaveBeenCalledWith(expect.objectContaining({ id: CREATOR, role: 'contributor' }), LIB, 'Clients/Acme');
     expect(storage.upload).not.toHaveBeenCalled();
+  });
+  test('refused under the lock, it gives back the blob and the slot it had reserved', async () => {
+    mockRows.share = share();
+    mockRows.doc = { id: 'd9', name: 'Clients/Acme/report.pdf' };
+    let n = 0; // the guard's check passes; the one on the transaction's client does not
+    mockRight.value = () => (++n === 1 ? { right: 'owner', scoped: true } : REFUSED);
+    const res = await request(app()).post('/api/files/share/tok/upload').attach('file', Buffer.from('abc'), 'back.txt');
+    expect(res.status).toBe(403);
+    expect(inserted()).toBeUndefined();
+    expect(storage.del).toHaveBeenCalledWith(storage.upload.mock.calls[0][0]);
+    const released = mockQueries.find(q => /upload_count = GREATEST\(upload_count - 1, 0\)/.test(q.sql));
+    expect(released.params[1]).toBe(3);
   });
 });

@@ -53,6 +53,8 @@ jest.mock('../../lib/db', () => {
       }
       // getAccessibleDocument() for the file rename below
       if (/FROM documents d\s+WHERE d\.id = \$1/.test(sql)) return { id: params[0], name: 'Inbox/report.pdf', library_id: 'lib-1' };
+      // the row as it is NOW, read under the library's lock (lib/folderOps withDocumentPlacement)
+      if (/^\s*SELECT name, library_id, deleted_at FROM documents WHERE id = \$1/.test(sql)) return { name: 'Inbox/report.pdf', library_id: 'lib-1', deleted_at: null };
       if (/UPDATE documents SET name = \$2(, library_scoped = \$3)? WHERE id = \$1/.test(sql)) return { name: params[1] };
     return null;
   });

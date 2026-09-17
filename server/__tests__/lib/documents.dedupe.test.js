@@ -1,7 +1,15 @@
 'use strict';
 // A byte-identical re-upload is folded into an existing document only where the
 // uploader could EDIT that document: folding is a change to it.
-jest.mock('../../lib/db', () => ({ query: jest.fn().mockResolvedValue([]), queryOne: jest.fn() }));
+jest.mock('../../lib/db', () => {
+  const api = { query: jest.fn().mockResolvedValue([]), queryOne: jest.fn() };
+  // The row goes in under the library's tree lock, inside one transaction (see the
+  // stand-in: it answers the lock's plumbing itself, and records it).
+  const tx = require('../helpers/txStandIn').txStandIn({ queryOne: (...a) => api.queryOne(...a) });
+  api.withTransaction = tx.withTransaction;
+  api.mockLocks = tx.locks;
+  return api;
+});
 jest.mock('../../lib/storage', () => ({ download: jest.fn().mockResolvedValue(Buffer.from('same bytes')), del: jest.fn().mockResolvedValue() }));
 jest.mock('../../lib/textExtraction', () => ({ extractText: jest.fn().mockResolvedValue('same bytes') }));
 jest.mock('../../lib/libraries', () => ({ defaultLibraryId: jest.fn().mockResolvedValue('lib-1') }));

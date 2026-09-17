@@ -10,6 +10,7 @@
 const db = require('./db');
 const folderLocks = require('./folderLocks');
 const documentAccess = require('./documentAccess');
+const libraries = require('./libraries');
 const { prefixRange } = require('./documents');
 
 // Tests interleave a change between statements, as accessKeys.hooks does.
@@ -28,10 +29,33 @@ function clientQ(client) {
 // `kind` picks how long to wait: a folder operation gives up sooner than an upload,
 // which is holding the person's bytes.
 async function withFolderOp({ libraryIds, kind = 'folder', mode = 'exclusive' }, fn) {
+  // No library, no lock: folderLocks.tree has nothing to take and says nothing. A caller
+  // that got here without one would run "under the lock" holding none, so that is an
+  // error here rather than a silence there.
+  if (!(libraryIds || []).some(Boolean)) throw new Error('withFolderOp: no library to lock');
   return db.withTransaction(async (client) => {
     await folderLocks.session(client, kind);
     await folderLocks.tree(client, libraryIds, mode);
     return fn(clientQ(client), client);
+  });
+}
+
+// A placement that changes ONE existing document: its name, or whether it is in the Trash.
+// The lock is keyed by the library the caller read before asking for it, and that is only
+// a guess -- a transfer can have carried the row to another library while we waited, and
+// we would then be writing a name into a tree whose lock we do not hold. So the row is
+// read again on the operation's client and the library checked against the one locked;
+// fn gets the row as it is NOW. A row from before libraries has no library_id; it
+// surfaces in the default library, and that is the tree it is locked in.
+async function withDocumentPlacement(doc, fn) {
+  const lib = String(doc.library_id || (await libraries.defaultLibraryId()));
+  return withFolderOp({ libraryIds: [lib], kind: 'placement', mode: 'shared' }, async (q, client) => {
+    const now = await q.queryOne('SELECT name, library_id, deleted_at FROM documents WHERE id = $1', [doc.id]);
+    if (!now) throw new FolderOpError(null, 404, 'Document not found');
+    if (String(now.library_id || lib) !== lib) {
+      throw new FolderOpError('FILE_MOVED', 409, 'That file has just moved to another library. Refresh and try again.');
+    }
+    return fn(q, now, lib, client);
   });
 }
 
@@ -81,6 +105,14 @@ class FolderOpError extends Error {
   }
 }
 
+// The right to add files at `path`, proved on the operation's own client -- or the
+// refusal, thrown as the route will send it.
+async function writeRightOrThrow(user, libraryId, path, q) {
+  const r = await libraries.writeRight(user, libraryId, path, q);
+  if (r.status) throw new FolderOpError(null, r.status, r.error);
+  return r;
+}
+
 // Turn what came back into a response: our own refusals, Postgres' "I won't wait any
 // longer", and the constraints that back the checks up. Anything else is a 500.
 function sendFolderOpError(res, e) {
@@ -93,4 +125,4 @@ function sendFolderOpError(res, e) {
   return false;
 }
 
-module.exports = { withFolderOp, clientQ, whatIsAt, FolderOpError, sendFolderOpError, hooks };
+module.exports = { withFolderOp, withDocumentPlacement, clientQ, whatIsAt, FolderOpError, writeRightOrThrow, sendFolderOpError, hooks };

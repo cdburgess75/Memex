@@ -17,7 +17,7 @@ const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
 const { isUuid } = require('../lib/groups');
-const { withFolderOp, sendFolderOpError, FolderOpError } = require('../lib/folderOps');
+const { withFolderOp, withDocumentPlacement, sendFolderOpError, FolderOpError, writeRightOrThrow } = require('../lib/folderOps');
 const { keepSharedFoldersAlive } = require('../lib/keepMarker');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
@@ -44,7 +44,7 @@ const {
 } = require('../lib/shareLinks');
 const {
   DOCUMENT_COLUMNS, TEXT_EXTRACTION_MAX_BYTES, fileSizeLabelForEvent,
-  safeDocName, destinationFolder, recordUploadNotify, createDocumentRecord,
+  safeDocName, destinationFolder, recordUploadNotify, insertDocumentRow, createDocumentRecord,
 } = require('../lib/documents');
 
 // Uploads are gated by an extension blocklist so the workspace can't become a
@@ -550,15 +550,29 @@ async function targetLibrary(req, res) {
 // so a file dropped into a shared "Smith & Co (2025)" lands inside it (and under its
 // share), not in a rewritten "Smith _ Co _2025_" beside it. New folders and the file
 // name are cleaned as uploads always were. Null for a path that can't name a folder.
-async function landingName(raw, libraryId, user) {
+// `q`: asked again on a placement's client, under the library's tree lock -- a folder
+// resolved before the lock was taken is only a guess, because it can have been renamed
+// while we waited for it.
+async function landingName(raw, libraryId, user, q = db) {
   const s = String(raw || '').replace(/\\/g, '/');
   const cut = s.lastIndexOf('/');
   const base = cleanDisplayName(s.slice(cut + 1));
   if (!base) return '';
   if (cut < 0) return base;
-  const folder = await destinationFolder(s.slice(0, cut), libraryId, user);
+  const folder = await destinationFolder(s.slice(0, cut), libraryId, user, q);
   if (folder === null) return null;
   return folder ? `${folder}/${base}` : base;
+}
+
+// Where an upload lands and whether it is library content, decided on a placement's
+// client under the library's tree lock: the name resolved again, and the right to add
+// files proved again at wherever that turns out to be. Throws the refusal.
+async function landingPlace(q, raw, libraryId, user) {
+  const landed = await landingName(raw, libraryId, user, q);
+  if (landed === null) throw new FolderOpError(null, 400, 'invalid folder');
+  const name = landed || 'upload';
+  const right = await writeRightOrThrow(user, libraryId, parentOf(name), q);
+  return { name, scoped: right.scoped };
 }
 
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
@@ -724,6 +738,35 @@ router.post('/share/:token/upload',
       sourceDetail: `via exchange link · from ${from}`,
       libraryId: share.library_id,
       libraryScoped: req.exchangeDest.scoped,
+      // Beside the shared file as it is NOW, read under the library's tree lock. The
+      // file can have been carried into a renamed folder while the recipient was
+      // uploading, and landing beside where it used to be would put this reply at a path
+      // the folder has just vacated -- outside the share that travelled with it. The
+      // creator's right to add files there is proved again at the new place, exactly as
+      // the guard proved it at the old one.
+      resolve: async (q, { libraryId }) => {
+        const now = await q.queryOne('SELECT name, library_id FROM documents WHERE id = $1 AND deleted_at IS NULL', [share.document_id]);
+        if (!now) throw new FolderOpError(null, 404, 'not_found');
+        if (String(now.library_id) !== String(libraryId)) throw new FolderOpError(null, 403, 'This link can no longer receive files.');
+        const right = await libraries.writeRight(owner, libraryId, parentOf(now.name), q);
+        if (right.status) throw new FolderOpError(null, 403, 'This link can no longer receive files.');
+        return {
+          displayName: [parentOf(now.name), subdir, path.basename(display)].filter(Boolean).join('/'),
+          libraryScoped: right.scoped,
+        };
+      },
+    }).catch(async (e) => {
+      // Nothing landed (createDocumentRecord has already dropped the blob). A slot is left
+      // consumed when the STORE fails, which is the fail-safe; but a placement that was
+      // refused, or a library that was busy, is an ordinary answer the recipient is told
+      // to try again after -- and each try must not use the link up with nothing received.
+      await db.query(
+        `UPDATE document_share_links
+            SET upload_count = GREATEST(upload_count - 1, 0), upload_bytes = GREATEST(upload_bytes - $2, 0)
+          WHERE id = $1`,
+        [share.id, Number(size) || 0]
+      ).catch(() => {});
+      throw e;
     });
     // The per-link quota was already reserved atomically above.
     await logDocumentEvent(share.document_id, 'external_upload_received', null, from,
@@ -744,7 +787,7 @@ router.post('/share/:token/upload',
       }).catch(() => {});
     }
     res.json({ ok: true, name: display });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
 });
 
 router.get('/share/:token', async (req, res) => {
@@ -908,6 +951,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
     }
     res.json({ ok: true, mode, count: accessible.length, skipped });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     console.error('library-transfer failed:', e);
     serverError(res, e);
   }
@@ -1116,21 +1160,27 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
       console.error('Text extraction failed (non-fatal):', e.message);
     }
 
-    const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, dest.scoped]
-    );
-    await documentAccess.grantOwnerAdmin(doc.id, req.user);
-    await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${displayName}`);
-    recordUploadNotify(req.user, displayName, uploadLibraryId, doc.id);
+    // The row goes in under the library's tree lock, held in SHARED mode: placements
+    // run alongside each other but never while a folder operation is rewriting this
+    // library's paths. The name is resolved AGAIN on that client -- the folder this was
+    // headed for can have been renamed while the bytes were arriving -- and the right to
+    // add files there is proved again at wherever it actually lands.
+    const { doc, name } = await withFolderOp({ libraryIds: [uploadLibraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+      const at = await landingPlace(q, req.body.displayName || originalname, uploadLibraryId, req.user);
+      const row = await insertDocumentRow(q, { name: at.name, size, mimetype, storagePath, user: req.user, documentText, libraryId: uploadLibraryId, libraryScoped: at.scoped });
+      return { doc: row, name: at.name };
+    });
+    await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${name}`);
+    recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
 
     res.json({ doc, canIngest });
   } catch (e) {
-    // The blob was already written; if the DB insert/grant/audit failed, delete it
-    // so a failed upload can't orphan an encrypted blob with no row pointing at it
+    // The blob was already written; if the DB insert/grant/audit failed — or the
+    // placement was refused at the name it turned out to land at — delete it, so a
+    // failed upload can't orphan an encrypted blob with no row pointing at it
     // (mirrors the upload-stream path's cleanup).
     await storage.del(storagePath).catch(() => {});
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
@@ -1197,18 +1247,20 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
       }
     }
 
-    const doc = await db.queryOne(
-      `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
-      [displayName, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, dest.scoped]
-    );
-    await documentAccess.grantOwnerAdmin(doc.id, req.user);
+    // As the buffered path: under the library's tree lock in SHARED mode, with the name
+    // resolved again on that client and the right proved again where it lands.
+    const { doc, name } = await withFolderOp({ libraryIds: [uploadLibraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+      const at = await landingPlace(q, rawName, uploadLibraryId, req.user);
+      const row = await insertDocumentRow(q, { name: at.name, size: storedSize, mimetype, storagePath, user: req.user, documentText, libraryId: uploadLibraryId, libraryScoped: at.scoped });
+      return { doc: row, name: at.name };
+    });
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
-    recordUploadNotify(req.user, displayName, uploadLibraryId, doc.id);
+    recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
@@ -1378,22 +1430,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     const stream = await chunkedFileStream(session);
     const result = await storage.uploadStream(session.storage_path, stream, session.mime_type);
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
-    // The bytes may have taken a long time to arrive, and the folder they were headed
-    // for can have been renamed meanwhile -- in which case the session's name came along
-    // with it (lib/folderCarry.js). Land the file where the folder is NOW, not where it
-    // was when the upload started, and prove the right again at the new place: a folder
-    // can move somewhere this person may not write.
-    const fresh = await db.queryOne('SELECT name FROM upload_sessions WHERE id = $1', [session.id]);
-    const landingPath = fresh?.name || session.name;
-    if (landingPath !== session.name) {
-      const moved = await libraries.writeRight(req.user, completeLibraryId, parentOf(landingPath));
-      if (moved.status) {
-        return res.status(409).json({ code: 'FOLDER_MOVED', path: landingPath,
-          error: 'The folder this was going into was moved somewhere you can\'t add files. Nothing was lost -- choose another folder and upload it again.' });
-      }
-    }
     const { doc, canIngest } = await createDocumentRecord({
-      displayName: landingPath,
+      displayName: session.name,
       storagePath: session.storage_path,
       mimetype: session.mime_type,
       storedSize,
@@ -1402,6 +1440,28 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       libraryId: completeLibraryId,
       libraryScoped: dest.scoped,
       notifyUpload: true,
+      // Where it lands, decided under the library's tree lock. The bytes may have taken
+      // a long time to arrive, and the folder they were headed for can have been renamed
+      // meanwhile -- in which case the session's name came along with it (lib/
+      // folderCarry.js). Reading that name here, rather than before the lock, is what
+      // makes the rename either wholly before this file or wholly after it. Land it where
+      // the folder is NOW, not where it was when the upload started, and prove the right
+      // again at the new place: a folder can move somewhere this person may not write.
+      resolve: async (q) => {
+        const fresh = await q.queryOne('SELECT name FROM upload_sessions WHERE id = $1', [session.id]);
+        const landingPath = fresh?.name || session.name;
+        // Proved on this client whether or not the folder moved: the right checked before
+        // the bytes arrived can have been withdrawn since, and what kind of file this is
+        // (library content or personal) belongs to where it lands, not where it was headed.
+        const right = await libraries.writeRight(req.user, completeLibraryId, parentOf(landingPath), q);
+        if (right.status && landingPath !== session.name) {
+          throw new FolderOpError('FOLDER_MOVED', 409,
+            'The folder this was going into was moved somewhere you can\'t add files. Nothing was lost -- choose another folder and upload it again.',
+            { path: landingPath });
+        }
+        if (right.status) throw new FolderOpError(null, right.status, right.error);
+        return { displayName: landingPath, libraryScoped: right.scoped };
+      },
     });
 
     const updated = await db.queryOne(
@@ -1414,6 +1474,7 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     await removeUploadSessionFiles(session.id);
     res.json({ doc, canIngest, session: uploadSessionClientShape(updated), chunked: true });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
@@ -1944,23 +2005,37 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     // Restore the CONTENT, and the file name the version had -- but keep the file where
     // it is now. A version's stored name carries the folder it was in at the time, and
     // restoring that would be a move nobody asked for, past every destination check.
-    const restoredName = [parentOf(doc.name), String(version.name || '').split('/').pop()].filter(Boolean).join('/') || doc.name;
     await saveDocumentVersion(doc, req.user, 'before_version_restore');
-    await storage.copy(version.storage_path, doc.storage_path, version.mime_type);
-    const updated = await db.queryOne(
-      `UPDATE documents
-       SET name = $1, size = $2, mime_type = $3, document_text = $4,
-           deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
-           restored_at = NOW(), restored_by = $5, restored_by_email = $6
-       WHERE id = $7
-       RETURNING ${DOCUMENT_COLUMNS}`,
-      [restoredName, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
-    );
+    // This writes documents.name, so it goes in under the library's lock (SHARED: it is
+    // a placement, not a folder operation). "Where it is now" is read on that client --
+    // a folder operation can have renamed the folder around this file while the version
+    // was being copied back, and the parent read before the lock is then a path the
+    // folder has just vacated.
+    // The lock is the one on the library the row is in NOW, too (withDocumentPlacement).
+    const updated = await withDocumentPlacement(doc, async (q, now) => {
+      const restoredName = [parentOf(now.name), String(version.name || '').split('/').pop()].filter(Boolean).join('/') || now.name;
+      const row = await q.queryOne(
+        `UPDATE documents
+         SET name = $1, size = $2, mime_type = $3, document_text = $4,
+             deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
+             restored_at = NOW(), restored_by = $5, restored_by_email = $6
+         WHERE id = $7
+         RETURNING ${DOCUMENT_COLUMNS}`,
+        [restoredName, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
+      );
+      // The bytes go back LAST, once the lock is held and the row is written: a library
+      // that is busy, or a row that has gone, refuses before anything is overwritten, and
+      // a copy that fails takes the row's change back with it. Before the lock, a refusal
+      // left the old version's bytes under a row still describing the current one.
+      await storage.copy(version.storage_path, doc.storage_path, version.mime_type);
+      return row;
+    });
 
     await logDocumentEvent(doc.id, 'version_restored', req.user.id, req.user.email, `restored version ${version.version_number}`);
     await logEvent(`version restore · ${updated.name} · v${version.version_number}`, req.user.id, req.user.email);
     res.json({ doc: updated });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
@@ -1981,13 +2056,13 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     // Under the library's lock, so a folder operation cannot be half-way through; and if
     // this was the last live file under a shared folder, the folder is kept (empty and
     // still shared) rather than left as a name a future folder could inherit.
-    const planted = await withFolderOp({ libraryIds: [doc.library_id], kind: 'placement', mode: 'shared' }, async (q) => {
+    const planted = await withDocumentPlacement(doc, async (q, _now, lockedLibraryId) => {
       const gone = await q.query(
         'UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1 AND deleted_at IS NULL RETURNING name',
         [req.params.id, req.user.id, req.user.email]
       );
       if (!gone.length) throw new FolderOpError('FILE_MOVED', 409, 'That file has just changed. Refresh and try again.');
-      return keepSharedFoldersAlive(q, doc.library_id, gone.map(r => r.name));
+      return keepSharedFoldersAlive(q, lockedLibraryId, gone.map(r => r.name));
     });
     for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
     await logDocumentEvent(doc.id, 'trashed', req.user.id, req.user.email, `retention ${await trashRetentionDays()} days`);
@@ -2031,7 +2106,8 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     // Conditional on the name it had when we read it: a folder rename in between would
     // otherwise make this think the parent was unchanged and skip the destination check.
     // Under the library's lock, and keeping any shared folder this empties.
-    const { updated, planted } = await withFolderOp({ libraryIds: [libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+    // And in the library the row is in NOW: the destination above was proved in this one.
+    const { updated, planted } = await withDocumentPlacement(doc, async (q) => {
       const rows = await q.query(
         `UPDATE documents SET name = $2, library_scoped = $3
           WHERE id = $1 AND name = $4 AND deleted_at IS NULL RETURNING *`,
@@ -2106,9 +2182,19 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
     const { doc } = await createDocumentRecord({
       displayName: fullName, storagePath, mimetype: blank.mime, storedSize: blank.buffer.length,
       user: req.user, sourceDetail: 'created', libraryId, libraryScoped: dest.scoped,
+      // Under the library's tree lock, the folder is resolved again and the right proved
+      // again where the file actually lands: the folder named above can have been
+      // renamed while this was being made.
+      resolve: async (q) => {
+        const folderNow = await destinationFolder(req.body?.folder, libraryId, req.user, q);
+        if (folderNow === null) throw new FolderOpError(null, 400, 'invalid name');
+        const nameNow = folderNow ? `${folderNow}/${base}` : base;
+        const right = await writeRightOrThrow(req.user, libraryId, parentOf(nameNow), q);
+        return { displayName: nameNow, libraryScoped: right.scoped };
+      },
     });
     res.json(doc);
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
 });
 
 // Folder operations (create/rename/delete/reparent/move, ZIP, public download
@@ -2147,17 +2233,25 @@ router.post('/:id/restore', auth, requireRole('admin', 'contributor'), async (re
     });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
 
-    await db.query(
+    // Restoring puts a name back into the library's tree, so it happens under that
+    // library's lock, held in SHARED mode -- never while a folder operation is half-way
+    // through rewriting those names. The row's CURRENT name is what comes back: a folder
+    // operation can have carried this file's name along with the folder while it sat in
+    // the Trash, and the name read before the lock would be the one it no longer has.
+    // And under the lock of the library the row is in NOW (withDocumentPlacement).
+    const back = await withDocumentPlacement(doc, async (q) => q.queryOne(
       `UPDATE documents
        SET deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
            restored_at = NOW(), restored_by = $2, restored_by_email = $3
-       WHERE id = $1`,
+       WHERE id = $1
+       RETURNING name`,
       [req.params.id, req.user.id, req.user.email]
-    );
+    ));
     await logDocumentEvent(doc.id, 'restored', req.user.id, req.user.email, 'restored from trash');
-    await logEvent(`restore · ${doc.name}`, req.user.id, req.user.email);
+    await logEvent(`restore · ${back?.name || doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
+    if (sendFolderOpError(res, e)) return;
     serverError(res, e);
   }
 });
