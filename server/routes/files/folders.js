@@ -23,7 +23,7 @@ const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fi
 const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
-const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt } = require('../../lib/folderOps');
+const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt, writeRightOrThrow, copyLanding } = require('../../lib/folderOps');
 const folderPaths = require('../../lib/folderPaths');
 const folderCarry = require('../../lib/folderCarry');
 const folderPreview = require('../../lib/folderPreview');
@@ -134,12 +134,6 @@ async function refuseIfSomethingIsAt(q, { destLibraryId, newPath, fromLibraryId,
       `A folder called “${name}” was deleted there on ${when} and is still in the Trash under that name. Choose another name, or ask an admin to empty it first.`,
       { path: newPath, trashed_at: at.trashed_at });
   }
-}
-
-async function writeRightOrThrow(user, libraryId, path, q) {
-  const r = await libraries.writeRight(user, libraryId, path, q);
-  if (r.status) throw new FolderOpError(null, r.status, r.error);
-  return r;
 }
 
 // A folder path that is already too long can still be SHORTENED -- that is the only way
@@ -978,11 +972,8 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
       await createDocumentRecord({
         displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied',
         libraryId, libraryScoped: dest.scoped,
-        // Proved again on the placement's client, for each file: a long copy can outlive
-        // the right it started with -- the folder it is filling in the target can be
-        // renamed away mid-loop, taking its share (and what these files ARE) with it.
-        resolve: async (q) => ({ displayName: d.name, libraryScoped: (await writeRightOrThrow(req.user, libraryId, folderPaths.parentOf(d.name), q)).scoped }),
-      }).catch(async (e) => { await storage.del(newPath).catch(() => {}); throw e; }); // refused under the lock: the blob we just copied has no row
+        resolve: copyLanding(req.user, libraryId, d.name), // proved again under the lock, per file (lib/folderOps)
+      }).catch(async (e) => { if (e.notPlaced) await storage.del(newPath).catch(() => {}); throw e; }); // no row was made: drop the copy. After a commit the blob belongs to a row and stays.
     }
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);

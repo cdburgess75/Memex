@@ -93,4 +93,22 @@ function sendFolderOpError(res, e) {
   return false;
 }
 
-module.exports = { withFolderOp, clientQ, whatIsAt, FolderOpError, sendFolderOpError, hooks };
+// The right to add files at a path, asked on a transaction's client; throws the refusal.
+// Required lazily: libraries -> documentAccess is fine, but keep this file's load order simple.
+async function writeRightOrThrow(user, libraryId, folderPath, q) {
+  const r = await require('./libraries').writeRight(user, libraryId, folderPath, q);
+  if (r.status) throw new FolderOpError(null, r.status, r.error);
+  return r;
+}
+
+// createDocumentRecord's `resolve` for a COPY. A copy lands under the name it had, so there
+// is no folder to look up again -- but the right to add files there, and whether what lands
+// is library content, were proved before the first blob was copied, and a long copy can
+// outlive them: the folder it is filling can be renamed away mid-loop, taking its share
+// with it. Proved again on the placement's client, for each file, where it lands.
+const copyLanding = (user, libraryId, name) => async (q) => {
+  const right = await writeRightOrThrow(user, libraryId, require('./folderPaths').parentOf(name), q);
+  return { displayName: name, libraryScoped: right.scoped };
+};
+
+module.exports = { withFolderOp, clientQ, whatIsAt, FolderOpError, sendFolderOpError, writeRightOrThrow, copyLanding, hooks };

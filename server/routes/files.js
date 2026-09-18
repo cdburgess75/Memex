@@ -17,7 +17,7 @@ const documentAccess = require('../lib/documentAccess');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const libraries = require('../lib/libraries');
 const { isUuid } = require('../lib/groups');
-const { withFolderOp, sendFolderOpError, FolderOpError } = require('../lib/folderOps');
+const { withFolderOp, sendFolderOpError, FolderOpError, writeRightOrThrow, copyLanding } = require('../lib/folderOps');
 const { keepSharedFoldersAlive } = require('../lib/keepMarker');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
@@ -564,23 +564,6 @@ async function landingName(raw, libraryId, user, q = db) {
   return folder ? `${folder}/${base}` : base;
 }
 
-// The right to add files at a path, asked on a transaction's client; throws the refusal.
-async function writeRightOrThrow(user, libraryId, folderPath, q) {
-  const r = await libraries.writeRight(user, libraryId, folderPath, q);
-  if (r.status) throw new FolderOpError(null, r.status, r.error);
-  return r;
-}
-
-// A COPY lands under the name it had, so there is no folder to look up again -- but the
-// right to add files there, and whether what lands is library content, were proved before
-// the first blob was copied, and a long copy can outlive them: the folder it is filling
-// can be renamed away mid-loop, taking its share with it. createDocumentRecord's `resolve`
-// for a copy: proved again on the placement's client, for each file, where it lands.
-const copyLanding = (user, libraryId, name) => async (q) => {
-  const right = await writeRightOrThrow(user, libraryId, parentOf(name), q);
-  return { displayName: name, libraryScoped: right.scoped };
-};
-
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
@@ -761,7 +744,7 @@ router.post('/share/:token/upload',
           libraryScoped: right.scoped,
         };
       },
-    });
+    }).catch(async (e) => { if (e.notPlaced) await storage.del(storagePath).catch(() => {}); throw e; }); // the link stopped receiving while we stored this: no row, so no blob
     // The per-link quota was already reserved atomically above.
     await logDocumentEvent(share.document_id, 'external_upload_received', null, from,
       `${display} · ${requestAuditDetail(req)}`);
@@ -927,30 +910,46 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       // this client and the plan made from the names they have NOW: the right to add
       // files is proved again at each place they land, and a file that has meanwhile left
       // the library we locked for it stays where it is, counted as kept.
-      const sources = [...new Set(plan(accessible, rights).movable.map(d => String(d.library_id)).filter(Boolean))];
-      const { planted, moved } = await withFolderOp({ libraryIds: [...sources, libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
-        const fresh = (await q.query(
+      //
+      // Placements hold the library SHARED, so they exclude folder operations but not each
+      // other: a rename or another move can touch these rows between our read and our
+      // write. FOR UPDATE OF d closes that -- the rows are ours until we commit, so the
+      // names and libraries the plan was made from are the ones the UPDATE changes. The
+      // caller's write access is asked again here too, not only before the lock. Sources
+      // are sorted so two moves spanning the same libraries take their row locks in one order.
+      const sources = [...new Set(plan(accessible, rights).movable.map(d => String(d.library_id)).filter(Boolean))].sort();
+      const { planted, moved, keptNow } = await withFolderOp({ libraryIds: [...sources, libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+        const freshAll = await q.query(
           `SELECT d.id, d.name, d.library_scoped, d.uploaded_by, d.library_id, l.owner_id AS library_owner_id
              FROM documents d LEFT JOIN libraries l ON l.id = d.library_id
-            WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL`,
-          [accessible.map(d => d.id)]
-        )).filter(d => !d.library_id || sources.includes(String(d.library_id)));
+            WHERE d.id = ANY($6::uuid[]) AND d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}
+            FOR UPDATE OF d`,
+          [...documentAccess.userParams(req.user, 'write'), accessible.map(d => d.id)]
+        );
+        const fresh = freshAll.filter(d => !d.library_id || sources.includes(String(d.library_id)));
         const rightNow = new Map();
         for (const parent of new Set(fresh.map(d => parentOf(d.name)))) {
           rightNow.set(parent, await writeRightOrThrow(req.user, libraryId, parent, q));
         }
         const now = plan(fresh, rightNow);
-        if (now.toScoped.length) await q.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, now.toScoped]);
-        if (now.toPersonal.length) await q.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, now.toPersonal]);
+        let movedRows = 0;
+        if (now.toScoped.length) movedRows += (await q.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL RETURNING id', [libraryId, now.toScoped])).length;
+        if (now.toPersonal.length) movedRows += (await q.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL RETURNING id', [libraryId, now.toPersonal])).length;
         const out = [];
         for (const src of sources) {
           if (String(src) === String(libraryId)) continue; // it never left that library
           const names = now.movable.filter(d => String(d.library_id) === src).map(d => d.name);
           out.push(...await keepSharedFoldersAlive(q, src, names));
         }
-        return { planted: out, moved: now.movable.length };
+        // `kept` means what the app says it means: still where it was, and not ours to carry
+        // off. A file that was trashed, or carried to another library while we waited, is
+        // neither moved nor kept -- it is simply not here any more.
+        const libraryBefore = new Map(accessible.map(d => [String(d.id), String(d.library_id || '')]));
+        const planned = new Set(now.movable.map(d => String(d.id)));
+        const stayed = freshAll.filter(d => !planned.has(String(d.id)) && libraryBefore.get(String(d.id)) === String(d.library_id || ''));
+        return { planted: out, moved: movedRows, keptNow: stayed.length };
       });
-      const kept = accessible.length - moved;
+      const kept = keptNow;
       for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
       return res.json({ ok: true, mode, count: moved, skipped, kept });
     }
@@ -963,7 +962,7 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       await createDocumentRecord({
         displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied',
         libraryId, libraryScoped: rights.get(parentOf(d.name)).scoped, resolve: copyLanding(req.user, libraryId, d.name),
-      }).catch(async (e) => { await storage.del(newPath).catch(() => {}); throw e; }); // refused under the lock: the blob we just copied has no row
+      }).catch(async (e) => { if (e.notPlaced) await storage.del(newPath).catch(() => {}); throw e; }); // no row was made: drop the copy. After a commit the blob belongs to a row and stays.
     }
     res.json({ ok: true, mode, count: accessible.length, skipped });
   } catch (e) {
@@ -2151,10 +2150,14 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
           scopedNow = libraryScopeAfterMove(doc, await writeRightOrThrow(req.user, libraryId, parentOf(nameNow), q), req.user);
         } else scopedNow = !!doc.library_scoped;
       }
+      // In the library we locked and proved the right in: a library move changes the row's
+      // library without changing its name, so the name alone does not pin it. And scope
+      // only ever turns on (libraryScopeAfterMove): a concurrent move that made this
+      // library content must not be undone by the value we read before the lock.
       const rows = await q.query(
-        `UPDATE documents SET name = $2, library_scoped = $3
-          WHERE id = $1 AND name = $4 AND deleted_at IS NULL RETURNING *`,
-        [req.params.id, nameNow, scopedNow, doc.name]
+        `UPDATE documents SET name = $2, library_scoped = library_scoped OR $3
+          WHERE id = $1 AND name = $4 AND library_id IS NOT DISTINCT FROM $5 AND deleted_at IS NULL RETURNING *`,
+        [req.params.id, nameNow, scopedNow, doc.name, doc.library_id || null] // the row's own library (may be none), not the default we fell back to for the lock
       );
       if (!rows.length) throw new FolderOpError('FILE_MOVED', 409, 'That file has just moved or been renamed. Refresh and try again.');
       const left = parentOf(doc.name) !== parentOf(nameNow) ? await keepSharedFoldersAlive(q, libraryId, [doc.name]) : [];
@@ -2236,7 +2239,7 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
         if (right.status) throw new FolderOpError(null, right.status, right.error);
         return { displayName: nameNow, libraryScoped: right.scoped };
       },
-    });
+    }).catch(async (e) => { if (e.notPlaced) await storage.del(storagePath).catch(() => {}); throw e; }); // refused under the lock: the blank file we stored has no row
     res.json(doc);
   } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
 });
