@@ -1291,7 +1291,7 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
    which is the one that reads against a tile in both themes. */
 .file-card-preview .folder-shared-tag { position: absolute; left: 8px; top: 8px; margin: 0; background: var(--surface-raised); }
 .pill.ok   { color: var(--success); background: color-mix(in srgb, var(--success) 10%, var(--paper)); border-color: color-mix(in srgb, var(--success) 30%, var(--rule)); }
-.pill.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
+.pill.warn { color: color-mix(in oklab, var(--warning) 80%, var(--ink)); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
 
 /* usage / admin data tables */
 .usage-section { margin-bottom: 32px; }
@@ -1824,6 +1824,49 @@ html.file-home-mode .masthead-actions { display: flex; }
 .library-share-btn { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); line-height: 0; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
 .library-share-btn:hover { color: var(--accent); background: var(--surface-2); }
 .library-share-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Admin. Full width, five sections on tabs, built from the dashboard's own parts. */
+.admin-view { container: dash / inline-size; max-width: 1180px; padding: 8px 4px 40px; }
+html.file-home-mode #panel > .panel.admin-view { padding: 8px 4px 40px; }
+.admin-tabs { display: flex; gap: 4px; margin-block: 0 20px; border-bottom: 1px solid var(--rule); overflow-x: auto; scrollbar-width: none; }
+.admin-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink-soft); padding: 10px 14px; margin-block-end: -1px; font: 600 14px var(--ui); cursor: pointer; white-space: nowrap; transition: color .12s, border-color .12s; }
+.admin-tab:hover { color: var(--ink); }
+.admin-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+.admin-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px; }
+.admin-pane { display: flex; flex-direction: column; gap: 20px; }
+.admin-pane[hidden] { display: none; }
+.admin-pane > .usage-section { margin: 0; } .admin-pane > .usage-section > h3:first-child { display: none; } /* the tab already says it */
+.admin-two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.admin-stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-count { font-weight: 500; color: var(--ink-faint); margin-inline-start: 6px; }
+.dash-card-h .admin-find { flex: 0 1 280px; width: 280px; max-width: 55%; }
+.admin-view .dash-card-h .wdash-h { white-space: nowrap; }
+.admin-find { padding: 7px 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
+.admin-none { font-size: 13px; color: var(--ink-faint); padding: 10px 2px; }
+.admin-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-view .data-table { font-size: 13px; margin: 0; }
+.admin-view .data-table td { padding-block: 9px; }
+.admin-view .data-table tr[hidden] { display: none; }
+.admin-people th:first-child, .admin-people td:first-child { width: 38%; }
+.admin-people td:first-child { white-space: normal; overflow-wrap: anywhere; } /* a long address wraps; its "Switched off" tag is never the thing that gets cut */
+.admin-people td:first-child .pill { margin-inline-start: 8px; white-space: nowrap; }
+.admin-files th:first-child, .admin-files td:first-child { width: 36%; }
+.admin-files th:last-child, .admin-files td:last-child { width: 84px; text-align: end; text-overflow: clip; padding-inline-end: 0; }
+.admin-activity th:first-child, .admin-activity td:first-child { width: 26%; }
+.admin-del { padding: 3px 10px; font-size: 12px; color: var(--danger); border-color: transparent; }
+.admin-del:hover { border-color: var(--danger); background: transparent; color: var(--danger); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container dash (max-width: 880px) { .admin-two { grid-template-columns: minmax(0, 1fr); } }
+@container dash (max-width: 620px) {
+  .admin-stats-3 { grid-template-columns: minmax(0, 1fr); } .admin-stats-3 .dash-stat + .dash-stat { border-inline-start: 0; border-block-start: 1px solid var(--rule-soft); }
+  .admin-view .dash-card-h { flex-wrap: wrap; } .admin-view .dash-card-h .wdash-h { white-space: normal; }
+  .dash-card-h .admin-find { flex: 1 1 100%; width: 100%; max-width: none; }
+  /* The tab row scrolls sideways here; the fade says there is more to the right. */
+  .admin-tabs { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-inline-end: 28px; }
+  .admin-files th:first-child, .admin-files td:first-child { width: auto; } /* the name takes what the three facts leave */
+  .admin-files th:nth-child(5), .admin-files td:nth-child(5) { width: 96px; } .admin-files th:last-child, .admin-files td:last-child { width: 62px; }
+  .admin-files th:nth-child(2), .admin-files td:nth-child(2), .admin-files th:nth-child(3), .admin-files td:nth-child(3), .admin-files th:nth-child(4), .admin-files td:nth-child(4), .admin-people th:nth-child(3), .admin-people td:nth-child(3) { display: none; }
+}
+
 /* Dashboard. One stat strip, then a wide column (libraries, recent files) beside a narrow
    one (feeds). Breakpoints are container queries on .home-view, because the space the
    dashboard gets depends on the rail, not the window. Logical properties throughout. */
@@ -2025,7 +2068,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .call-tile-name { position: absolute; left: 8px; bottom: 6px; font: 600 11px var(--ui); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 .call-tile-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa0a6; font-size: 12px; }
 .call-controls { display: flex; gap: 10px; justify-content: center; padding: 10px; background: #15171b; }
-.call-ctrl { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #2a2d33; color: #fff; font-size: 16px; cursor: pointer; }
+.call-ctrl { width: 40px; height: 40px; border: 0; border-radius: 50%; background: #2a2d33; color: #fff; font-size: 16px; cursor: pointer; display: inline-grid; place-items: center; transition: background-color .12s, scale .12s; }
+.call-ctrl:active { scale: 0.96; }
+.call-ctrl:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .call-ctrl:hover { background: #353941; }
 .call-ctrl.off { background: #5a3a3a; }
 .call-ctrl.on { background: var(--success-fill); }
@@ -4904,6 +4949,28 @@ async function saveComplianceProfiles() {
   }
 }
 
+let adminTab = 'overview';
+const adminStat = (label, value, sub) => `<div class="dash-stat"><div class="dash-stat-txt"><span class="dash-stat-label">${label}</span><span class="dash-stat-value tnum">${value}</span><span class="dash-stat-sub">${sub}</span></div></div>`;
+const adminCard = (title, body, tools = '') => `<section class="dash-card"><div class="dash-card-h"><h2 class="wdash-h">${title}</h2>${tools}</div>${body}</section>`;
+const adminFind = (tableId, label) => `<input type="search" class="admin-find" aria-label="${label}" placeholder="${label}…" data-table="${tableId}" oninput="adminFilter(this)">`;
+// The find box hides the rows that do not contain what was typed; nothing is refetched.
+function adminFilter(input) {
+  const q = input.value.trim().toLowerCase();
+  const rows = [...document.querySelectorAll('#' + input.dataset.table + ' tbody tr')];
+  let shown = 0;
+  for (const tr of rows) { const hit = !q || tr.textContent.toLowerCase().includes(q); tr.hidden = !hit; if (hit) shown++; }
+  const none = document.getElementById(input.dataset.table.replace('-table', '-none'));
+  if (none) none.hidden = shown > 0;
+}
+function setAdminTab(id) {
+  adminTab = id;
+  document.querySelectorAll('.admin-tab').forEach(b => { const on = b.dataset.tab === id; b.classList.toggle('active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  document.querySelectorAll('.admin-pane').forEach(p => { p.hidden = p.id !== 'admin-pane-' + id; });
+}
+async function openSettingsAt(tab) { await openSettings(); switchSettingsTab(tab); }
+// In-call controls. One icon set, drawn in currentColor like every other icon in the app; the
+// emoji these replace rendered differently on every platform and carried no state.
+const CALL_IC = { mic: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>', micOff: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M9 9v2a3 3 0 0 0 4.7 2.5M15 10.5V6a3 3 0 0 0-5.7-1.3M5 11a7 7 0 0 0 11 5.7M19 11a7 7 0 0 1-.5 2.6M12 18v3"/></svg>', cam: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>', camOff: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M16 16v0a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1M10 6h4a2 2 0 0 1 2 2v2l5-3v10"/></svg>', screen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>', clip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.9-7.8"/></svg>', remote: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 7v4"/></svg>', hang: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15c5-5 13-5 18 0l-2.5 2.5-3-1.5v-2.6a9 9 0 0 0-7 0V16l-3 1.5z"/></svg>' };
 async function renderAdmin() {
   const panel = document.getElementById('panel');
   setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`, 'admin');
@@ -4926,7 +4993,7 @@ async function renderAdmin() {
     const activityRows = activity.length
       ? activity.slice(0, 20).map(e => {
           const t = new Date(e.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          return `<tr><td>${esc(t)}</td><td>${esc(e.user_email || '')}</td><td>${esc(e.event || '')}</td></tr>`;
+          return `<tr><td>${esc(t)}</td><td>${esc(e.user_email || '')}</td><td>${esc(String(e.event || '').replace(/_/g, ' '))}</td></tr>`;
         }).join('')
       : `<tr><td colspan="3" style="color:var(--ink-faint);font-style:italic">No activity yet.</td></tr>`;
 
@@ -4954,37 +5021,15 @@ async function renderAdmin() {
           </tr>`).join('')
         : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No usage data.</td></tr>`;
 
-      usageHtml = `<div class="usage-section">
-        <h3>API Usage — this month</h3>
-        <div class="stat-grid" style="margin-bottom:20px">
-          <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.input_tokens)}</div>
-            <div class="stat-label">Input tokens</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtN(usage.thisMonth?.output_tokens)}</div>
-            <div class="stat-label">Output tokens</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-num" style="font-size:26px">${fmtC(usage.thisMonth?.cost_usd)}</div>
-            <div class="stat-label">Estimated cost</div>
-          </div>
+      usageHtml = `<div class="dash-stats admin-stats-3">
+          ${adminStat('Input tokens', fmtN(usage.thisMonth?.input_tokens), 'this month')}
+          ${adminStat('Output tokens', fmtN(usage.thisMonth?.output_tokens), 'this month')}
+          ${adminStat('Estimated cost', fmtC(usage.thisMonth?.cost_usd), 'this month')}
         </div>
-        <div style="margin-bottom:20px">
-          <div class="result-label" style="margin-bottom:8px">By user</div>
-          <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>Email</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
-            <tbody>${byUserRows}</tbody>
-          </table></div>
-        </div>
-        <div>
-          <div class="result-label" style="margin-bottom:8px">By operation</div>
-          <div class="table-scroll"><table class="data-table">
-            <thead><tr><th>Operation</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
-            <tbody>${byOpRows}</tbody>
-          </table></div>
-        </div>
-      </div>`;
+        <div class="admin-two">
+          ${adminCard('By person', `<div class="table-scroll"><table class="data-table"><thead><tr><th>Email</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead><tbody>${byUserRows}</tbody></table></div>`)}
+          ${adminCard('By operation', `<div class="table-scroll"><table class="data-table"><thead><tr><th>Operation</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead><tbody>${byOpRows}</tbody></table></div>`)}
+        </div>`;
     }
 
     // Build team section
@@ -5003,7 +5048,7 @@ async function renderAdmin() {
             <td>${esc(u.email || '')}${off ? `<span class="pill warn" title="${escAttr(u.disabled_reason ? `Switched off on ${when} · ${u.disabled_reason}` : `Switched off on ${when}`)}">Switched off</span>` : ''}</td>
             <td>${esc(u.role || '')}</td>
             <td>${assigned}</td>
-            <td><select ${off ? 'disabled ' : ''}onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
+            <td><select aria-label="Role for ${escAttr(u.email || '')}" ${off ? 'disabled ' : ''}onchange="updateUserRole('${u.user_id}', this.value)">${opts}</select></td>
             <td>${(() => {
               // The address and the id travel in data-* attributes, never spliced into the
               // handler's JS string: esc() protects an attribute, not a string literal
@@ -5018,13 +5063,14 @@ async function renderAdmin() {
         }).join('')
       : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">No users found.</td></tr>`;
 
-    const teamHtml = `<div class="usage-section">
-      <h3>Team</h3>
-      <div class="table-scroll"><table class="data-table">
+    const userList = Array.isArray(users) ? users : [];
+    const offCount = userList.filter(u => u.disabled_at).length;
+    const teamHtml = adminCard(`People <span class="admin-count">${userList.length}${offCount ? ` · ${offCount} switched off` : ''}</span>`,
+      `<div class="table-scroll"><table class="data-table admin-people" id="admin-people-table">
         <thead><tr><th>Email</th><th>Role</th><th>Assigned</th><th>Change role</th><th>Account</th></tr></thead>
         <tbody>${userRows}</tbody>
-      </table></div>
-    </div>`;
+      </table></div><p class="admin-none" id="admin-people-none" hidden>Nobody matches that.</p>`,
+      adminFind('admin-people-table', 'Find a person'));
 
     // Build storage section
     const fileList = Array.isArray(files) ? files : [];
@@ -5032,7 +5078,7 @@ async function renderAdmin() {
     // the reduce adds instead of concatenating into an Infinity-coercing megastring.
     const totalBytes = fileList.reduce((s, f) => s + (Number(f.size) || 0), 0);
     const fileRows = fileList.length
-      ? fileList.map(f => {
+      ? [...fileList].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).map(f => {
           const ext = (f.name.split('.').pop() || '').toUpperCase();
           const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
           return `<tr>
@@ -5041,56 +5087,45 @@ async function renderAdmin() {
             <td>${fmtBytes(f.size || 0)}</td>
             <td title="${esc(f.uploaded_by_email || '')}">${esc(f.uploaded_by_email || '')}</td>
             <td>${t}</td>
-            <td><button class="ghost-btn" style="padding:3px 10px;font-size:11px;color:#C0392B;border-color:transparent"
+            <td><button class="ghost-btn admin-del" aria-label="Delete ${escAttr(f.name)}"
               data-fid="${f.id}" data-fname="${esc(f.name)}"
               onclick="adminDeleteFile(this.dataset.fid, this.dataset.fname)">Delete</button></td>
           </tr>`;
         }).join('')
       : `<tr><td colspan="6" style="color:var(--ink-faint);font-style:italic">No files uploaded yet.</td></tr>`;
 
-    const storageHtml = `<div class="usage-section">
-      <h3>File Storage</h3>
-      <div class="stat-grid" style="margin-bottom:20px">
-        <div class="stat-card">
-          <div class="stat-num">${fileList.length}</div>
-          <div class="stat-label">Files</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num" style="font-size:22px">${fmtBytes(totalBytes)}</div>
-          <div class="stat-label">Total size</div>
-        </div>
-      </div>
-      <div class="table-scroll"><table class="data-table">
-        <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th></th></tr></thead>
+    const storageHtml = adminCard(`Every file <span class="admin-count">${fileList.length.toLocaleString()} · ${fmtBytes(totalBytes)} · newest first</span>`,
+      `<div class="table-scroll"><table class="data-table admin-files" id="admin-files-table">
+        <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th><span class="sr-only">Actions</span></th></tr></thead>
         <tbody>${fileRows}</tbody>
-      </table></div>
-    </div>`;
+      </table></div><p class="admin-none" id="admin-files-none" hidden>No file matches that.</p>`,
+      adminFind('admin-files-table', 'Find a file or a person'));
 
-    setWorkspacePanel(`<div class="panel">
-      ${complianceHtml(compliance)}
-      ${usageHtml}
-      ${storageHtml}
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-num">${activityCount}</div>
-          <div class="stat-label">Recent events</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num">${contributors.length}</div>
-          <div class="stat-label">Contributors</div>
-        </div>
+    // One page, five sections on tabs: an admin comes here to do ONE of these things, and the
+    // old single column stacked all of them into two thousand pixels of scrolling, 680 wide.
+    const overviewHtml = `<div class="dash-stats">
+        ${adminStat('People', userList.length.toLocaleString(), offCount ? `${offCount} switched off` : 'all active')}
+        ${adminStat('Files', fileList.length.toLocaleString(), fmtBytes(totalBytes))}
+        ${adminStat('Events', activityCount.toLocaleString(), 'recent activity')}
+        ${adminStat('Contributors', contributors.length.toLocaleString(), 'have added files')}
       </div>
-      <div class="result-label" style="margin-top:24px">Top contributors</div>
-      <div class="table-scroll" style="margin-bottom:28px"><table class="admin-table">
-        <thead><tr><th>User</th><th>Actions</th></tr></thead>
-        <tbody>${contributorRows}</tbody>
-      </table></div>
-      <div class="result-label">Recent activity</div>
-      <div class="table-scroll" style="margin-bottom:32px"><table class="admin-table">
-        <thead><tr><th>Time</th><th>User</th><th>Event</th></tr></thead>
-        <tbody>${activityRows}</tbody>
-      </table></div>
-      ${teamHtml}
+      <div class="admin-two">
+        ${adminCard('Recent activity', `<div class="table-scroll"><table class="data-table admin-activity"><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>${activityRows}</tbody></table></div>`)}
+        ${adminCard('Top contributors', `<div class="table-scroll"><table class="data-table"><thead><tr><th>Person</th><th>Actions</th></tr></thead><tbody>${contributorRows}</tbody></table></div>`)}
+      </div>
+      ${adminCard('Settings that live elsewhere', `<div class="admin-links">
+        <button class="dash-act" onclick="openSettingsAt('system')">Workspace, storage &amp; sign-in</button>
+        <button class="dash-act" onclick="openSettingsAt('groups')">Groups</button>
+        <button class="dash-act" onclick="openSettingsAt('connections')">SharePoint &amp; SMB connections</button>
+        <button class="dash-act" onclick="openSettingsAt('activity')">Activity &amp; access review</button>
+        <button class="dash-act" onclick="openSettingsAt('ai')">AI providers</button>
+      </div>`)}`;
+    const TABS = [['overview', 'Overview', overviewHtml], ['people', 'People', teamHtml], ['files', 'Files', storageHtml], ['usage', 'AI usage', usageHtml || '<p class="wdash-empty">No usage recorded.</p>'], ['compliance', 'Compliance', complianceHtml(compliance)]];
+    if (!TABS.some(t => t[0] === adminTab)) adminTab = 'overview';
+    setWorkspacePanel(`<div class="panel admin-view">
+      <header class="dash-head"><h1 class="home-h1">Admin</h1><p class="home-lede">${esc(brandDefaults.name || 'This workspace')}: who is here, what they have stored, and what it costs.</p></header>
+      <nav class="admin-tabs" aria-label="Admin sections">${TABS.map(([id, label]) => `<button type="button" class="admin-tab${id === adminTab ? ' active' : ''}" data-tab="${id}" ${id === adminTab ? 'aria-current="page" ' : ''}onclick="setAdminTab(this.dataset.tab)">${label}</button>`).join('')}</nav>
+      ${TABS.map(([id, label, html]) => `<section class="admin-pane" id="admin-pane-${id}" aria-label="${label}"${id === adminTab ? '' : ' hidden'}>${html}</section>`).join('')}
     </div>`, 'admin');
   } catch (e) {
     setWorkspacePanel(`<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`, 'admin');
@@ -11449,7 +11484,7 @@ async function previewFile(fileId, opts = {}) {
   else if (ext === 'pdf') body = `<iframe src="${esc(inlineUrl)}" class="file-preview-frame" title="${esc(name)}"></iframe>`;
   else if (VIDEO_EXTS.includes(ext)) body = `<video src="${esc(inlineUrl)}" class="file-preview-media" controls playsinline preload="metadata"></video>`;
   else if (AUDIO_EXTS.includes(ext)) body = `<audio src="${esc(inlineUrl)}" class="file-preview-audio" controls preload="metadata"></audio>`;
-  else if (isText) body = `<textarea class="file-preview-edit" id="file-edit-text" spellcheck="false" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea>`;
+  else if (isText) body = `<textarea class="file-preview-edit" id="file-edit-text" aria-label="File contents" spellcheck="false" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea>`;
   else if (isSheet || isDoc) body = `<div class="file-preview-office" id="file-office-body"><div class="file-office-loading">Rendering preview…</div></div>`;
   else if (isEml) body = `<div class="file-preview-office" id="file-eml-body"><div class="file-office-loading">Reading email…</div></div>`;
   else body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(ext)}<div class="file-info-meta"><div class="file-row-title">${esc(name)}</div><div class="file-row-sub">${esc(fileKind(ext))} · ${fileSizeLabel(f?.size || 0)}${f?.created_at ? ' · added ' + fileDate(f.created_at) : ''}${f ? ' · ' + esc(fileOwner(f)) : ''}</div></div></div><p class="settings-notice" style="margin-top:10px">No inline view for this type yet — use the actions above.</p></div>`;
@@ -11863,7 +11898,7 @@ function renderMeetPanel() {
   p.innerHTML = `<div class="meet-title">People online</div><div class="meet-people">${meetPeopleHtml()}</div>
     <div class="meet-rule"></div>
     <div class="meet-title">Start a meeting</div>
-    <div class="meet-room"><input id="meet-room-input" type="text" placeholder="Room name (e.g. standup)" onkeydown="if(event.key==='Enter')joinRoomFromInput()"><button class="run-btn" onclick="joinRoomFromInput()">Join</button></div>
+    <div class="meet-room"><input id="meet-room-input" type="text" aria-label="Room name" placeholder="Room name (e.g. standup)" onkeydown="if(event.key==='Enter')joinRoomFromInput()"><button class="run-btn" onclick="joinRoomFromInput()">Join</button></div>
     ${currentUser?.role !== 'viewer' ? '<button class="ghost-btn" style="margin-top:10px;width:100%" onclick="openScheduleMeeting()">Schedule a meeting…</button>' : ''}
     ${callRoom ? '<div class="meet-incall">You\'re in a call.</div>' : ''}`;
 }
@@ -11884,7 +11919,7 @@ document.addEventListener('click', e => { const p = document.getElementById('mee
 function renderIncomingCall() {
   let el = document.getElementById('call-incoming');
   if (!incomingCall) { el?.remove(); return; }
-  if (!el) { document.body.insertAdjacentHTML('beforeend', '<div class="call-incoming" id="call-incoming"></div>'); el = document.getElementById('call-incoming'); }
+  if (!el) { document.body.insertAdjacentHTML('beforeend', '<div class="call-incoming" id="call-incoming" role="alertdialog" aria-live="assertive" aria-label="Incoming call"></div>'); el = document.getElementById('call-incoming'); }
   el.innerHTML = `<div class="call-incoming-name">${esc(incomingCall.from.name)}</div><div class="call-incoming-sub">is calling…</div><div class="call-incoming-actions"><button class="call-accept" onclick="acceptIncoming()">Accept</button><button class="call-decline" onclick="declineIncoming()">Decline</button></div>`;
 }
 function renderCallDock() {
@@ -11893,12 +11928,12 @@ function renderCallDock() {
   if (!dock) { document.body.insertAdjacentHTML('beforeend', '<div class="call-dock" id="call-dock"></div>'); dock = document.getElementById('call-dock'); }
   dock.innerHTML = `<div class="call-grid" id="call-grid"></div>
     <div class="call-controls">
-      <button class="call-ctrl${callMuted ? ' off' : ''}" onclick="toggleMute()" title="${callMuted ? 'Unmute' : 'Mute'}">${callMuted ? '🔇' : '🎙'}</button>
-      <button class="call-ctrl${callCamOff ? ' off' : ''}" onclick="toggleCam()" title="${callCamOff ? 'Camera on' : 'Camera off'}">${callCamOff ? '📷̶' : '📹'}</button>
-      <button class="call-ctrl${screenStream ? ' on' : ''}" onclick="shareScreen()" title="${screenStream ? 'Stop sharing' : 'Share screen'}">🖥</button>
-      <button class="call-ctrl" onclick="pickCallFile()" title="Send file">📎</button>
-      ${screenconnectUrl ? `<button class="call-ctrl" onclick="launchRemote()" title="Remote control (ScreenConnect)">🖱</button>` : ''}
-      <button class="call-ctrl hang" onclick="endCall()" title="Leave">✕</button>
+      <button class="call-ctrl${callMuted ? ' off' : ''}" onclick="toggleMute()" aria-label="Microphone" aria-pressed="${callMuted ? 'false' : 'true'}" title="${callMuted ? 'Unmute' : 'Mute'}">${callMuted ? CALL_IC.micOff : CALL_IC.mic}</button>
+      <button class="call-ctrl${callCamOff ? ' off' : ''}" onclick="toggleCam()" aria-label="Camera" aria-pressed="${callCamOff ? 'false' : 'true'}" title="${callCamOff ? 'Turn camera on' : 'Turn camera off'}">${callCamOff ? CALL_IC.camOff : CALL_IC.cam}</button>
+      <button class="call-ctrl${screenStream ? ' on' : ''}" onclick="shareScreen()" aria-label="Share screen" aria-pressed="${screenStream ? 'true' : 'false'}" title="${screenStream ? 'Stop sharing' : 'Share screen'}">${CALL_IC.screen}</button>
+      <button class="call-ctrl" onclick="pickCallFile()" aria-label="Send a file" title="Send a file">${CALL_IC.clip}</button>
+      ${screenconnectUrl ? `<button class="call-ctrl" onclick="launchRemote()" aria-label="Remote control (ScreenConnect)" title="Remote control (ScreenConnect)">${CALL_IC.remote}</button>` : ''}
+      <button class="call-ctrl hang" onclick="endCall()" aria-label="Leave call" title="Leave call">${CALL_IC.hang}</button>
     </div>
     <input type="file" id="call-file-input" style="display:none" onchange="if(this.files[0])sendFileToCall(this.files[0])">`;
   renderCallGrid();
