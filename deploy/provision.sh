@@ -254,6 +254,7 @@ docker compose $COMPOSE exec -T app node -e '
 # ── Stage 13: monitoring drop-in ─────────────────────────────────────────────
 info "Installing depot-check for the RMM"
 install -m 755 "$MEMEX_ROOT/scripts/depot-check.sh" /usr/local/bin/depot-check
+install -m 755 "$MEMEX_ROOT/scripts/ring-update.sh" /root/ring-update.sh
 printf '%s\n' "$MEMEX_TAG" > "$PARA_DIR/expected-tag"
 {
   printf 'CUSTOMER_SLUG=%s\n' "$CUSTOMER_SLUG"
