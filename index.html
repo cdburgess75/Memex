@@ -760,6 +760,8 @@ input[type=email],
 input[type=url],
 input[type=number],
 input[type=search],
+input[type=date],
+input[type=time],
 select {
   width: 100%;
   font-family: var(--body);
@@ -1470,8 +1472,10 @@ html.file-home-mode .masthead-actions { display: flex; }
 .ai-model-empty { padding: 10px; font-size: 13px; color: var(--ink-faint); }
 /* settings hub — fixed-size popout; only the tab body scrolls */
 .settings-modal {
-  width: min(680px, 94vw);
-  height: min(720px, 88vh);
+  /* Wide enough that a connection's name, status and four actions share a row without the
+     name wrapping to three lines; the admin tabs are where people hunt for things. */
+  width: min(880px, 94vw);
+  height: min(780px, 90vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2868,6 +2872,20 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
 .skip-link:focus-visible { transform: none; outline: 2px solid var(--focus); outline-offset: 2px; }
 html.auth-locked .skip-link { display: none; }
 #panel:focus { outline: none; } /* tabindex=-1: a jump target, never a tab stop */
+
+/* A form's own complaint reads as a message, not as console output. */
+.update-output.is-error { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); color: var(--danger-strong); border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--rule)); font: 500 13px var(--ui); }
+/* A field the form has just refused. */
+[aria-invalid="true"] { border-color: var(--danger) !important; }
+/* Breadcrumbs on a connected share: buttons, in the app's link colour (they were bare browser-blue anchors). */
+.mount-crumb { border: 0; background: transparent; padding: 0 2px; min-height: 24px; font: inherit; color: var(--accent); cursor: pointer; border-radius: 4px; }
+.mount-crumb:hover { text-decoration: underline; }
+.mount-crumb:last-of-type { color: var(--ink); font-weight: 600; }
+.mount-crumb:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.conn-remove { color: var(--danger); }
+.conn-remove:hover { border-color: var(--danger); color: var(--danger); background: transparent; }
+/* A checkbox sits beside its label, not centred in the wide value column a screen away from it. */
+#conn-body input[type=checkbox] { justify-self: start; width: auto; }
 
 /* Press feedback. Hover does not exist on touch, so a tap needs its own
    acknowledgement. Buttons only -- menu items and table rows stay still. */
@@ -4622,7 +4640,7 @@ function openScheduleMeeting() {
   openModal({ id: 'schedule-scrim', html: `<h2>Schedule a meeting</h2>
     <p class="sub">Send email invites with a calendar hook (attendees need a Depot account), or Copy invite to grab a join link you can paste into any chat for a quick meeting.</p>
     <label>Title</label><input type="text" id="mt-title" placeholder="e.g. Weekly standup" autocomplete="off">
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:120px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:100px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:170px"><label>Date</label><input type="date" id="mt-date" value="${dval}"></div><div style="flex:1;min-width:140px"><label>Time</label><input type="time" id="mt-time" value="${tval}"></div><div style="width:110px"><label>Minutes</label><input type="number" id="mt-dur" value="30" min="5" max="480" step="5"></div></div>
     <label>Attendees (emails, comma or space separated)</label><input type="text" id="mt-attendees" placeholder="alex@company.com, sam@company.com" autocomplete="off">
     <label>Note (optional)</label><textarea id="mt-note" rows="2" placeholder="Agenda or context"></textarea>
     <div id="mt-result" class="update-output" style="display:none"></div>
@@ -4640,9 +4658,20 @@ async function submitScheduleMeeting(btn) {
   const note = (document.getElementById('mt-note')?.value || '').trim();
   const attendees = attRaw.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
   const out = document.getElementById('mt-result');
-  if (!title) { toast('Add a title'); return; }
-  if (!date || !time) { toast('Pick a date and time'); return; }
-  if (!attendees.length) { toast('Add at least one attendee'); return; }
+  // Say what is missing where the form is, mark the field, and put the cursor in it. A toast
+  // that fades in two seconds was the only sign anything was wrong.
+  const invalid = (id, msg) => {
+    document.querySelectorAll('#schedule-scrim [aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
+    const el = document.getElementById(id);
+    if (el) { el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', 'mt-result'); el.focus(); }
+    if (out) { out.style.display = ''; out.setAttribute('role', 'alert'); out.classList.add('is-error'); out.textContent = msg; }
+  };
+  if (!title) return invalid('mt-title', 'Give the meeting a title.');
+  if (!date) return invalid('mt-date', 'Pick a date.');
+  if (!time) return invalid('mt-time', 'Pick a time.');
+  if (!attendees.length) return invalid('mt-attendees', 'Add at least one email address, or use Copy invite to share a link instead.');
+  document.querySelectorAll('#schedule-scrim [aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
+  if (out) { out.removeAttribute('role'); out.classList.remove('is-error'); }
   const startIso = new Date(`${date}T${time}`).toISOString();
   btn.disabled = true; if (out) { out.style.display = ''; out.textContent = 'Sending invites…'; }
   try {
@@ -5985,10 +6014,10 @@ function renderConnections() {
         <div class="conn-meta">${esc(c.label || c.kind)}${c.lastError ? ' — ' + esc(c.lastError) : ''}</div>
       </div>
       <div class="conn-actions">
-        ${c.enabled ? `<button class="ghost-btn" data-cid="${escAttr(c.id)}" onclick="connBrowse(this.dataset.cid, '')">Browse</button>` : ''}
-        <button class="ghost-btn" onclick="connTest('${escAttr(c.id)}')">Test</button>
-        <button class="ghost-btn" onclick="connEdit('${escAttr(c.id)}')">Edit</button>
-        <button class="ghost-btn" onclick="connDelete('${escAttr(c.id)}')">Remove</button>
+        ${c.enabled ? `<button class="ghost-btn" aria-label="Browse ${escAttr(c.name)}" data-cid="${escAttr(c.id)}" onclick="connBrowse(this.dataset.cid, '')">Browse</button>` : ''}
+        <button class="ghost-btn" aria-label="Test ${escAttr(c.name)}" onclick="connTest('${escAttr(c.id)}')">Test</button>
+        <button class="ghost-btn" aria-label="Edit ${escAttr(c.name)}" onclick="connEdit('${escAttr(c.id)}')">Edit</button>
+        <button class="ghost-btn conn-remove" aria-label="Remove ${escAttr(c.name)}" onclick="connDelete('${escAttr(c.id)}')">Remove</button>
       </div>
     </div>`).join('')
     : `<p class="settings-notice">No connections yet.</p>`;
@@ -8453,6 +8482,15 @@ function bindLabels(root) {
     label.htmlFor = el.id;
   }
 }
+// Several forms are drawn into a dialog that is already open (the connection form, the
+// wizard's email fields), so no single call site sees them. Watch for new nodes and bind
+// whatever arrives; one pass per frame however many mutations there were.
+let _bindLabelsQueued = false;
+new MutationObserver(() => {
+  if (_bindLabelsQueued) return;
+  _bindLabelsQueued = true;
+  requestAnimationFrame(() => { _bindLabelsQueued = false; bindLabels(document.body); });
+}).observe(document.documentElement, { childList: true, subtree: true });
 function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '', modalStyle = '' } = {}) {
   closeModal(id);
   const prev = document.activeElement;
@@ -8709,11 +8747,11 @@ async function lockSmbMount(id) {
 function mountCrumbsHtml() {
   const m = mountView;
   const segs = (m.path || '').split('/').filter(Boolean);
-  const parts = [`<a href="#" data-mid="${escAttr(m.id)}" onclick="openMount(this.dataset.mid, ''); return false">${esc(m.name)}</a>`];
+  const parts = [`<button type="button" class="mount-crumb" data-mid="${escAttr(m.id)}" onclick="openMount(this.dataset.mid, '')">${esc(m.name)}</button>`];
   let acc = '';
   for (const s of segs) {
     acc = acc ? acc + '/' + s : s;
-    parts.push(`<a href="#" data-mid="${escAttr(m.id)}" data-path="${escAttr(acc)}" onclick="openMount(this.dataset.mid, this.dataset.path); return false">${esc(s)}</a>`);
+    parts.push(`<button type="button" class="mount-crumb" data-mid="${escAttr(m.id)}" data-path="${escAttr(acc)}" onclick="openMount(this.dataset.mid, this.dataset.path)">${esc(s)}</button>`);
   }
   return parts.join(' / ');
 }
@@ -8736,10 +8774,10 @@ function renderMountView() {
     if (e.type !== 'dir') a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountDownload(this.dataset.path, this.dataset.name)">Download</button>`);
     if (canShare) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" onclick="mountShare(this, this.dataset.path)" title="Create a SharePoint sharing link">Share</button>`);
     if (canMove) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountRename(this.dataset.path, this.dataset.name)">Rename</button>`);
-    if (e.type !== 'dir' && canDelete) a.push(`<button class="file-action-btn" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountDeleteFile(this.dataset.path, this.dataset.name)">Delete</button>`);
+    if (e.type !== 'dir' && canDelete) a.push(`<button class="file-action-btn danger" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="mountDeleteFile(this.dataset.path, this.dataset.name)">Delete</button>`);
     return a.join('');
   };
-  const row = (e, i) => `<tr onclick="mountOpen(${i})"><td><div class="file-library-name">${rowIcon(e)}<div><div class="file-row-title" title="${escAttr(e.name)}">${esc(e.name)}</div><div class="file-row-sub">${e.type === 'dir' ? 'Folder' : fileSizeLabel(e.size || 0)}</div></div></div></td><td>${e.modified ? esc(new Date(e.modified).toLocaleDateString()) : ''}</td><td><div class="file-row-actions" style="justify-content:flex-end" onclick="event.stopPropagation()">${rowActions(e)}</div></td></tr>`;
+  const row = (e, i) => `<tr onclick="mountOpen(${i})"><td><div class="file-library-name">${rowIcon(e)}<div><div class="file-row-title file-name-link" role="button" tabindex="0" title="${escAttr(e.name)}" aria-label="${e.type === 'dir' ? 'Open folder ' : 'Open '}${escAttr(e.name)}" onclick="event.stopPropagation();mountOpen(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(e.name)}</div><div class="file-row-sub">${e.type === 'dir' ? 'Folder' : fileSizeLabel(e.size || 0)}</div></div></div></td><td>${e.modified ? esc(new Date(e.modified).toLocaleDateString()) : ''}</td><td><div class="file-row-actions" style="justify-content:flex-end" onclick="event.stopPropagation()">${rowActions(e)}</div></td></tr>`;
   const toolbar = (canWrite || canMkdir)
     ? `<div class="file-library-commandbar"><div class="file-library-command-left">${canWrite ? `<button class="file-library-tool" onclick="mountUploadPick()">↑ Upload</button>` : ''}${canMkdir ? `<button class="file-library-tool" onclick="mountNewFolder()">+ New folder</button>` : ''}</div></div>`
     : '';
@@ -8747,6 +8785,7 @@ function renderMountView() {
     ? `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th class="file-col-name">Name</th><th class="file-col-modified">Modified</th><th class="file-col-actions-wide"></th></tr></thead><tbody>${m.ordered.map(row).join('')}</tbody></table></div>`
     : '<p class="settings-notice">This folder is empty.</p>';
   const main = `<div class="file-library" id="mount-view">
+    <h1 class="sr-only">${esc(m.name)}${m.path ? ' / ' + esc(m.path) : ''}</h1>
     <div class="file-library-breadcrumb-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div class="file-library-breadcrumb">${mountCrumbsHtml()}</div>
       ${m.delegated ? `<button class="ghost-btn" style="font-size:12px;flex:0 0 auto" data-mid="${escAttr(m.id)}" onclick="lockSmbMount(this.dataset.mid)" title="Forget your sign-in for this share on this device">Lock</button>` : ''}
