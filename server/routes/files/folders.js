@@ -975,7 +975,14 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
       const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
       const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
       await storage.copy(d.storage_path, newPath, d.mime_type);
-      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId, libraryScoped: dest.scoped });
+      await createDocumentRecord({
+        displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied',
+        libraryId, libraryScoped: dest.scoped,
+        // Proved again on the placement's client, for each file: a long copy can outlive
+        // the right it started with -- the folder it is filling in the target can be
+        // renamed away mid-loop, taking its share (and what these files ARE) with it.
+        resolve: async (q) => ({ displayName: d.name, libraryScoped: (await writeRightOrThrow(req.user, libraryId, folderPaths.parentOf(d.name), q)).scoped }),
+      }).catch(async (e) => { await storage.del(newPath).catch(() => {}); throw e; }); // refused under the lock: the blob we just copied has no row
     }
     await logEvent(`folder copy · ${folderPath} → library ${libraryId} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_copied', req.user.id, req.user.email, `${folderPath} → library ${libraryId} (${docs.length})`);

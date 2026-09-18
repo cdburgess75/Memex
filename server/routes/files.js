@@ -564,6 +564,23 @@ async function landingName(raw, libraryId, user, q = db) {
   return folder ? `${folder}/${base}` : base;
 }
 
+// The right to add files at a path, asked on a transaction's client; throws the refusal.
+async function writeRightOrThrow(user, libraryId, folderPath, q) {
+  const r = await libraries.writeRight(user, libraryId, folderPath, q);
+  if (r.status) throw new FolderOpError(null, r.status, r.error);
+  return r;
+}
+
+// A COPY lands under the name it had, so there is no folder to look up again -- but the
+// right to add files there, and whether what lands is library content, were proved before
+// the first blob was copied, and a long copy can outlive them: the folder it is filling
+// can be renamed away mid-loop, taking its share with it. createDocumentRecord's `resolve`
+// for a copy: proved again on the placement's client, for each file, where it lands.
+const copyLanding = (user, libraryId, name) => async (q) => {
+  const right = await writeRightOrThrow(user, libraryId, parentOf(name), q);
+  return { displayName: name, libraryScoped: right.scoped };
+};
+
 // GET /api/files/share/:token — public, revocable, expiring share-link download.
 // Look up an exchange link without disclosing anything until the password (if
 // any) is satisfied. Public — no auth by design.
@@ -895,28 +912,47 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       // Such files stay where they are, counted as kept.
       const managesSource = (d) => req.user.role === 'admin'
         || (req.user.role === 'contributor' && !!d.library_owner_id && String(d.library_owner_id) === String(req.user.id));
-      const movable = accessible.filter(d => !d.library_scoped || String(d.library_id) === String(libraryId)
-        || (managesSource(d) && rights.get(parentOf(d.name)).right !== 'legacy'));
-      const kept = accessible.length - movable.length;
-      const toScoped = movable.filter(d => libraryScopeAfterMove(d, rights.get(parentOf(d.name)), req.user)).map(d => d.id);
-      const toPersonal = movable.filter(d => !toScoped.includes(d.id)).map(d => d.id);
+      const plan = (docs, rightAt) => {
+        const movable = docs.filter(d => !d.library_scoped || String(d.library_id) === String(libraryId)
+          || (managesSource(d) && rightAt.get(parentOf(d.name)).right !== 'legacy'));
+        const toScoped = movable.filter(d => libraryScopeAfterMove(d, rightAt.get(parentOf(d.name)), req.user)).map(d => d.id);
+        return { movable, toScoped, toPersonal: movable.filter(d => !toScoped.includes(d.id)).map(d => d.id) };
+      };
       // One transaction, holding every library involved (the selection can span several
       // sources) so nothing moves under a folder operation; and each source library's
       // shared folders are kept alive when this empties one.
-      const sources = [...new Set(movable.map(d => String(d.library_id)).filter(Boolean))];
-      const planted = await withFolderOp({ libraryIds: [...sources, libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
-        if (toScoped.length) await q.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, toScoped]);
-        if (toPersonal.length) await q.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, toPersonal]);
+      //
+      // What was read above only chooses WHICH libraries to lock. A folder operation can
+      // have renamed these files' folders while we waited, so the rows are read again on
+      // this client and the plan made from the names they have NOW: the right to add
+      // files is proved again at each place they land, and a file that has meanwhile left
+      // the library we locked for it stays where it is, counted as kept.
+      const sources = [...new Set(plan(accessible, rights).movable.map(d => String(d.library_id)).filter(Boolean))];
+      const { planted, moved } = await withFolderOp({ libraryIds: [...sources, libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+        const fresh = (await q.query(
+          `SELECT d.id, d.name, d.library_scoped, d.uploaded_by, d.library_id, l.owner_id AS library_owner_id
+             FROM documents d LEFT JOIN libraries l ON l.id = d.library_id
+            WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL`,
+          [accessible.map(d => d.id)]
+        )).filter(d => !d.library_id || sources.includes(String(d.library_id)));
+        const rightNow = new Map();
+        for (const parent of new Set(fresh.map(d => parentOf(d.name)))) {
+          rightNow.set(parent, await writeRightOrThrow(req.user, libraryId, parent, q));
+        }
+        const now = plan(fresh, rightNow);
+        if (now.toScoped.length) await q.query('UPDATE documents SET library_id = $1, library_scoped = true WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, now.toScoped]);
+        if (now.toPersonal.length) await q.query('UPDATE documents SET library_id = $1 WHERE id = ANY($2::uuid[]) AND deleted_at IS NULL', [libraryId, now.toPersonal]);
         const out = [];
         for (const src of sources) {
           if (String(src) === String(libraryId)) continue; // it never left that library
-          const names = movable.filter(d => String(d.library_id) === src).map(d => d.name);
+          const names = now.movable.filter(d => String(d.library_id) === src).map(d => d.name);
           out.push(...await keepSharedFoldersAlive(q, src, names));
         }
-        return out;
+        return { planted: out, moved: now.movable.length };
       });
+      const kept = accessible.length - moved;
       for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
-      return res.json({ ok: true, mode, count: movable.length, skipped, kept });
+      return res.json({ ok: true, mode, count: moved, skipped, kept });
     }
 
     // copy: duplicate the stored object + create a new document record per file
@@ -924,7 +960,10 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
       const sanitized = path.basename(d.name).replace(/[^a-zA-Z0-9._-]/g, '_');
       const newPath = `documents/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitized}`;
       await storage.copy(d.storage_path, newPath, d.mime_type);
-      await createDocumentRecord({ displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied', libraryId, libraryScoped: rights.get(parentOf(d.name)).scoped });
+      await createDocumentRecord({
+        displayName: d.name, storagePath: newPath, mimetype: d.mime_type, storedSize: Number(d.size) || 0, user: req.user, sourceDetail: 'copied',
+        libraryId, libraryScoped: rights.get(parentOf(d.name)).scoped, resolve: copyLanding(req.user, libraryId, d.name),
+      }).catch(async (e) => { await storage.del(newPath).catch(() => {}); throw e; }); // refused under the lock: the blob we just copied has no row
     }
     res.json({ ok: true, mode, count: accessible.length, skipped });
   } catch (e) {
@@ -2095,18 +2134,34 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     // Conditional on the name it had when we read it: a folder rename in between would
     // otherwise make this think the parent was unchanged and skip the destination check.
     // Under the library's lock, and keeping any shared folder this empties.
-    const { updated, planted } = await withFolderOp({ libraryIds: [libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+    //
+    // A move names a DESTINATION, and the one resolved above is only a guess: that folder
+    // can have been renamed while we waited for the lock, and the file would then be
+    // moved to a name the folder has just vacated, on a right proved for a folder that is
+    // no longer there. So where it lands is resolved again on this client, and the right
+    // proved again there.
+    const { updated, planted, landed } = await withFolderOp({ libraryIds: [libraryId], kind: 'placement', mode: 'shared' }, async (q) => {
+      let nameNow = name;
+      let scopedNow = scoped;
+      if (parentOf(name) !== parentOf(doc.name)) {
+        const folderNow = cut >= 0 ? await destinationFolder(raw.slice(0, cut), libraryId, req.user, q) : '';
+        if (folderNow === null) throw new FolderOpError(null, 400, 'invalid folder');
+        nameNow = folderNow ? `${folderNow}/${base}` : base;
+        if (parentOf(nameNow) !== parentOf(doc.name)) {
+          scopedNow = libraryScopeAfterMove(doc, await writeRightOrThrow(req.user, libraryId, parentOf(nameNow), q), req.user);
+        } else scopedNow = !!doc.library_scoped;
+      }
       const rows = await q.query(
         `UPDATE documents SET name = $2, library_scoped = $3
           WHERE id = $1 AND name = $4 AND deleted_at IS NULL RETURNING *`,
-        [req.params.id, name, scoped, doc.name]
+        [req.params.id, nameNow, scopedNow, doc.name]
       );
       if (!rows.length) throw new FolderOpError('FILE_MOVED', 409, 'That file has just moved or been renamed. Refresh and try again.');
-      const left = parentOf(doc.name) !== parentOf(name) ? await keepSharedFoldersAlive(q, libraryId, [doc.name]) : [];
-      return { updated: rows[0], planted: left };
+      const left = parentOf(doc.name) !== parentOf(nameNow) ? await keepSharedFoldersAlive(q, libraryId, [doc.name]) : [];
+      return { updated: rows[0], planted: left, landed: nameNow };
     });
     for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
-    await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${name}`);
+    await logDocumentEvent(doc.id, 'renamed', req.user.id, req.user.email, `${doc.name} → ${landed}`);
     res.json({ success: true, name: updated.name });
   } catch (e) {
     if (sendFolderOpError(res, e)) return;

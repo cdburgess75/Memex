@@ -5,7 +5,7 @@ const request = require('supertest');
 const express = require('express');
 
 const mockQueries = [];
-const mockRows = { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0, grants: [], library: null };
+const mockRows = { doc: null, version: null, session: null, transfer: [], transferNow: null, share: null, keptCount: 0, grants: [], library: null };
 jest.mock('../../lib/db', () => {
   const api = {
   query: jest.fn(async (sql, params) => {
@@ -13,6 +13,8 @@ jest.mock('../../lib/db', () => {
     // the per-file rename/move is a conditional UPDATE now, and runs on the client
     if (/^\s*UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return [{ id: 'd1', name: params[1] }];
     if (/WHERE d\.id = ANY\(\$6::uuid\[\]\)/.test(sql)) return mockRows.transfer;
+    // the same rows as they are NOW, read again under the libraries' locks (library-transfer move)
+    if (/l\.owner_id AS library_owner_id[\s\S]*WHERE d\.id = ANY\(\$1::uuid\[\]\)/.test(sql)) return mockRows.transferNow || mockRows.transfer;
     if (/SELECT DISTINCT d\.library_id/.test(sql)) return [{ library_id: 'aaaaaaaa-0000-4000-8000-000000000001' }];
     if (/FROM library_grants g\b[\s\S]*FOR UPDATE/.test(sql)) return mockRows.grants;
     return [];
@@ -107,7 +109,7 @@ const REFUSED = { status: 403, error: "You can't add files here. Ask the library
 beforeEach(() => {
   mockQueries.length = 0;
   mockRight.value = { right: 'owner', scoped: true };
-  Object.assign(mockRows, { doc: null, version: null, session: null, transfer: [], share: null, keptCount: 0, grants: [], library: null });
+  Object.assign(mockRows, { doc: null, version: null, session: null, transfer: [], transferNow: null, share: null, keptCount: 0, grants: [], library: null });
   mockAuth.user = USER;
   jest.clearAllMocks();
 });
@@ -230,6 +232,59 @@ describe('renames, restores and transfers', () => {
     const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'move' });
     expect(res.body).toMatchObject({ count, kept });
     expect(mockQueries.some(q => /UPDATE documents SET library_id/.test(q.sql))).toBe(count > 0);
+  });
+});
+
+describe('a copy or a move lands where things are NOW, not where they were before the lock', () => {
+  const doc = (over) => ({ id: 'd1', name: 'Clients/a.txt', library_id: LIB, library_scoped: false, uploaded_by: USER.id, storage_path: 'p', mime_type: 'text/plain', size: 1, ...over });
+  // the rights asked on the transaction's client are the ones given a fourth argument
+  const underLock = () => libraries.writeRight.mock.calls.filter(c => c[3]).map(c => c[2]);
+  test('a library copy proves the right again for each file, and takes its scope from that', async () => {
+    mockRows.transfer = [doc()];
+    let n = 0; // before the lock: personal; on the client: the folder is library content now
+    mockRight.value = () => (++n === 1 ? { right: 'legacy', scoped: false } : { right: 'grant', scoped: true });
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'copy' });
+    expect(res.status).toBe(200);
+    expect(underLock()).toEqual(['Clients']);
+    expect(insertedValue('library_scoped')).toBe(true);
+  });
+  test('a library copy refused under the lock stops, and drops the blob it had copied', async () => {
+    mockRows.transfer = [doc()];
+    let n = 0;
+    mockRight.value = () => (++n === 1 ? { right: 'owner', scoped: true } : REFUSED);
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'copy' });
+    expect(res.status).toBe(403);
+    expect(inserted()).toBeUndefined();
+    expect(storage.del).toHaveBeenCalledWith(storage.copy.mock.calls[0][1]);
+  });
+  test('a library move is planned from the names the rows have under the lock', async () => {
+    mockRows.transfer = [doc({ name: 'Old/a.txt' })];
+    mockRows.transferNow = [doc({ name: 'Renamed/a.txt' })]; // its folder was renamed while we waited
+    await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'move' });
+    expect(underLock()).toEqual(['Renamed']);
+  });
+  test('a library move refused where the file is NOW moves nothing', async () => {
+    mockRows.transfer = [doc({ name: 'Old/a.txt' })];
+    mockRows.transferNow = [doc({ name: 'Renamed/a.txt' })];
+    mockRight.value = (path) => (path === 'Renamed' ? REFUSED : { right: 'owner', scoped: true });
+    const res = await request(app()).post('/api/files/library-transfer').send({ ids: ['d1'], libraryId: LIB, mode: 'move' });
+    expect(res.status).toBe(403);
+    expect(mockQueries.some(q => /UPDATE documents SET library_id/.test(q.sql))).toBe(false);
+  });
+  test('a file moved into a folder has that folder resolved, and the right proved, again under the lock', async () => {
+    mockRows.doc = doc();
+    let n = 0;
+    mockRight.value = () => (++n === 1 ? { right: 'owner', scoped: true } : REFUSED);
+    const res = await request(app()).put('/api/files/d1/rename').send({ name: 'Shared/a.txt' });
+    expect(res.status).toBe(403);
+    expect(underLock()).toEqual(['Shared']);
+    expect(mockQueries.some(q => /UPDATE documents SET name = \$2, library_scoped/.test(q.sql))).toBe(false);
+  });
+  test('a rename that keeps the folder still asks for no destination', async () => {
+    mockRows.doc = doc();
+    const res = await request(app()).put('/api/files/d1/rename').send({ name: 'Clients/b.txt' });
+    expect(res.body.name).toBe('Clients/b.txt');
+    expect(libraries.writeRight).not.toHaveBeenCalled();
   });
 });
 
