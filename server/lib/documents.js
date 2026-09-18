@@ -176,6 +176,10 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
    * the caller resolved before the lock is only a guess: the folder it named can have
    * been renamed while we waited. It may throw a FolderOpError to refuse.
    */
+  // A caller that stored a blob before calling us must know whether to drop it when we
+  // throw. Only a failure INSIDE the placement means there is no row: everything after the
+  // commit (the audit chain, the event log) can also throw, and by then the row is real and
+  // its blob must stay. So a throw from the placement is marked, and nothing else is.
   const placed = await folderOps().withFolderOp({ libraryIds: [lib], kind: 'placement', mode: 'shared' }, async (q) => {
     const at = resolve ? await resolve(q, { libraryId: lib }) : null;
     const name = at ? at.displayName : displayName;
@@ -211,7 +215,7 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
     );
     await documentAccess.grantOwnerAdmin(doc.id, user, q);
     return { doc, name, deduped: false };
-  });
+  }).catch((e) => { try { e.notPlaced = true; } catch { /* frozen error: leave it */ } throw e; });
 
   // After the commit. The audit chain takes a lock of its own, and the redundant blob is
   // only safe to drop once the row that supersedes it is actually committed.
