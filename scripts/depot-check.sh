@@ -60,7 +60,9 @@ bk() { printf '%s\n' "$BK_RAW" | sed -n "s/^$1|//p" | head -1; }
 BK_ENABLED="$(bk backup_enabled)"
 BK_INTERVAL="$(bk backup_interval_hours)"; BK_INTERVAL="${BK_INTERVAL:-24}"
 BK_LAST="$(bk backup_last_run)"
-BK_STATUS_OK="$(bk backup_last_status | jq -r '.ok // empty' 2>/dev/null || true)"
+# NOT `.ok // empty`: jq's // treats false as absent, so a FAILED run came back blank and,
+# with a fresh timestamp, was reported as backup=ok.
+BK_STATUS_OK="$(bk backup_last_status | jq -r 'if .ok == false then "false" elif .ok == true then "true" else empty end' 2>/dev/null || true)"
 if [ -z "$BK_RAW" ]; then
   flag 1 backup_unreadable "backup=unknown"
 elif [ "$BK_ENABLED" != "true" ]; then
