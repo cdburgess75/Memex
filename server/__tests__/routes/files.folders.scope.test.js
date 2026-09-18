@@ -37,7 +37,7 @@ jest.mock('../../lib/db', () => {
       bindCheck(sql, params);
       // Satisfy folderLibraryId()'s lookup; everything else can come back empty.
     // the per-file rename/move is a conditional UPDATE now, and runs on the client
-    if (/^\s*UPDATE documents SET name = \$2, library_scoped = \$3/.test(sql)) return [{ id: params[0], name: params[1] }];
+    if (/^\s*UPDATE documents SET name = \$2, library_scoped = library_scoped OR \$3/.test(sql)) return [{ id: params[0], name: params[1] }];
     return /SELECT DISTINCT d\.library_id/.test(sql) ? [{ library_id: 'lib-1' }] : [];
   });
   const queryOne = jest.fn(async (sql, params = []) => {
