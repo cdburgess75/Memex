@@ -11,21 +11,23 @@ const { Readable } = require('stream');
 
 const mockHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 const mockQueries = [];
-const mockState = { link: null, docs: [], creator: null, known: [], claimed: new Set(), right: null };
+const mockState = { link: null, docs: [], creator: null, known: [], claimed: new Set(), right: null, manages: false, listed: [], revoked: null };
 jest.mock('../../lib/db', () => ({
   query: jest.fn(async (sql, params) => {
     mockQueries.push({ sql, params });
     if (/^UPDATE folder_share_links SET opened_at = NOW\(\)/.test(sql)) { if (mockState.claimed.has(params[0])) return []; mockState.claimed.add(params[0]); return [{ id: params[0] }]; }
     // (anchored: the access predicate inside the document queries mentions user_roles too)
-    if (/^SELECT lower\(email\) AS email FROM user_roles/.test(sql)) return mockState.known.map(email => ({ email }));
+    if (/^SELECT lower\(verified_email\) AS email FROM user_roles/.test(sql)) return mockState.known.map(email => ({ email }));
     // a LIVE link reads the folder as it is: by library and path, as the maker may publish it
     if (/FROM documents d\s+WHERE d\.library_id = \$6/.test(sql)) return mockState.docs.filter(d => d.name.startsWith(params[6] + '/'));
+    if (/^SELECT l\.id, l\.folder_path[\s\S]*FROM folder_share_links l/.test(sql)) return mockState.listed;
     if (/FROM documents d/.test(sql)) return mockState.docs.map(d => ({ id: d.id }));
     return [];
   }),
   queryOne: jest.fn(async (sql, params) => {
     mockQueries.push({ sql, params });
     if (/FROM folder_share_links WHERE token_hash/.test(sql)) return mockState.link && params[0] === mockState.link.token_hash ? { ...mockState.link } : null;
+    if (/^UPDATE folder_share_links f\s+SET revoked_at = NOW\(\)/.test(sql)) return mockState.revoked;
     if (/SELECT 1 FROM documents d/.test(sql)) return { '?column?': 1 };
     return null;
   }),
@@ -45,7 +47,7 @@ jest.mock('../../lib/linkAccess', () => ({
 }));
 const mockActor = { value: undefined };
 jest.mock('../../lib/documentAccess', () => ({ ...jest.requireActual('../../lib/documentAccess'), resolveActor: jest.fn(async (id) => (mockActor.value === undefined ? { id, email: 'sharer@corp.com', emailVerified: true, role: 'contributor' } : mockActor.value)) }));
-jest.mock('../../lib/libraries', () => ({ writeRight: jest.fn(async () => mockState.right || { right: 'grant', scoped: true }), defaultLibraryFor: jest.fn(async () => 'lib-1') }));
+jest.mock('../../lib/libraries', () => ({ writeRight: jest.fn(async () => mockState.right || { right: 'grant', scoped: true }), defaultLibraryFor: jest.fn(async () => 'lib-1'), managesLibrary: jest.fn(async () => mockState.manages) }));
 const mockUser = { value: null };
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockUser.value; next(); });
 
@@ -68,7 +70,7 @@ const opened = () => notifications.create.mock.calls.map(c => c[0]).filter(n => 
 
 beforeEach(() => {
   mockQueries.length = 0; mockState.claimed.clear(); mockSettings.folder_zip_max_mb = null;
-  Object.assign(mockState, { link: link(), creator: SHARER, known: [], right: null,
+  Object.assign(mockState, { link: link(), creator: SHARER, known: [], right: null, manages: false, listed: [], revoked: null,
     docs: [doc(1, 'Clients/Acme/scope.pdf'), doc(2, 'Clients/Acme/Invoices/inv-1.pdf', 20), doc(3, 'Clients/Acme/Invoices/2026/inv-2.pdf', 30), doc(4, 'Clients/Acme/added-later.pdf', 40), doc(9, 'Clients/AcmeSecret/payroll.xlsx', 99)] });
   mockUser.value = SHARER; mockActor.value = undefined; jest.clearAllMocks();
 });
@@ -251,6 +253,82 @@ describe('the ZIP', () => {
   });
 });
 
+describe('a ZIP that goes wrong takes nothing down with it', () => {
+  const storage = require('../../lib/storage');
+  const { Readable } = require('stream');
+  // Plain http: a download cut off half way is the honest outcome here, and supertest treats it as a bug.
+  const cutOff = (path) => new Promise((resolve) => {
+    const srv = app().listen(0, '127.0.0.1', () => {
+      const done = () => srv.close(() => resolve());
+      require('http').get({ host: '127.0.0.1', port: srv.address().port, path }, (res) => { res.on('data', () => {}); res.on('end', done); res.on('error', done); res.on('aborted', done); }).on('error', done);
+    });
+  });
+  let quiet; beforeEach(() => { quiet = jest.spyOn(console, 'error').mockImplementation(() => {}); }); afterEach(() => quiet.mockRestore());
+  test('a blob that is missing ends the download; the server answers the next request, and the slot is back', async () => {
+    storage.downloadStream.mockImplementationOnce(async () => { throw new Error('NoSuchKey'); });
+    await cutOff(`${API}/zip`);
+    expect(zipLarge._building()).toBe(0);
+    expect((await request(app()).get(`${API}/zip?check=1`)).body).toEqual({ ok: true });
+  });
+  test('a read that dies half way does the same', async () => {
+    storage.downloadStream.mockImplementationOnce(async () => ({ stream: new Readable({ read() { this.destroy(new Error('EIO')); } }), length: 3 }));
+    await cutOff(`${API}/zip`);
+    expect(zipLarge._building()).toBe(0);
+    expect((await request(app()).get(`${API}/info`)).status).toBe(200);
+  });
+  test("a visitor's ZIP is public, and keyed to the link and the address it came from", async () => {
+    const spy = jest.spyOn(zipLarge, 'takeSlot');
+    try {
+      await request(app()).get(`${API}/zip`);
+      expect(spy).toHaveBeenCalledWith({ isPublic: true, keys: [`link:${LINK}`, expect.stringMatching(/^ip:/)] });
+    } finally { spy.mockRestore(); }
+  });
+  test('one link builds one ZIP at a time; its files still download', async () => {
+    const free = zipLarge.takeSlot({ isPublic: true, keys: [`link:${LINK}`] });
+    try {
+      const res = await request(app()).get(`${API}/zip`);
+      expect(res.status).toBe(503); expect(res.body.error).toMatch(/already downloading/);
+      expect((await request(app()).get(`${API}/file/${ID(1)}`)).status).toBe(200);
+    } finally { free(); }
+  });
+});
+
+describe('who can see a link, and end it', () => {
+  const row = (over = {}) => ({ id: LINK, folder_path: 'Clients/Acme', document_ids: [], expires_at: null, revoked_at: null, created_at: null, created_by_email: 'amy@corp.com',
+    last_accessed_at: null, access_count: 0, password_hash: null, recipient_email: 'ap@supplier.com', live: true, require_signin: false, opened_at: '2026-09-18T10:00:00Z', ...over });
+  const listQ = () => mockQueries.find(x => /^SELECT l\.id, l\.folder_path/.test(x.sql));
+  test('the list says who each link went to, that it is live, and when it was first opened', async () => {
+    mockState.listed = [row()];
+    const res = await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
+    expect(res.body.shares[0]).toMatchObject({ recipient_email: 'ap@supplier.com', live: true, require_signin: false, opened_at: '2026-09-18T10:00:00Z', created_by_email: 'amy@corp.com' });
+    expect(JSON.stringify(res.body)).not.toMatch(/token|password_hash/);
+  });
+  test('a member sees their own links; whoever manages the library sees every link sent from it', async () => {
+    await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
+    expect(listQ().sql).toMatch(/l\.created_by = \$2 OR \(\$5::boolean AND l\.library_id = \$3::uuid\)/);
+    expect(listQ().params[4]).toBe(false);
+    mockQueries.length = 0; mockState.manages = true;
+    await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
+    expect(listQ().params.slice(1, 5)).toEqual(['u1', LIB, 'Clients/Acme', true]);
+  });
+  test('a link from ANOTHER library that happens to share the folder name is not listed here', async () => {
+    await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
+    expect(listQ().sql).toMatch(/l\.library_id IS NULL OR \$3::uuid IS NULL OR l\.library_id = \$3::uuid/);
+  });
+  test("the library's owner can end a link a member sent -- by owning the library, not by the files it lists", async () => {
+    mockState.revoked = { id: LINK, folder_path: 'Clients/Acme' };
+    const res = await request(app()).delete(`/api/files/folder/links/${LINK}`);
+    expect(res.status).toBe(200);
+    const q = mockQueries.find(x => /^UPDATE folder_share_links f\s+SET revoked_at/.test(x.sql));
+    expect(q.sql).toMatch(/EXISTS \(SELECT 1 FROM libraries lb WHERE lb\.id = f\.library_id AND lb\.owner_id = \$1\)/);
+    expect(q.params[0]).toBe('u1');
+  });
+  test('anyone else is told there is no such link', async () => {
+    mockState.revoked = null;
+    expect((await request(app()).delete(`/api/files/folder/links/${LINK}`)).status).toBe(404);
+  });
+});
+
 describe('sending a folder to people', () => {
   const send = (body) => request(app()).post('/api/files/folder/send').set('x-library-id', LIB).send({ path: 'Clients/Acme', ...body });
   const inserted = () => mockQueries.filter(q => /INSERT INTO folder_share_links/.test(q.sql));
@@ -266,6 +344,11 @@ describe('sending a folder to people', () => {
     expect(toAmy.text).toMatch(/https:\/\/depot\.example\/#\/open\/flink\/[\w-]{20,}/); expect(toAmy.text).not.toContain('/f/');
     expect(toAp.text).toMatch(/https:\/\/depot\.example\/f\/[\w-]{20,}/); expect(toAp.text).toContain('password'); expect(toAp.text).not.toContain('hunter2');
     expect(res.body.hasPassword).toBe(true);
+  });
+  test('"has an account" means one that could open it: verified at that address, and not switched off', async () => {
+    await send({ recipients: ['amy@corp.com'] });
+    const q = mockQueries.find(x => /FROM user_roles/.test(x.sql) && /^SELECT lower\(verified_email\)/.test(x.sql));
+    expect(q.sql).toMatch(/lower\(verified_email\) = ANY\(\$1::text\[\]\) AND disabled_at IS NULL/);
   });
   test('a same-domain colleague with no account gets a link they can actually open', async () => {
     const res = await send({ recipients: ['newhire@corp.com'] });

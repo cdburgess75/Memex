@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const settings = require('./lib/settings');
-const { makeRateLimiters } = require('./lib/rateLimiters');
+const { makeRateLimiters, presentsPassword } = require('./lib/rateLimiters');
 
 const app = express();
 
@@ -62,7 +62,7 @@ app.use(securityHeaders);
 // don't go through this parser — they stream via the upload routes.)
 app.use(express.json({ limit: '1mb' }));
 
-const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter } = makeRateLimiters();
+const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter } = makeRateLimiters();
 app.use('/api/auth', authLimiter);
 // Recipient uploads (one POST per file) get the generous limiter so a dropped
 // folder isn't 429'd mid-batch; everything else under /share — info, ticket,
@@ -72,7 +72,12 @@ app.use('/api/files/share', (req, res, next) =>
 // Public folder ZIP downloads. Mount matches only the token route
 // (/api/files/folder/share/:token), not the authed /folder/shares create/list —
 // Express requires a segment boundary, and "shares" continues past "share".
-app.use('/api/files/folder/share', shareLimiter);
+// The TIGHT limiter is for guessing: anything that presents a password (the ticket exchange,
+// a password header, or `?password=` on the old ZIP address). Browsing the page and
+// downloading files present a ticket or nothing, cannot guess anything, and get the generous
+// one -- or "download the files one at a time", which the page recommends for a folder too
+// big to ZIP, would 429 after a few dozen files.
+app.use('/api/files/folder/share', (req, res, next) => (presentsPassword(req) ? shareLimiter : folderBrowseLimiter)(req, res, next));
 // Bulk/resumable uploads (one request per file + per chunk) get a high limiter and
 // are skipped by the general apiLimiter, so a large folder upload isn't 429'd mid-batch.
 app.use('/api/files/upload', uploadLimiter);

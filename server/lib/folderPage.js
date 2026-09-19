@@ -103,7 +103,10 @@ module.exports = function folderPage(token) {
   // A ticket proves entry: minted from the password here, or handed over (in the URL's
   // fragment, which is never sent to a server) by Depot for a link that needs a sign-in.
   var ticket = (location.hash.match(/(?:^#|&)t=([^&]+)/) || [])[1]; ticket = ticket ? decodeURIComponent(ticket) : '';
-  if (ticket) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+  // Out of the address bar at once; kept for THIS TAB only, so a reload still works while it lasts.
+  var KEEP = 'depot-folder-pass:' + TOKEN;
+  if (ticket) { try { history.replaceState(null, '', location.pathname); sessionStorage.setItem(KEEP, ticket); } catch (e) {} }
+  else { try { ticket = sessionStorage.getItem(KEEP) || ''; } catch (e) {} }
   var path = '';
   function headers() { return ticket ? { 'X-Share-Ticket': ticket } : {}; }
   function withTicket(u) { return ticket ? u + (u.indexOf('?') < 0 ? '?' : '&') + 'dl=' + encodeURIComponent(ticket) : u; }
@@ -122,7 +125,8 @@ module.exports = function folderPage(token) {
   function load(sub) {
     fetch(API + '/info?path=' + encodeURIComponent(sub || ''), { headers: headers() }).then(function (r) {
       if (r.status === 410) throw new Error('This link has expired.');
-      if (r.status === 404) throw new Error(sub ? 'That folder is no longer in this link.' : 'This link is no longer active.');
+      if (r.status === 404) throw new Error(sub ? 'That folder is no longer in this link.' : 'This link is no longer active, or your pass for it has run out. Open it again from the email, or from Depot.');
+      if (r.status === 429) throw new Error('Too many requests from this network just now. Wait a few minutes and try again.');
       if (!r.ok) throw new Error('Something went wrong opening this folder. Try again in a moment.');
       return r.json();
     }).then(function (info) {
@@ -183,7 +187,9 @@ module.exports = function folderPage(token) {
 
   $('lock').addEventListener('submit', function (e) {
     e.preventDefault(); hide('lock-err');
-    fetch(API + '/ticket', { method: 'POST', headers: { 'X-Share-Password': $('pw').value } }).then(function (r) {
+    // In the body, not a header: a header cannot carry a character outside Latin-1, and fetch()
+    // throws on one before any request is made -- which used to leave this form doing nothing.
+    fetch(API + '/ticket', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('pw').value }) }).then(function (r) {
       if (r.status === 401) throw new Error('That password did not work.');
       if (!r.ok) throw new Error('This link is no longer active.');
       return r.json();
