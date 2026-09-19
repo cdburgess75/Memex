@@ -2875,6 +2875,8 @@ html.auth-locked .skip-link { display: none; }
 
 /* A form's own complaint reads as a message, not as console output. */
 .update-output.is-error { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); color: var(--danger-strong); border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--rule)); font: 500 13px var(--ui); }
+/* Settings -> Notifications: what this person is emailed about. */
+.notif-email-list { margin: 0; padding-inline-start: 20px; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
 /* The Share dialog says what an invite will do, then what it did. */
 .share-how { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
 .share-how-row { display: block; }
@@ -4344,6 +4346,7 @@ async function loadNotifications() {
     notifList = Array.isArray(data.notifications) ? data.notifications : [];
     notifUnread = Number(data.unread || 0);
     notifEnabled = data.enabled !== false;
+    notifEmail = data.email || null;
   } catch { notifList = []; notifUnread = 0; }
   renderNotifBell();
   const panel = document.getElementById('notif-panel');
@@ -6434,6 +6437,24 @@ async function exportActivityCsv() {
     URL.revokeObjectURL(a.href);
   } catch (e) { toast('Export failed: ' + e.message); }
 }
+// What the workspace emails people about, in the words a person would use. Order = how much
+// they are likely to care.
+const EMAIL_EVENT_WORDS = [
+  ['share_granted', 'someone shares a file, folder or library with you (with a link straight to it)'],
+  ['share_opened', 'someone opens something you shared, the first time each person does'],
+  ['upload_received', 'files arrive in a library or folder you follow, or through a link you sent'],
+  ['document_edited', 'a file you follow is edited'],
+];
+let notifEmail = null;
+function emailNoticeHtml() {
+  const admin = currentUser?.role === 'admin';
+  if (!notifEmail) return `<p class="settings-notice">Couldn't check this workspace's email settings just now. Try again in a moment.</p>`;
+  if (!notifEmail.configured) return `<p class="settings-notice">Email isn't set up for this workspace yet, so Depot can't email you. ${admin ? 'Set it up under <strong>Email</strong> below.' : 'An administrator can set it up in Settings.'} You still get everything in the bell menu.</p>`;
+  const on = EMAIL_EVENT_WORDS.filter(([k]) => notifEmail.events?.[k]);
+  if (!on.length) return `<p class="settings-notice">Email is set up, but every email notice is switched off for this workspace. ${admin ? 'Turn them on under <strong>Email</strong> below.' : 'An administrator chooses which ones are sent.'}</p>`;
+  return `<p class="settings-notice" style="margin-bottom:8px">Depot emails you at <strong>${esc(currentUser?.email || 'your address')}</strong> when:</p><ul class="notif-email-list">${on.map(([, w]) => `<li>${esc(w)}</li>`).join('')}</ul>`
+    + `<p class="settings-notice" style="margin-top:8px">${admin ? 'You choose which of these the workspace sends under <strong>Email</strong> below.' : 'Which of these are sent is chosen for the whole workspace by an administrator.'} An email someone sends you on purpose (a file, a meeting invite) always arrives.</p>`;
+}
 function notificationsSettingsHtml() {
   return `<div class="usage-section">
       <h3>In-app notifications</h3>
@@ -6441,11 +6462,11 @@ function notificationsSettingsHtml() {
         <input type="checkbox" id="notif-pref-toggle" ${notifEnabled ? 'checked' : ''} onchange="setNotifPref(this.checked)">
         <span>Show notifications in the bell menu${notifUnread ? ` — <strong>${notifUnread} unread</strong>` : ''}</span>
       </label>
-      <p class="settings-notice" style="margin-top:8px">You'll be notified in-app when someone shares a file with you. ${notifUnread ? `<a href="#" onclick="markAllNotifsRead();return false" style="color:var(--accent)">Mark all as read</a>.` : ''}</p>
+      <p class="settings-notice" style="margin-top:8px">The bell tells you when someone shares something with you, when someone opens what you shared, and when files arrive where you follow. ${notifUnread ? `<a href="#" onclick="markAllNotifsRead();return false" style="color:var(--accent)">Mark all as read</a>.` : ''}</p>
     </div>
     <div class="usage-section">
       <h3>Email notifications</h3>
-      <p class="settings-notice">Email delivery (upload &amp; share-download alerts) is coming soon — it needs a mail server configured on this deployment.</p>
+      ${emailNoticeHtml()}
     </div>`;
 }
 async function setNotifPref(enabled) {

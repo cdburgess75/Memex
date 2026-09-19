@@ -15,7 +15,17 @@ router.get('/', auth, async (req, res) => {
       notifications.unreadCount(req.user),
       notifications.getPref(req.user),
     ]);
-    res.json({ notifications: items, unread, enabled });
+    // What email this person can expect, so their Notifications tab can say so truthfully.
+    // (It used to say, to everyone who was not an admin, that email was "coming soon".)
+    // Only on/off facts: nothing about the mail server itself leaves the admin settings.
+    let mail = { configured: false, events: {} };
+    try {
+      const emailLib = require('../lib/email'), emailEvents = require('../lib/emailEvents');
+      const names = Object.keys(emailEvents.DEFAULTS);
+      const on = await Promise.all(names.map(n => emailEvents.enabled(n)));
+      mail = { configured: !!(await emailLib.isConfigured()), events: Object.fromEntries(names.map((n, i) => [n, !!on[i]])) };
+    } catch (e) { /* the tab falls back to saying it could not tell */ }
+    res.json({ notifications: items, unread, enabled, email: mail });
   } catch (e) { serverError(res, e); }
 });
 
