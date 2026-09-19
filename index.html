@@ -1756,7 +1756,9 @@ html.file-home-mode .masthead-actions { display: flex; }
 .share-radio-note { font-size: 13px; color: var(--ink-faint); }
 .share-radio.is-disabled { opacity: .5; cursor: default; }
 .share-toggle { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: 14px; color: var(--ink); cursor: pointer; }
+.share-toggle { flex-wrap: wrap; }
 .share-toggle input { accent-color: var(--accent); }
+.share-toggle-hint { flex-basis: 100%; padding-left: 26px; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft); }
 .share-foot { display: flex; flex-direction: column; gap: 12px; padding: 18px 2px 2px; }
 .share-link-out { display: flex; gap: 8px; }
 .share-link-out[hidden] { display: none; } /* display:flex above was beating the hidden attribute: an empty field and a dead Copy button showed before any link existed */
@@ -5401,6 +5403,9 @@ async function saveNetworkSettings() {
     http_proxy:    document.getElementById('cfg-http-proxy').value.trim(),
     max_upload_mb: document.getElementById('cfg-max-upload-mb').value,
     folder_zip_max_mb: document.getElementById('cfg-folder-zip-max-mb')?.value || '8192',
+    link_upload_max_mb: document.getElementById('cfg-link-upload-max-mb')?.value || '10240',
+    link_upload_max_files: document.getElementById('cfg-link-upload-max-files')?.value || '5000',
+    link_upload_total_gb: document.getElementById('cfg-link-upload-total-gb')?.value || '100',
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
     blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
@@ -6718,6 +6723,12 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-max-upload-mb" value="${esc(s.max_upload_mb||'8192')}" min="1" max="1048576" step="1">
         <label for="cfg-folder-zip-max-mb">Largest folder ZIP (MB)</label>
         <input type="number" id="cfg-folder-zip-max-mb" value="${esc(s.folder_zip_max_mb||'8192')}" min="1" max="1048576" step="1" title="One limit for every ZIP Depot makes: a signed-in folder download, a folder link, and a subfolder on a link's page. Above it, files still download one at a time.">
+        <label for="cfg-link-upload-max-mb">Uploads through a link: largest file (MB)</label>
+        <input type="number" id="cfg-link-upload-max-mb" value="${esc(s.link_upload_max_mb||'10240')}" min="1" max="1048576" step="1" title="The biggest single file someone outside may add through a file or folder link you sent them. Sent in pieces, so size is not limited by the connection.">
+        <label for="cfg-link-upload-max-files">Uploads through a link: files per link</label>
+        <input type="number" id="cfg-link-upload-max-files" value="${esc(s.link_upload_max_files||'5000')}" min="1" max="1000000" step="1">
+        <label for="cfg-link-upload-total-gb">Uploads through a link: total per link (GB)</label>
+        <input type="number" id="cfg-link-upload-total-gb" value="${esc(s.link_upload_total_gb||'100')}" min="1" max="100000" step="1" title="Everything one link may receive, added up. The server also always keeps its free-disk reserve.">
         <label>Max files per upload</label>
         <input type="number" id="cfg-max-upload-files" value="${esc(s.max_upload_files||'4096')}" min="1" max="1000000" step="1">
         <label>Trash retention (days)</label>
@@ -9819,6 +9830,7 @@ async function openShareSelected({ openAccess = false } = {}) {
     + `<div class="share-q" id="share-q3"><div class="share-q-num">3</div><div class="share-q-body"><div class="share-q-title">How long and how locked</div>`
     + `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`
     + `<label class="share-toggle"><input type="checkbox" id="share-pw-on" onchange="shareToggle('pw')"> Require a password</label><input type="password" class="share-inline-input" id="share-pw" hidden placeholder="Password" autocomplete="new-password">`
+    + `<label class="share-toggle" id="share-upload-row"><input type="checkbox" id="share-upload-on"> Let people outside send files back<span class="share-toggle-hint">They land beside this file, and you are told. Applies to invited people who have no account here.</span></label>`
     + `</div></div>`
     + `<div class="share-foot"><div class="share-link-out" id="share-link-out" hidden><input class="share-link-url" id="share-link-url" aria-label="Share link" readonly><button class="file-library-tool" onclick="copyShareLink()">Copy link</button></div><button class="run-btn" id="share-primary" onclick="doShare()">Create link</button></div>`
     + `</div>`
@@ -9856,6 +9868,8 @@ function shareSetWho(mode) {
   // Step 3 (expiry, password) applies to invites too: someone outside gets a LINK, and a
   // link can be forwarded. It used to be hidden here, leaving those links with no lock at all.
   const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = false;
+  // Only a link sent to a named person can receive files: an anonymous one can be forwarded to anyone.
+  const upRow = document.getElementById('share-upload-row'); if (upRow) upRow.hidden = mode !== 'people';
   // "Edit" needs an account, so it only applies to invited people, never a public link.
   const editOpt = document.getElementById('share-perm-edit');
   const editRadio = editOpt?.querySelector('input');
@@ -9909,7 +9923,7 @@ async function doShare() {
     const expOn = document.getElementById('share-expiry-on')?.checked, expDate = document.getElementById('share-expiry-date')?.value;
     const expDays = (expOn && expDate) ? Math.max(1, Math.ceil((new Date(expDate + 'T23:59:59').getTime() - Date.now()) / 86400000)) : 30;
     const pw = document.getElementById('share-pw-on')?.checked ? (document.getElementById('share-pw')?.value || '') : '';
-    try { data = await apiPost('/files/' + f.id + '/send', { recipients: _shareEmails, permission, neverExpires: false, expiresInDays: expDays, password: pw, allowUpload: false }); }
+    try { data = await apiPost('/files/' + f.id + '/send', { recipients: _shareEmails, permission, neverExpires: false, expiresInDays: expDays, password: pw, allowUpload: !!document.getElementById('share-upload-on')?.checked }); }
     catch (e) { toast('Invite failed: ' + e.message); return; }
     const results = data.results || [];
     const failed = results.filter(r => r.kind === 'error' || r.sent === false);
@@ -9977,44 +9991,6 @@ function permissionLabel(permission) {
   return permission === 'admin' ? 'Can manage' : permission === 'write' ? 'Can edit' : 'Can view';
 }
 
-async function sendFileToPeople() {
-  const f = firstSelectedFile();
-  if (!f) return;
-  const to = document.getElementById('send-to')?.value?.trim() || '';
-  if (!to) { toast('Enter at least one email address'); return; }
-  const days = document.getElementById('send-expiry')?.value || '30';
-  const out = document.getElementById('file-send-result');
-  if (out) { out.style.display = ''; out.innerHTML = '<span class="setup-result">Sending…</span>'; }
-  try {
-    const data = await apiPost('/files/' + f.id + '/send', {
-      recipients: to,
-      message: document.getElementById('send-note')?.value || '',
-      expiresInDays: days,
-      neverExpires: days === '0',
-      password: document.getElementById('send-password')?.value || '',
-      allowUpload: !!document.getElementById('send-allow-upload')?.checked,
-    });
-    // Per-recipient outcome, plainly: granted (existing member), emailed link,
-    // link minted but the email failed (surface it — silence here means a client
-    // waiting on a file that never arrives), or a hard error.
-    const rows = (data.results || []).map(r => {
-      if (r.kind === 'granted' && r.sent === false) return `<div>⚠ ${esc(r.to)} — access granted, but the notification email failed (${esc(r.reason || 'unknown')}). They can still open it once signed in.</div>`;
-      if (r.kind === 'granted') return `<div>✓ ${esc(r.to)} — has an account; given ${esc(r.permission)} access and emailed</div>`;
-      if (r.kind === 'signin_link') return `<div>${r.sent === false ? '⚠' : '✓'} ${esc(r.to)} — colleague; sent a sign-in link${r.sent === false ? `, but the email failed (${esc(r.reason || 'unknown')})` : ''}</div>`;
-      if (r.kind === 'link' && r.sent) return `<div>✓ ${esc(r.to)} — link emailed${data.hasPassword ? ' (remember to pass them the password separately)' : ''}</div>`;
-      // Email failed but the link exists — surface the URL right here (the links
-      // list stores tokens hashed and can never show it), so it isn't lost.
-      if (r.kind === 'link') return `<div>⚠ ${esc(r.to)} — link created but the email failed (${esc(r.reason || 'unknown')}). Copy and send it yourself:<br><input class="file-share-url" readonly value="${esc(r.url || '')}" onclick="this.select()" style="width:100%;margin-top:4px"></div>`;
-      return `<div>✕ ${esc(r.to)} — ${esc(r.error || 'failed')}</div>`;
-    }).join('');
-    if (out) out.innerHTML = rows || 'Nothing sent.';
-    ['send-to', 'send-note', 'send-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    await loadShareLinks(f.id);
-    if (_fileAccessList) await _fileAccessList.reload().catch(() => {});
-  } catch (e) {
-    if (out) out.innerHTML = `<div>✕ ${esc(e.message)}</div>`;
-  }
-}
 
 async function createShareLink() {
   const f = firstSelectedFile();
@@ -11509,7 +11485,7 @@ async function openFolderShare(path) {
     <section class="file-share-section"><h3>People and groups</h3>${canManage ? `${accessTabsHtml()}<div class="ls-mount" data-view-panel="share"></div><div class="acc-mount" data-view-panel="access" hidden></div>` : '<div class="acc-mount"></div><p class="file-share-hint" style="margin-top:8px">Only the library owner or an admin can share it further.</p>'}<div class="fs-legacy"></div></section>
     ${canLink ? `<section class="file-share-section" style="margin-top:22px"><h3>Send to people</h3><p class="file-share-hint">Each person is emailed their own link to a page that lists this folder: they can download files one at a time, or the folder as a ZIP. It shows the folder as it is, including what is added later, and you are told the first time each of them opens it. A colleague with a Depot account signs in to open theirs; anyone else gets a link that works for whoever holds it, so add a password if it must not be forwarded.${canManage ? ' To give a colleague ongoing access instead, add them under People and groups above.' : ''}</p>
       <div class="share-people" style="margin-top:8px"><div class="share-chips" id="fsend-chips"></div><input class="share-email-input" id="fsend-input" type="email" autocomplete="off" aria-label="Add people by email" placeholder="Add people by email, then press Enter" onkeydown="folderSendKey(event)" onblur="folderSendCommit(this)"></div>
-      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div>
+      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div><label class="share-toggle"><input type="checkbox" id="fsend-upload"> Let them add files to this folder<span class="share-toggle-hint">Their page gets an upload area. Files land in this folder, belong to you, and you are told when one arrives. Large files are fine.</span></label>
       <div class="btn-row"><button class="run-btn" id="fsend-go" onclick="sendFolderToPeople()" disabled>Send</button></div>
       <div class="share-how" id="fsend-result" role="status"></div>
       </section><section class="file-share-section" style="margin-top:22px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates one link, no sign-in needed, to a page that lists this folder's files for download (one at a time, or as a ZIP). It covers only the files in the folder right now, because a link like this can be forwarded to anyone.</p>
@@ -11564,7 +11540,7 @@ async function loadFolderShareLinks() {
     const data = await apiGet('/files/folder/links?path=' + encodeURIComponent(folderSharePath) + folderLibQuery(folderShareLib));
     const shares = data.shares || [];
     if (!shares.length) { list.innerHTML = emptyState('No links yet', 'Create one above to share this folder outside the workspace.'); return; }
-    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link${s.recipient_email ? ' · ' + esc(s.recipient_email) : ''}</strong><div class="file-share-meta">${s.live ? 'Follows the folder' : `${s.file_count} file${s.file_count === 1 ? '' : 's'}`}${s.require_signin ? ' · Sign-in required' : ''}${s.created_by_email && String(s.created_by_email).toLowerCase() !== String(currentUser?.email || '').toLowerCase() ? ' · Sent by ' + esc(s.created_by_email) : ''} · ${s.opened_at ? 'First opened ' + shareDate(s.opened_at) : 'Not opened yet'} · Expires: ${shareDate(s.expires_at)} · Downloads: ${s.access_count || 0}${s.has_password ? ' · Password' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-id="${esc(String(s.id))}" onclick="revokeFolderShareLink(this.dataset.id)">Revoke</button>`}</div>`).join('');
+    list.innerHTML = shares.map(s => `<div class="file-share-item ${s.revoked_at ? 'file-share-revoked' : ''}"><div><strong>${s.revoked_at ? 'Revoked' : 'Active'} link${s.recipient_email ? ' · ' + esc(s.recipient_email) : ''}</strong><div class="file-share-meta">${s.allow_upload ? `Can add files${s.upload_count ? ` (${s.upload_count} so far)` : ''} · ` : ''}${s.live ? 'Follows the folder' : `${s.file_count} file${s.file_count === 1 ? '' : 's'}`}${s.require_signin ? ' · Sign-in required' : ''}${s.created_by_email && String(s.created_by_email).toLowerCase() !== String(currentUser?.email || '').toLowerCase() ? ' · Sent by ' + esc(s.created_by_email) : ''} · ${s.opened_at ? 'First opened ' + shareDate(s.opened_at) : 'Not opened yet'} · Expires: ${shareDate(s.expires_at)} · Downloads: ${s.access_count || 0}${s.has_password ? ' · Password' : ''}</div></div>${s.revoked_at ? '' : `<button class="file-library-tool" data-id="${esc(String(s.id))}" onclick="revokeFolderShareLink(this.dataset.id)">Revoke</button>`}</div>`).join('');
   } catch (e) { list.innerHTML = emptyState('Could not load links', e.message); }
 }
 async function createFolderShareLink() {
@@ -11603,7 +11579,8 @@ async function sendFolderToPeople() {
   if (go) go.disabled = true;
   try {
     const data = await apiPost('/files/folder/send', inFolderLib({ path: folderSharePath, recipients: _fsendEmails, expiresInDays: days, neverExpires: days === '0',
-      password: document.getElementById('fsend-password')?.value || '', message: document.getElementById('fsend-note')?.value || '' }, folderShareLib));
+      password: document.getElementById('fsend-password')?.value || '', message: document.getElementById('fsend-note')?.value || '',
+      allowUpload: !!document.getElementById('fsend-upload')?.checked }, folderShareLib));
     const results = data.results || [];
     if (out) out.innerHTML = results.map(r => {
       if (r.kind === 'error') return `✕ ${esc(r.to)}: ${esc(r.error || 'failed')}`;
@@ -11616,6 +11593,7 @@ async function sendFolderToPeople() {
     toast(failed ? `${results.length - failed} of ${results.length} sent. See the list for the rest.` : `Sent to ${results.length} ${results.length === 1 ? 'person' : 'people'}`);
     _fsendEmails = []; folderSendRender();
     ['fsend-password', 'fsend-note'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const up = document.getElementById('fsend-upload'); if (up) up.checked = false;
     await loadFolderShareLinks();
   } catch (e) { toast('Could not send: ' + e.message); if (go) go.disabled = false; }
 }

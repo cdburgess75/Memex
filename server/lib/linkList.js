@@ -57,7 +57,7 @@ async function listLinks(user, scope) {
   );
   const folders = await db.query(
     `SELECT f.id, f.folder_path, f.document_ids, f.expires_at, f.revoked_at, f.created_at, f.created_by, f.created_by_email,
-            f.last_accessed_at, f.access_count, f.password_hash, f.recipient_email, f.live, f.require_signin, f.opened_at,
+            f.last_accessed_at, f.access_count, f.password_hash, f.recipient_email, f.live, f.require_signin, f.opened_at, f.allow_upload, f.upload_count,
             (SELECT count(*)::int FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL) AS files_live,
             (SELECT l.name FROM documents d JOIN libraries l ON l.id = d.library_id
               WHERE d.id = ANY(f.document_ids) ORDER BY d.deleted_at NULLS FIRST, d.id LIMIT 1) AS library_name
