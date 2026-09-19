@@ -236,6 +236,14 @@ app.get('/s/:token', (req, res) => {
   res.type('html').send(require('./lib/exchangePage')(token));
 });
 
+// Public page for a folder link: the folder's contents, each file downloadable on its own,
+// or the folder as a ZIP (lib/folderPage). Same rules as /s/ above.
+app.get('/f/:token', (req, res) => {
+  const token = String(req.params.token || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  res.set('Cache-Control', 'no-store');
+  res.type('html').send(require('./lib/folderPage')(token));
+});
+
 // Serve only the vendored client libraries statically — NOT the repo root, which
 // would expose server source, compose, and config files. The SPA itself is
 // returned by the catch-all below.

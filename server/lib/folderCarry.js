@@ -199,6 +199,20 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
     [libraryId, newPath, cut, oldPath]
   );
 
+  // LIVE folder links (sent to a named person: migration 0015) point at the folder by path,
+  // so they travel like a share does -- otherwise the link would go on pointing at the old
+  // name, and show whatever folder took that name next. Snapshot links hold document ids and
+  // need nothing. Into another library too: what the link then serves is still bounded by
+  // what its maker can publish THERE, asked each time it is used (lib/folderLinks).
+  const links = await q.query(
+    `UPDATE folder_share_links f
+        SET folder_path = $2 || substring(f.folder_path from $3::int), library_id = $5
+      WHERE f.live AND f.library_id = $1 AND f.revoked_at IS NULL
+        AND (f.folder_path = $4 OR starts_with(f.folder_path, $4 || '/'))
+      RETURNING f.id`,
+    [libraryId, newPath, cut, oldPath, destLibraryId]
+  );
+
   const prefs = await carryNotifyPrefs(q, { libraryId, destLibraryId, oldPath, newPath });
 
   // A chunked upload still arriving into a renamed folder: its name is the full path it
@@ -211,7 +225,7 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
     [libraryId, newPath, cut, oldPath]
   ) : [];
 
-  return { shares, prefs, uploads: uploads.length };
+  return { shares, prefs, uploads: uploads.length, links: links.length };
 }
 
 // Ending the shares a folder carried, recorded so they can be put back. The rows move
@@ -226,6 +240,16 @@ async function carryPathStateWrites(q, { libraryId, destLibraryId, oldPath, newP
 // trashed content at a name that no longer exists.
 async function endShares(q, { libraryId, path, opId, user, cause }) {
   if (!path) return [];
+  // A live folder link to a folder that is going away is ended with it, for the reason the
+  // shares are (below): a path with nothing under it is a trap, and the next folder to take
+  // the name would be published to whoever the old link was sent to. Not brought back by an
+  // undo -- a link is cheap to send again, and a revived one is a surprise.
+  await q.query(
+    `UPDATE folder_share_links f SET revoked_at = NOW(), revoked_by = $3
+      WHERE f.live AND f.library_id = $1 AND f.revoked_at IS NULL
+        AND (f.folder_path = $2 OR starts_with(f.folder_path, $2 || '/'))`,
+    [libraryId, path, user?.id || null]
+  );
   return q.query(
     `WITH gone AS (
        DELETE FROM library_grants g
