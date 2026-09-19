@@ -1345,7 +1345,12 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
 .data-table td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule-soft); color: var(--ink-soft); }
 .data-table td:first-child { color: var(--ink); }
 .data-table select { font-family: var(--mono); font-size: 12px; padding: 3px 6px; }
-.compliance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.compliance-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 16px; }
+@container dash (min-width: 1000px) { .compliance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.compliance-card-txt { min-width: 0; }
+.compliance-card-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule-soft); }
+.compliance-progress { display: flex; align-items: center; gap: 12px; flex: 1 1 260px; min-width: 0; font: 600 14px var(--ui); color: var(--ink-soft); }
+.compliance-progress .cmp-bar { flex: 0 1 160px; }
 .compliance-card {
   border: 1px solid var(--rule);
   border-radius: 8px;
@@ -1354,49 +1359,77 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
   box-shadow: var(--shadow);
 }
 .compliance-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.compliance-card h4 { font-size: 16px; margin: 0; color: var(--ink); }
-.compliance-card p { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin: 0 0 8px; }
-.compliance-note { font-size: 12px; color: var(--ink-faint); line-height: 1.45; }
-.compliance-toggle { display: inline-flex; align-items: center; gap: 6px; font: 700 12px var(--body); color: var(--ink-soft); white-space: nowrap; }
-.compliance-toggle input { width: auto; }
-.compliance-controls { display: grid; gap: 8px; margin-top: 10px; }
-.compliance-control-row { display: grid; grid-template-columns: auto minmax(88px, 0.8fr) minmax(0, 1.2fr); gap: 10px 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--rule); min-width: 0; }
-.compliance-control-row:first-child { border-top: 0; padding-top: 0; }
-.compliance-control-title { color: var(--ink); font-weight: 700; line-height: 1.35; min-width: 0; }
-.compliance-control-copy { color: var(--ink-soft); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
-.compliance-control-gap { grid-column: 2 / -1; color: var(--ink-faint); font-size: 13px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
-.compliance-control-gap strong { color: var(--ink-soft); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-right: 6px; }
-.cmp-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
-.cmp-card { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
-.cmp-head { display: flex; align-items: center; gap: 8px; }
-.cmp-head strong { flex: 1; font-size: 14px; color: var(--ink); }
-.cmp-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-faint); }
-.cmp-dot.ok { background: var(--success); } .cmp-dot.warn { background: var(--warning); } .cmp-dot.crit { background: var(--danger); } .cmp-dot.off { background: var(--ink-faint); }
-.cmp-badge { font: 600 11px var(--ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 8px; }
-.cmp-badge.on { color: var(--accent); border-color: var(--accent-wash); background: var(--accent-wash); }
-.cmp-meta { font-size: 12px; color: var(--ink-soft); margin: 7px 0 9px; }
-.cmp-checks { display: grid; gap: 5px; }
-.cmp-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
-.cmp-tick { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; display: inline-block; }
-.cmp-tick.ok { background: var(--success); } .cmp-tick.no { background: var(--surface-2); border: 1px solid var(--rule); } .cmp-tick.partial { background: var(--warning); }
-.cmp-check { align-items: flex-start; }
-.cmp-tick { margin-top: 2px; }
-.cmp-check-body { flex: 1; min-width: 0; }
-.cmp-check-label { color: var(--ink); font-weight: 600; }
-.cmp-manual { font: 600 10px var(--ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
-.cmp-check-ev { color: var(--ink-soft); font-size: 12px; margin-top: 1px; }
-.cmp-attest { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.cmp-att-meta { font-size: 11px; color: var(--ink-faint); }
-.cmp-att-btn { border: 1px solid var(--rule); background: transparent; color: var(--accent); border-radius: 6px; padding: 2px 9px; font: 600 11px var(--ui); cursor: pointer; }
-.cmp-att-btn:hover { background: var(--accent-wash); }
-.cmp-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.compliance-card h4 { font-size: 18px; margin: 0 0 2px; color: var(--ink); }
+.compliance-card p { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin: 0 0 6px; max-width: 70ch; }
+.compliance-note { font-size: 13px; color: var(--ink-soft); line-height: 1.5; max-width: 70ch; }
+.compliance-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font: 600 14px var(--ui); color: var(--ink); white-space: nowrap; cursor: pointer; }
+.compliance-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+/* Compliance readiness. Thirty-odd controls across six frameworks do not fit two narrow
+   columns of 12px text: the window is wide, ONE framework is read at a time (picked from a
+   list that shows every framework's progress), and each control says its state in a word,
+   what Depot can see, and -- when it is not ready -- what is missing. */
+.cmp-modal { width: min(1120px, 96vw); height: min(860px, 92vh); max-height: none; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.cmp-top { position: relative; flex: none; padding: 24px 28px 16px; border-bottom: 1px solid var(--rule-soft); }
+.cmp-x { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--ink-soft); display: grid; place-items: center; cursor: pointer; }
+.cmp-x:hover { background: var(--surface-2); color: var(--ink); } .cmp-x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cmp-top h2, .cmp-top .sub { padding-right: 44px; }
+.cmp-top h2 { margin: 0 0 4px; } .cmp-top .sub { margin: 0 !important; font-size: 14px; max-width: 78ch; }
+.cmp-overall { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; }
+.cmp-overall-n { font: 700 15px var(--ui); color: var(--ink); }
+.cmp-bar { flex: 1 1 220px; height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; display: flex; border: 1px solid var(--rule-soft); }
+.cmp-bar span { display: block; } .cmp-bar .ok { background: var(--success); } .cmp-bar .partial { background: var(--warning); }
+.cmp-probe-meta { font-size: 13px; color: var(--ink-soft); }
+.cmp-main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 290px minmax(0, 1fr); }
+.cmp-list { overflow-y: auto; padding: 12px; border-right: 1px solid var(--rule-soft); background: var(--surface-2); display: flex; flex-direction: column; gap: 4px; }
+.cmp-fw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 10px; background: transparent; padding: 11px 12px; cursor: pointer; color: var(--ink); font: inherit; }
+.cmp-fw:hover { background: var(--rule-soft); }
+.cmp-fw[aria-selected="true"] { background: var(--surface); border-color: var(--rule); box-shadow: var(--shadow); }
+.cmp-fw:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cmp-fw-name { font: 600 15px var(--ui); min-width: 0; overflow-wrap: anywhere; }
+.cmp-fw-n { font: 600 13px var(--ui); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.cmp-fw .cmp-bar { grid-column: 1 / -1; height: 6px; flex: none; }
+.cmp-fw-state { grid-column: 1 / -1; font-size: 13px; color: var(--ink-soft); }
+.cmp-badge { font: 600 12px var(--ui); color: var(--ink-soft); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.cmp-badge.on { color: var(--accent-soft); border-color: transparent; background: var(--accent-wash); } html.dark .cmp-badge.on { color: var(--accent); }
+.cmp-pick { display: none; }
+.cmp-detail { overflow-y: auto; padding: 20px 28px 24px; min-width: 0; }
+.cmp-detail-h { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px; }
+.cmp-detail-h h3 { margin: 0; font: 700 20px var(--ui); color: var(--ink); }
+.cmp-scope { margin: 0 0 4px; font-size: 14px; line-height: 1.5; color: var(--ink-soft); max-width: 78ch; }
+.cmp-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0 6px; }
+.cmp-tools label { display: inline-flex; align-items: center; gap: 8px; font: 600 14px var(--ui); color: var(--ink); cursor: pointer; min-height: 32px; }
+.cmp-tools input { accent-color: var(--accent); width: 16px; height: 16px; }
+.cmp-checks { display: grid; }
+.cmp-check { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 16px; padding: 16px 0; border-top: 1px solid var(--rule-soft); }
+.cmp-check:first-child { border-top: 0; }
+.cmp-state { justify-self: start; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font: 700 13px var(--ui); white-space: nowrap; height: fit-content; }
+.cmp-state svg { width: 14px; height: 14px; flex: none; }
+.cmp-state.ok { color: color-mix(in oklab, var(--success) 78%, var(--ink)); background: color-mix(in oklab, var(--success) 13%, var(--surface)); }
+.cmp-state.partial { color: color-mix(in oklab, var(--warning) 72%, var(--ink)); background: color-mix(in oklab, var(--warning) 14%, var(--surface)); }
+.cmp-state.no { color: color-mix(in oklab, var(--danger) 85%, var(--ink)); background: color-mix(in oklab, var(--danger) 11%, var(--surface)); }
+.cmp-check-label { color: var(--ink); font: 600 16px/1.35 var(--ui); }
+.cmp-manual { font: 600 12px var(--ui); color: var(--ink-soft); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; vertical-align: 1px; }
+.cmp-check-ev { color: var(--ink-soft); font-size: 14px; line-height: 1.5; margin-top: 3px; max-width: 78ch; overflow-wrap: anywhere; }
+.cmp-check-gap { margin-top: 8px; padding: 9px 12px; border-radius: 8px; background: var(--surface-2); border-left: 3px solid var(--line-strong); color: var(--ink); font-size: 14px; line-height: 1.5; max-width: 78ch; overflow-wrap: anywhere; }
+.cmp-check-gap b { display: block; font: 600 12px var(--ui); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 2px; }
+.cmp-attest { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }
+.cmp-att-meta { font-size: 13px; color: var(--ink-soft); }
+.cmp-att-btn { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 14px; min-height: 34px; font: 600 14px var(--ui); cursor: pointer; }
+.cmp-att-btn:hover { border-color: var(--accent); color: var(--accent-soft); } .cmp-att-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cmp-none { padding: 28px 0; color: var(--ink-soft); font-size: 15px; }
+.cmp-foot { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--rule-soft); }
+.cmp-foot .grow { flex: 1; }
 .cmp-toggle-inline { display: inline-flex; align-items: center; gap: 6px; font: 600 13px var(--ui); }
-.cmp-probe-meta { font-size: 12px; color: var(--ink-faint); }
-@media (max-width: 620px) { .cmp-grid { grid-template-columns: 1fr; } }
-.control-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; font: 700 12px var(--body); }
-.control-ready { background: #EAF7EA; color: #107C41; } /* fixed pale-green pair, like its siblings */
-.control-partial { background: #FFF7E6; color: #9A5B00; }
-.control-gap { background: #FDECEC; color: #B32636; }
+@media (max-width: 820px) {
+  .cmp-modal { width: 100vw; height: 100dvh; border-radius: 0; border: 0; display: block; overflow-y: auto; }
+  .cmp-detail { overflow: visible; } .cmp-foot .grow { display: none; }
+  .cmp-top { padding: 18px 16px 12px; } .cmp-detail { padding: 14px 16px 20px; } .cmp-foot { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .cmp-main { display: flex; flex-direction: column; }
+  .cmp-list { display: none; }
+  .cmp-pick { display: block; flex: none; padding: 12px 16px 0; } .cmp-pick select { width: 100%; font-size: 16px; min-height: 44px; }
+  .cmp-check { grid-template-columns: minmax(0, 1fr); } .cmp-state { margin-bottom: 4px; }
+  .cmp-foot .ghost-btn, .cmp-foot .run-btn { flex: 1 1 auto; }
+}
 /* Exactly three update cards (app / host / dependencies): lay them out 3-up so the
    third never orphans into a half-empty row, and stack them on narrow screens. */
 .update-posture { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
@@ -2601,8 +2634,6 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-row-actions { margin-top: 8px; }
   .file-link-card { grid-template-columns: 1fr; }
   .file-access-form { grid-template-columns: 1fr; }
-  .compliance-control-row { grid-template-columns: 1fr; }
-  .compliance-control-gap { grid-column: 1; }
   .file-library-head { align-items: flex-start; flex-direction: column; }
   /* Command bar wraps instead of stacking; the file table stays a table here
      (iPad portrait has the width) and only becomes a list on phones. */
@@ -4865,45 +4896,77 @@ function renderSecurityStatus() {
 function closeComplianceStatus() { closeModal('compliance-status-scrim'); }
 async function openComplianceStatus() {
   closeComplianceStatus();
-  openModal({ id: 'compliance-status-scrim', html: `<h2>Compliance readiness</h2><p class="sub">Loading…</p>` });
+  openModal({ id: 'compliance-status-scrim', modalClass: 'cmp-modal', labelledBy: 'cmp-title', html: `<div class="cmp-top"><h2 id="cmp-title">Compliance readiness</h2><p class="sub">Loading…</p></div>` });
   try {
     renderComplianceModal(await apiGet('/admin/compliance'));
   } catch (e) {
     const m = document.querySelector('#compliance-status-scrim .modal');
-    if (m) m.innerHTML = `<h2>Compliance readiness</h2><p class="sub" style="color:var(--accent)">Could not load compliance: ${esc(e.message)}</p><div class="btn-row" style="margin-top:16px"><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+    if (m) m.innerHTML = `<div class="cmp-top"><h2 id="cmp-title">Compliance readiness</h2><p class="sub" role="alert" style="color:var(--danger)">Could not load compliance: ${esc(e.message)}</p></div><div class="cmp-detail"></div><div class="cmp-foot"><span class="grow"></span><button class="ghost-btn" onclick="openComplianceStatus()">Try again</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
   }
+}
+// One framework is read at a time. Which one, and "gaps only", survive a re-render (a live
+// check or an attestation redraws the window) but not closing it.
+let _cmpSel = null, _cmpGapsOnly = false;
+const CMP_STATE = {
+  ok: ['Ready', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'],
+  partial: ['Partly', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg>'],
+  no: ['Gap', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>'],
+};
+const cmpStateOf = (c) => (c.ready === true ? 'ok' : c.ready === false ? 'no' : 'partial');
+function cmpBar(controls) {
+  const n = controls.length || 1, ok = controls.filter(c => c.ready === true).length, part = controls.filter(c => c.ready !== true && c.ready !== false).length;
+  return `<span class="cmp-bar" aria-hidden="true"><span class="ok" style="width:${ok / n * 100}%"></span><span class="partial" style="width:${part / n * 100}%"></span></span>`;
 }
 function renderComplianceModal(data) {
   complianceData = data;
   const m = document.querySelector('#compliance-status-scrim .modal');
   if (!m) return;
   const isAdmin = currentUser?.role === 'admin';
-  const cards = (data.frameworks || []).map(f => {
-    const total = f.controls.length;
-    const ready = f.controls.filter(c => c.ready === true).length;
-    const dot = !f.enabled ? 'off' : ready === total ? 'ok' : ready > 0 ? 'warn' : 'crit';
-    const checks = f.controls.map(c => {
-      const tick = c.ready === true ? 'ok' : c.ready === false ? 'no' : 'partial';
+  const fws = data.frameworks || [];
+  // Open on what matters: the one picked before, else the first framework that is switched on.
+  const sel = fws.find(f => String(f.id) === String(_cmpSel)) || fws.find(f => f.enabled) || fws[0];
+  _cmpSel = sel ? sel.id : null;
+  const readyOf = (f) => f.controls.filter(c => c.ready === true).length;
+  const stateLine = (f) => { const gaps = f.controls.filter(c => c.ready === false).length, part = f.controls.length - readyOf(f) - gaps; return !f.enabled ? 'Not tracked' : (gaps || part) ? [gaps ? `${gaps} gap${gaps === 1 ? '' : 's'}` : '', part ? `${part} partly met` : ''].filter(Boolean).join(' · ') : 'All controls ready'; };
+  const list = fws.map(f => `<button type="button" class="cmp-fw" role="tab" aria-selected="${f === sel}" data-fw="${escAttr(String(f.id))}" onclick="cmpSelect(this.dataset.fw)"><span class="cmp-fw-name">${esc(f.name)}</span><span class="cmp-fw-n">${readyOf(f)} of ${f.controls.length}</span>${cmpBar(f.controls)}<span class="cmp-fw-state">${f.enabled ? '' : '<span class="cmp-badge">Off</span> '}${esc(stateLine(f))}</span></button>`).join('');
+  const pick = `<div class="cmp-pick"><label class="sr-only" for="cmp-pick">Framework</label><select id="cmp-pick" onchange="cmpSelect(this.value)">${fws.map(f => `<option value="${escAttr(String(f.id))}"${f === sel ? ' selected' : ''}>${esc(f.name)} · ${readyOf(f)} of ${f.controls.length} ready${f.enabled ? '' : ' (off)'}</option>`).join('')}</select></div>`;
+
+  let detail = `<p class="cmp-none">No compliance frameworks are set up.</p>`;
+  if (sel) {
+    const shown = _cmpGapsOnly ? sel.controls.filter(c => c.ready !== true) : sel.controls;
+    const checks = shown.map(c => {
+      const st = cmpStateOf(c), [word, icon] = CMP_STATE[st];
       let attest = '';
       if (c.manual) {
-        const meta = c.attestation?.by ? `<span class="cmp-att-meta">${esc(c.attestation.by)} · ${new Date(c.attestation.at).toLocaleDateString()}</span>` : '';
-        const btn = isAdmin
-          ? (c.ready
-              ? `<button class="cmp-att-btn" onclick="attestControl('${esc(c.id)}', false)">Clear</button>`
-              : `<button class="cmp-att-btn" onclick="attestControl('${esc(c.id)}', true)">Mark met</button>`)
-          : '';
-        attest = `<div class="cmp-attest">${meta}${btn}</div>`;
+        const meta = c.attestation?.by ? `<span class="cmp-att-meta">Marked met by ${esc(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ` · ${esc(c.attestation.note)}` : ''}</span>` : '';
+        const btn = isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear "met"' : 'Mark as met'}</button>` : '';
+        attest = (meta || btn) ? `<div class="cmp-attest">${btn}${meta}</div>` : '';
       }
-      return `<div class="cmp-check"><span class="cmp-tick ${tick}"></span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}${c.manual ? ' <span class="cmp-manual">manual</span>' : ''}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${attest}</div></div>`;
+      const gap = st !== 'ok' && c.gap ? `<div class="cmp-check-gap"><b>What is missing</b>${esc(c.gap)}</div>` : '';
+      return `<div class="cmp-check"><span class="cmp-state ${st}">${icon}${word}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}${c.manual ? '<span class="cmp-manual" title="Depot cannot see this one. Someone confirms it.">You confirm this</span>' : ''}</div>${c.evidence ? `<div class="cmp-check-ev">${esc(c.evidence)}</div>` : ''}${gap}${attest}</div></div>`;
     }).join('');
-    return `<div class="cmp-card"><div class="cmp-head"><span class="cmp-dot ${dot}"></span><strong>${esc(f.name)}</strong><span class="cmp-badge${f.enabled ? ' on' : ''}">${f.enabled ? 'On' : 'Off'}</span></div><div class="cmp-meta">${ready}/${total} controls ready</div><div class="cmp-checks">${checks}</div></div>`;
-  }).join('');
-  const probeLine = data.probes?.lastRun
-    ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}`
-    : 'Live checks not run yet';
-  const toolbar = `<div class="cmp-toolbar"><span class="cmp-probe-meta">${esc(probeLine)}</span><span style="flex:1"></span><button class="ghost-btn" onclick="exportComplianceReport()">Control report (HTML)</button>${isAdmin ? `<button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button><button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button>` : ''}</div>`;
-  m.innerHTML = `<h2>Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only — they do not certify the organization.')}</p>${toolbar}<div class="cmp-grid">${cards}</div><div class="btn-row" style="margin-top:18px"><button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Manage in Admin</button><button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+    const open = sel.controls.filter(c => c.ready !== true).length;
+    detail = `<div class="cmp-detail-h"><h3>${esc(sel.name)}</h3><span class="cmp-badge${sel.enabled ? ' on' : ''}">${sel.enabled ? 'Tracked' : 'Off'}</span><span class="cmp-fw-n">${readyOf(sel)} of ${sel.controls.length} controls ready</span></div>`
+      + (sel.scope ? `<p class="cmp-scope">${esc(sel.scope)}</p>` : '')
+      + `<div class="cmp-tools"><label><input type="checkbox" ${_cmpGapsOnly ? 'checked' : ''} onchange="cmpGapsOnly(this.checked)"> Show only what is not ready${open ? ` (${open})` : ''}</label></div>`
+      + (checks ? `<div class="cmp-checks">${checks}</div>` : `<p class="cmp-none">${_cmpGapsOnly ? 'Nothing is missing here: every control is ready.' : 'This framework has no controls.'}</p>`);
+  }
+  const all = fws.filter(f => f.enabled).flatMap(f => f.controls), allReady = all.filter(c => c.ready === true).length;
+  const probeLine = data.probes?.lastRun ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}` : 'Live checks have not been run yet';
+  m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
+    + `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${fws.filter(f => f.enabled).length} tracked framework${fws.filter(f => f.enabled).length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div></div>`
+    + `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`
+    + `<div class="cmp-foot">${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button><span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
 }
+function cmpSelect(id) { _cmpSel = id; if (complianceData) renderComplianceModal(complianceData); const d = document.getElementById('cmp-detail'); if (d) d.scrollTop = 0; document.querySelector('.cmp-fw[aria-selected="true"]')?.focus({ preventScroll: true }); }
+function cmpGapsOnly(on) { _cmpGapsOnly = !!on; if (complianceData) renderComplianceModal(complianceData); }
+// Up and Down move through the frameworks, as a vertical tab list does.
+document.addEventListener('keydown', (e) => {
+  const cur = e.target.closest?.('.cmp-fw'); if (!cur || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+  const all = [...document.querySelectorAll('.cmp-fw')], i = all.indexOf(cur);
+  const next = e.key === 'Home' ? all[0] : e.key === 'End' ? all[all.length - 1] : all[(i + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length];
+  e.preventDefault(); cmpSelect(next.dataset.fw);
+});
 async function runComplianceProbes(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   try {
@@ -5056,39 +5119,22 @@ async function adminDeleteFile(fileId, fileName) {
   } catch (e) { toast('Could not move to Trash: ' + e.message); }
 }
 
-function complianceStatusClass(value) {
-  if (value === true) return 'control-ready';
-  if (value === false) return 'control-gap';
-  return 'control-partial';
-}
-
-function complianceStatusLabel(value) {
-  if (value === true) return 'Ready';
-  if (value === false) return 'Gap';
-  return 'Partial';
-}
-
 function complianceHtml(data) {
   if (!data || !Array.isArray(data.frameworks)) {
     return `<div class="usage-section"><h3>Compliance &amp; Updates</h3><p class="settings-notice">Compliance status is unavailable.</p></div>`;
   }
+  // This tab is for CHOOSING what is tracked. The controls themselves are read in the
+  // readiness window, which has the room for them: three cards across used to squeeze each
+  // control into a column a word wide.
   const frameworkCards = data.frameworks.map(f => {
-    const controlRows = (f.controls || []).map(c => `<div class="compliance-control-row">
-      <span class="control-pill ${complianceStatusClass(c.ready)}">${complianceStatusLabel(c.ready)}</span>
-      <div class="compliance-control-title">${esc(c.label || c.id)}</div>
-      <div class="compliance-control-copy">${esc(c.evidence || '')}</div>
-      <div class="compliance-control-gap"><strong>Gap</strong>${esc(c.gap || '')}</div>
-    </div>`).join('');
+    const controls = f.controls || [], ready = controls.filter(c => c.ready === true).length, gaps = controls.filter(c => c.ready === false).length;
     return `<div class="compliance-card">
       <div class="compliance-card-head">
-        <div><h4>${esc(f.name)}</h4><p>${esc(f.scope)}</p></div>
-        <label class="compliance-toggle"><input type="checkbox" data-compliance="${esc(f.id)}" ${f.enabled ? 'checked' : ''}> Enabled</label>
+        <div class="compliance-card-txt"><h4>${esc(f.name)}</h4><p>${esc(f.scope || '')}</p>${f.note ? `<div class="compliance-note">${esc(f.note)}</div>` : ''}</div>
+        <label class="compliance-toggle"><input type="checkbox" data-compliance="${esc(f.id)}" ${f.enabled ? 'checked' : ''}> Track this</label>
       </div>
-      <div class="compliance-note">${esc(f.note)}</div>
-      <details style="margin-top:10px">
-        <summary>Controls and gaps</summary>
-        <div class="compliance-controls">${controlRows}</div>
-      </details>
+      <div class="compliance-card-foot"><span class="compliance-progress">${cmpBar(controls)}<span>${ready} of ${controls.length} controls ready${gaps ? ` · ${gaps} gap${gaps === 1 ? '' : 's'}` : ''}</span></span>
+        <button type="button" class="dash-act" data-fw="${escAttr(String(f.id))}" onclick="_cmpSel = this.dataset.fw; _cmpGapsOnly = false; openComplianceStatus()">View controls</button></div>
     </div>`;
   }).join('');
   const app = data.updates?.app || {};
