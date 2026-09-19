@@ -2,6 +2,12 @@
 const { serverError } = require('../lib/httpError');
 const express = require('express');
 const router = express.Router();
+
+// Folder operations live in their own router. Mounted FIRST, before any /:id route: Express
+// matches in order, and "POST /:id/send" further down reads /folder/send as a file whose id
+// is "folder" -- which is exactly how sending a folder to people came to answer 500.
+// (__tests__/routes/files.routeOrder.test.js keeps it that way.)
+router.use('/folder', require('./files/folders'));
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const multer = require('multer');
@@ -2405,10 +2411,6 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
   } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
 });
 
-// Folder operations (create/rename/delete/reparent/move, ZIP, public download
-// links, member ACLs) live in their own domain router (ST-1). Mounted in place so
-// route-matching order is unchanged; no /:id route can match a /folder/* path.
-router.use('/folder', require('./files/folders'));
 
 // PUT /api/files/:id/content — overwrite a text file's content (md/txt/csv) and re-index
 router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req, res) => {
