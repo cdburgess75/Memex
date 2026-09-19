@@ -38,7 +38,7 @@ async function docsFor(share) {
       [...documentAccess.userParams(creator, 'write'), share.library_id, share.folder_path]) : [];
   } else {
     ({ creator, docs } = await linkAccess.servableDocs(share.created_by, share.document_ids, COLUMNS));
-    docs = docs.filter(d => !String(d.name).endsWith('/.keep'));
+    docs = docs.filter(d => d.name !== '.keep' && !String(d.name).endsWith('/.keep'));
   }
   if (!creator) return { creator: null, docs: [] };
   const pre = share.folder_path + '/';
