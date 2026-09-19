@@ -858,7 +858,9 @@ router.get('/share/:token', async (req, res) => {
     await db.query('UPDATE folder_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
     await logEvent(`folder share download · ${share.folder_path}`, null, null);
     await logDocumentEvent(null, 'folder_share_downloaded', null, null, `${share.folder_path} · ${requestAuditDetail(req)}`);
-    if (share.created_by_email) {
+    // The first use of a link is what emails its maker (lib/shareOpens); later downloads
+    // are a note in the app only.
+    if (share.created_by_email && !(await require('../../lib/shareOpens').folderLinkOpened(share))) {
       try {
         await notifications.create({
           userId: share.created_by || null,
@@ -869,11 +871,6 @@ router.get('/share/:token', async (req, res) => {
           dedupeMinutes: 2,
         });
       } catch (e) { console.error('notification (folder share_downloaded) failed:', e.message); }
-      emailEvents.send('share_downloaded', {
-        to: share.created_by_email,
-        subject: `Your shared folder was downloaded: ${share.folder_path.split('/').pop()}`,
-        text: `The folder "${share.folder_path}" was just downloaded via a Depot share link you created.`,
-      }).catch(() => {});
     }
     const base = share.folder_path.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
     res.setHeader('Content-Type', 'application/zip');

@@ -11,6 +11,7 @@ const email = require('./email');
 const DEFAULTS = {
   share_granted: true,
   share_downloaded: true,
+  share_opened: true,
   upload_received: true,
   document_edited: false,
 };

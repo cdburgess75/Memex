@@ -91,6 +91,7 @@ const ENV_MAP = {
   email_send_as_user:             'EMAIL_SEND_AS_USER',
   email_ev_share_granted:         'EMAIL_EV_SHARE_GRANTED',
   email_ev_share_downloaded:      'EMAIL_EV_SHARE_DOWNLOADED',
+  email_ev_share_opened:          'EMAIL_EV_SHARE_OPENED',
   email_ev_upload_received:       'EMAIL_EV_UPLOAD_RECEIVED',
   email_ev_document_edited:       'EMAIL_EV_DOCUMENT_EDITED',
   brand_name:                     'BRAND_NAME',

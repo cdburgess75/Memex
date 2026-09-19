@@ -13,6 +13,8 @@ const groups = require('../lib/groups');
 const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const { actingAs } = require('../lib/email');
+const appLinks = require('../lib/appLinks');
+const { publicAppBase } = require('../lib/shareLinks');
 const { canonicalFolderPath, folderLookupPath } = require('../lib/documents');
 
 // GET /api/libraries — list libraries the caller can access
@@ -383,17 +385,37 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
     const recipients = email ? [email] : (await groups.listMembers(group.id)).map(m => String(m.member_email || '').toLowerCase());
     for (const to of [...new Set(recipients)].filter(a => a && a !== me)) {
       // Not awaited: a large group must not hold up the answer (each notice is best-effort).
-      notifications.create({ userEmail: to, type: 'share_granted', title, body: bodyText, refType: 'library', refId: lib.id })
+      notifications.create({ userEmail: to, type: 'share_granted', title, body: bodyText, refType: 'library', refId: lib.id, refPath: folderPath || null })
         .catch(e => console.error('notification (library share_granted) failed:', e.message));
       if (email) {
         emailEvents.send('share_granted', {
           to, subject: title,
-          text: `${sharer.label} gave you ${LEVEL[permission]} access to ${what} in Depot. It includes files added later.\n\nSign in to Depot to open it.`,
+          text: `${sharer.label} gave you ${LEVEL[permission]} access to ${what} in Depot. It includes files added later.\n\nOpen it here (sign in with your usual account):\n${appLinks.placeUrl(await publicAppBase(req), lib.id, folderPath)}\n`,
           actorEmail: sharer.sendAs,
         }).catch(() => {});
       }
     }
     res.status(201).json({ share });
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /api/libraries/:id/shares/:shareId/resend — send a person their "shared with you"
+// email again, with its link. (A group's members are told in the app only.)
+router.post('/:id/shares/:shareId/resend', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const lib = await loadManaged(req, res);
+    if (!lib) return;
+    const share = groups.isUuid(req.params.shareId) ? await shares.getShare(lib.id, req.params.shareId) : null;
+    if (!share || !share.subject_email) return res.status(404).json({ error: 'That share is not with a person.' });
+    const sharer = actingAs(req.user);
+    const oneLine = (v) => String(v || '').replace(/\s+/g, ' ').trim();
+    const what = share.folder_path ? `the folder "${oneLine(share.folder_path.split('/').pop())}" in ${oneLine(lib.name)}` : `the library "${oneLine(lib.name)}"`;
+    const mail = await require('../lib/email').sendMail({
+      to: share.subject_email, subject: `${sharer.label} shared ${share.folder_path ? 'a folder' : 'a library'} with you`,
+      text: `${sharer.label} gave you ${LEVEL[share.permission]} access to ${what} in Depot. It includes files added later.\n\nOpen it here (sign in with your usual account):\n${appLinks.placeUrl(await publicAppBase(req), lib.id, share.folder_path)}\n`,
+      actorEmail: sharer.sendAs,
+    });
+    res.json({ sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined });
   } catch (e) { serverError(res, e); }
 });
 
