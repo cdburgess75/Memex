@@ -2875,6 +2875,11 @@ html.auth-locked .skip-link { display: none; }
 
 /* A form's own complaint reads as a message, not as console output. */
 .update-output.is-error { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); color: var(--danger-strong); border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--rule)); font: 500 13px var(--ui); }
+/* Settings -> Notifications: what this person is emailed about. */
+.notif-email-list { margin: 0; padding-inline-start: 20px; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+/* The Share dialog says what an invite will do, then what it did. */
+.share-how { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+.share-how-row { display: block; }
 /* A field the form has just refused. */
 [aria-invalid="true"] { border-color: var(--danger) !important; }
 /* Breadcrumbs on a connected share: buttons, in the app's link colour (they were bare browser-blue anchors). */
@@ -4341,6 +4346,7 @@ async function loadNotifications() {
     notifList = Array.isArray(data.notifications) ? data.notifications : [];
     notifUnread = Number(data.unread || 0);
     notifEnabled = data.enabled !== false;
+    notifEmail = data.email || null;
   } catch { notifList = []; notifUnread = 0; }
   renderNotifBell();
   const panel = document.getElementById('notif-panel');
@@ -4372,8 +4378,8 @@ function notifPanelHtml() {
   if (!notifList.length) return `${head}<div class="notif-empty">You're all caught up.</div>`;
   const items = notifList.map(n => {
     const unread = !n.read_at;
-    const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`;
-    return `<button class="notif-item${unread ? ' unread' : ''}" onclick="${nav}"><span class="notif-dot"></span><span><span class="notif-body-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="notif-body-sub">${esc(n.body)}</span>` : ''}<span class="notif-time">${esc(notifTimeAgo(n.created_at))}</span></span></button>`;
+    const nav = `openNotification(this.dataset.nid, this.dataset.rt, this.dataset.rid, this.dataset.rp)`;
+    return `<button class="notif-item${unread ? ' unread' : ''}" data-nid="${escAttr(String(n.id))}" data-rt="${escAttr(n.ref_type || '')}" data-rid="${escAttr(String(n.ref_id || ''))}" data-rp="${escAttr(n.ref_path || '')}" onclick="${nav}"><span class="notif-dot"></span><span><span class="notif-body-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="notif-body-sub">${esc(n.body)}</span>` : ''}<span class="notif-time">${esc(notifTimeAgo(n.created_at))}</span></span></button>`;
   }).join('');
   return `${head}<div class="notif-list">${items}</div>`;
 }
@@ -4390,14 +4396,16 @@ async function markAllNotifsRead() {
   try { await apiPost('/notifications/read', { all: true }); } catch { /* ignore */ }
   await loadNotifications();
 }
-async function openNotification(id, refType, refId) {
+async function openNotification(id, refType, refId, refPath) {
   closeNotifMenu();
   try { await apiPost('/notifications/read', { ids: [id] }); } catch { /* ignore */ }
   if (refType === 'document' && refId) { try { openFileDefault(refId); } catch { /* file may be gone */ } }
+  // A file a colleague sent by link. The notice holds the share's id, never its token.
+  if (refType === 'signin_share' && OPEN_ID.test(refId || '')) await openSigninLink('/files/signin-share/' + encodeURIComponent(refId));
   // Something was shared with you: go to that library (if it is still yours to see).
   if (refType === 'library' && refId) {
     await loadLibraries().catch(() => {});
-    if (librariesList.some(l => String(l.id) === String(refId))) { if (!document.getElementById('file-library-view')) await setTab('files'); switchLibrary(refId); }
+    if (librariesList.some(l => String(l.id) === String(refId))) await openLibraryAt(refId, refPath || ''); // a shared FOLDER opens at that folder
     else if (librariesList.some(l => l.id)) toast("That library isn't shared with you any more.");
     else toast("Couldn't open that library right now. Try again.");
   }
@@ -5465,6 +5473,7 @@ async function saveEmailSettings() {
     smtp_reject_unauthorized:  document.getElementById('cfg-smtp-allowselfsigned')?.checked ? 'false' : 'true',
     email_ev_share_granted:    document.getElementById('ev-share-granted')?.checked ? 'true' : 'false',
     email_ev_share_downloaded: document.getElementById('ev-share-downloaded')?.checked ? 'true' : 'false',
+    email_ev_share_opened: document.getElementById('ev-share-opened')?.checked ? 'true' : 'false',
     email_ev_upload_received:  document.getElementById('ev-upload-received')?.checked ? 'true' : 'false',
     email_ev_document_edited:  document.getElementById('ev-document-edited')?.checked ? 'true' : 'false',
   };
@@ -6365,7 +6374,7 @@ function activityQuery(extra = {}) {
 const ACTIVITY_LABELS = {
   uploaded: 'Uploaded', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
   restored: 'Restored', purged: 'Deleted permanently', updated: 'Updated',
-  share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
+  internal_link_sent: 'Sent a sign-in link', share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
   access_granted: 'Granted access', access_revoked: 'Revoked access',
   version_saved: 'Saved version', version_restored: 'Restored version',
 };
@@ -6428,6 +6437,24 @@ async function exportActivityCsv() {
     URL.revokeObjectURL(a.href);
   } catch (e) { toast('Export failed: ' + e.message); }
 }
+// What the workspace emails people about, in the words a person would use. Order = how much
+// they are likely to care.
+const EMAIL_EVENT_WORDS = [
+  ['share_granted', 'someone shares a file, folder or library with you (with a link straight to it)'],
+  ['share_opened', 'someone opens something you shared, the first time each person does'],
+  ['upload_received', 'files arrive in a library or folder you follow, or through a link you sent'],
+  ['document_edited', 'a file you follow is edited'],
+];
+let notifEmail = null;
+function emailNoticeHtml() {
+  const admin = currentUser?.role === 'admin';
+  if (!notifEmail) return `<p class="settings-notice">Couldn't check this workspace's email settings just now. Try again in a moment.</p>`;
+  if (!notifEmail.configured) return `<p class="settings-notice">Email isn't set up for this workspace yet, so Depot can't email you. ${admin ? 'Set it up under <strong>Email</strong> below.' : 'An administrator can set it up in Settings.'} You still get everything in the bell menu.</p>`;
+  const on = EMAIL_EVENT_WORDS.filter(([k]) => notifEmail.events?.[k]);
+  if (!on.length) return `<p class="settings-notice">Email is set up, but every email notice is switched off for this workspace. ${admin ? 'Turn them on under <strong>Email</strong> below.' : 'An administrator chooses which ones are sent.'}</p>`;
+  return `<p class="settings-notice" style="margin-bottom:8px">Depot emails you at <strong>${esc(currentUser?.email || 'your address')}</strong> when:</p><ul class="notif-email-list">${on.map(([, w]) => `<li>${esc(w)}</li>`).join('')}</ul>`
+    + `<p class="settings-notice" style="margin-top:8px">${admin ? 'You choose which of these the workspace sends under <strong>Email</strong> below.' : 'Which of these are sent is chosen for the whole workspace by an administrator.'} An email someone sends you on purpose (a file, a meeting invite) always arrives.</p>`;
+}
 function notificationsSettingsHtml() {
   return `<div class="usage-section">
       <h3>In-app notifications</h3>
@@ -6435,11 +6462,11 @@ function notificationsSettingsHtml() {
         <input type="checkbox" id="notif-pref-toggle" ${notifEnabled ? 'checked' : ''} onchange="setNotifPref(this.checked)">
         <span>Show notifications in the bell menu${notifUnread ? ` — <strong>${notifUnread} unread</strong>` : ''}</span>
       </label>
-      <p class="settings-notice" style="margin-top:8px">You'll be notified in-app when someone shares a file with you. ${notifUnread ? `<a href="#" onclick="markAllNotifsRead();return false" style="color:var(--accent)">Mark all as read</a>.` : ''}</p>
+      <p class="settings-notice" style="margin-top:8px">The bell tells you when someone shares something with you, when someone opens what you shared, and when files arrive where you follow. ${notifUnread ? `<a href="#" onclick="markAllNotifsRead();return false" style="color:var(--accent)">Mark all as read</a>.` : ''}</p>
     </div>
     <div class="usage-section">
       <h3>Email notifications</h3>
-      <p class="settings-notice">Email delivery (upload &amp; share-download alerts) is coming soon — it needs a mail server configured on this deployment.</p>
+      ${emailNoticeHtml()}
     </div>`;
 }
 async function setNotifPref(enabled) {
@@ -6772,6 +6799,7 @@ function emailSettingsHtml() {
       <p class="settings-notice">Which events send an email (on top of the in-app bell). Applies workspace-wide; members still have their own in-app opt-out. Needs a provider configured above.</p>
       <div class="email-events">
         <label class="email-event-row"><input type="checkbox" id="ev-share-granted" ${evOn('share_granted', true)}> <span><strong>A file is shared with a member</strong><em>Emails the person who was granted access.</em></span></label>
+        <label class="email-event-row"><input type="checkbox" id="ev-share-opened" ${evOn('share_opened', true)}> <span><strong>Something you shared is opened</strong> — the first time each person opens a file, folder, library or link you shared. Once per share.</span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-share-downloaded" ${evOn('share_downloaded', true)}> <span><strong>A share link is downloaded</strong><em>Emails the member who created the link.</em></span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-upload-received" ${evOn('upload_received', true)}> <span><strong>A file arrives via an upload link</strong><em>Emails the link owner (also respects the per-link checkbox).</em></span></label>
         <label class="email-event-row"><input type="checkbox" id="ev-document-edited" ${evOn('document_edited', false)}> <span><strong>A file is edited in the browser</strong><em>Emails the owner. Off by default — Office autosaves often.</em></span></label>
@@ -7291,6 +7319,8 @@ function navToHash(s) {
   return h;
 }
 // Parse a hash back into a snapshot. Returns null for an empty/unknown hash (caller uses the default).
+const OPEN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OPEN_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
 function hashToNav(hash) {
   let h = String(hash || '').replace(/^#\/?/, '');
   if (!h) return null;
@@ -7303,6 +7333,18 @@ function hashToNav(hash) {
   }
   const seg = h.split('/').filter(Boolean).map(decodeURIComponent);
   const first = seg[0];
+  // Links from share emails and notices: open exactly what was shared, after sign-in.
+  // These arrive from OUTSIDE (an email, a chat, anyone who can get you to click), and each
+  // segment is decoded after the split, so it can hold anything at all. An id is a UUID and
+  // a token is base64url; whatever is not exactly that is not a link, and goes nowhere.
+  if (first === 'open') {
+    const where = { tab: 'files', view: 'active', filter: 'all', folder: '' };
+    if (seg[1] === 'file' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { file: seg[2] } };
+    if (seg[1] === 'lib' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { lib: seg[2], folder: seg.slice(3).join('/') } };
+    if (seg[1] === 'share' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { share: seg[2] } };
+    if (seg[1] === 'link' && OPEN_TOKEN.test(seg[2] || '')) return { ...where, open: { link: seg[2] } };
+    return null;
+  }
   if (first === 'admin') return { tab: 'admin', view: 'active', filter: 'all', folder: '' };
   if (['files', 'shared', 'favorites', 'links', 'trash'].includes(first)) {
     const view = first === 'files' ? 'active' : first;
@@ -7320,10 +7362,47 @@ function navPush() {
   try { history.pushState({ mx: snap }, '', location.pathname + location.search + hash); } catch (e) {}
 }
 // Apply whatever the current URL hash encodes (used on first load / bookmarked links).
+// Switch to a library and land in one of its folders. switchLibrary() alone only starts the
+// load, so a folder opened straight after it would be drawn over when the load finished.
+async function openLibraryAt(libId, folder = '') {
+  closeLibraryMenu();
+  currentLibraryId = libId;
+  try { localStorage.setItem('memex_library_id', libId); } catch { /* private mode */ }
+  if (state) state.tab = 'files';
+  document.documentElement.classList.add('file-home-mode');
+  await renderDocumentLibrary('active');
+  openFolder(folder || '', false);
+}
+// Land on what a share link points at. Each case says plainly when it cannot.
+async function openSharedTarget(o) {
+  if (o.link) { await setTab('files', 'home'); return openSigninLink('/files/signin-link/' + encodeURIComponent(o.link)); }
+  if (o.share) { await setTab('files', 'home'); return openSigninLink('/files/signin-share/' + encodeURIComponent(o.share)); }
+  if (o.file) { await setTab('files', 'home'); try { await openFileDefault(o.file); } catch { toast("That file isn't available to you. Ask whoever shared it."); } return; }
+  await loadLibraries().catch(() => {});
+  if (!librariesList.some(l => String(l.id) === String(o.lib))) { await setTab('files', 'home'); toast("That library isn't shared with you (any more). Ask whoever shared it."); return; }
+  await openLibraryAt(o.lib, o.folder);
+}
+// A file a colleague sent by link: it opens for the person it was sent to, signed in.
+async function openSigninLink(apiPath) {
+  let info;
+  try { info = await apiGet(apiPath); }
+  catch (e) { toast(e.message || 'That link could not be opened.'); return; }
+  const name = String(info.name || 'File').split('/').pop();
+  openModal({ id: 'signin-link-scrim', modalClass: 'modal-ask', labelledBy: 'sl-title', html:
+    `<h2 id="sl-title">${esc(name)}</h2><p class="ask-msg">${esc(info.sentBy || 'A colleague')} sent you this file${info.expiresAt ? ` · link expires ${esc(new Date(info.expiresAt).toLocaleDateString([], { dateStyle: 'medium' }))}` : ''}.\n${esc(fileSizeLabel(info.size || 0))} · view only. To work on it with them, ask them to have the library's owner add you.</p>`
+    + `<div class="ask-actions"><button type="button" class="ghost-btn" onclick="closeModal('signin-link-scrim')">Close</button><a class="run-btn" style="text-decoration:none" href="${escAttr(info.downloadUrl)}" download>Download</a></div>` });
+}
 async function navApply(s) {
   if (!s) s = { tab: 'files', view: 'active', filter: 'all', folder: '' };
   _navApplying = true;
   try {
+    if (s.open) {
+      await openSharedTarget(s.open);
+      // The address bar should say where you ARE, not carry the one-time link around (a
+      // reload would otherwise open the same dialog again).
+      try { history.replaceState(null, '', location.pathname + location.search + navToHash(navSnapshot())); } catch (e) { /* sandboxed */ }
+      return;
+    }
     const tab = s.tab || 'files';
     if (tab !== 'files') {
       await setTab(tab);
@@ -9110,7 +9189,7 @@ async function renderHome() {
       recentFiles.length ? more('All files', 'all') : '');
 
     const notifCard = card('Notifications', 'notifications', notifList.length
-      ? notifList.slice(0, 5).map(n => { const unread = !n.read_at; const nav = ((n.ref_type === 'document' || n.ref_type === 'library') && n.ref_id) ? `openNotification('${esc(String(n.id))}','${esc(n.ref_type)}','${esc(String(n.ref_id))}')` : `openNotification('${esc(String(n.id))}','','')`; return `<button class="wdash-notif${unread ? ' unread' : ''}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
+      ? notifList.slice(0, 5).map(n => { const unread = !n.read_at; const nav = `openNotification(this.dataset.nid, this.dataset.rt, this.dataset.rid, this.dataset.rp)`; return `<button class="wdash-notif${unread ? ' unread' : ''}" data-nid="${escAttr(String(n.id))}" data-rt="${escAttr(n.ref_type || '')}" data-rid="${escAttr(String(n.ref_id || ''))}" data-rp="${escAttr(n.ref_path || '')}" onclick="${nav}"><span class="wdash-notif-dot"></span><span class="wdash-notif-txt"><span class="wdash-notif-title">${esc(n.title || 'Notification')}</span>${n.body ? `<span class="wdash-notif-body">${esc(n.body)}</span>` : ''}</span><span class="wdash-notif-time">${fileDate(n.created_at)}</span></button>`; }).join('')
       : `<p class="wdash-empty">You're all caught up.</p>`);
 
     const favCard = pinned.length ? card('Favorites', 'favorites', `<div class="file-card-grid wdash-pins">${pinned.map(fileCardHtml).join('')}</div>`) : '';
@@ -9707,7 +9786,7 @@ async function openShareSelected({ openAccess = false } = {}) {
   const f = firstSelectedFile();
   if (!f) return;
   closeShareSelected();
-  _shareEmails = []; _shareWho = 'link'; _shareLinkBlocked = false;
+  _shareEmails = []; _shareWho = 'link'; _shareLinkBlocked = false; _shareCanGrant = true; _shareOwner = '';
   openModal({ id: 'file-share-scrim', html: `<h2>Share</h2><p class="sub">${esc(f.name)}</p>`
     + `<div class="share-flow">`
     + `<div class="share-q"><div class="share-q-num">1</div><div class="share-q-body"><div class="share-q-title">Who gets it</div>`
@@ -9717,6 +9796,7 @@ async function openShareSelected({ openAccess = false } = {}) {
     + `<div class="share-q"><div class="share-q-num">2</div><div class="share-q-body"><div class="share-q-title">What they can do</div>`
     + `<label class="share-radio"><input type="radio" name="share-perm" value="read" checked><span class="share-radio-txt"><span class="share-radio-t">Can view</span><span class="share-radio-note">Open and download the file.</span></span></label>`
     + `<label class="share-radio" id="share-perm-edit"><input type="radio" name="share-perm" value="write"><span class="share-radio-txt"><span class="share-radio-t">Can edit</span><span class="share-radio-note">Change the file. Needs a Depot account, so invite them by email.</span></span></label>`
+    + `<p class="share-how" id="share-how" hidden></p>`
     + `</div></div>`
     + `<div class="share-q" id="share-q3"><div class="share-q-num">3</div><div class="share-q-body"><div class="share-q-title">How long and how locked</div>`
     + `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`
@@ -9733,9 +9813,12 @@ async function openShareSelected({ openAccess = false } = {}) {
       if (sum) sum.textContent = resp.can_see_keys
         ? `Who has access · ${resp.people.length} ${resp.people.length === 1 ? 'person' : 'people'} · ${resp.links.length} ${resp.links.length === 1 ? 'link' : 'links'}`
         : 'Your access';
-      // Only whoever manages the file's access can invite people to it one by one.
-      const invite = document.querySelector('#file-share-scrim .share-seg-opt[data-who="people"]');
-      if (invite) invite.hidden = !resp.can_see_keys;
+      // Everyone who may share the file sees the same two choices. What differs is what an
+      // invite DOES, and the dialog says so: whoever manages the file's access gives people
+      // access; anyone else sends a link, because handing out access is the owner's call.
+      _shareCanGrant = !!resp.can_see_keys;
+      _shareOwner = resp.door?.file?.library?.owner_email || '';
+      shareSetWho(_shareWho);
     },
   });
   await loadShareLinks(f.id);
@@ -9747,18 +9830,31 @@ function openFileAccess(fileId) {
   openShareSelected({ openAccess: true });
 }
 
+let _shareCanGrant = true, _shareOwner = '';
 function shareSetWho(mode) {
   _shareWho = mode;
   document.querySelectorAll('#file-share-scrim .share-seg-opt[data-who]').forEach(b => b.classList.toggle('active', b.dataset.who === mode));
   const people = document.getElementById('share-people'); if (people) people.hidden = mode !== 'people';
-  const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = mode !== 'link';
+  // Step 3 (expiry, password) applies to invites too: someone outside gets a LINK, and a
+  // link can be forwarded. It used to be hidden here, leaving those links with no lock at all.
+  const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = false;
   // "Edit" needs an account, so it only applies to invited people, never a public link.
   const editOpt = document.getElementById('share-perm-edit');
   const editRadio = editOpt?.querySelector('input');
+  // ...and editing takes real access to the file, which only whoever manages it can give.
+  const noEdit = mode === 'link' || !_shareCanGrant;
   if (editRadio) {
-    editRadio.disabled = mode === 'link';
-    editOpt.classList.toggle('is-disabled', mode === 'link');
-    if (mode === 'link' && editRadio.checked) { const v = document.querySelector('input[name="share-perm"][value="read"]'); if (v) v.checked = true; }
+    editRadio.disabled = noEdit;
+    editOpt.classList.toggle('is-disabled', noEdit);
+    if (noEdit && editRadio.checked) { const v = document.querySelector('input[name="share-perm"][value="read"]'); if (v) v.checked = true; }
+  }
+  const how = document.getElementById('share-how');
+  if (how) {
+    how.hidden = mode !== 'people';
+    const owner = _shareOwner ? _shareOwner : "the library's owner";
+    how.textContent = _shareCanGrant
+      ? 'Colleagues with a Depot account are given access and emailed a link to the file. Anyone else gets their own link by email. A link works for whoever holds it, so set a password below if it must not be forwarded. You are told the first time each person opens it.'
+      : `Each person is emailed their own link to view this file. A colleague with a Depot account signs in to open theirs. Anyone else gets a link that works for whoever holds it, so set a password below if it must not be forwarded. You are told the first time each person opens it. To let someone edit, or to add them to the library, ask ${owner}.`;
   }
   if (mode === 'people') setTimeout(() => document.getElementById('share-email-input')?.focus(), 0);
   shareUpdateFoot();
@@ -9791,11 +9887,27 @@ async function doShare() {
   const permission = document.querySelector('input[name="share-perm"]:checked')?.value || 'read';
   if (_shareWho === 'people') {
     if (!_shareEmails.length) return;
-    let ok = 0;
-    for (const email of _shareEmails) { try { await apiPut('/files/' + f.id + '/access', { email, permission }); ok++; } catch (e) { /* keep going */ } }
+    let data;
+    const expOn = document.getElementById('share-expiry-on')?.checked, expDate = document.getElementById('share-expiry-date')?.value;
+    const expDays = (expOn && expDate) ? Math.max(1, Math.ceil((new Date(expDate + 'T23:59:59').getTime() - Date.now()) / 86400000)) : 30;
+    const pw = document.getElementById('share-pw-on')?.checked ? (document.getElementById('share-pw')?.value || '') : '';
+    try { data = await apiPost('/files/' + f.id + '/send', { recipients: _shareEmails, permission, neverExpires: false, expiresInDays: expDays, password: pw, allowUpload: false }); }
+    catch (e) { toast('Invite failed: ' + e.message); return; }
+    const results = data.results || [];
+    const failed = results.filter(r => r.kind === 'error' || r.sent === false);
+    const how = document.getElementById('share-how');
+    if (how) how.innerHTML = results.map(r => {
+      if (r.kind === 'error') return `✕ ${esc(r.to)}: ${esc(r.error || 'failed')}`;
+      const did = r.kind === 'granted' ? `given ${r.permission === 'write' ? 'edit' : 'view'} access` : r.kind === 'signin_link' ? 'sent a sign-in link' : 'sent their own link';
+      // The token is stored hashed, so a link whose email failed exists NOWHERE else: show it now.
+      const rescue = r.sent === false && r.url ? ` Send it yourself: <input class="file-share-url" readonly value="${escAttr(r.url)}" aria-label="Link for ${escAttr(r.to)}" onclick="this.select()">` : '';
+      const pwNote = r.kind === 'link' && data.hasPassword ? ' Pass them the password separately.' : '';
+      return r.sent === false ? `⚠ ${esc(r.to)}: ${did}, but the email failed (${esc(r.reason || 'unknown')}).${rescue}` : `✓ ${esc(r.to)}: ${did} and emailed.${esc(pwNote)}`;
+    }).map(x => `<span class="share-how-row">${x}</span>`).join('');
     _shareEmails = []; renderShareChips();
-    toast(ok ? `Invited ${ok} ${ok === 1 ? 'person' : 'people'}` : 'Invite failed');
+    toast(failed.length ? `${results.length - failed.length} of ${results.length} invited. See the list for the rest.` : `Invited ${results.length} ${results.length === 1 ? 'person' : 'people'}`);
     if (_fileAccessList) await _fileAccessList.reload();
+    await loadShareLinks(f.id);
   } else {
     const expiryOn = document.getElementById('share-expiry-on')?.checked;
     const dateVal = document.getElementById('share-expiry-date')?.value;
@@ -9870,6 +9982,7 @@ async function sendFileToPeople() {
     const rows = (data.results || []).map(r => {
       if (r.kind === 'granted' && r.sent === false) return `<div>⚠ ${esc(r.to)} — access granted, but the notification email failed (${esc(r.reason || 'unknown')}). They can still open it once signed in.</div>`;
       if (r.kind === 'granted') return `<div>✓ ${esc(r.to)} — has an account; given ${esc(r.permission)} access and emailed</div>`;
+      if (r.kind === 'signin_link') return `<div>${r.sent === false ? '⚠' : '✓'} ${esc(r.to)} — colleague; sent a sign-in link${r.sent === false ? `, but the email failed (${esc(r.reason || 'unknown')})` : ''}</div>`;
       if (r.kind === 'link' && r.sent) return `<div>✓ ${esc(r.to)} — link emailed${data.hasPassword ? ' (remember to pass them the password separately)' : ''}</div>`;
       // Email failed but the link exists — surface the URL right here (the links
       // list stores tokens hashed and can never show it), so it isn't lost.
@@ -10250,6 +10363,8 @@ function accPersonRow(p, resp, keys, open) {
     if (k && k.can_remove && (k.change_here || k.kind === 'file_grants' || k.kind === 'file_grant')) {
       act = `<button class="file-library-tool" type="button" data-acc-remove="${escAttr(r.key)}">${k.kind === 'file_grant' || k.kind === 'file_grants' ? 'Revoke' : 'Remove'}</button>`;
       if ((k.kind === 'library_share' || k.kind === 'folder_share') && k.permission === 'write') act += `<button class="file-library-tool" type="button" data-acc-lower="${escAttr(r.key)}">Make Read-only</button>`;
+      // For a person (never a group, who are told in the app only): send the email again, with its link.
+      if (p.email && k.subject?.type !== 'group' && (k.kind === 'file_grant' || k.kind === 'library_share' || k.kind === 'folder_share')) act += `<button class="file-library-tool" type="button" data-acc-resend="${escAttr(r.key)}" data-email="${escAttr(p.email)}" aria-label="Resend the email to ${escAttr(p.email)}">Resend email</button>`;
     } else if (k && (k.kind === 'library_share' || k.kind === 'folder_share') && !k.change_here && door.kind !== 'file') {
       act = `<button class="file-library-tool" type="button" data-acc-there="${escAttr(k.folder_path || '')}">${k.folder_path ? `Shared on the folder “${esc(accLast(k.folder_path))}”, change it there` : 'Shared on the library, change it there'}</button>`;
     }
@@ -10270,10 +10385,11 @@ function accPersonRow(p, resp, keys, open) {
 function accLinkRow(l, resp) {
   const until = l.expires_at ? `until ${new Date(l.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : 'no end date';
   const title = l.kind === 'folder' ? `Anyone with the folder link to “${l.name || l.folder_path}” · ${until}`
+    : l.require_signin ? `${l.recipient_email}, signed in, with the link sent to them · ${until}`
     : l.recipient_email ? `Anyone with the link sent to ${l.recipient_email} · ${until}` : `Anyone with this link · ${until}`;
   const meta = l.kind === 'folder'
     ? [`A ZIP of the ${l.file_count} file${l.file_count === 1 ? '' : 's'} that were in it when it was made`, `${l.serving} still served`, `made by ${accBy(l.created_by)}`]
-    : [l.name, `made by ${accBy(l.created_by)}`, l.has_password ? 'password' : '', l.allow_upload ? 'can send files back' : '', `opened ${l.access_count} time${l.access_count === 1 ? '' : 's'}`];
+    : [l.name, `made by ${accBy(l.created_by)}`, l.has_password ? 'password' : '', l.allow_upload ? 'can send files back' : '', l.opened_at ? `first opened ${fileDate(l.opened_at)}` : 'not opened yet', `downloaded ${l.access_count} time${l.access_count === 1 ? '' : 's'}`];
   let paused = '';
   if (l.state === 'paused') {
     const who = accIsMe(l.created_by) ? 'You' : accWho(l.created_by);
@@ -10404,6 +10520,21 @@ function mountAccessList(root, door, { showLinks = true, onLoad = null } = {}) {
     if (chip) { st.filter = chip.dataset.accChip; render(); return; }
     const there = t.closest('[data-acc-there]');
     if (there) { openLibraryShare({ libraryId: st.resp.door.library?.id || door.libraryId, folderPath: there.dataset.accThere }); return; }
+    const again = t.closest('[data-acc-resend]');
+    if (again) {
+      const k = st.resp.keys.find(x => x.ref === again.dataset.accResend);
+      if (!k) return;
+      const libId = st.resp.door.library?.id || st.resp.door.file?.library?.id || door.libraryId;
+      again.disabled = true;
+      try {
+        const r = k.kind === 'file_grant'
+          ? await apiPost(`/files/${encodeURIComponent(door.fileId)}/access/resend`, { email: again.dataset.email })
+          : await apiPost(`/libraries/${encodeURIComponent(libId)}/shares/${encodeURIComponent(k.id)}/resend`, {});
+        toast(r.sent === false ? `The email could not be sent (${r.reason || 'unknown'}).` : `Sent to ${again.dataset.email}, with a link.`);
+      } catch (err) { toast(groupErr(err, "Couldn't send it. Try again.")); }
+      again.disabled = false;
+      return;
+    }
     const rm = t.closest('[data-acc-remove]') || t.closest('[data-acc-lower]');
     if (rm) {
       const lower = !!rm.dataset.accLower;
@@ -11503,6 +11634,9 @@ function togglePreviewOpenMenu(e) { e?.stopPropagation(); document.getElementByI
 function closePreviewOpenMenu() { document.getElementById('preview-open-menu')?.classList.remove('open'); }
 document.addEventListener('click', e => { const m = document.getElementById('preview-open-menu'); if (m && m.classList.contains('open') && !e.target.closest('.preview-openwith')) m.classList.remove('open'); });
 async function previewFile(fileId, opts = {}) {
+  // The id goes into this dialog's inline handlers below. It is always a UUID when it is
+  // ours; refuse anything else rather than trust every caller, present and future.
+  if (!OPEN_ID.test(String(fileId || ''))) { toast('That file could not be opened.'); return; }
   recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
   // Ordered ids in whatever view is showing (list rows or gallery cards), for ←/→ paging.

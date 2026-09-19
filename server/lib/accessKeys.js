@@ -510,7 +510,7 @@ async function linkRows(q, door, viewer) {
   const files = await q.query(
     `WITH s AS MATERIALIZED (
        SELECT x.id, x.name, x.library_id, x.library_scoped, x.uploaded_by,
-              l.id AS link_id, l.created_by, l.created_by_email, l.recipient_email, l.expires_at,
+              l.id AS link_id, l.created_by, l.created_by_email, l.recipient_email, l.require_signin, l.opened_at, l.expires_at,
               (l.password_hash IS NOT NULL) AS has_password, l.allow_upload, l.access_count, l.last_accessed_at, l.created_at
          FROM document_share_links l JOIN documents x ON x.id = l.document_id
         WHERE l.revoked_at IS NULL AND x.deleted_at IS NULL AND ${scope})
@@ -586,7 +586,7 @@ async function linksFor(q, door, viewer, names) {
       ref: `lk:${l.link_id}`, kind: 'file', id: l.link_id, document_id: l.id, name: l.name.slice(cut + 1),
       folder_path: cut < 0 ? '' : l.name.slice(0, cut), file_count: 1, files_here: 1, serving: on ? 1 : 0,
       created_by: person(l.created_by, l.created_by_email), created_by_me: !!l.created_by && String(l.created_by) === String(viewer.id),
-      recipient_email: l.recipient_email || null, expires_at: l.expires_at, has_password: !!l.has_password,
+      recipient_email: l.recipient_email || null, require_signin: !!l.require_signin, opened_at: l.opened_at || null, expires_at: l.expires_at, has_password: !!l.has_password,
       allow_upload: !!l.allow_upload, access_count: Number(l.access_count) || 0, last_accessed_at: l.last_accessed_at,
       state: on ? 'active' : 'paused', paused_reason: on ? null : s.why,
       // DELETE /api/files/:id/shares/:shareId: write on the file (every file listed here is one the viewer manages)

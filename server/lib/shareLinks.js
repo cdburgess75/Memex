@@ -50,6 +50,8 @@ function shareLinkClientShape(row, url = null) {
     created_at: row.created_at,
     created_by_email: row.created_by_email,
     recipient_email: row.recipient_email || null,   // null = anonymous copy-link
+    require_signin: !!row.require_signin,           // opens only for that person, signed in
+    opened_at: row.opened_at || null,               // the first time its recipient opened it
     allow_upload: !!row.allow_upload,
     last_accessed_at: row.last_accessed_at,
     access_count: Number(row.access_count || 0),
