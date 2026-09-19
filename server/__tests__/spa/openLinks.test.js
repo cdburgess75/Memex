@@ -24,6 +24,7 @@ describe('what counts as a link', () => {
     expect(hashToNav(`#/open/lib/${ID}/Clients/Smith%20%26%20Co`).open).toEqual({ lib: ID, folder: 'Clients/Smith & Co' });
     expect(hashToNav(`#/open/share/${ID}`).open).toEqual({ share: ID });
     expect(hashToNav('#/open/link/aB3_-xyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab').open).toEqual({ link: 'aB3_-xyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab' });
+    expect(hashToNav('#/open/flink/aB3_-xyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab').open).toEqual({ flink: 'aB3_-xyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab' });
   });
   test('the ordinary routes are untouched', () => {
     expect(hashToNav('#/files/Clients')).toMatchObject({ view: 'active', folder: 'Clients' });
@@ -36,6 +37,7 @@ describe('what counts as a link', () => {
     ['a library that is not an id', '#/open/lib/1%20OR%201%3D1'],
     ['a token with anything but base64url in it', '#/open/link/abcdefghijklmnop%22%3E%3Cscript%3E'],
     ['a token too short to be one', '#/open/link/abc'],
+    ['a folder-link token with markup in it', '#/open/flink/abcdefghijklmnop%22%3E%3Cscript%3E'],
     ['an unknown kind', `#/open/admin/${ID}`],
     ['nothing after the kind', '#/open/file/'],
   ])('%s is not a link', (_label, hash) => expect(hashToNav(hash)).toBeNull());

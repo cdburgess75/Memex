@@ -148,6 +148,16 @@ describe('folder operations are scoped to one library', () => {
     }
   });
 
+  test('a move to another library ends the live links sent from the old one; a rename within it does not', async () => {
+    const ended = () => seen.filter(q => /UPDATE folder_share_links f SET revoked_at = NOW\(\), revoked_by = \$3\s+WHERE f\.live/.test(q.sql));
+    const moved = await request(makeApp()).post('/api/files/folder/move').send({ path: 'Clients/Acme', library_id: 'lib-2' });
+    expect(moved.status).toBe(200);
+    expect(ended().map(q => q.params.slice(0, 2))).toEqual([['lib-1', 'Clients/Acme']]); // the OLD library, this folder
+    seen.length = 0;
+    await request(makeApp()).post('/api/files/folder/rename').send({ path: 'Clients/Acme', name: 'Acme2' });
+    expect(ended()).toEqual([]);
+  });
+
   test('move refuses a destination library the caller cannot add files to', async () => {
     const libraries = require('../../lib/libraries');
     libraries.writeRight.mockResolvedValueOnce({ status: 403, error: 'no' });

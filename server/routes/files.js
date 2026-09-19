@@ -1840,10 +1840,11 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     // or on the sender's own email domain (covers colleagues federated through
     // M365/AD who have not opened Depot yet, so no user_roles row exists). Those
     // get an access grant (behind their own sign-in); everyone else gets a link.
-    const known = new Set(
-      (await db.query('SELECT lower(email) AS email FROM user_roles WHERE lower(email) = ANY($1::text[])', [recipients]))
-        .map(r => r.email)
-    );
+    const accounts = await db.query('SELECT lower(email) AS email, lower(verified_email) AS verified, disabled_at FROM user_roles WHERE lower(email) = ANY($1::text[])', [recipients]);
+    const known = new Set(accounts.map(r => r.email));
+    // Who could actually OPEN a sign-in link: verified at that address, and not switched off.
+    // (The gate compares the verified address; an account that fails it gets a link it can never open.)
+    const canSignIn = new Set(accounts.filter(r => r.verified && r.verified === r.email && !r.disabled_at).map(r => r.email));
     const isInternal = (to) => known.has(to) || (senderDomain && to.endsWith('@' + senderDomain));
 
     // Ranked so an existing grant is never silently downgraded by a send.
@@ -1901,7 +1902,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
         // sender" also covers a colleague who has never signed in -- and every gmail.com
         // address, for a sender on gmail.com -- and a link that needs a sign-in they do not
         // have is a link they cannot open. Those people get their own public link, below.
-        if (known.has(to)) {
+        if (canSignIn.has(to)) {
           // A colleague, from a sender who may share this file but not hand out access to
           // it (sharing is owner-managed). They get a link that opens only for THEM, signed
           // in -- not the public page, which anyone the email was forwarded to could use.

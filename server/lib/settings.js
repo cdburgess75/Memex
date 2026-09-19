@@ -32,6 +32,7 @@ const ENV_MAP = {
   cors_origins:                   'CORS_ORIGINS',
   http_proxy:                     'HTTP_PROXY',
   max_upload_mb:                  'MAX_UPLOAD_MB',
+  folder_zip_max_mb:              'FOLDER_ZIP_MAX_MB',
   max_upload_files:               'MAX_UPLOAD_FILES',
   // Comma/space-separated extensions to refuse on upload. Empty/unset = the built-in
   // executable blocklist (see routes/files.js DEFAULT_BLOCKED_EXTS).

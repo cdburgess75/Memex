@@ -18,6 +18,12 @@ function folderShareClientShape(row, url = null) {
     last_accessed_at: row.last_accessed_at,
     access_count: Number(row.access_count || 0),
     has_password: !!row.password_hash,
+    // Who a sent link went to, whether it follows the folder (live) or is a fixed set of
+    // files, whether it needs a sign-in, and when it was first opened.
+    recipient_email: row.recipient_email || null,
+    live: !!row.live,
+    require_signin: !!row.require_signin,
+    opened_at: row.opened_at || null,
     url,
   };
 }

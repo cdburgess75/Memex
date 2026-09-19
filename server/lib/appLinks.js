@@ -4,4 +4,5 @@ const seg = (p) => String(p || '').split('/').filter(Boolean).map(encodeURICompo
 const fileUrl = (base, id) => `${base}/#/open/file/${encodeURIComponent(String(id))}`;
 const placeUrl = (base, libraryId, folderPath = '') => `${base}/#/open/lib/${encodeURIComponent(String(libraryId))}${folderPath ? '/' + seg(folderPath) : ''}`;
 const signinLinkUrl = (base, token) => `${base}/#/open/link/${encodeURIComponent(token)}`;
-module.exports = { fileUrl, placeUrl, signinLinkUrl };
+const signinFolderUrl = (base, token) => `${base}/#/open/flink/${encodeURIComponent(token)}`;
+module.exports = { fileUrl, placeUrl, signinLinkUrl, signinFolderUrl };

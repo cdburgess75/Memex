@@ -29,8 +29,23 @@ async function keepSharedFoldersAlive(q, libraryId, names) {
       FOR UPDATE`,
     [libraryId, list]
   );
+  // A LIVE folder link (sent to a named person: migration 0015) points at its folder by path
+  // exactly as a share does, so it is the same trap: empty the folder one file at a time and
+  // the link sits armed on a bare name, publishing whatever folder takes that name next to
+  // whoever it was sent to. So it keeps its folder alive in the same way. (Deleting the FOLDER
+  // ends the link outright: lib/folderCarry.endLiveLinks.)
+  const links = await q.query(
+    `SELECT f.id, f.folder_path FROM folder_share_links f
+      WHERE f.id IN (SELECT f2.id FROM folder_share_links f2, unnest($2::text[]) AS n
+                      WHERE f2.live AND f2.library_id = $1 AND f2.revoked_at IS NULL
+                        AND (f2.expires_at IS NULL OR f2.expires_at > NOW())
+                        AND starts_with(n, f2.folder_path || '/'))
+      ORDER BY f.folder_path, f.id
+      FOR UPDATE`,
+    [libraryId, list]
+  );
   const planted = [];
-  for (const folderPath of [...new Set(rows.map(r => r.folder_path))]) {
+  for (const folderPath of [...new Set([...rows, ...links].map(r => r.folder_path))]) {
     const storagePath = `documents/${crypto.randomUUID()}-keep`;
     const made = await q.query(
       `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by,
