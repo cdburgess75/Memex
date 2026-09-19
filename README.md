@@ -36,7 +36,7 @@ It stands out because it is genuinely self-contained: a Docker Compose stack you
 | **AI** | AI Q&A grounded in your indexed files. Configurable provider and model. |
 | **Search** | Scoped search (auto, file contents, file names, or Ask AI) with an inline model picker. |
 | **Sharing and access** | Public share links (expiry, optional password), granular per-document ACLs (read / write / admin), and library membership. |
-| **File requests** | Inbound upload links: collect files from people with no account, straight into a chosen library and folder. |
+| **Files back through a link** | Send someone a file or a folder and let them add their own files to it, with no account. What arrives lands beside what you sent, and you are told. |
 | **Notifications** | In-app bell plus email. Email via Microsoft Graph (app-only sendMail) or SMTP, with per-event admin toggles. |
 | **Calls** | Member-to-member video and audio (WebRTC) with configurable STUN / TURN and an optional ScreenConnect link. |
 | **Branding** | Admin-set workspace name, logo and color scheme (five curated schemes, each with a designed light and dark face), applied everywhere including the sign-in screen; members can choose their own scheme and light/auto/dark mode. |
