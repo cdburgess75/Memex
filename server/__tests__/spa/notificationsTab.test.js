@@ -25,7 +25,7 @@ test('email set up: says what this person is emailed about, at their address, an
   expect(out).not.toContain('a file you follow is edited'); // off for this workspace, so not promised
   expect(out).toContain('chosen for the whole workspace by an administrator');
 });
-test('an admin is pointed at the switches instead', () => expect(tab({ configured: true, events: ALL }, 'admin')).toContain('under <strong>Email</strong> below'));
+test('an admin is pointed at the switches instead', () => expect(tab({ configured: true, events: ALL }, 'admin')).toMatch(/under <a [^>]*data-tab="email"[^>]*>Email<\/a>/));
 test('email not set up: says so, and that the bell still works', () => {
   const out = tab({ configured: false, events: ALL });
   expect(out).toMatch(/isn't set up for this workspace yet/);
