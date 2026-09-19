@@ -457,11 +457,13 @@ describe('who can see a link, and end it', () => {
   });
   test('a member sees their own links; whoever manages the library sees every link sent from it', async () => {
     await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
-    expect(listQ().sql).toMatch(/l\.created_by = \$2 OR \(\$5::boolean AND l\.library_id = \$3::uuid\)/);
-    expect(listQ().params[4]).toBe(false);
+    expect(listQ().sql).toMatch(/\$6::boolean OR l\.created_by = \$2::uuid OR \(\$5::boolean AND l\.library_id = \$3::uuid\)/);
+    expect(listQ().params.slice(4)).toEqual([false, false]);           // not a manager, not an admin: their own links only
     mockQueries.length = 0; mockState.manages = true;
     await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);
-    expect(listQ().params.slice(1, 5)).toEqual(['u1', LIB, 'Clients/Acme', true]);
+    expect(listQ().params.slice(2)).toEqual([LIB, 'Clients/Acme', true, false]);
+    // every parameter is in the SQL, typed: Postgres refuses one it cannot type (an admin's unused $2 was a 500)
+    for (let i = 1; i <= listQ().params.length; i++) expect(listQ().sql).toContain('$' + i);
   });
   test('a link from ANOTHER library that happens to share the folder name is not listed here', async () => {
     await request(app()).get('/api/files/folder/links').query({ path: 'Clients/Acme' }).set('x-library-id', LIB);

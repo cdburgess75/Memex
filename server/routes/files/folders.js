@@ -834,10 +834,12 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
                      WHERE d.id = ANY(l.document_ids) AND d.library_id = $3::uuid
                        AND d.deleted_at IS NULL AND starts_with(d.name, $4 || '/'))))
          AND (l.library_id IS NULL OR $3::uuid IS NULL OR l.library_id = $3::uuid)
-         ${adminAll ? '' : 'AND (l.created_by = $2 OR ($5::boolean AND l.library_id = $3::uuid))'}
+         AND ($6::boolean OR l.created_by = $2::uuid OR ($5::boolean AND l.library_id = $3::uuid))
        ORDER BY l.revoked_at IS NULL DESC, l.created_at DESC
        LIMIT 100`,
-      adminAll ? [keys, null, libraryId, folderPath] : [keys, req.user.id, libraryId, folderPath, manages]
+      // One shape for everyone, every parameter used and typed: Postgres refuses a parameter it
+      // cannot type, which is what an admin's unused $2 was ("could not determine data type").
+      [keys, isUuid(req.user.id) ? req.user.id : null, libraryId, folderPath, !!manages, adminAll]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
