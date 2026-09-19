@@ -29,8 +29,9 @@ async function servingByCreator(pairs) {
   }
   const out = new Map();
   for (const [creator, ids] of byCreator) {
-    const { docs } = await linkAccess.servableDocs(creator || null, [...ids]);
-    out.set(creator, { ids: new Set(docs.map(d => String(d.id))) });
+    const { docs } = await linkAccess.servableDocs(creator || null, [...ids], 'd.id, d.name');
+    // A folder's placeholder (.keep) is never shown to a recipient, so a folder link does not "serve" it.
+    out.set(creator, { ids: new Set(docs.map(d => String(d.id))), markers: new Set(docs.filter(d => String(d.name).endsWith('/.keep') || d.name === '.keep').map(d => String(d.id))) });
   }
   return out;
 }
@@ -56,8 +57,8 @@ async function listLinks(user, scope) {
   );
   const folders = await db.query(
     `SELECT f.id, f.folder_path, f.document_ids, f.expires_at, f.revoked_at, f.created_at, f.created_by, f.created_by_email,
-            f.last_accessed_at, f.access_count, f.password_hash,
-            (SELECT count(*)::int FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL) AS live,
+            f.last_accessed_at, f.access_count, f.password_hash, f.recipient_email, f.live, f.require_signin, f.opened_at,
+            (SELECT count(*)::int FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL) AS files_live,
             (SELECT l.name FROM documents d JOIN libraries l ON l.id = d.library_id
               WHERE d.id = ANY(f.document_ids) ORDER BY d.deleted_at NULLS FIRST, d.id LIMIT 1) AS library_name
        FROM folder_share_links f
@@ -103,11 +104,11 @@ async function listLinks(user, scope) {
   const folderLinks = [];
   for (const f of folders) {
     const s = serving.get(String(f.created_by || ''));
-    const n = (f.document_ids || []).filter(i => s && s.ids.has(String(i))).length;
+    const n = (f.document_ids || []).filter(i => s && s.ids.has(String(i)) && !s.markers.has(String(i))).length;
     let state = 'active';
     if (f.revoked_at) state = 'revoked';
     else if (expired(f)) state = 'expired';
-    else if (!f.live) state = 'files_gone';
+    else if (!f.files_live) state = 'files_gone';
     else if (!n) state = 'paused';
     folderLinks.push({
       ...folderShareClientShape(f),

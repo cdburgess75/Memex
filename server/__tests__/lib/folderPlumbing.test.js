@@ -85,13 +85,14 @@ describe('the per-library lock', () => {
 
 describe('keeping an emptied shared folder alive', () => {
   const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
-  function fake({ covering = [], planted = true } = {}) {
+  function fake({ covering = [], links = [], planted = true } = {}) {
     const calls = [];
     return {
       calls,
       query: async (sql, params) => {
         calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
         if (/FROM library_grants g/.test(sql)) return covering;
+        if (/FROM folder_share_links f/.test(sql)) return links;
         if (/INSERT INTO documents/.test(sql)) return planted ? [{ id: 'new-doc' }] : [];
         return [];
       },
@@ -112,6 +113,19 @@ describe('keeping an emptied shared folder alive', () => {
     await keepSharedFoldersAlive(q, 'lib', ['A/x']);
     expect(q.calls[0].sql).toContain('FOR UPDATE');
     expect(q.calls[0].sql).toContain("starts_with(n, g2.folder_path || '/')"); // shares AT or ABOVE the name
+  });
+  test('a LIVE link over the folder keeps it too: the link follows the folder, so an emptied one must still be there', async () => {
+    const q = fake({ links: [{ id: 'l1', folder_path: 'Clients/Acme' }] });
+    const planted = await keepSharedFoldersAlive(q, 'lib', ['Clients/Acme/last.pdf']);
+    expect(planted.map(p => p.path)).toEqual(['Clients/Acme']);
+    const look = q.calls.find(c => c.sql.includes('FROM folder_share_links f'));
+    expect(look.sql).toContain('f2.live AND f2.library_id = $1 AND f2.revoked_at IS NULL'); // live, here, not ended
+    expect(look.sql).toContain('f2.expires_at IS NULL OR f2.expires_at > NOW()');             // nor expired
+    expect(look.sql).toContain('FOR UPDATE');
+  });
+  test('a share and a live link on one folder plant one marker', async () => {
+    const q = fake({ covering: [{ id: 'g1', folder_path: 'A' }], links: [{ id: 'l1', folder_path: 'A' }] });
+    expect(await keepSharedFoldersAlive(q, 'lib', ['A/x'])).toHaveLength(1);
   });
   test('nothing to do: no names, no library, or no share over them', async () => {
     expect(await keepSharedFoldersAlive(fake(), 'lib', [])).toEqual([]);

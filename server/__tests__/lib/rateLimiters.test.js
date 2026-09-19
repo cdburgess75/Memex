@@ -95,3 +95,35 @@ describe('uploadRequestLimit (auto-scales the upload cap off max_upload_files)',
     await expect(uploadRequestLimit()).resolves.toBe(49152); // max(30000, 4096 * 12)
   });
 });
+
+describe('a folder link: guessing a password and downloading files answer to different budgets', () => {
+  const express = require('express');
+  const request = require('supertest');
+  const { presentsPassword } = require('../../lib/rateLimiters');
+  test.each([
+    ['the ticket exchange', { path: '/tok/ticket' }, true],
+    ['a password header on the listing', { path: '/tok/info', headers: { 'x-share-password': 'guess' } }, true],
+    ['?password= on the old ZIP address', { path: '/tok', query: { password: 'guess' } }, true],
+    ['an empty ?password=', { path: '/tok', query: { password: '' } }, true],
+    ['the listing', { path: '/tok/info', query: { path: 'Invoices' } }, false],
+    ['one file, by ticket', { path: '/tok/file/abc', query: { dl: 'ticket' } }, false],
+    ['the ZIP', { path: '/tok/zip' }, false],
+    ['the first-open report', { path: '/tok/opened' }, false],
+    ['a file somebody NAMED ticket', { path: '/tok/file/ticket' }, false],
+  ])('%s', (_n, req, tight) => expect(presentsPassword({ headers: {}, query: {}, ...req })).toBe(tight));
+
+  test('a recipient can download far more files than anyone can guess passwords', async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true'; process.env.RATE_LIMIT_SHARE_MAX = '3'; process.env.RATE_LIMIT_FOLDER_BROWSE_MAX = '20';
+    try {
+      const { shareLimiter, folderBrowseLimiter } = makeRateLimiters();
+      const app = express();
+      app.use('/s', (req, res, next) => (presentsPassword(req) ? shareLimiter : folderBrowseLimiter)(req, res, next), (_req, res) => res.json({ ok: true }));
+      for (let i = 0; i < 10; i++) expect((await request(app).get(`/s/tok/file/f${i}`)).status).toBe(200); // ten files: fine
+      const guesses = [];
+      for (let i = 0; i < 5; i++) guesses.push((await request(app).post('/s/tok/ticket')).status);
+      expect(guesses).toEqual([200, 200, 200, 429, 429]);                                               // guessing: stopped at three
+      expect((await request(app).get('/s/tok/info').set('x-share-password', 'x')).status).toBe(429);     // by any door
+      expect((await request(app).get('/s/tok/file/f11')).status).toBe(200);                              // and downloads go on
+    } finally { delete process.env.RATE_LIMIT_ENABLED; delete process.env.RATE_LIMIT_SHARE_MAX; delete process.env.RATE_LIMIT_FOLDER_BROWSE_MAX; }
+  });
+});

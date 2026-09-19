@@ -84,6 +84,14 @@ function makeRateLimiters() {
       limit: intFromEnv('RATE_LIMIT_SHARE_MAX', 60),
       message: 'Too many share-link attempts. Please wait and try again shortly.',
     }),
+    // Browsing a folder link's page: one request per folder opened and per file downloaded.
+    // A recipient working through a big folder -- or several behind one office address --
+    // legitimately makes hundreds. None of these carries a password, so none is a guess.
+    folderBrowseLimiter: createLimiter({
+      windowMs,
+      limit: intFromEnv('RATE_LIMIT_FOLDER_BROWSE_MAX', 1200),
+      message: 'Too many requests from this network just now. Please wait a few minutes and try again.',
+    }),
     // Recipient uploads through an exchange link are one request per file, so a
     // dropped folder legitimately makes many — a generous budget, since these
     // are already bounded by the per-file size cap and the per-link total cap.
@@ -95,4 +103,9 @@ function makeRateLimiters() {
   };
 }
 
-module.exports = { intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath, uploadRequestLimit, UPLOAD_LIMIT_FLOOR, UPLOAD_REQUESTS_PER_FILE };
+// Under /api/files/folder/share: is this request a GUESS at a link's password? The ticket
+// exchange, a password header, or `?password=` on the old ZIP address. (req.path is relative
+// to the mount: "/<token>/ticket".) Anything else presents a ticket or nothing.
+const presentsPassword = (req) => /^\/[^/]+\/ticket\/?$/.test(req.path || '') || !!(req.headers || {})['x-share-password'] || (req.query || {}).password != null;
+
+module.exports = { presentsPassword, intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath, uploadRequestLimit, UPLOAD_LIMIT_FLOOR, UPLOAD_REQUESTS_PER_FILE };

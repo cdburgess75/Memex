@@ -18,9 +18,12 @@ const libraries = require('../../lib/libraries');
 const storage = require('../../lib/storage');
 const notifications = require('../../lib/notifications');
 const emailEvents = require('../../lib/emailEvents');
-const { zipStream } = require('../../lib/zip');
+const zipLarge = require('../../lib/zipLarge');
+const folderLinks = require('../../lib/folderLinks');
+const shareOpens = require('../../lib/shareOpens');
+const appLinks = require('../../lib/appLinks');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
-const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase } = require('../../lib/shareLinks');
+const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase, issueShareTicket, verifyShareTicket } = require('../../lib/shareLinks');
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
 const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt, writeRightOrThrow, copyLanding } = require('../../lib/folderOps');
@@ -32,7 +35,6 @@ const folderUndo = require('../../lib/folderUndo');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
-const FOLDER_ZIP_MAX_BYTES = 500 * 1024 * 1024;
 // Upper bound on how many files a single folder copy will duplicate in one request,
 // so a pathological folder can't tie up the event loop (or disk) unbounded.
 const FOLDER_COPY_MAX_FILES = 5000;
@@ -663,6 +665,10 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
           ended = await folderCarry.endShares(q, { libraryId: srcLibraryId, path: folderPath, opId, user: req.user, cause: 'moved_to_library' });
         }
       }
+      // A live link somebody sent from the old library ends with the move, whether or not the
+      // folder carried any shares (endShares above only runs when it did): it would otherwise
+      // sit on the old name, and show whatever folder took it next.
+      if (String(srcLibraryId) !== String(libraryId)) await folderCarry.endLiveLinks(q, { libraryId: srcLibraryId, path: folderPath, user: req.user });
       // What people asked to hear about follows the folder into its new library.
       if (String(srcLibraryId) !== String(libraryId)) {
         await folderCarry.carryNotifyPrefs(q, { libraryId: srcLibraryId, destLibraryId: libraryId, oldPath: folderPath, newPath: folderPath });
@@ -697,19 +703,87 @@ router.get('/zip', auth, async (req, res) => {
       [folderPath, ...documentAccess.userParams(req.user, 'read'), libraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
-    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
-    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to zip (over 500 MB)' });
-    const base = folderPath.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
-    // Stream the archive (one file buffered at a time) rather than building the
-    // whole ZIP in memory — bounds peak RAM regardless of folder size.
-    await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, folderPath)), res);
+    await sendFolderZip(res, docs, folderPath, folderPath.split('/').pop());
   } catch (e) {
     if (!res.headersSent) { if (folderScopeError(res, e)) return; serverError(res, e); }
     else res.destroy(e);
   }
 });
+
+// POST /api/files/folder/zip-ticket — { path } -> { url }. The app used to fetch the ZIP and
+// hold ALL of it in the page before saving (res.blob()): fine at 50 MB, a dead tab at 8 GB.
+// A browser streams a download to disk only when it NAVIGATES to it, and a navigation cannot
+// carry the Authorization header -- so the signed-in request buys a short-lived ticket bound
+// to this person, this library and this folder, and the download presents that instead.
+// Refusals (too large, too busy) are answered here, as JSON the app can show.
+const zipTicketSubject = (userId, libraryId, folderPath) => `zip|${userId}|${libraryId}|${folderPath}`;
+async function readableFolderDocs(user, libraryId, folderPath) {
+  return db.query(
+    `SELECT d.id, d.name, d.storage_path, d.size FROM documents d
+     WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}
+     ORDER BY d.name`,
+    [folderPath, ...documentAccess.userParams(user, 'read'), libraryId]);
+}
+router.post('/zip-ticket', auth, async (req, res) => {
+  try {
+    const folderPath = existingFolder(req.body?.path);
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
+    const docs = await readableFolderDocs(req.user, libraryId, folderPath);
+    if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
+    const total = docs.reduce((n, d) => n + Number(d.size || 0), 0), limit = await zipLarge.maxBytes();
+    if (total > limit) return res.status(413).json({ error: `This folder is ${fmtBytes(total)}: larger than the ${fmtBytes(limit)} a single ZIP may be. Download a subfolder at a time, or ask an administrator to raise the limit.`, code: 'ZIP_TOO_LARGE' });
+    if (!zipLarge.canStart()) return res.status(503).json({ error: 'Depot is preparing other downloads right now. Try again in a minute.', code: 'ZIP_BUSY' });
+    const t = issueShareTicket(zipTicketSubject(req.user.id, libraryId, folderPath), 5 * 60 * 1000);
+    res.json({ url: `/api/files/folder/zip-download?u=${encodeURIComponent(req.user.id)}&lib=${encodeURIComponent(libraryId)}&path=${encodeURIComponent(folderPath)}&t=${encodeURIComponent(t)}`, bytes: total, files: docs.length });
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+});
+// GET /api/files/folder/zip-download — the ticketed download. The ticket proves who asked and
+// for what; what they may READ is asked again now, as the live account (a person switched off
+// since the ticket was issued gets nothing).
+router.get('/zip-download', async (req, res) => {
+  try {
+    const [u, lib, rawPath, t] = ['u', 'lib', 'path', 't'].map(k => (typeof req.query[k] === 'string' ? req.query[k] : ''));
+    const folderPath = existingFolder(rawPath);
+    if (!folderPath || !isUuid(lib) || !u || !t || !verifyShareTicket(zipTicketSubject(u, lib, folderPath), t)) return res.status(404).json({ error: 'That download link has expired. Start it again from Depot.' });
+    const actor = await documentAccess.resolveActor(u);
+    if (!actor) return res.status(404).json({ error: 'That download link has expired. Start it again from Depot.' });
+    const docs = await readableFolderDocs(actor, lib, folderPath);
+    if (!docs.length) return res.status(404).json({ error: 'No files in this folder' });
+    await sendFolderZip(res, docs, folderPath, folderPath.split('/').pop());
+  } catch (e) { if (!res.headersSent) serverError(res, e); else res.destroy(e); }
+});
+
+// Every folder ZIP leaves through here: one size limit (Admin -> "Largest folder ZIP"), a
+// cap on how many build at once, and a stream that never holds more than a chunk of a file.
+// Answers 413 / 503 itself and returns false; true once the archive has been sent.
+async function sendFolderZip(res, docs, folderPath, zipName, slot = {}) {
+  const total = docs.reduce((n, d) => n + Number(d.size || 0), 0);
+  const limit = await zipLarge.maxBytes();
+  if (total > limit) {
+    res.status(413).json({ error: `This folder is ${fmtBytes(total)}: larger than the ${fmtBytes(limit)} a single ZIP may be. Download the files individually, or a subfolder at a time.`, code: 'ZIP_TOO_LARGE' });
+    return false;
+  }
+  let release;
+  try { release = zipLarge.takeSlot(slot); }
+  catch (e) { res.status(e.status || 503).json({ error: e.message, code: e.code }); return false; }
+  try {
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${String(zipName || 'folder').replace(/[^a-zA-Z0-9._-]/g, '_')}.zip"`);
+    await zipLarge.streamZip(folderZipEntries(docs, folderPath), res, { totalBytes: total });
+    return true;
+  } catch (e) {
+    // A file that is missing or will not read, a visitor who walked away, a reader too slow
+    // to be downloading: the archive cannot be finished and its headers have gone. End the
+    // response (the browser shows a failed download) -- never the process.
+    console.error(`folder zip failed · ${folderPath}:`, e.code || e.message);
+    if (!res.headersSent) res.status(500).json({ error: 'That ZIP could not be made. Try again, or download the files one at a time.' });
+    else res.destroy();
+    return false;
+  } finally { release(); }
+}
+const fmtBytes = (n) => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = Number(n) || 0; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return `${i ? v.toFixed(1) : v} ${u[i]}`; };
 
 // Lazy ZIP entries for a folder's documents, each named relative to the folder's
 // own parent so the archive unpacks into a single top-level folder. load() fetches
@@ -725,7 +799,7 @@ function folderZipEntries(docs, folderPath) {
   const pre = parent ? `${parent}/` : '';
   return docs.map(d => ({
     name: pre && d.name.startsWith(pre) ? d.name.slice(pre.length) : (pre ? folderPaths.baseOf(d.name) : d.name),
-    load: () => storage.download(d.storage_path),
+    open: async () => (await storage.downloadStream(d.storage_path)).stream, // streamed, never loaded whole
   }));
 }
 
@@ -744,19 +818,24 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
     // OR if any document it serves lives here now -- which is how a link stays findable,
     // and revocable, after the folder it came from is renamed or moved.
     const libraryId = await folderLibraryId(req, folderPath, req.user);
+    // Whoever manages the library sees every link sent from it, not only their own: a member
+    // with Read-Write can send links, and the owner has to be able to see and end them.
+    const manages = !adminAll && !!libraryId && await libraries.managesLibrary(req.user, libraryId);
     const rows = await db.query(
       `SELECT l.id, l.folder_path, l.document_ids, l.expires_at, l.revoked_at, l.created_at,
-              l.created_by_email, l.last_accessed_at, l.access_count, l.password_hash
+              l.created_by_email, l.last_accessed_at, l.access_count, l.password_hash,
+              l.recipient_email, l.live, l.require_signin, l.opened_at
        FROM folder_share_links l
        WHERE (l.folder_path = ANY($1::text[])
               OR ($3::uuid IS NOT NULL AND EXISTS (
                     SELECT 1 FROM documents d
                      WHERE d.id = ANY(l.document_ids) AND d.library_id = $3::uuid
                        AND d.deleted_at IS NULL AND starts_with(d.name, $4 || '/'))))
-         ${adminAll ? '' : 'AND l.created_by = $2'}
+         AND (l.library_id IS NULL OR $3::uuid IS NULL OR l.library_id = $3::uuid)
+         ${adminAll ? '' : 'AND (l.created_by = $2 OR ($5::boolean AND l.library_id = $3::uuid))'}
        ORDER BY l.revoked_at IS NULL DESC, l.created_at DESC
        LIMIT 100`,
-      adminAll ? [keys, null, libraryId, folderPath] : [keys, req.user.id, libraryId, folderPath]
+      adminAll ? [keys, null, libraryId, folderPath] : [keys, req.user.id, libraryId, folderPath, manages]
     );
     res.json({ shares: rows.map(r => folderShareClientShape(r)) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
@@ -778,8 +857,8 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
       [folderPath, ...documentAccess.userParams(req.user, 'write'), libraryId]
     );
     if (!docs.length) return res.status(404).json({ error: 'No files in this folder to share' });
-    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
-    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to share as a link (over 500 MB)' });
+    // No size refusal any more: the link opens a PAGE, where each file downloads on its own.
+    // Only the "download everything as a ZIP" button answers to the ZIP limit.
 
     const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
     const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
@@ -789,23 +868,104 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
 
     const share = await db.queryOne(
       `INSERT INTO folder_share_links
-       (folder_path, document_ids, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email)
-       VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8)
+       (folder_path, document_ids, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email, library_id)
+       VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, folder_path, document_ids, expires_at, revoked_at, created_at,
-                 created_by_email, last_accessed_at, access_count, password_hash`,
-      [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email]
+                 created_by_email, last_accessed_at, access_count, password_hash,
+                 recipient_email, live, require_signin, opened_at`,
+      [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email, libraryId]
     );
-    const url = `${await publicAppBase(req)}/api/files/folder/share/${token}`;
+    const url = `${await publicAppBase(req)}/f/${token}`; // the folder PAGE; /api/files/folder/share/<token> still downloads the ZIP for links already out there
     await logEvent(`folder share create · ${folderPath} (${docs.length})`, req.user.id, req.user.email);
     await logDocumentEvent(null, 'folder_share_created', req.user.id, req.user.email, `${folderPath} (${docs.length})`);
     res.json({ share: folderShareClientShape(share, url) });
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
+// POST /api/files/folder/send — { path, recipients, expiresInDays?, password?, message? }
+// Send a folder to named people: ONE link each, so "did they open it?" has an answer and one
+// person can be cut off without breaking the others. Each link is LIVE -- the recipient sees
+// the folder as it is, including what is added later -- because it was sent to a person, not
+// published to whoever holds a URL.
+//
+// Anyone who can add files to the folder may send it. Handing out ACCESS to it stays with
+// the library's owner (People and groups, in the same dialog): this only ever makes links.
+//   a colleague with a Depot account -> a link that opens for THEM, signed in (no password:
+//                                       the sign-in is the lock)
+//   anybody else                     -> their own public link, with the password if one was set
+router.post('/send', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const folderPath = existingFolder(req.body?.path);
+    if (!folderPath) return res.status(400).json({ error: 'path required' });
+    const libraryId = await folderLibraryId(req, folderPath, req.user);
+    if (!libraryId) return res.status(404).json({ error: 'Folder not found' });
+    const right = await libraries.writeRight(req.user, libraryId, folderPath);
+    if (right.status) return res.status(right.status).json({ error: right.error });
+
+    const raw = Array.isArray(req.body?.recipients) ? req.body.recipients : String(req.body?.recipients || '').split(/[,;\s]+/);
+    const recipients = [...new Set(raw.map(x => String(x || '').trim().toLowerCase()).filter(Boolean))];
+    if (!recipients.length) return res.status(400).json({ error: 'At least one recipient is required.' });
+    if (recipients.length > 25) return res.status(400).json({ error: 'Send to at most 25 people at a time.' });
+    const bad = recipients.filter(r => !/^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(r));
+    if (bad.length) return res.status(400).json({ error: `Not a valid email address: ${bad[0]}` });
+
+    const days = Number.parseInt(req.body?.expiresInDays ?? 30, 10);
+    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + (Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30) * 864e5).toISOString();
+    const password = String(req.body?.password || '').trim();
+    const note = String(req.body?.message || '').slice(0, 2000).trim();
+    const base = await publicAppBase(req);
+    const emailLib = require('../../lib/email');
+    const sendingAs = emailLib.actingAs(req.user);
+    const folderName = folderPath.split('/').pop();
+    // An account that can actually open a sign-in link: verified at that address, and not switched off.
+    const known = new Set((await db.query('SELECT lower(verified_email) AS email FROM user_roles WHERE lower(verified_email) = ANY($1::text[]) AND disabled_at IS NULL', [recipients])).map(r => r.email));
+    // What the link serves today, for the snapshot columns; a live link reads the folder afresh each time.
+    const docs = await db.query(
+      `SELECT d.id FROM documents d
+        WHERE d.deleted_at IS NULL AND starts_with(d.name, $1 || '/') AND d.name NOT LIKE '%/.keep' AND d.library_id = $7 AND ${documentAccess.condition('d', 2)}`,
+      [folderPath, ...documentAccess.userParams(req.user, 'write'), libraryId]);
+
+    const results = [];
+    for (const to of recipients) {
+      try {
+        const signin = known.has(to);
+        const token = crypto.randomBytes(32).toString('base64url');
+        const { salt, hash } = signin ? { salt: null, hash: null } : passwordParts(password);
+        await db.query(
+          `INSERT INTO folder_share_links
+             (folder_path, document_ids, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email,
+              library_id, recipient_email, live, require_signin)
+           VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8, $9, $10, true, $11)`,
+          [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email, libraryId, to, signin]);
+        const url = signin ? appLinks.signinFolderUrl(base, token) : `${base}/f/${token}`;
+        try { await logDocumentEvent(null, signin ? 'internal_folder_link_sent' : 'external_folder_share_sent', req.user.id, req.user.email,
+          `${folderPath} · ${to}${expiresAt ? ` · expires ${expiresAt}` : ' · no expiry'}${hash ? ' · password protected' : ''}${signin ? ' · sign-in required' : ''}`); }
+        catch (e) { console.error('audit (folder send) failed:', e.message); }
+        const mail = await emailLib.sendMail({
+          to, subject: `${sendingAs.label} sent you a folder: ${folderName}`,
+          text: [`${sendingAs.label} sent you a folder${signin ? ' in Depot' : ''}: "${folderName}".`, note ? `\n${note}\n` : '',
+            signin ? `Open it here (sign in with your usual account):\n${url}` : `Open it here:\n${url}`,
+            '\nYou can download files one at a time, or the whole folder as a ZIP. It shows the folder as it is now, including anything added later.',
+            expiresAt ? `\nThis link expires on ${new Date(expiresAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.` : '',
+            hash ? '\nIt is password protected; the sender will pass the password along separately.' : ''].filter(Boolean).join('\n'),
+          actorEmail: sendingAs.sendAs,
+        });
+        const sent = mail?.sent !== false;
+        // The token is stored hashed: if the email failed, this response is the only place the link exists.
+        results.push({ to, kind: signin ? 'signin_link' : 'link', sent, reason: sent ? undefined : mail.reason, url: sent ? undefined : url });
+      } catch (e) { results.push({ to, kind: 'error', error: e.message }); }
+    }
+    await logEvent(`folder send · ${folderPath} · ${recipients.length} recipient(s)`, req.user.id, req.user.email);
+    res.json({ results, expiresAt, hasPassword: !!password && results.some(r => r.kind === 'link') });
+  } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
+});
+
 // DELETE /api/files/folder/links/:shareId — revoke a folder download link. Its creator
 // or an admin can; so can anyone with edit rights on every file it still serves from
 // (at least one) -- the same bar as revoking a file's link. Folder links carry no
-// library, so the snapshot of files is the only scope there is.
+// library, so the snapshot of files is the only scope there is. Newer links DO carry their
+// library, and its owner can end any link sent from it -- a live link's file list is empty
+// or stale, so the file test alone would leave the owner unable to cut one off.
 router.delete('/links/:shareId', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     if (!isUuid(req.params.shareId)) return res.status(404).json({ error: 'Folder share link not found' });
@@ -816,6 +976,7 @@ router.delete('/links/:shareId', auth, requireRole('admin', 'contributor'), asyn
        SET revoked_at = NOW(), revoked_by = $1, revoked_by_email = $2
        WHERE f.id = $3 AND f.revoked_at IS NULL
          AND (${adminAll ? 'true' : `f.created_by = $1
+              OR EXISTS (SELECT 1 FROM libraries lb WHERE lb.id = f.library_id AND lb.owner_id = $1)
               OR (EXISTS (SELECT 1 FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL)
                   AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = ANY(f.document_ids) AND d.deleted_at IS NULL
                                      AND NOT ${documentAccess.condition('d', 4)}))`})
@@ -829,59 +990,152 @@ router.delete('/links/:shareId', auth, requireRole('admin', 'contributor'), asyn
   } catch (e) { if (folderScopeError(res, e)) return; serverError(res, e); }
 });
 
-// GET /api/files/folder/share/:token — public, revocable, expiring folder ZIP download.
-router.get('/share/:token', async (req, res) => {
-  const hash = tokenHash(req.params.token);
-  try {
-    const share = await db.queryOne('SELECT * FROM folder_share_links WHERE token_hash = $1', [hash]);
-    if (!share || share.revoked_at) return res.status(404).json({ error: 'Share link not found' });
-    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
-      return res.status(410).json({ error: 'Share link expired' });
-    }
-    const password = req.query.password || req.headers['x-share-password'];
-    if (!verifySharePassword(password, share.password_salt, share.password_hash)) {
-      return res.status(401).json({ error: 'Share password required' });
-    }
-    // Serve only the frozen snapshot set, skipping any file deleted since creation --
-    // and only the files the link's creator could still publish right now: an admin or
-    // contributor with edit rights, checked live. A creator who has since lost access
-    // (a share removed, a group left, a demotion) takes the link down with them, and a
-    // file they lost access to drops out of it. Refused exactly like a revoked link.
-    // (lib/linkAccess: the one answer the link lists show too)
-    const { creator, docs } = await require('../../lib/linkAccess')
-      .servableDocs(share.created_by, share.document_ids, 'd.id, d.name, d.storage_path, d.size');
-    if (!creator) return res.status(404).json({ error: 'Share link not found' });
-    if (!docs.length) return res.status(404).json({ error: 'These files are no longer available' });
-    const total = docs.reduce((s, d) => s + Number(d.size || 0), 0);
-    if (total > FOLDER_ZIP_MAX_BYTES) return res.status(413).json({ error: 'Folder is too large to download' });
+// ---- The folder link, as its recipient meets it -------------------------------------
+//
+// A link opens a PAGE (/f/<token>, lib/folderPage) that lists the folder and lets each file
+// be downloaded on its own, or the folder -- or any subfolder -- as a ZIP. Every route below
+// is public and rate-limited, answers exactly like a bad token for a revoked, expired or
+// sign-in link, and looks up whatever the visitor names INSIDE the set lib/folderLinks
+// computed for the link. Nothing is fetched by a path or id the visitor supplied.
+//
+// Proof of entry: a link with no password needs none. A password is sent once, in a header,
+// for a short-lived TICKET; downloads carry the ticket (`?dl=`), never the password. A
+// sign-in link (require_signin) is reachable ONLY with a ticket, which only its signed-in
+// recipient can obtain (GET /signin-link/:token below).
+async function openFolderLink(req, res, { legacyQueryPassword = false } = {}) {
+  const { share, error } = await folderLinks.load(req.params.token, { allowSignin: true });
+  if (error) { res.status(error === 'expired' ? 410 : 404).json({ error: error === 'expired' ? 'Share link expired' : 'Share link not found' }); return null; }
+  const ticket = req.query.dl || req.headers['x-share-ticket'];
+  const ticketOk = !!ticket && verifyShareTicket(share.id, ticket);
+  if (share.require_signin && !ticketOk) { res.status(404).json({ error: 'Share link not found' }); return null; }
+  // The password travels in a header. On the URL only for the ZIP address older links were
+  // given out as, which people already hold with `?password=` on it.
+  const password = req.headers['x-share-password'] || (legacyQueryPassword ? req.query.password : null);
+  const unlocked = ticketOk || !share.password_hash || verifySharePassword(password, share.password_salt, share.password_hash);
+  return { share, unlocked };
+}
 
-    await db.query('UPDATE folder_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
-    await logEvent(`folder share download · ${share.folder_path}`, null, null);
-    await logDocumentEvent(null, 'folder_share_downloaded', null, null, `${share.folder_path} · ${requestAuditDetail(req)}`);
-    // The first use of a link is what emails its maker (lib/shareOpens); later downloads
-    // are a note in the app only.
-    if (share.created_by_email && !(await require('../../lib/shareOpens').folderLinkOpened(share))) {
-      try {
-        await notifications.create({
-          userId: share.created_by || null,
-          userEmail: share.created_by_email,
-          type: 'share_downloaded',
-          title: 'Your shared folder was downloaded',
-          body: `"${share.folder_path.split('/').pop()}" · via folder link`,
-          dedupeMinutes: 2,
-        });
-      } catch (e) { console.error('notification (folder share_downloaded) failed:', e.message); }
-    }
-    const base = share.folder_path.split('/').pop().replace(/[^a-zA-Z0-9._-]/g, '_');
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
-    // Stream (one file in memory at a time) — this is a public, unauthenticated
-    // route, so buffering the whole archive would be a remote-OOM vector.
-    await require('stream/promises').pipeline(zipStream(folderZipEntries(docs, share.folder_path)), res);
-  } catch (e) {
-    if (!res.headersSent) serverError(res, e);
-    else res.destroy(e);
+// GET /share/:token/info?path=sub — what the page draws from. Thin on purpose: the folder's
+// name, one level of its contents, who sent it. Nothing about the workspace or the library.
+router.get('/share/:token/info', async (req, res) => {
+  try {
+    const got = await openFolderLink(req, res); if (!got) return;
+    const { share, unlocked } = got;
+    const base = { name: share.folder_path.split('/').pop(), needsPassword: !!share.password_hash, unlocked, expiresAt: share.expires_at };
+    if (!unlocked) return res.json(base);
+    const sub = folderLinks.cleanSub(req.query.path);
+    if (sub === null) return res.status(400).json({ error: 'Not a folder in this link' });
+    const { creator, docs } = await folderLinks.docsFor(share);
+    if (!creator) return res.status(404).json({ error: 'Share link not found' });
+    const level = folderLinks.listing(docs, sub);
+    if (sub && !level.count) return res.status(404).json({ error: 'Not a folder in this link' });
+    const limit = await zipLarge.maxBytes();
+    res.json({ ...base, sentBy: share.created_by_email, path: sub, live: !!share.live, folders: level.folders, files: level.files,
+      bytes: level.bytes, count: level.count, zip: { allowed: level.count > 0 && level.bytes <= limit, limitMb: await zipLarge.maxMb() } });
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /share/:token/ticket — the password, once, for a ticket.
+router.post('/share/:token/ticket', async (req, res) => {
+  try {
+    const { share, error } = await folderLinks.load(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error: 'Share link not found' });
+    // In the body: a header cannot carry a character outside Latin-1, and a password may have one.
+    const supplied = typeof req.body?.password === 'string' ? req.body.password : req.headers['x-share-password'];
+    if (!verifySharePassword(supplied, share.password_salt, share.password_hash)) return res.status(401).json({ error: 'Password required' });
+    res.json({ ticket: issueShareTicket(share.id) });
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /share/:token/opened — the page, on the visitor's first real input (a mail scanner
+// that renders the page never makes one). The first open tells the link's maker, once.
+router.post('/share/:token/opened', async (req, res) => {
+  try {
+    const got = await openFolderLink(req, res); if (!got) return;
+    if (!got.unlocked) return res.status(401).json({ error: 'Password required' });
+    if (!(await folderLinks.docsFor(got.share)).creator) return res.status(404).json({ error: 'Share link not found' });
+    await shareOpens.folderLinkOpened(got.share);
+    res.json({ ok: true });
+  } catch (e) { serverError(res, e); }
+});
+
+// A link visitor's claim on the ZIP slots: they share the public ones, one at a time per link
+// and per address (lib/zipLarge).
+const linkSlot = (req, share) => ({ isPublic: true, keys: [`link:${share.id}`, `ip:${req.ip}`] });
+
+async function folderLinkUsed(req, share, what) {
+  await db.query('UPDATE folder_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
+  await logDocumentEvent(null, 'folder_share_downloaded', null, null, `${share.folder_path} · ${what} · ${requestAuditDetail(req)}`);
+  // A download with no page view first IS the open; after that it is a note in the app only.
+  if (share.created_by_email && !(await shareOpens.folderLinkOpened(share))) {
+    notifications.create({ userId: share.created_by || null, userEmail: share.created_by_email, type: 'share_downloaded',
+      title: share.recipient_email ? `${share.recipient_email} downloaded from your folder` : 'Your shared folder was downloaded',
+      body: `"${share.folder_path.split('/').pop()}" · ${what}`, dedupeMinutes: 2 }).catch(e => console.error('notification (folder share_downloaded) failed:', e.message));
   }
+}
+
+// GET /share/:token/file/:docId — one file, by an id that must be IN this link's set.
+router.get('/share/:token/file/:docId', async (req, res) => {
+  try {
+    const got = await openFolderLink(req, res); if (!got) return;
+    if (!got.unlocked) return res.status(401).json({ error: 'Share password required' });
+    const { docs } = await folderLinks.docsFor(got.share);
+    const doc = isUuid(req.params.docId) ? docs.find(d => String(d.id) === String(req.params.docId)) : null;
+    if (!doc) return res.status(404).json({ error: 'That file is not in this folder' });
+    await folderLinkUsed(req, got.share, doc.rel);
+    const { stream, length } = await storage.downloadStream(doc.storage_path);
+    res.setHeader('Content-Type', 'application/octet-stream'); // always a download, never rendered: this is a public origin
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${folderPaths.baseOf(doc.name).replace(/[^\w .()\-]/g, '_')}"`);
+    if (length) res.setHeader('Content-Length', String(length));
+    await require('stream/promises').pipeline(stream, res);
+  } catch (e) { if (!res.headersSent) serverError(res, e); else res.destroy(e); }
+});
+
+// GET /share/:token/zip?path=sub — the folder, or one subfolder of it, as a ZIP.
+// GET /share/:token              — the whole folder: the URL older links were given out as.
+async function folderLinkZip(req, res) {
+  try {
+    const got = await openFolderLink(req, res, { legacyQueryPassword: !req.path.endsWith('/zip') }); if (!got) return;
+    if (!got.unlocked) return res.status(401).json({ error: 'Share password required' });
+    const sub = folderLinks.cleanSub(req.query.path);
+    if (sub === null) return res.status(400).json({ error: 'Not a folder in this link' });
+    const { creator, docs } = await folderLinks.docsFor(got.share);
+    if (!creator) return res.status(404).json({ error: 'Share link not found' });
+    const chosen = folderLinks.under(docs, sub);
+    if (!chosen.length) return res.status(404).json({ error: 'These files are no longer available' });
+    // ?check=1: can this ZIP start right now? The page asks before it navigates, because a
+    // refusal is JSON and a plain link would show it as a page of text. Takes nothing.
+    if (req.query.check) {
+      const total = chosen.reduce((n, d) => n + Number(d.size || 0), 0);
+      if (total > await zipLarge.maxBytes()) return res.status(413).json({ error: 'This folder is larger than a single ZIP may be. Download files one at a time, or a subfolder.', code: 'ZIP_TOO_LARGE' });
+      if (!zipLarge.canStart(linkSlot(req, got.share))) return res.status(503).json({ error: 'Depot is preparing other downloads right now, or a ZIP for this folder is already downloading. Try again in a minute.', code: 'ZIP_BUSY' });
+      return res.json({ ok: true });
+    }
+    await logEvent(`folder share download · ${got.share.folder_path}${sub ? '/' + sub : ''}`, null, null);
+    await folderLinkUsed(req, got.share, sub ? `ZIP of ${sub}` : 'ZIP');
+    // Named by where each file sits IN THE LINK (rel), under the folder's own name.
+    const top = got.share.folder_path.split('/').pop();
+    const asDocs = chosen.map(d => ({ ...d, name: `${top}/${d.rel}` }));
+    await sendFolderZip(res, asDocs, top, sub ? sub.split('/').pop() : top, linkSlot(req, got.share));
+  } catch (e) { if (!res.headersSent) serverError(res, e); else res.destroy(e); }
+}
+router.get('/share/:token/zip', folderLinkZip);
+router.get('/share/:token', folderLinkZip);
+
+// GET /signin-link/:token — a folder link sent to a colleague by someone who may share the
+// folder but not hand out access to it. Opens for that colleague, signed in (their VERIFIED
+// address), and hands them a ticket for the page. Nobody else can obtain one.
+router.get('/signin-link/:token', auth, async (req, res) => {
+  try {
+    const { share, error } = await folderLinks.load(req.params.token, { allowSignin: true });
+    if (error || !share.require_signin) return res.status(error === 'expired' ? 410 : 404).json({ error: error === 'expired' ? 'This link has expired.' : 'Link not found' });
+    const me = documentAccess.matchEmail(req.user);
+    if (!me || me !== String(share.recipient_email || '').toLowerCase()) return res.status(403).json({ error: 'This link was sent to somebody else. Sign in as the person it was sent to.' });
+    await shareOpens.folderLinkOpened(share, me);
+    res.json({ name: share.folder_path.split('/').pop(), sentBy: share.created_by_email,
+      pageUrl: `/f/${encodeURIComponent(req.params.token)}#t=${encodeURIComponent(issueShareTicket(share.id))}` });
+  } catch (e) { serverError(res, e); }
 });
 
 // GET /api/files/folder/members?path=... — who has been granted access across a folder.

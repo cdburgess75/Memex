@@ -569,10 +569,12 @@ async function linksFor(q, door, viewer, names) {
   const serving = new Map();
   for (const [creator, ids] of byCreator) {
     const actor = creator ? await documentAccess.resolveActor(creator, q) : null;
-    const { docs } = await linkAccess.servableDocs(creator || null, [...ids], 'd.id', q);
+    const { docs } = await linkAccess.servableDocs(creator || null, [...ids], 'd.id, d.name', q);
     const why = !actor ? 'creator_gone'
       : (actor.role !== 'admin' && actor.role !== 'contributor') ? 'creator_view_only' : 'creator_cannot_edit';
-    serving.set(creator, { ids: new Set(docs.map(d => String(d.id))), why });
+    // A folder's placeholder (.keep) is never shown to a recipient, so a folder link does not "serve" it.
+    const markers = new Set(docs.filter(d => String(d.name).endsWith('/.keep') || d.name === '.keep').map(d => String(d.id)));
+    serving.set(creator, { ids: new Set(docs.map(d => String(d.id))), markers, why });
   }
   const person = (id, email) => ({ user_id: id || null, email: email || null, name: names.get(String(email || '').toLowerCase()) || null });
   const isAdmin = viewer.role === 'admin';
@@ -611,7 +613,7 @@ async function linksFor(q, door, viewer, names) {
   for (const f of folderLinks) {
     const s = serving.get(String(f.created_by || ''));
     const ids = here.get(String(f.id)) || [];
-    const n = ids.filter(i => s.ids.has(i)).length;
+    const n = ids.filter(i => s.ids.has(i) && !s.markers.has(i)).length;
     const mine = !!f.created_by && String(f.created_by) === String(viewer.id);
     out.push({
       ref: `fl:${f.id}`, kind: 'folder', id: f.id, document_id: null, name: String(f.folder_path || '').split('/').pop() || null,

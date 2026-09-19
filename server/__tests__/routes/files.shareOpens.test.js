@@ -17,7 +17,7 @@ jest.mock('../../lib/db', () => ({
     if (claim) { const k = claim[1] + ':' + params[0]; if (mockState.claimed.has(k)) return []; mockState.claimed.add(k); return [{ id: params[0] }]; }
     if (/^\s*UPDATE document_acl SET opened_at/.test(sql)) return mockState.aclOpened.splice(0);
     if (/^\s*UPDATE library_grants SET opened_at/.test(sql)) return mockState.placeOpened.splice(0);
-    if (/FROM user_roles/.test(sql)) return mockState.knownUsers.map(e => ({ email: e, verified_email: e }));
+    if (/FROM user_roles/.test(sql)) return mockState.knownUsers.map(e => (typeof e === 'string' ? { email: e, verified: e, disabled_at: null } : e));
     return [];
   }),
   queryOne: jest.fn(async (sql, params) => {
@@ -123,6 +123,14 @@ describe('Send, from someone who may share the file but not hand out access to i
     const res = await request(app()).post('/api/files/doc-1/send').send({ recipients: ['newhire@corp.com'] });
     expect(res.body.results[0]).toMatchObject({ kind: 'link', sent: true });
     expect(email.sendMail.mock.calls[0][0].text).toMatch(/https:\/\/depot\.example\/s\//);
+  });
+  test.each([
+    ['whose address is not verified', { email: 'amy@corp.com', verified: null, disabled_at: null }],
+    ['that has been switched off', { email: 'amy@corp.com', verified: 'amy@corp.com', disabled_at: '2026-09-01T00:00:00Z' }],
+  ])('an account %s could never open a sign-in link, so it gets one it can', async (_l, account) => {
+    mockState.knownUsers = [account];
+    const res = await request(app()).post('/api/files/doc-1/send').send({ recipients: ['amy@corp.com'] });
+    expect(res.body.results[0].kind).toBe('link');
   });
   test('if the sign-in link\'s email fails, the link comes back to the sender: it exists nowhere else', async () => {
     mockState.knownUsers = ['amy@corp.com'];
