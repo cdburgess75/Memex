@@ -30,7 +30,8 @@ async function claim(table, id) {
 // A file link (public page, or a colleague's sign-in link). `opener` is the signed-in
 // address when there is one. Returns whether this was the first open.
 async function linkOpened(share, opener = null) {
-  if (!share || !share.id || same(opener, share.created_by_email)) return false;
+  // Never about yourself: not when you open your own link, and not a link you sent yourself.
+  if (!share || !share.id || same(opener, share.created_by_email) || same(share.recipient_email, share.created_by_email)) return false;
   if (!(await claim('document_share_links', share.id))) return false;
   const who = share.recipient_email || opener;
   const name = baseName(share.name);
@@ -64,7 +65,10 @@ async function folderLinkOpened(share) {
 // the library or folder it sits in -- and they have not opened it before, tell whoever did.
 // Shares with a group are not tracked: there is no one "recipient" to have opened them.
 async function grantsOpened(user, doc) {
-  const me = String(user?.email || '').toLowerCase();
+  // The VERIFIED address (documentAccess.matchEmail), the one access itself is keyed on. An
+  // unverified account that merely claims somebody's address must not be reported as them,
+  // nor burn the one-time claim the real person's open would have made.
+  const me = require('./documentAccess').matchEmail(user);
   if (!me || !doc?.id) return;
   try {
     const acl = await db.query(

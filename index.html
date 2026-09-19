@@ -4397,8 +4397,8 @@ async function openNotification(id, refType, refId, refPath) {
   closeNotifMenu();
   try { await apiPost('/notifications/read', { ids: [id] }); } catch { /* ignore */ }
   if (refType === 'document' && refId) { try { openFileDefault(refId); } catch { /* file may be gone */ } }
-  // A file a colleague sent by link: the token travels in ref_path.
-  if (refType === 'signin_link' && refPath) await openSigninLink(refPath);
+  // A file a colleague sent by link. The notice holds the share's id, never its token.
+  if (refType === 'signin_share' && OPEN_ID.test(refId || '')) await openSigninLink('/files/signin-share/' + encodeURIComponent(refId));
   // Something was shared with you: go to that library (if it is still yours to see).
   if (refType === 'library' && refId) {
     await loadLibraries().catch(() => {});
@@ -7298,6 +7298,8 @@ function navToHash(s) {
   return h;
 }
 // Parse a hash back into a snapshot. Returns null for an empty/unknown hash (caller uses the default).
+const OPEN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OPEN_TOKEN = /^[A-Za-z0-9_-]{16,128}$/;
 function hashToNav(hash) {
   let h = String(hash || '').replace(/^#\/?/, '');
   if (!h) return null;
@@ -7311,9 +7313,17 @@ function hashToNav(hash) {
   const seg = h.split('/').filter(Boolean).map(decodeURIComponent);
   const first = seg[0];
   // Links from share emails and notices: open exactly what was shared, after sign-in.
-  if (first === 'open' && seg[1] === 'file' && seg[2]) return { tab: 'files', view: 'active', filter: 'all', folder: '', open: { file: seg[2] } };
-  if (first === 'open' && seg[1] === 'lib' && seg[2]) return { tab: 'files', view: 'active', filter: 'all', folder: '', open: { lib: seg[2], folder: seg.slice(3).join('/') } };
-  if (first === 'open' && seg[1] === 'link' && seg[2]) return { tab: 'files', view: 'active', filter: 'all', folder: '', open: { link: seg[2] } };
+  // These arrive from OUTSIDE (an email, a chat, anyone who can get you to click), and each
+  // segment is decoded after the split, so it can hold anything at all. An id is a UUID and
+  // a token is base64url; whatever is not exactly that is not a link, and goes nowhere.
+  if (first === 'open') {
+    const where = { tab: 'files', view: 'active', filter: 'all', folder: '' };
+    if (seg[1] === 'file' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { file: seg[2] } };
+    if (seg[1] === 'lib' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { lib: seg[2], folder: seg.slice(3).join('/') } };
+    if (seg[1] === 'share' && OPEN_ID.test(seg[2] || '')) return { ...where, open: { share: seg[2] } };
+    if (seg[1] === 'link' && OPEN_TOKEN.test(seg[2] || '')) return { ...where, open: { link: seg[2] } };
+    return null;
+  }
   if (first === 'admin') return { tab: 'admin', view: 'active', filter: 'all', folder: '' };
   if (['files', 'shared', 'favorites', 'links', 'trash'].includes(first)) {
     const view = first === 'files' ? 'active' : first;
@@ -7344,16 +7354,17 @@ async function openLibraryAt(libId, folder = '') {
 }
 // Land on what a share link points at. Each case says plainly when it cannot.
 async function openSharedTarget(o) {
-  if (o.link) { await setTab('files', 'home'); return openSigninLink(o.link); }
+  if (o.link) { await setTab('files', 'home'); return openSigninLink('/files/signin-link/' + encodeURIComponent(o.link)); }
+  if (o.share) { await setTab('files', 'home'); return openSigninLink('/files/signin-share/' + encodeURIComponent(o.share)); }
   if (o.file) { await setTab('files', 'home'); try { await openFileDefault(o.file); } catch { toast("That file isn't available to you. Ask whoever shared it."); } return; }
   await loadLibraries().catch(() => {});
   if (!librariesList.some(l => String(l.id) === String(o.lib))) { await setTab('files', 'home'); toast("That library isn't shared with you (any more). Ask whoever shared it."); return; }
   await openLibraryAt(o.lib, o.folder);
 }
 // A file a colleague sent by link: it opens for the person it was sent to, signed in.
-async function openSigninLink(token) {
+async function openSigninLink(apiPath) {
   let info;
-  try { info = await apiGet('/files/signin-link/' + encodeURIComponent(token)); }
+  try { info = await apiGet(apiPath); }
   catch (e) { toast(e.message || 'That link could not be opened.'); return; }
   const name = String(info.name || 'File').split('/').pop();
   openModal({ id: 'signin-link-scrim', modalClass: 'modal-ask', labelledBy: 'sl-title', html:
@@ -9803,7 +9814,9 @@ function shareSetWho(mode) {
   _shareWho = mode;
   document.querySelectorAll('#file-share-scrim .share-seg-opt[data-who]').forEach(b => b.classList.toggle('active', b.dataset.who === mode));
   const people = document.getElementById('share-people'); if (people) people.hidden = mode !== 'people';
-  const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = mode !== 'link';
+  // Step 3 (expiry, password) applies to invites too: someone outside gets a LINK, and a
+  // link can be forwarded. It used to be hidden here, leaving those links with no lock at all.
+  const q3 = document.getElementById('share-q3'); if (q3) q3.hidden = false;
   // "Edit" needs an account, so it only applies to invited people, never a public link.
   const editOpt = document.getElementById('share-perm-edit');
   const editRadio = editOpt?.querySelector('input');
@@ -9819,8 +9832,8 @@ function shareSetWho(mode) {
     how.hidden = mode !== 'people';
     const owner = _shareOwner ? _shareOwner : "the library's owner";
     how.textContent = _shareCanGrant
-      ? 'Colleagues are given access and emailed a link to the file. People outside get their own link by email. You are told the first time each of them opens it.'
-      : `Each person is emailed their own link to view this file: colleagues sign in to open it, people outside open a link page. You are told the first time each of them opens it. To let someone edit, or to add them to the library, ask ${owner}.`;
+      ? 'Colleagues with a Depot account are given access and emailed a link to the file. Anyone else gets their own link by email. A link works for whoever holds it, so set a password below if it must not be forwarded. You are told the first time each person opens it.'
+      : `Each person is emailed their own link to view this file. A colleague with a Depot account signs in to open theirs. Anyone else gets a link that works for whoever holds it, so set a password below if it must not be forwarded. You are told the first time each person opens it. To let someone edit, or to add them to the library, ask ${owner}.`;
   }
   if (mode === 'people') setTimeout(() => document.getElementById('share-email-input')?.focus(), 0);
   shareUpdateFoot();
@@ -9854,7 +9867,10 @@ async function doShare() {
   if (_shareWho === 'people') {
     if (!_shareEmails.length) return;
     let data;
-    try { data = await apiPost('/files/' + f.id + '/send', { recipients: _shareEmails, permission, neverExpires: false, expiresInDays: 30, allowUpload: false }); }
+    const expOn = document.getElementById('share-expiry-on')?.checked, expDate = document.getElementById('share-expiry-date')?.value;
+    const expDays = (expOn && expDate) ? Math.max(1, Math.ceil((new Date(expDate + 'T23:59:59').getTime() - Date.now()) / 86400000)) : 30;
+    const pw = document.getElementById('share-pw-on')?.checked ? (document.getElementById('share-pw')?.value || '') : '';
+    try { data = await apiPost('/files/' + f.id + '/send', { recipients: _shareEmails, permission, neverExpires: false, expiresInDays: expDays, password: pw, allowUpload: false }); }
     catch (e) { toast('Invite failed: ' + e.message); return; }
     const results = data.results || [];
     const failed = results.filter(r => r.kind === 'error' || r.sent === false);
@@ -9862,7 +9878,10 @@ async function doShare() {
     if (how) how.innerHTML = results.map(r => {
       if (r.kind === 'error') return `✕ ${esc(r.to)}: ${esc(r.error || 'failed')}`;
       const did = r.kind === 'granted' ? `given ${r.permission === 'write' ? 'edit' : 'view'} access` : r.kind === 'signin_link' ? 'sent a sign-in link' : 'sent their own link';
-      return r.sent === false ? `⚠ ${esc(r.to)}: ${did}, but the email failed (${esc(r.reason || 'unknown')})` : `✓ ${esc(r.to)}: ${did} and emailed`;
+      // The token is stored hashed, so a link whose email failed exists NOWHERE else: show it now.
+      const rescue = r.sent === false && r.url ? ` Send it yourself: <input class="file-share-url" readonly value="${escAttr(r.url)}" aria-label="Link for ${escAttr(r.to)}" onclick="this.select()">` : '';
+      const pwNote = r.kind === 'link' && data.hasPassword ? ' Pass them the password separately.' : '';
+      return r.sent === false ? `⚠ ${esc(r.to)}: ${did}, but the email failed (${esc(r.reason || 'unknown')}).${rescue}` : `✓ ${esc(r.to)}: ${did} and emailed.${esc(pwNote)}`;
     }).map(x => `<span class="share-how-row">${x}</span>`).join('');
     _shareEmails = []; renderShareChips();
     toast(failed.length ? `${results.length - failed.length} of ${results.length} invited. See the list for the rest.` : `Invited ${results.length} ${results.length === 1 ? 'person' : 'people'}`);
@@ -10345,10 +10364,11 @@ function accPersonRow(p, resp, keys, open) {
 function accLinkRow(l, resp) {
   const until = l.expires_at ? `until ${new Date(l.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}` : 'no end date';
   const title = l.kind === 'folder' ? `Anyone with the folder link to “${l.name || l.folder_path}” · ${until}`
+    : l.require_signin ? `${l.recipient_email}, signed in, with the link sent to them · ${until}`
     : l.recipient_email ? `Anyone with the link sent to ${l.recipient_email} · ${until}` : `Anyone with this link · ${until}`;
   const meta = l.kind === 'folder'
     ? [`A ZIP of the ${l.file_count} file${l.file_count === 1 ? '' : 's'} that were in it when it was made`, `${l.serving} still served`, `made by ${accBy(l.created_by)}`]
-    : [l.name, `made by ${accBy(l.created_by)}`, l.has_password ? 'password' : '', l.allow_upload ? 'can send files back' : '', `opened ${l.access_count} time${l.access_count === 1 ? '' : 's'}`];
+    : [l.name, `made by ${accBy(l.created_by)}`, l.has_password ? 'password' : '', l.allow_upload ? 'can send files back' : '', l.opened_at ? `first opened ${fileDate(l.opened_at)}` : 'not opened yet', `downloaded ${l.access_count} time${l.access_count === 1 ? '' : 's'}`];
   let paused = '';
   if (l.state === 'paused') {
     const who = accIsMe(l.created_by) ? 'You' : accWho(l.created_by);
@@ -11593,6 +11613,9 @@ function togglePreviewOpenMenu(e) { e?.stopPropagation(); document.getElementByI
 function closePreviewOpenMenu() { document.getElementById('preview-open-menu')?.classList.remove('open'); }
 document.addEventListener('click', e => { const m = document.getElementById('preview-open-menu'); if (m && m.classList.contains('open') && !e.target.closest('.preview-openwith')) m.classList.remove('open'); });
 async function previewFile(fileId, opts = {}) {
+  // The id goes into this dialog's inline handlers below. It is always a UUID when it is
+  // ours; refuse anything else rather than trust every caller, present and future.
+  if (!OPEN_ID.test(String(fileId || ''))) { toast('That file could not be opened.'); return; }
   recordOpen(fileId);
   const f = filesList.find(x => String(x.id) === String(fileId));
   // Ordered ids in whatever view is showing (list rows or gallery cards), for ←/→ paging.

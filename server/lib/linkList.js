@@ -43,7 +43,7 @@ async function listLinks(user, scope) {
   const p = documentAccess.userParams(user, 'read');
   const files = await db.query(
     `SELECT s.id, s.document_id, s.expires_at, s.revoked_at, s.created_at, s.created_by, s.created_by_email,
-            s.recipient_email, s.allow_upload, s.last_accessed_at, s.access_count, s.password_hash,
+            s.recipient_email, s.require_signin, s.opened_at, s.allow_upload, s.last_accessed_at, s.access_count, s.password_hash,
             d.name AS document_name, d.deleted_at, d.library_id, l.name AS library_name,
             (${documentAccess.condition('d', 1)}) AS can_read
        FROM document_share_links s

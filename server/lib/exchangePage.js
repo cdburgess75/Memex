@@ -130,6 +130,21 @@ module.exports = function exchangePage(token) {
       .then(function (j) { ticket = j.ticket; return ticket; });
   }
 
+  // "Opened" is a PERSON looking at the file, not a page load: a mail scanner that renders
+  // this page on delivery never moves a pointer or presses a key. Reported once, on the
+  // visitor's first real input after the file is showing. Best-effort; never in the way.
+  var openReported = false;
+  function reportOpenOnce() {
+    if (openReported) return;
+    var evs = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    function fire() {
+      if (openReported) return; openReported = true;
+      evs.forEach(function (n) { window.removeEventListener(n, fire, true); });
+      try { fetch(API + '/opened', { method: 'POST', headers: pwHeaders(), keepalive: true }).catch(function () {}); } catch (e) {}
+    }
+    evs.forEach(function (n) { window.addEventListener(n, fire, { capture: true, passive: true }); });
+  }
+
   var $ = function (id) { return document.getElementById(id); };
   function show(id) { $(id).classList.remove('hidden'); }
   function hide(id) { $(id).classList.add('hidden'); }
@@ -153,6 +168,7 @@ module.exports = function exchangePage(token) {
         return;
       }
       hide('lock'); show('main');
+      reportOpenOnce();
       $('fname').textContent = info.name || 'File';
       $('fsize').textContent = fmt(info.size);
       $('sent-by').textContent = info.sentBy ? 'Sent by ' + info.sentBy : '';
