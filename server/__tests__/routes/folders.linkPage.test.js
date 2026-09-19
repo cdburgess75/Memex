@@ -1,4 +1,5 @@
 'use strict';
+process.env.LINK_UPLOAD_TMP = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'depot-ext-test-'));
 // A folder link, as its recipient meets it: a page that lists the folder, serves each file
 // on its own or the folder as a ZIP. A link sent to a PERSON shows the folder as it is now;
 // an anonymous one stays the snapshot it was. Either way it serves only what its maker can
@@ -28,6 +29,7 @@ jest.mock('../../lib/db', () => ({
     mockQueries.push({ sql, params });
     if (/FROM folder_share_links WHERE token_hash/.test(sql)) return mockState.link && params[0] === mockState.link.token_hash ? { ...mockState.link } : null;
     if (/^UPDATE folder_share_links f\s+SET revoked_at = NOW\(\)/.test(sql)) return mockState.revoked;
+    if (/^UPDATE folder_share_links SET upload_count = upload_count \+ 1/.test(sql)) return mockState.full ? null : { id: params[0] };
     if (/SELECT 1 FROM documents d/.test(sql)) return { '?column?': 1 };
     return null;
   }),
@@ -48,6 +50,18 @@ jest.mock('../../lib/linkAccess', () => ({
 const mockActor = { value: undefined };
 jest.mock('../../lib/documentAccess', () => ({ ...jest.requireActual('../../lib/documentAccess'), resolveActor: jest.fn(async (id) => (mockActor.value === undefined ? { id, email: 'sharer@corp.com', emailVerified: true, role: 'contributor' } : mockActor.value)) }));
 jest.mock('../../lib/libraries', () => ({ writeRight: jest.fn(async () => mockState.right || { right: 'grant', scoped: true }), defaultLibraryFor: jest.fn(async () => 'lib-1'), managesLibrary: jest.fn(async () => mockState.manages) }));
+// The upload's landing place is decided under the library lock: stand in for that, and let
+// each test say what the link row looks like by then.
+const mockPlaced = { calls: [], linkNow: undefined };
+jest.mock('../../lib/documents', () => ({ ...jest.requireActual('../../lib/documents'),
+  createDocumentRecord: jest.fn(async (o) => {
+    const q = { queryOne: async () => (mockPlaced.linkNow === undefined ? { folder_path: 'Clients/Acme', library_id: o.libraryId } : mockPlaced.linkNow) };
+    const where = await o.resolve(q, { libraryId: o.libraryId });
+    mockPlaced.calls.push({ ...o, ...where }); return { doc: { id: 'new-doc' } };
+  }) }));
+jest.mock('../../lib/externalUpload', () => ({ ...jest.requireActual('../../lib/externalUpload'), hasDiskRoom: jest.fn(async () => true) }));
+const mockLimits = { value: null };
+jest.mock('../../lib/externalChunks', () => { const real = jest.requireActual('../../lib/externalChunks'); return { ...real, limits: jest.fn(async () => mockLimits.value || { maxFileMb: 10240, maxFileBytes: 10240 * 1048576, maxFiles: 5000, maxTotalBytes: 100 * 1024 ** 3 }) }; });
 const mockUser = { value: null };
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = mockUser.value; next(); });
 
@@ -73,6 +87,7 @@ beforeEach(() => {
   Object.assign(mockState, { link: link(), creator: SHARER, known: [], right: null, manages: false, listed: [], revoked: null,
     docs: [doc(1, 'Clients/Acme/scope.pdf'), doc(2, 'Clients/Acme/Invoices/inv-1.pdf', 20), doc(3, 'Clients/Acme/Invoices/2026/inv-2.pdf', 30), doc(4, 'Clients/Acme/added-later.pdf', 40), doc(9, 'Clients/AcmeSecret/payroll.xlsx', 99)] });
   mockUser.value = SHARER; mockActor.value = undefined; jest.clearAllMocks();
+  mockPlaced.calls.length = 0; mockPlaced.linkNow = undefined; mockState.full = false; mockLimits.value = null;
 });
 
 describe('the listing', () => {
@@ -293,6 +308,143 @@ describe('a ZIP that goes wrong takes nothing down with it', () => {
   });
 });
 
+describe('files coming back through a folder link', () => {
+  const LINK_PW = crypto.randomBytes(9).toString('base64url'); // made up per run: nothing here is a real credential, and no scanner need wonder
+  const storage = require('../../lib/storage');
+  const libraries = require('../../lib/libraries');
+  const receiving = (over = {}) => link({ live: true, recipient_email: 'ap@supplier.com', allow_upload: true, upload_count: 0, upload_bytes: 0, ...over });
+  const send = (name = 'invoice.pdf', fields = {}) => { let r = request(app()).post(`${API}/upload`); for (const [k, v] of Object.entries(fields)) r = r.field(k, v); return r.attach('file', Buffer.from('hello'), name); };
+  beforeEach(() => { storage.upload = jest.fn(async () => {}); storage.del = jest.fn(async () => {}); mockState.link = receiving(); });
+
+  test('lands in the linked folder, in its library, owned by the link\'s maker -- who is told', async () => {
+    const res = await send();
+    expect(res.status).toBe(200);
+    expect(mockPlaced.calls[0]).toMatchObject({ displayName: 'Clients/Acme/invoice.pdf', libraryId: LIB, user: expect.objectContaining({ id: 'u1' }), sourceDetail: 'via folder link · from ap@supplier.com' });
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'upload_received', userEmail: 'sharer@corp.com', title: 'ap@supplier.com added a file to "Acme"' }));
+    expect(emailEvents.send).toHaveBeenCalledWith('upload_received', expect.objectContaining({ to: 'sharer@corp.com' }));
+  });
+  test('into the subfolder being looked at, keeping a dragged folder\'s shape; never out of the link', async () => {
+    await send('a.pdf', { path: 'Invoices', relativePath: '2026/March/a.pdf' });
+    expect(mockPlaced.calls[0].displayName).toBe('Clients/Acme/Invoices/2026/March/a.pdf');
+    expect((await send('a.pdf', { path: '../Secret' })).status).toBe(400);
+    await send('b.pdf', { relativePath: '../../etc/b.pdf' });
+    expect(mockPlaced.calls[1].displayName.startsWith('Clients/Acme/')).toBe(true);
+    expect(mockPlaced.calls[1].displayName).not.toContain('..');
+  });
+  test.each([
+    ['a link made without it', { allow_upload: false }],
+    ['an anonymous (snapshot) link, even if the flag were set', { live: false, recipient_email: null }],
+    ['a link with no library', { library_id: null }],
+  ])('%s is download-only, and nothing is stored', async (_n, over) => {
+    mockState.link = receiving(over);
+    expect((await send()).status).toBe(403);
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect((await request(app()).get(`${API}/info`)).body.allowUpload).toBe(false);
+  });
+  test('the page is told it may upload, and how big', async () => {
+    expect((await request(app()).get(`${API}/info`)).body).toMatchObject({ allowUpload: true, maxUploadMb: 10240 });
+  });
+  test('a revoked or expired link takes nothing', async () => {
+    mockState.link = receiving({ revoked_at: new Date().toISOString() }); expect((await send()).status).toBe(404);
+    mockState.link = receiving({ expires_at: '2020-01-01T00:00:00Z' }); expect((await send()).status).toBe(410);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+  test('a password link needs a TICKET here; the password itself is never accepted on this route', async () => {
+    const { salt, hash } = passwordParts(LINK_PW);
+    mockState.link = receiving({ password_salt: salt, password_hash: hash });
+    expect((await send()).status).toBe(401);
+    expect((await request(app()).post(`${API}/upload`).set('x-share-password', LINK_PW).attach('file', Buffer.from('x'), 'a.pdf')).status).toBe(401);
+    expect((await request(app()).post(`${API}/upload`).set('x-share-ticket', issueShareTicket(LINK)).attach('file', Buffer.from('x'), 'a.pdf')).status).toBe(200);
+  });
+  test("a colleague's sign-in link uploads with their ticket, and not without", async () => {
+    mockState.link = receiving({ require_signin: true });
+    expect((await send()).status).toBe(404);
+    expect((await request(app()).post(`${API}/upload`).set('x-share-ticket', issueShareTicket(LINK)).attach('file', Buffer.from('x'), 'a.pdf')).status).toBe(200);
+  });
+  test('a maker who is gone, or may no longer add files there, stops the link receiving', async () => {
+    mockState.right = { status: 403, error: 'no' };
+    expect((await send()).status).toBe(403);
+    mockState.right = null; mockState.creator = null;
+    expect((await send()).status).toBe(404);
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(libraries.writeRight).toHaveBeenCalledWith(SHARER, LIB, 'Clients/Acme');
+  });
+  test('blocked file types and the per-link ceiling are enforced', async () => {
+    expect((await send('payload.exe')).status).toBe(400);
+    expect((await send('invoice.pdf.exe')).status).toBe(400);
+    mockState.link = receiving({ upload_count: 5000 }); expect((await send()).status).toBe(429);
+    mockState.link = receiving(); mockState.full = true; expect((await send()).status).toBe(429); // the atomic check, when two race
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+  test('the folder was renamed while this uploaded: it lands where the folder is NOW', async () => {
+    mockPlaced.linkNow = { folder_path: 'Clients/Acme Ltd', library_id: LIB };
+    await send();
+    expect(mockPlaced.calls[0].displayName).toBe('Clients/Acme Ltd/invoice.pdf');
+    expect(libraries.writeRight).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'u1' }), LIB, 'Clients/Acme Ltd', expect.anything());
+  });
+  test('the link was ended, or the folder moved library, while this uploaded: refused', async () => {
+    mockPlaced.linkNow = null; expect((await send()).status).toBe(403);
+    mockPlaced.linkNow = { folder_path: 'Clients/Acme', library_id: 'another' }; expect((await send()).status).toBe(403);
+  });
+  describe('a big file, in pieces', () => {
+    const pieceReq = (id, offset, total, body, extra = {}) => { let r = request(app()).post(`${API}/upload`).set('Content-Type', 'application/octet-stream').set('X-Upload-Id', id).set('X-Upload-Offset', String(offset)).set('X-Upload-Total', String(total)).set('X-Upload-Name', encodeURIComponent(extra.name || 'site survey.mp4')).set('X-Upload-Path', encodeURIComponent(extra.at || '')).set('X-Upload-Rel', encodeURIComponent(extra.rel || '')); if (extra.ticket) r = r.set('X-Share-Ticket', extra.ticket); return r.send(body); };
+    const uid = () => crypto.randomBytes(12).toString('hex');
+    beforeEach(() => { storage.uploadStream = jest.fn(async (_p, readable) => { const b = []; for await (const c of readable) b.push(c); storage._got = Buffer.concat(b); }); storage.isLocalProvider = jest.fn(async () => false); });
+
+    test('is assembled byte for byte, streamed to storage, and lands like any other upload', async () => {
+      const data = crypto.randomBytes(90000), id = uid();
+      const a = await pieceReq(id, 0, data.length, data.subarray(0, 40000), { at: 'Invoices', rel: 'Videos/site survey.mp4' });
+      expect(a.body).toEqual({ ok: true, received: 40000 });
+      expect(storage.uploadStream).not.toHaveBeenCalled();                     // nothing is stored until it is whole
+      const b = await pieceReq(id, 40000, data.length, data.subarray(40000), { at: 'Invoices', rel: 'Videos/site survey.mp4' });
+      expect(b.body).toMatchObject({ ok: true, done: true, name: 'site survey.mp4' });
+      expect(storage._got.equals(data)).toBe(true);
+      expect(mockPlaced.calls[0]).toMatchObject({ displayName: 'Clients/Acme/Invoices/Videos/site survey.mp4', storedSize: 90000, mimetype: 'video/mp4' });
+      expect(storage.upload).not.toHaveBeenCalled();                           // never held whole in memory
+    });
+    test('a file far past the old 100 MB ceiling is accepted; past the administrator\'s limit it is not', async () => {
+      expect((await pieceReq(uid(), 0, 6 * 1024 ** 3, Buffer.alloc(1000))).body).toEqual({ ok: true, received: 1000 }); // 6 GB
+      mockLimits.value = { maxFileMb: 50, maxFileBytes: 50 * 1048576, maxFiles: 5000, maxTotalBytes: 1e12 };
+      const res = await pieceReq(uid(), 0, 51 * 1048576, Buffer.alloc(1000));
+      expect(res.status).toBe(413); expect(res.body.error).toMatch(/50 MB limit/);
+    });
+    test('a blocked type, a climbing folder, or a file that would pass the link\'s total is refused at the FIRST piece', async () => {
+      expect((await pieceReq(uid(), 0, 5000, Buffer.alloc(1000), { name: 'setup.exe' })).status).toBe(400);
+      expect((await pieceReq(uid(), 0, 5000, Buffer.alloc(1000), { at: '../Secret' })).status).toBe(400);
+      mockLimits.value = { maxFileMb: 10240, maxFileBytes: 1e10, maxFiles: 5000, maxTotalBytes: 4000 };
+      expect((await pieceReq(uid(), 0, 5000, Buffer.alloc(1000))).status).toBe(429);
+      expect(storage.uploadStream).not.toHaveBeenCalled();
+    });
+    test('pieces answer to the same door as everything else: no flag, no upload; password link, ticket only', async () => {
+      mockState.link = receiving({ allow_upload: false });
+      expect((await pieceReq(uid(), 0, 10, Buffer.alloc(10))).status).toBe(403);
+      const { salt, hash } = passwordParts(LINK_PW); mockState.link = receiving({ password_salt: salt, password_hash: hash });
+      expect((await pieceReq(uid(), 0, 10, Buffer.alloc(10))).status).toBe(401);
+      const ok = await pieceReq(uid(), 0, 20, Buffer.alloc(10), { ticket: issueShareTicket(LINK) });
+      expect(ok.status).toBe(200);
+      expect(ok.body.ticket).toEqual(expect.any(String));                      // renewed, so a long upload does not die at 30 minutes
+    });
+    test('nobody without a ticket is handed one', async () => {
+      expect((await pieceReq(uid(), 0, 20, Buffer.alloc(10))).body.ticket).toBeUndefined();
+    });
+    test('a lost answer: the repeated piece is told where the server is', async () => {
+      const id = uid(); await pieceReq(id, 0, 3000, Buffer.alloc(1000));
+      const again = await pieceReq(id, 0, 3000, Buffer.alloc(1000));
+      expect(again.status).toBe(409); expect(again.body.received).toBe(1000);
+    });
+  });
+
+  test('sending a folder turns it on only when asked', async () => {
+    mockState.known = [];
+    await request(app()).post('/api/files/folder/send').set('x-library-id', LIB).send({ path: 'Clients/Acme', recipients: ['ap@supplier.com'] });
+    await request(app()).post('/api/files/folder/send').set('x-library-id', LIB).send({ path: 'Clients/Acme', recipients: ['ap@supplier.com'], allowUpload: true });
+    const ins = mockQueries.filter(x => /INSERT INTO folder_share_links/.test(x.sql) && /allow_upload/.test(x.sql));
+    expect(ins.map(x => x.params[11])).toEqual([false, true]);
+    expect(email.sendMail.mock.calls[1][0].text).toMatch(/add your own files/);
+    expect(email.sendMail.mock.calls[0][0].text).not.toMatch(/add your own files/);
+  });
+});
+
 describe('who can see a link, and end it', () => {
   const row = (over = {}) => ({ id: LINK, folder_path: 'Clients/Acme', document_ids: [], expires_at: null, revoked_at: null, created_at: null, created_by_email: 'amy@corp.com',
     last_accessed_at: null, access_count: 0, password_hash: null, recipient_email: 'ap@supplier.com', live: true, require_signin: false, opened_at: '2026-09-18T10:00:00Z', ...over });
@@ -337,9 +489,9 @@ describe('sending a folder to people', () => {
     const res = await send({ recipients: ['amy@corp.com', 'ap@supplier.com'], password: 'hunter2' });
     expect(res.body.results.map(r => [r.to, r.kind, r.sent])).toEqual([['amy@corp.com', 'signin_link', true], ['ap@supplier.com', 'link', true]]);
     const [amy, ap] = inserted();
-    expect(amy.sql).toMatch(/live, require_signin\)\s*VALUES \(\$1, \$2::uuid\[\], \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, true, \$11\)/);
-    expect(amy.params.slice(8)).toEqual([LIB, 'amy@corp.com', true]); expect(amy.params[4]).toBeNull();  // the sign-in is its lock: no password
-    expect(ap.params.slice(8)).toEqual([LIB, 'ap@supplier.com', false]); expect(ap.params[4]).toEqual(expect.any(String)); // the outsider's link keeps the password
+    expect(amy.sql).toMatch(/live, require_signin, allow_upload\)\s*VALUES \(\$1, \$2::uuid\[\], \$3, \$4, \$5, \$6, \$7, \$8, \$9, \$10, true, \$11, \$12\)/);
+    expect(amy.params.slice(8)).toEqual([LIB, 'amy@corp.com', true, false]); expect(amy.params[4]).toBeNull();  // the sign-in is its lock: no password
+    expect(ap.params.slice(8)).toEqual([LIB, 'ap@supplier.com', false, false]); expect(ap.params[4]).toEqual(expect.any(String)); // the outsider's link keeps the password
     const [toAmy, toAp] = email.sendMail.mock.calls.map(c => c[0]);
     expect(toAmy.text).toMatch(/https:\/\/depot\.example\/#\/open\/flink\/[\w-]{20,}/); expect(toAmy.text).not.toContain('/f/');
     expect(toAp.text).toMatch(/https:\/\/depot\.example\/f\/[\w-]{20,}/); expect(toAp.text).toContain('password'); expect(toAp.text).not.toContain('hunter2');

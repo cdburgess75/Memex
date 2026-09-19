@@ -77,7 +77,8 @@ app.use('/api/files/share', (req, res, next) =>
 // downloading files present a ticket or nothing, cannot guess anything, and get the generous
 // one -- or "download the files one at a time", which the page recommends for a folder too
 // big to ZIP, would 429 after a few dozen files.
-app.use('/api/files/folder/share', (req, res, next) => (presentsPassword(req) ? shareLimiter : folderBrowseLimiter)(req, res, next));
+app.use('/api/files/folder/share', (req, res, next) =>
+  (/^\/[^/]+\/upload\/?$/.test(req.path) ? exchangeUploadLimiter : presentsPassword(req) ? shareLimiter : folderBrowseLimiter)(req, res, next));
 // Bulk/resumable uploads (one request per file + per chunk) get a high limiter and
 // are skipped by the general apiLimiter, so a large folder upload isn't 429'd mid-batch.
 app.use('/api/files/upload', uploadLimiter);

@@ -24,6 +24,8 @@ function folderShareClientShape(row, url = null) {
     live: !!row.live,
     require_signin: !!row.require_signin,
     opened_at: row.opened_at || null,
+    allow_upload: !!row.allow_upload,
+    upload_count: Number(row.upload_count || 0),
     url,
   };
 }

@@ -56,6 +56,15 @@ module.exports = function folderPage(token) {
   .note { margin-top:14px; font-size:12.5px; color:var(--ink-soft); }
   .msg { padding:14px; border-radius:10px; font-size:14px; margin-top:12px; }
   .msg.err { background:#fdecea; color:#8a2b20; } .msg.info { background:var(--well); color:var(--ink-soft); }
+  .up { margin-top:18px; border-top:1px solid var(--rule); padding-top:16px; }
+  .up h2 { font-size:16px; margin:0 0 4px; }
+  .drop { margin-top:10px; border:2px dashed var(--rule); border-radius:12px; padding:20px 14px; text-align:center; background:var(--well); color:var(--ink-soft); font-size:14px; }
+  .drop.over { border-color:var(--accent); background:#fff; }
+  .drop .btn { margin:8px 4px 0; }
+  ul.queue { list-style:none; margin:12px 0 0; padding:0; font-size:13.5px; }
+  ul.queue li { display:flex; gap:10px; justify-content:space-between; padding:7px 2px; border-bottom:1px solid var(--rule); }
+  ul.queue .q-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  ul.queue .q-state { flex:none; color:var(--ink-soft); } ul.queue .q-state.ok { color:#1d6b45; } ul.queue .q-state.bad { color:#8a2b20; }
   .hidden { display:none !important; }
   @media (max-width:520px) { .card { padding:18px 14px; } .row { padding:10px; } }
 </style>
@@ -87,6 +96,19 @@ module.exports = function folderPage(token) {
     <ul class="list" id="list"></ul>
     <p id="empty" class="msg info hidden">This folder is empty.</p>
     <p class="note" id="live-note"></p>
+    <section id="up" class="up hidden" aria-labelledby="up-h">
+      <h2 id="up-h">Add your files</h2>
+      <p class="sub" id="up-where"></p>
+      <div class="drop" id="drop">
+        <div>Drop files or a folder here, or</div>
+        <button class="btn" type="button" id="pick">Choose files</button>
+        <button class="btn ghost" type="button" id="pickdir">Choose a folder</button>
+        <input type="file" id="fin" multiple class="hidden" aria-label="Files to add">
+        <input type="file" id="din" webkitdirectory multiple class="hidden" aria-label="Folder to add">
+      </div>
+      <div id="up-status" class="sub" role="status" aria-live="polite"></div>
+      <ul class="queue" id="queue"></ul>
+    </section>
   </div>
 </main>
 <script>
@@ -107,7 +129,7 @@ module.exports = function folderPage(token) {
   var KEEP = 'depot-folder-pass:' + TOKEN;
   if (ticket) { try { history.replaceState(null, '', location.pathname); sessionStorage.setItem(KEEP, ticket); } catch (e) {} }
   else { try { ticket = sessionStorage.getItem(KEEP) || ''; } catch (e) {} }
-  var path = '';
+  var path = '', canUpload = false, maxMb = 100;
   function headers() { return ticket ? { 'X-Share-Ticket': ticket } : {}; }
   function withTicket(u) { return ticket ? u + (u.indexOf('?') < 0 ? '?' : '&') + 'dl=' + encodeURIComponent(ticket) : u; }
 
@@ -139,6 +161,8 @@ module.exports = function folderPage(token) {
       $('sent-by').textContent = info.sentBy ? 'Sent by ' + info.sentBy + '.' : '';
       $('expiry').textContent = info.expiresAt ? 'This link expires ' + new Date(info.expiresAt).toLocaleDateString(undefined, { dateStyle: 'long' }) + '.' : '';
       $('live-note').textContent = info.live ? 'This shows the folder as it is now, including anything added since it was sent.' : 'This shows the files that were in the folder when the link was made.';
+      canUpload = !!info.allowUpload; maxMb = info.maxUploadMb || 100;
+      if (canUpload) { show('up'); $('up-where').textContent = 'They go into "' + (path ? path.split('/').pop() : (info.name || 'this folder')) + '" and ' + (info.sentBy || 'the sender') + ' is told. Up to ' + fmt(maxMb * 1048576) + ' per file.'; } else hide('up');
       draw(info);
     }).catch(function (e) { fail(e.message); });
   }
@@ -183,6 +207,44 @@ module.exports = function folderPage(token) {
     fetch(withTicket(API + '/zip?check=1&path=' + encodeURIComponent(path)), { headers: headers() }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) { if (x.ok && x.j && x.j.ok) { window.location.href = a.href; } else { $('busy').textContent = (x.j && x.j.error) || 'That download could not start. Try again in a minute.'; show('busy'); } })
       .catch(function () { $('busy').textContent = 'That download could not start. Check your connection and try again.'; show('busy'); });
+  });
+
+  // ---- Adding files: one at a time, each in pieces, into the folder being looked at ----
+${require('./chunkSenderJs')}
+  var queue = [], sending = false;
+  function enqueue(file, rel) {
+    var li = el('li'), nm = el('span', 'q-name', (rel ? rel + '/' : '') + file.name), st = el('span', 'q-state', 'Waiting');
+    li.appendChild(nm); li.appendChild(st); $('queue').appendChild(li);
+    if (file.size > maxMb * 1048576) { st.textContent = 'Larger than the ' + fmt(maxMb * 1048576) + ' limit'; st.className = 'q-state bad'; return; }
+    queue.push({ file: file, rel: rel || '', st: st, at: path }); pump();
+  }
+  function pump() {
+    if (sending) return; var job = queue.shift();
+    if (!job) { if ($('queue').children.length) { $('up-status').textContent = 'Done.'; load(path); } return; }
+    sending = true; job.st.textContent = 'Sending…'; $('up-status').textContent = 'Sending ' + job.file.name + '…';
+    sendInPieces(API + '/upload', job.file, { at: job.at, rel: (job.rel ? job.rel + '/' : '') + job.file.name }, function () { return ticket; }, function (t) { ticket = t; try { sessionStorage.setItem(KEEP, t); } catch (e) {} },
+      function (done, total) { job.st.textContent = 'Sending… ' + Math.floor(done / total * 100) + '%'; })
+      .then(function (x) {
+        if (x.ok) { job.st.textContent = 'Added'; job.st.className = 'q-state ok'; }
+        else { job.st.textContent = x.status === 401 ? 'Your pass ran out. Reload the page and add it again.' : ((x.j && x.j.error) || 'Could not be added'); job.st.className = 'q-state bad'; }
+      })
+      .then(function () { sending = false; pump(); });
+  }
+  function addList(files) { $('queue').textContent = ''; Array.prototype.forEach.call(files, function (f) { var rp = (f.webkitRelativePath || '').split('/'); rp.pop(); enqueue(f, rp.join('/')); }); }
+  function walk(entry, rel) { // a dropped folder keeps its shape
+    if (entry.isFile) entry.file(function (f) { enqueue(f, rel); });
+    else if (entry.isDirectory) { var rd = entry.createReader(); (function more() { rd.readEntries(function (es) { if (!es.length) return; es.forEach(function (e) { walk(e, rel ? rel + '/' + entry.name : entry.name); }); more(); }); })(); }
+  }
+  $('pick').onclick = function () { $('fin').click(); }; $('pickdir').onclick = function () { $('din').click(); };
+  $('fin').onchange = function () { addList(this.files); this.value = ''; }; $('din').onchange = function () { addList(this.files); this.value = ''; };
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (e) {
+    if (!canUpload) return; $('queue').textContent = '';
+    var items = e.dataTransfer.items, used = false;
+    if (items && items.length && items[0].webkitGetAsEntry) { Array.prototype.forEach.call(items, function (it) { var en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) { used = true; walk(en, ''); } }); }
+    if (!used) addList(e.dataTransfer.files);
   });
 
   $('lock').addEventListener('submit', function (e) {

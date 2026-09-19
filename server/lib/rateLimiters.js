@@ -97,7 +97,8 @@ function makeRateLimiters() {
     // are already bounded by the per-file size cap and the per-link total cap.
     exchangeUploadLimiter: createLimiter({
       windowMs,
-      limit: intFromEnv('RATE_LIMIT_EXCHANGE_UPLOAD_MAX', 600),
+      // A big file is many requests now (one per 16 MB piece): 10 GB is 640 of them.
+      limit: intFromEnv('RATE_LIMIT_EXCHANGE_UPLOAD_MAX', 6000),
       message: 'Too many uploads in a short time. Please wait and try again shortly.',
     }),
   };

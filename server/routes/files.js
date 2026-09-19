@@ -26,6 +26,7 @@ const { extractText } = require('../lib/textExtraction');
 const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const externalUpload = require('../lib/externalUpload');
+const externalChunks = require('../lib/externalChunks');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
 const shareOpens = require('../lib/shareOpens');
@@ -133,8 +134,7 @@ async function getUpload() {
 // body into heap before the handler can reject it; (2) files:1 so a multipart
 // with many parts can't be used to multiply memory. The extension blocklist is
 // applied in the handler (externalUpload), not here.
-const EXTERNAL_MAX_FILES_PER_LINK = 500;
-const EXTERNAL_MAX_BYTES_PER_LINK = 2 * 1024 * 1024 * 1024; // 2 GB total per link
+// (Per-link ceilings are settings now: lib/externalChunks.limits.)
 let _extUploadMw = null;
 function externalUploadMw() {
   if (!_extUploadMw) {
@@ -626,7 +626,7 @@ router.get('/share/:token/info', async (req, res) => {
       needsPassword,
       unlocked,
       allowUpload: unlocked ? !!share.allow_upload : false,
-      maxUploadMb: externalUpload.DEFAULT_MAX_MB,
+      maxUploadMb: (await externalChunks.limits()).maxFileMb,
     });
   } catch (e) { serverError(res, e); }
 });
@@ -748,16 +748,15 @@ async function guardExchangeUpload(req, res, next) {
     if (share.password_hash && !verifyShareTicket(share.id, req.headers['x-share-ticket'])) {
       return res.status(401).json({ error: 'ticket_required' });
     }
-    if (Number(share.upload_count || 0) >= EXTERNAL_MAX_FILES_PER_LINK ||
-        Number(share.upload_bytes || 0) >= EXTERNAL_MAX_BYTES_PER_LINK) {
+    const lim = await externalChunks.limits(); // an administrator's, not constants (Settings -> Network, limits & calls)
+    if (Number(share.upload_count || 0) >= lim.maxFiles || Number(share.upload_bytes || 0) >= lim.maxTotalBytes) {
       return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
     }
-    // Keep the volume's reserve intact even in the worst case (a full-size file).
-    const free = await freeDiskBytes();
-    if (Number.isFinite(free) && free - externalUpload.DEFAULT_MAX_MB * 1024 * 1024 < await minFreeDiskBytes()) {
+    // Keep the volume's reserve intact: room for what this request carries.
+    if (!(await externalUpload.hasDiskRoom(Number(req.headers['content-length']) || 0))) {
       return res.status(507).json({ error: 'The server is low on disk space right now. Please try again later.' });
     }
-    req.exchangeShare = share;
+    req.exchangeShare = share; req.exchangeLimits = lim;
     next();
   } catch (e) { serverError(res, e); }
 }
@@ -768,44 +767,71 @@ async function guardExchangeUpload(req, res, next) {
 // disk, and per-link cap before multer buffered anything.
 router.post('/share/:token/upload',
   guardExchangeUpload,
+  // A file of any size arrives as PIECES (lib/externalChunks); the last one assembles it.
+  async (req, res, next) => {
+    if (!externalChunks.isChunked(req)) return next();
+    try {
+      const share = req.exchangeShare, lim = req.exchangeLimits;
+      const got = await externalChunks.accept(req, {
+        linkKey: `file:${share.id}`, maxFileBytes: lim.maxFileBytes,
+        first: async (h) => {
+          const why = externalUpload.rejectionFor(cleanDisplayName(h.name) || 'upload', h.total, lim.maxFileMb);
+          if (why) throw new externalChunks.ChunkError(400, why);
+          if (Number(share.upload_bytes || 0) + h.total > lim.maxTotalBytes) throw new externalChunks.ChunkError(429, 'That file would take this link past its upload limit. Ask your contact for a new link.');
+          if (!(await externalUpload.hasDiskRoom(h.total))) throw new externalChunks.ChunkError(507, 'The server does not have room for a file that size right now.');
+        },
+      });
+      // A long upload outlives one pass: whoever is holding a good one is handed a fresh one.
+      const held = req.headers['x-share-ticket'];
+      if (!got.done) return res.json({ ok: true, received: got.received, ...(held && verifyShareTicket(share.id, held) ? { ticket: issueShareTicket(share.id) } : {}) });
+      try {
+        await placeExchangeUpload(req, res, { originalname: got.name, size: got.size, relativePath: got.rel,
+          mimetype: require('mime-types').lookup(got.name) || 'application/octet-stream',
+          put: (storagePath, mt) => storage.uploadStream(storagePath, got.stream(), mt, { maxBytes: got.size }) });
+      } finally { await got.cleanup(); }
+    } catch (e) { if (externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
+  },
   (req, res, next) => externalUploadMw()(req, res, (err) => {
-    if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB limit for this link.` });
+    if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB this kind of upload can carry.` });
     next();
   }),
   async (req, res) => {
-  try {
-    const share = req.exchangeShare;
-    if (!req.file) return res.status(400).json({ error: 'file required' });
+    try {
+      if (!req.file) return res.status(400).json({ error: 'file required' });
+      const { buffer, originalname, mimetype, size } = req.file;
+      await placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath: req.body?.relativePath, put: (storagePath, mt) => storage.upload(storagePath, buffer, mt) });
+    } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
+  });
 
-    const { buffer, originalname, mimetype, size } = req.file;
+async function placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath, put }) {
+  {
+    const share = req.exchangeShare, lim = req.exchangeLimits;
     const display = cleanDisplayName(originalname) || 'upload';
-    const rejection = externalUpload.rejectionFor(display, size);
+    const rejection = externalUpload.rejectionFor(display, size, lim.maxFileMb);
     if (rejection) return res.status(400).json({ error: rejection });
 
     // Reserve the per-link quota ATOMICALLY before storing, with the actual
-    // size now known. The guard's earlier check is a best-effort early-out (it
-    // avoids buffering when the link is already full); this conditional UPDATE
-    // is the hard ceiling — concurrent uploads cannot overshoot it, because only
-    // the rows that still fit are updated. A reserved slot for a store that then
-    // fails is left consumed (conservative, fail-safe) rather than decremented.
+    // size now known. The guard's earlier check is a best-effort early-out; this
+    // conditional UPDATE is the hard ceiling — concurrent uploads cannot overshoot it.
+    // A reserved slot for a store that then fails is left consumed (fail-safe).
     const reserved = await db.queryOne(
       `UPDATE document_share_links
          SET upload_count = upload_count + 1, upload_bytes = upload_bytes + $2, last_accessed_at = NOW()
        WHERE id = $1 AND upload_count < $3 AND upload_bytes + $2 <= $4
        RETURNING id`,
-      [share.id, Number(size) || 0, EXTERNAL_MAX_FILES_PER_LINK, EXTERNAL_MAX_BYTES_PER_LINK]
+      [share.id, Number(size) || 0, lim.maxFiles, lim.maxTotalBytes]
     );
     if (!reserved) return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
 
     // Land beside the file that was sent, so the exchange stays in one place.
     const parent = String(share.name || '').includes('/') ? share.name.split('/').slice(0, -1).join('/') : '';
-    const subdir = externalUpload.safeRelativePath(req.body?.relativePath);
+    const subdir = externalUpload.safeRelativePath(relativePath);
     const from = String(share.recipient_email || 'external').toLowerCase();
     const displayName = [parent, subdir, path.basename(display)].filter(Boolean).join('/');
 
     const sanitized = path.basename(display).replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${sanitized}`;
-    await storage.upload(storagePath, buffer, mimetype);
+    await put(storagePath, mimetype);
     // The file belongs to the link's creator, as the live account the guard just
     // checked -- role and verified address included -- not a bare id and address.
     const owner = { ...share.creator, email: share.created_by_email || share.creator.email };
@@ -850,9 +876,9 @@ router.post('/share/:token/upload',
         text: `${from} uploaded "${display}" through the link you sent them for "${share.name}".\n\nSign in to Depot to view it.`,
       }).catch(() => {});
     }
-    res.json({ ok: true, name: display });
-  } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
-});
+    res.json({ ok: true, name: display, done: true });
+  }
+}
 
 router.get('/share/:token', async (req, res) => {
   try {

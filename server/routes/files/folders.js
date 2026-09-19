@@ -32,6 +32,8 @@ const folderCarry = require('../../lib/folderCarry');
 const folderPreview = require('../../lib/folderPreview');
 const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
 const folderUndo = require('../../lib/folderUndo');
+const externalUpload = require('../../lib/externalUpload');
+const externalChunks = require('../../lib/externalChunks');
 
 // Total-size ceiling for a folder ZIP (the archive is buffered in memory, so this
 // bounds peak RAM — matched between the authed /folder/zip route and the public link).
@@ -824,7 +826,7 @@ router.get('/links', auth, requireRole('admin', 'contributor'), async (req, res)
     const rows = await db.query(
       `SELECT l.id, l.folder_path, l.document_ids, l.expires_at, l.revoked_at, l.created_at,
               l.created_by_email, l.last_accessed_at, l.access_count, l.password_hash,
-              l.recipient_email, l.live, l.require_signin, l.opened_at
+              l.recipient_email, l.live, l.require_signin, l.opened_at, l.allow_upload, l.upload_count
        FROM folder_share_links l
        WHERE (l.folder_path = ANY($1::text[])
               OR ($3::uuid IS NOT NULL AND EXISTS (
@@ -913,6 +915,8 @@ router.post('/send', auth, requireRole('admin', 'contributor'), async (req, res)
     const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + (Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30) * 864e5).toISOString();
     const password = String(req.body?.password || '').trim();
     const note = String(req.body?.message || '').slice(0, 2000).trim();
+    // Off unless asked for: receiving files is a bigger thing to hand out than a download.
+    const allowUpload = req.body?.allowUpload === true;
     const base = await publicAppBase(req);
     const emailLib = require('../../lib/email');
     const sendingAs = emailLib.actingAs(req.user);
@@ -934,9 +938,9 @@ router.post('/send', auth, requireRole('admin', 'contributor'), async (req, res)
         await db.query(
           `INSERT INTO folder_share_links
              (folder_path, document_ids, token_hash, password_salt, password_hash, expires_at, created_by, created_by_email,
-              library_id, recipient_email, live, require_signin)
-           VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8, $9, $10, true, $11)`,
-          [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email, libraryId, to, signin]);
+              library_id, recipient_email, live, require_signin, allow_upload)
+           VALUES ($1, $2::uuid[], $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12)`,
+          [folderPath, docs.map(d => d.id), tokenHash(token), salt, hash, expiresAt, req.user.id, req.user.email, libraryId, to, signin, allowUpload]);
         const url = signin ? appLinks.signinFolderUrl(base, token) : `${base}/f/${token}`;
         try { await logDocumentEvent(null, signin ? 'internal_folder_link_sent' : 'external_folder_share_sent', req.user.id, req.user.email,
           `${folderPath} · ${to}${expiresAt ? ` · expires ${expiresAt}` : ' · no expiry'}${hash ? ' · password protected' : ''}${signin ? ' · sign-in required' : ''}`); }
@@ -946,6 +950,7 @@ router.post('/send', auth, requireRole('admin', 'contributor'), async (req, res)
           text: [`${sendingAs.label} sent you a folder${signin ? ' in Depot' : ''}: "${folderName}".`, note ? `\n${note}\n` : '',
             signin ? `Open it here (sign in with your usual account):\n${url}` : `Open it here:\n${url}`,
             '\nYou can download files one at a time, or the whole folder as a ZIP. It shows the folder as it is now, including anything added later.',
+            allowUpload ? '\nYou can also add your own files to it from the same page.' : '',
             expiresAt ? `\nThis link expires on ${new Date(expiresAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.` : '',
             hash ? '\nIt is password protected; the sender will pass the password along separately.' : ''].filter(Boolean).join('\n'),
           actorEmail: sendingAs.sendAs,
@@ -1028,12 +1033,140 @@ router.get('/share/:token/info', async (req, res) => {
     const { creator, docs } = await folderLinks.docsFor(share);
     if (!creator) return res.status(404).json({ error: 'Share link not found' });
     const level = folderLinks.listing(docs, sub);
-    if (sub && !level.count) return res.status(404).json({ error: 'Not a folder in this link' });
+    if (sub && !level.count && !receives(share)) return res.status(404).json({ error: 'Not a folder in this link' });
     const limit = await zipLarge.maxBytes();
     res.json({ ...base, sentBy: share.created_by_email, path: sub, live: !!share.live, folders: level.folders, files: level.files,
+      allowUpload: receives(share), maxUploadMb: (await externalChunks.limits()).maxFileMb,
       bytes: level.bytes, count: level.count, zip: { allowed: level.count > 0 && level.bytes <= limit, limitMb: await zipLarge.maxMb() } });
   } catch (e) { serverError(res, e); }
 });
+
+// ---- Files coming BACK through a folder link ---------------------------------------------
+//
+// Only a link sent to a named person (live, so it knows its library and folder) and made
+// with "let them add files" receives. What arrives lands in the linked folder -- or a
+// subfolder of it that the sender's browser named, cleaned -- belongs to the link's MAKER,
+// and is accepted only while the maker may still add files there. Same ceilings, same
+// blocked file types, same disk reserve as a file link's uploads (lib/externalUpload).
+const receives = (share) => !!(share.allow_upload && share.live && share.library_id);
+
+// Runs BEFORE multer, so a bad token, a missing ticket or a full link never buffers a byte.
+async function guardFolderUpload(req, res, next) {
+  try {
+    const got = await openFolderLink(req, res); if (!got) return;
+    const { share } = got;
+    if (!receives(share)) return res.status(403).json({ error: 'This link is download-only.' });
+    // A TICKET, never the password: this route is on the generous limiter (one request per
+    // file), so it must not be somewhere a password can be guessed.
+    if ((share.password_hash || share.require_signin) && !verifyShareTicket(share.id, req.headers['x-share-ticket'])) return res.status(401).json({ error: 'ticket_required' });
+    const creator = await require('../../lib/linkAccess').linkCreator(share.created_by);
+    if (!creator) return res.status(404).json({ error: 'Share link not found' });
+    const dest = await libraries.writeRight(creator, share.library_id, share.folder_path);
+    if (dest.status) return res.status(403).json({ error: 'This link can no longer receive files.' });
+    const lim = await externalChunks.limits();
+    if (Number(share.upload_count || 0) >= lim.maxFiles || Number(share.upload_bytes || 0) >= lim.maxTotalBytes) {
+      return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
+    }
+    // Room for what is coming: this piece (or this whole small file), above the reserve.
+    if (!(await externalUpload.hasDiskRoom(Number(req.headers['content-length']) || 0))) return res.status(507).json({ error: 'The server is low on disk space right now. Please try again later.' });
+    req.folderUpload = { share, creator, dest, lim };
+    next();
+  } catch (e) { serverError(res, e); }
+}
+
+// Two ways in, one way on. A file arrives either as PIECES (lib/externalChunks: what the page
+// sends, any size up to the limit) or as one small multipart request (kept for anything still
+// posting the old way). Both end in placeFolderUpload.
+router.post('/share/:token/upload',
+  guardFolderUpload,
+  async (req, res, next) => {
+    if (!externalChunks.isChunked(req)) return next();
+    try {
+      const { share, lim } = req.folderUpload;
+      const got = await externalChunks.accept(req, {
+        linkKey: `folder:${share.id}`, maxFileBytes: lim.maxFileBytes,
+        // Before the first piece is kept: refuse what would be refused at the end anyway.
+        first: async (h) => {
+          const why = externalUpload.rejectionFor(externalUpload.cleanName(h.name), h.total, lim.maxFileMb);
+          if (why) throw new externalChunks.ChunkError(400, why);
+          if (folderLinks.cleanSub(h.at) === null) throw new externalChunks.ChunkError(400, 'Not a folder in this link');
+          if (Number(share.upload_bytes || 0) + h.total > lim.maxTotalBytes) throw new externalChunks.ChunkError(429, 'That file would take this link past its upload limit. Ask your contact for a new link.');
+          if (!(await externalUpload.hasDiskRoom(h.total))) throw new externalChunks.ChunkError(507, 'The server does not have room for a file that size right now.');
+        },
+      });
+      // A long upload outlives one pass: whoever is holding a good one is handed a fresh one.
+      const held = req.headers['x-share-ticket'];
+      if (!got.done) return res.json({ ok: true, received: got.received, ...(held && verifyShareTicket(share.id, held) ? { ticket: issueShareTicket(share.id) } : {}) });
+      try {
+        await placeFolderUpload(req, res, { name: got.name, size: got.size, at: got.at, rel: got.rel,
+          mimetype: require('mime-types').lookup(got.name) || 'application/octet-stream',
+          put: (storagePath, mimetype) => storage.uploadStream(storagePath, got.stream(), mimetype, { maxBytes: got.size }) });
+      } finally { await got.cleanup(); }
+    } catch (e) { if (externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
+  },
+  (req, res, next) => externalUpload.middleware()(req, res, (err) => {
+    if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB this kind of upload can carry.` });
+    next();
+  }),
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'file required' });
+      const { buffer, originalname, mimetype, size } = req.file;
+      await placeFolderUpload(req, res, { name: originalname, size, mimetype, at: req.body?.path, rel: req.body?.relativePath,
+        put: (storagePath, mt) => storage.upload(storagePath, buffer, mt) });
+    } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
+  });
+
+async function placeFolderUpload(req, res, { name, size, mimetype, at: atRaw, rel, put }) {
+  const { share, creator, lim } = req.folderUpload;
+  const display = externalUpload.cleanName(name);
+  const rejection = externalUpload.rejectionFor(display, size, lim.maxFileMb);
+  if (rejection) return res.status(400).json({ error: rejection });
+  // Where in the folder: the subfolder the visitor is looking at, then any folder
+  // structure they dragged in. Both cleaned; neither can climb out.
+  const at = folderLinks.cleanSub(atRaw);
+  if (at === null) return res.status(400).json({ error: 'Not a folder in this link' });
+  const subdir = [at, externalUpload.safeRelativePath(rel)].filter(Boolean).join('/');
+
+  // The hard ceiling, atomically, now the size is known (the guard's check is an early-out).
+  const reserved = await db.queryOne(
+    `UPDATE folder_share_links SET upload_count = upload_count + 1, upload_bytes = upload_bytes + $2, last_accessed_at = NOW()
+      WHERE id = $1 AND revoked_at IS NULL AND allow_upload AND upload_count < $3 AND upload_bytes + $2 <= $4
+      RETURNING id`,
+    [share.id, Number(size) || 0, lim.maxFiles, lim.maxTotalBytes]);
+  if (!reserved) return res.status(429).json({ error: 'This link has reached its upload limit. Ask your contact for a new one.' });
+
+  const from = String(share.recipient_email || 'external').toLowerCase();
+  const storagePath = `documents/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${display.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  await put(storagePath, mimetype);
+  const owner = { ...creator, email: share.created_by_email || creator.email };
+  const { doc } = await createDocumentRecord({
+    displayName: [share.folder_path, subdir, display].filter(Boolean).join('/'), storagePath, mimetype, storedSize: size, user: owner,
+    sourceDetail: `via folder link · from ${from}`,
+    libraryId: share.library_id, libraryScoped: req.folderUpload.dest.scoped,
+    // The folder as it is NOW, read under the library's tree lock: it can have been
+    // renamed (the link follows it), moved away or deleted (the link is ended) while
+    // this was uploading. The maker's right to add files is proved again where it lands.
+    resolve: async (q, { libraryId }) => {
+      const now = await q.queryOne('SELECT folder_path, library_id FROM folder_share_links WHERE id = $1 AND revoked_at IS NULL AND allow_upload', [share.id]);
+      if (!now || String(now.library_id) !== String(libraryId)) throw new FolderOpError(null, 403, 'This link can no longer receive files.');
+      const right = await libraries.writeRight(owner, libraryId, now.folder_path, q);
+      if (right.status) throw new FolderOpError(null, 403, 'This link can no longer receive files.');
+      return { displayName: [now.folder_path, subdir, display].filter(Boolean).join('/'), libraryScoped: right.scoped };
+    },
+  }).catch(async (e) => { if (e.notPlaced) await storage.del(storagePath).catch(() => {}); throw e; }); // ONLY when no row was made: a committed row owns its blob
+  await logDocumentEvent(doc.id, 'external_upload_received', null, from, `${display} · folder link · ${requestAuditDetail(req)}`);
+
+  if (share.created_by_email) {
+    const folderName = share.folder_path.split('/').pop();
+    notifications.create({ userId: share.created_by, userEmail: share.created_by_email, type: 'upload_received',
+      title: `${from} added a file to "${folderName}"`, body: `"${display}" · through the folder link you sent`,
+      refType: 'document', refId: doc.id, dedupeMinutes: 2 }).catch(() => {});
+    emailEvents.send('upload_received', { to: share.created_by_email, subject: `${from} added a file to ${folderName}: ${display}`,
+      text: `${from} uploaded "${display}" to "${folderName}" through the folder link you sent them.\n\nSign in to Depot to view it.` }).catch(() => {});
+  }
+  res.json({ ok: true, name: display, done: true });
+}
 
 // POST /share/:token/ticket — the password, once, for a ticket.
 router.post('/share/:token/ticket', async (req, res) => {

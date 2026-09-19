@@ -116,6 +116,7 @@ module.exports = function exchangePage(token) {
   var ticket = '';
   var queue = [];
   var sending = false;
+${require('./chunkSenderJs')}
   // Password travels in a header, never the URL — a query-string password lands
   // in proxy access logs and browser history, defeating the second factor.
   function pwHeaders() { return pw ? { 'X-Share-Password': pw } : {}; }
@@ -177,7 +178,7 @@ module.exports = function exchangePage(token) {
         : '';
       if (info.allowUpload) {
         show('up');
-        $('uplimit').textContent = 'Up to ' + info.maxUploadMb + ' MB per file.';
+        $('uplimit').textContent = 'Up to ' + fmt(info.maxUploadMb * 1048576) + ' per file.';
       }
     }).catch(function (e) {
       hide('loading'); hide('lock'); hide('main');
@@ -210,7 +211,7 @@ module.exports = function exchangePage(token) {
   function render() {
     $('list').innerHTML = queue.map(function (q, i) {
       var cls = q.state === 'done' ? 'ok' : (q.state === 'failed' ? 'err' : '');
-      var st = q.state === 'done' ? 'Sent' : (q.state === 'failed' ? (q.error || 'Failed') : (q.state === 'sending' ? 'Sending…' : fmt(q.file.size)));
+      var st = q.state === 'done' ? 'Sent' : (q.state === 'failed' ? (q.error || 'Failed') : (q.state === 'sending' ? 'Sending… ' + (q.progress || 0) + '%' : fmt(q.file.size)));
       return '<div class="f"><span class="p">' + q.path.replace(/[<>&]/g, '') + '</span><span class="st ' + cls + '">' + st + '</span></div>';
     }).join('');
     // Enabled while a batch is NOT running and something needs sending — queued
@@ -280,12 +281,9 @@ module.exports = function exchangePage(token) {
         if (idx >= pendingItems.length) { sending = false; render(); return; }
         var q = pendingItems[idx++];
         q.state = 'sending'; render();
-        var fd = new FormData();
-        fd.append('file', q.file);
-        fd.append('relativePath', q.path);
-        // The ticket authorises the upload (see ensureTicket) — no password here.
-        fetch(API + '/upload', { method: 'POST', headers: ticket ? { 'X-Share-Ticket': ticket } : {}, body: fd })
-          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+        // In pieces (lib/chunkSenderJs): any size up to the link's limit, a failed piece retried on its own.
+        sendInPieces(API + '/upload', q.file, { rel: q.path }, function () { return ticket; }, function (t) { ticket = t; },
+          function (done, total) { q.progress = Math.floor(done / total * 100); render(); })
           .then(function (res) {
             if (res.ok) { q.state = 'done'; }
             else {
