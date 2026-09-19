@@ -28,7 +28,7 @@ async function enabledForEmail(email) {
 // No-op (returns null) when the recipient has opted out, or — when
 // `dedupeMinutes` is set — when a matching (type + ref_id + recipient)
 // notification already exists inside that window (tames autosave/repeat spam).
-async function create({ userId = null, userEmail = null, type, title, body = null, refType = null, refId = null, dedupeMinutes = 0 }) {
+async function create({ userId = null, userEmail = null, type, title, body = null, refType = null, refId = null, refPath = null, dedupeMinutes = 0 }) {
   const email = userEmail ? String(userEmail).toLowerCase() : null;
   if (!(await enabledForEmail(email))) return null;
   if (dedupeMinutes > 0) {
@@ -44,10 +44,10 @@ async function create({ userId = null, userEmail = null, type, title, body = nul
     if (recent) return null;
   }
   return db.queryOne(
-    `INSERT INTO notifications (user_id, user_email, type, title, body, ref_type, ref_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, user_id, user_email, type, title, body, ref_type, ref_id, read_at, created_at`,
-    [userId, email, type, title, body, refType, refId]
+    `INSERT INTO notifications (user_id, user_email, type, title, body, ref_type, ref_id, ref_path)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, user_id, user_email, type, title, body, ref_type, ref_id, ref_path, read_at, created_at`,
+    [userId, email, type, title, body, refType, refId, refPath]
   );
 }
 
@@ -56,7 +56,7 @@ function viewerEmail(user) { return user?.verifiedEmail || ''; }
 async function listForUser(user, limit = 50) {
   const cap = Math.max(1, Math.min(100, limit));
   return db.query(
-    `SELECT id, type, title, body, ref_type, ref_id, read_at, created_at
+    `SELECT id, type, title, body, ref_type, ref_id, ref_path, read_at, created_at
      FROM notifications
      WHERE ${recipientClause(1)}
      ORDER BY created_at DESC

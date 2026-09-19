@@ -38,6 +38,8 @@ jest.mock('../../lib/groups', () => ({
 }));
 jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../lib/email', () => ({ sendMail: jest.fn(async () => ({ sent: true })), actingAs: jest.requireActual('../../lib/email').actingAs }));
+jest.mock('../../lib/shareLinks', () => ({ ...jest.requireActual('../../lib/shareLinks'), publicAppBase: jest.fn(async () => 'https://depot.example') }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/db', () => ({
   query: jest.fn(async () => []),
@@ -144,6 +146,18 @@ describe('adding a share', () => {
     expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ userEmail: 'tim@dts-tax.com', type: 'share_granted', refType: 'library', refId: LIB }));
     expect(emailEvents.send).toHaveBeenCalledWith('share_granted', expect.objectContaining({ to: 'tim@dts-tax.com', actorEmail: 'owner@corp.com' }));
   });
+  test('the email links to exactly what was shared, and the in-app notice opens at that folder', async () => {
+    await post({ email: 'tim@dts-tax.com', permission: 'write', folder_path: 'Clients/Smith & Co' });
+    const [, mail] = emailEvents.send.mock.calls[0];
+    expect(mail.text).toMatch(new RegExp(`/#/open/lib/${LIB}/Clients/Smith%20%26%20Co\\n`));
+    expect(mail.text).not.toMatch(/Sign in to Depot to open it\./);
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ refType: 'library', refId: LIB, refPath: 'Clients/Smith & Co' }));
+  });
+  test('a whole-library share links to the library, with no folder on the notice', async () => {
+    await post({ email: 'tim@dts-tax.com', permission: 'read' });
+    expect(emailEvents.send.mock.calls[0][1].text).toMatch(new RegExp(`/#/open/lib/${LIB}\\n`));
+    expect(notifications.create).toHaveBeenCalledWith(expect.objectContaining({ refPath: null }));
+  });
   test("a sharer whose address isn't verified: the mail comes from the workspace and says so", async () => {
     mockState.user = { ...OWNER, email: 'owner@corp.com', verifiedEmail: null, emailVerified: false };
     await post({ email: 'tim@dts-tax.com', permission: 'read' });
@@ -228,5 +242,23 @@ describe('changing and removing a share', () => {
     shares.deleteShare.mockResolvedValueOnce(null);
     expect((await request(app()).delete(`/api/libraries/${LIB}/shares/${SHARE}`)).status).toBe(404);
     expect(events('library_unshared')).toHaveLength(1);
+  });
+});
+
+describe('sending the "shared with you" email again', () => {
+  const SHARE_ID = 'cccccccc-0000-4000-8000-000000000001';
+  const resend = () => request(app()).post(`/api/libraries/${LIB}/shares/${SHARE_ID}/resend`).send({});
+  test('a person gets it again, with the link to the folder', async () => {
+    mockState.share = { id: SHARE_ID, subject_email: 'tim@dts-tax.com', permission: 'write', folder_path: 'Clients/Mender' };
+    const res = await resend();
+    expect(res.body).toEqual({ sent: true });
+    const mail = require('../../lib/email').sendMail.mock.calls[0][0];
+    expect(mail.to).toBe('tim@dts-tax.com');
+    expect(mail.text).toContain(`/#/open/lib/${LIB}/Clients/Mender`);
+  });
+  test('a share with a group has no one to email', async () => {
+    mockState.share = { id: SHARE_ID, subject_email: null, group_id: 'g1', permission: 'read', folder_path: '' };
+    expect((await resend()).status).toBe(404);
+    expect(require('../../lib/email').sendMail).not.toHaveBeenCalled();
   });
 });

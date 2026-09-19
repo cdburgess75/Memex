@@ -28,6 +28,8 @@ const mp4Faststart = require('../lib/mp4Faststart');
 const externalUpload = require('../lib/externalUpload');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
+const shareOpens = require('../lib/shareOpens');
+const appLinks = require('../lib/appLinks');
 const fsSync = require('fs');
 const fs = fsSync.promises;
 const path = require('path');
@@ -575,7 +577,10 @@ async function landingName(raw, libraryId, user, q = db) {
 // of use is what makes every one of them end the link too, without a hook at each
 // place access can change. A link that fails the check answers exactly like a revoked
 // one: the recipient learns nothing about why.
-async function loadExchangeLink(token) {
+// A sign-in link (require_signin) does not exist as far as the public page is concerned:
+// every public caller gets not_found for it, exactly as for a bad token. Only the signed-in
+// routes below, and a download carrying a ticket THEY minted, pass allowSignin.
+async function loadExchangeLink(token, { allowSignin = false } = {}) {
   // s.* already carries upload_count / upload_bytes for the per-link cap check.
   const share = await db.queryOne(
     `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id, d.storage_path
@@ -585,6 +590,7 @@ async function loadExchangeLink(token) {
     [tokenHash(token)]
   );
   if (!share || share.revoked_at || share.deleted_at) return { error: 'not_found' };
+  if (share.require_signin && !allowSignin) return { error: 'not_found' };
   if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) return { error: 'expired' };
   const creator = await linkCreatorWithWrite(share.created_by, share.document_id);
   if (!creator) return { error: 'not_found' };
@@ -609,6 +615,9 @@ router.get('/share/:token/info', async (req, res) => {
     const needsPassword = !!share.password_hash;
     const supplied = req.headers['x-share-password'] || req.query.password;
     const unlocked = !needsPassword || verifySharePassword(supplied, share.password_salt, share.password_hash);
+    // NOT an open. This is a GET that any mail scanner which renders the page will make on
+    // delivery -- and the claim is one-shot, so a scanner's "open" would swallow the real
+    // one. The page reports an open itself, from a person's first touch (POST /opened).
     res.json({
       name: unlocked ? share.name : null,
       size: unlocked ? Number(share.doc_size || 0) : null,
@@ -619,6 +628,84 @@ router.get('/share/:token/info', async (req, res) => {
       allowUpload: unlocked ? !!share.allow_upload : false,
       maxUploadMb: externalUpload.DEFAULT_MAX_MB,
     });
+  } catch (e) { serverError(res, e); }
+});
+
+// GET /api/files/signin-link/:token — a link sent to a colleague by someone who may share
+// the file but not hand out access to it. It opens for that colleague, signed in, and for
+// nobody else: forwarding the email gives the next person nothing.
+async function openSigninShare(req, res, share, token) {
+  // The verified address, as everywhere access is keyed on an address. An account that
+  // merely CLAIMS the recipient's address (a local user can set their own, unverified) is
+  // not the recipient -- and the same-domain colleague who has never signed in is exactly
+  // who that would otherwise let someone impersonate.
+  const me = documentAccess.matchEmail(req.user);
+  if (!me || me !== String(share.recipient_email || '').toLowerCase()) {
+    return res.status(403).json({ error: 'This link was sent to somebody else. Sign in as the person it was sent to.' });
+  }
+  await shareOpens.linkOpened(share, me);
+  await db.query('UPDATE document_share_links SET last_accessed_at = NOW() WHERE id = $1', [share.id]);
+  res.json({
+    name: share.name, size: Number(share.doc_size || 0), sentBy: share.created_by_email, expiresAt: share.expires_at,
+    // A short-lived ticket the browser can put on a plain link, so a large file streams
+    // to disk instead of being buffered in the page. Bound to this share (lib/shareLinks).
+    downloadUrl: token ? `/api/files/share/${encodeURIComponent(token)}?dl=${encodeURIComponent(issueShareTicket(share.id))}`
+      : `/api/files/signin-share/${encodeURIComponent(share.id)}/download?dl=${encodeURIComponent(issueShareTicket(share.id))}`,
+  });
+}
+router.get('/signin-link/:token', auth, async (req, res) => {
+  try {
+    const { share, error } = await loadExchangeLink(req.params.token, { allowSignin: true });
+    if (error || !share.require_signin) return res.status(error === 'expired' ? 410 : 404).json({ error: error === 'expired' ? 'This link has expired.' : 'Link not found' });
+    await openSigninShare(req, res, share, req.params.token);
+  } catch (e) { serverError(res, e); }
+});
+// The same share, reached from the in-app notice. The notice holds the share's ID: a token
+// is hashed everywhere it is stored, and a notification row is no exception.
+async function signinShareById(id) {
+  if (!isUuid(id)) return { error: 'not_found' };
+  const share = await db.queryOne(
+    `SELECT s.*, d.name, d.mime_type, d.size AS doc_size, d.deleted_at, d.library_id, d.storage_path
+       FROM document_share_links s JOIN documents d ON d.id = s.document_id
+      WHERE s.id = $1 AND s.require_signin`, [id]);
+  if (!share || share.revoked_at || share.deleted_at) return { error: 'not_found' };
+  if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) return { error: 'expired' };
+  if (!(await linkCreatorWithWrite(share.created_by, share.document_id))) return { error: 'not_found' };
+  return { share };
+}
+router.get('/signin-share/:id', auth, async (req, res) => {
+  try {
+    const { share, error } = await signinShareById(req.params.id);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error: error === 'expired' ? 'This link has expired.' : 'Link not found' });
+    await openSigninShare(req, res, share, null);
+  } catch (e) { serverError(res, e); }
+});
+router.get('/signin-share/:id/download', async (req, res) => {
+  try {
+    const { share, error } = await signinShareById(req.params.id);
+    if (error || !(req.query.dl && verifyShareTicket(share.id, req.query.dl))) return res.status(404).json({ error: 'Link not found' });
+    await db.query('UPDATE document_share_links SET last_accessed_at = NOW(), access_count = access_count + 1 WHERE id = $1', [share.id]);
+    const { stream, length } = await storage.downloadStream(share.storage_path);
+    res.setHeader('Content-Type', share.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(share.name).replace(/"/g, '')}"`);
+    if (length) res.setHeader('Content-Length', String(length));
+    await require('stream/promises').pipeline(stream, res);
+  } catch (e) { if (!res.headersSent) serverError(res, e); else res.destroy(e); }
+});
+
+// POST /api/files/share/:token/opened — the link page, on the visitor's first pointer or
+// key event: somebody is actually looking at it. Counts only once the page shows anything
+// (a password page nobody unlocked has told nobody anything). Public, rate-limited.
+router.post('/share/:token/opened', async (req, res) => {
+  try {
+    const { share, error } = await loadExchangeLink(req.params.token);
+    if (error) return res.status(error === 'expired' ? 410 : 404).json({ error });
+    if (share.password_hash && !verifySharePassword(req.headers['x-share-password'], share.password_salt, share.password_hash)
+        && !(req.headers['x-share-ticket'] && verifyShareTicket(share.id, req.headers['x-share-ticket']))) {
+      return res.status(401).json({ error: 'Password required' });
+    }
+    await shareOpens.linkOpened(share);
+    res.json({ ok: true });
   } catch (e) { serverError(res, e); }
 });
 
@@ -771,9 +858,11 @@ router.get('/share/:token', async (req, res) => {
   try {
     // The same lookup the exchange page uses, so a download is refused on exactly the
     // same terms -- including the live check on the link's creator.
-    const { share, error } = await loadExchangeLink(req.params.token);
+    const { share, error } = await loadExchangeLink(req.params.token, { allowSignin: true });
     if (error === 'expired') return res.status(410).json({ error: 'Share link expired' });
     if (error) return res.status(404).json({ error: 'Share link not found' });
+    // A sign-in link downloads only with the ticket its signed-in route minted.
+    if (share.require_signin && !(req.query.dl && verifyShareTicket(share.id, req.query.dl))) return res.status(404).json({ error: 'Share link not found' });
     // Accept either the password (header preferred; query kept for existing API
     // callers) or a short-lived download ticket the exchange page minted from
     // the password — so a browser download never carries the password in its URL.
@@ -789,12 +878,10 @@ router.get('/share/:token', async (req, res) => {
     );
     await logDocumentEvent(share.document_id, 'share_downloaded', null, null, `public share link · ${requestAuditDetail(req)}`);
     await logEvent(`share download · ${share.name}`, null, null);
-    // Notify whoever created the share link that their file was downloaded
-    // (2-min dedupe so a browser's double-fetch doesn't double-notify).
-    if (share.created_by_email) {
-      // Per-recipient links can say WHO opened it — that is the question the
-      // sender actually has. Anonymous copy-links stay generic.
-      const via = share.recipient_email ? `the link you sent to ${share.recipient_email}` : 'a share link you created';
+    // Tell whoever made the link. The FIRST open of a link -- this download, if its page
+    // was never looked at -- is the one that emails (lib/shareOpens). After that a
+    // download is a note in the app and nothing more: one action, one email.
+    if (share.created_by_email && !(await shareOpens.linkOpened(share))) {
       try {
         await notifications.create({
           userId: share.created_by || null,
@@ -807,13 +894,6 @@ router.get('/share/:token', async (req, res) => {
           dedupeMinutes: 2,
         });
       } catch (e) { console.error('notification (share_downloaded) failed:', e.message); }
-      emailEvents.send('share_downloaded', {
-        to: share.created_by_email,
-        subject: share.recipient_email
-          ? `${share.recipient_email} downloaded: ${share.name}`
-          : `Your shared file was downloaded: ${share.name}`,
-        text: `"${share.name}" was just downloaded via ${via}.`,
-      }).catch(() => {});
     }
     // Also notify anyone FOLLOWING this file (the file bell) — minus the owner,
     // who was just notified above. Best-effort.
@@ -1548,7 +1628,7 @@ router.get('/:id/shares', auth, requireRole('admin', 'contributor'), async (req,
     const manages = !!(await documentAccess.getAccessibleDocument({ id: doc.id, user: req.user, required: 'admin', columns: 'd.id' }));
     const rows = await db.query(
       `SELECT id, document_id, expires_at, revoked_at, created_at, created_by_email,
-              recipient_email, allow_upload, last_accessed_at, access_count, password_hash
+              recipient_email, require_signin, opened_at, allow_upload, last_accessed_at, access_count, password_hash
        FROM document_share_links
        WHERE document_id = $1 ${manages ? '' : 'AND created_by = $2'}
        ORDER BY created_at DESC`,
@@ -1575,6 +1655,25 @@ router.get('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
   } catch (e) {
     serverError(res, e);
   }
+});
+
+// POST /api/files/:id/access/resend — { email }: send the "shared with you" email again,
+// with its link. For people who were told a file was shared and given no way to open it.
+router.post('/:id/access/resend', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'admin', columns: 'd.id, d.name' });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    const to = String(req.body?.email || '').trim().toLowerCase();
+    const grant = (await documentAccess.listGrants(doc.id)).find(g => String(g.subject_email || '').toLowerCase() === to);
+    if (!grant) return res.status(404).json({ error: 'That person does not have access to this file.' });
+    const sharer = email.actingAs(req.user);
+    const mail = await email.sendMail({
+      to, subject: `${sharer.label} shared a file with you`,
+      text: `${sharer.label} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nOpen it here (sign in with your usual account):\n${appLinks.fileUrl(await publicAppBase(req), doc.id)}\n`,
+      actorEmail: sharer.sendAs,
+    });
+    res.json({ sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined });
+  } catch (e) { serverError(res, e); }
 });
 
 // PUT /api/files/:id/access — grant or update internal user access.
@@ -1609,7 +1708,7 @@ router.put('/:id/access', auth, requireRole('admin', 'contributor'), async (req,
       emailEvents.send('share_granted', {
         to: grant.subject_email,
         subject: `${email.actingAs(req.user).label} shared a file with you`,
-        text: `${email.actingAs(req.user).label} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nSign in to Depot to open it.`,
+        text: `${email.actingAs(req.user).label} gave you ${grant.permission} access to "${doc.name}" in Depot.\n\nOpen it here (sign in with your usual account):\n${appLinks.fileUrl(await publicAppBase(req), doc.id)}\n`,
         actorEmail: email.actingAs(req.user).sendAs,
       }).catch(() => {});
     }
@@ -1787,7 +1886,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
             const mail = await email.sendMail({
               to,
               subject: `${senderName} shared a file with you`,
-              text: `${senderName} gave you ${permission} access to "${doc.name}" in Depot.${note ? `\n\n${note}` : ''}\n\nOpen it here (sign in with your usual account):\n${base}\n`,
+              text: `${senderName} gave you ${permission} access to "${doc.name}" in Depot.${note ? `\n\n${note}` : ''}\n\nOpen it here (sign in with your usual account):\n${appLinks.fileUrl(base, doc.id)}\n`,
               actorEmail: sendingAs.sendAs,
             });
             sent = mail?.sent !== false;
@@ -1798,6 +1897,37 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
         }
 
         const token = crypto.randomBytes(32).toString('base64url');
+        // Only somebody who HAS an account: `known`, not isInternal(). "Same domain as the
+        // sender" also covers a colleague who has never signed in -- and every gmail.com
+        // address, for a sender on gmail.com -- and a link that needs a sign-in they do not
+        // have is a link they cannot open. Those people get their own public link, below.
+        if (known.has(to)) {
+          // A colleague, from a sender who may share this file but not hand out access to
+          // it (sharing is owner-managed). They get a link that opens only for THEM, signed
+          // in -- not the public page, which anyone the email was forwarded to could use.
+          // No password: the sign-in is the lock. View-only: editing takes real access.
+          const made = await db.queryOne(
+            `INSERT INTO document_share_links
+               (document_id, token_hash, expires_at, created_by, created_by_email, recipient_email, allow_upload, require_signin)
+             VALUES ($1,$2,$3,$4,$5,$6,false,true) RETURNING id`,
+            [doc.id, tokenHash(token), expiresAt, req.user.id, req.user.email, to]
+          );
+          const signinUrl = appLinks.signinLinkUrl(base, token);
+          try { await logDocumentEvent(doc.id, 'internal_link_sent', req.user.id, req.user.email, `${to}${expiresAt ? ` · expires ${expiresAt}` : ' · no expiry'} · sign-in required`); }
+          catch (e) { console.error('audit (internal_link_sent) failed:', e.message); }
+          if (to !== sender) {
+            notifications.create({ userEmail: to, type: 'share_granted', title: `${senderName} sent you a file`, body: `"${doc.name}" · view`, refType: 'signin_share', refId: made?.id || null }).catch(() => {});
+          }
+          const mail = await email.sendMail({
+            to, subject: `${senderName} sent you a file: ${doc.name}`,
+            text: [`${senderName} sent you a file in Depot: "${doc.name}".`, note ? `\n${note}\n` : '', `Open it here (sign in with your usual account):\n${signinUrl}`,
+              expiresAt ? `\nThis link expires on ${new Date(expiresAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.` : ''].filter(Boolean).join('\n'),
+            actorEmail: sendingAs.sendAs,
+          });
+          // The token is stored hashed: if the email failed, this response is the only place the link exists.
+          results.push({ to, kind: 'signin_link', sent: mail?.sent !== false, reason: mail?.sent === false ? mail.reason : undefined, url: mail?.sent === false ? signinUrl : undefined });
+          continue;
+        }
         const { salt, hash } = passwordParts(password);
         await db.query(
           `INSERT INTO document_share_links
@@ -1836,7 +1966,7 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
       }
     }
     await logEvent(`send · ${doc.name} · ${recipients.length} recipient(s)`, req.user.id, req.user.email);
-    res.json({ results, expiresAt, hasPassword: !!password });
+    res.json({ results, expiresAt, hasPassword: !!password && results.some(r => r.kind === 'link') }); // a sign-in link has no password: the sign-in is its lock
   } catch (e) {
     serverError(res, e);
   }
@@ -1887,6 +2017,9 @@ router.get('/:id/url', auth, async (req, res) => {
       deleted: 'active',
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+    // Getting the file's bytes -- to preview it or to download it -- is opening it, whether
+    // or not the app's "recently opened" call (POST /:id/open) ever happens.
+    shareOpens.grantsOpened(req.user, doc);
 
     const url = await storage.getUrl(doc.storage_path, 3600);
     await logEvent(`download · ${doc.name}`, req.user.id, req.user.email);
@@ -2192,8 +2325,9 @@ router.get('/recent', auth, async (req, res) => {
 // POST /api/files/:id/open — record that the caller opened this document
 router.post('/:id/open', auth, async (req, res) => {
   try {
-    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'read', columns: 'id', deleted: 'active' });
+    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'read', columns: 'd.id, d.name, d.library_id', deleted: 'active' });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+    shareOpens.grantsOpened(req.user, doc); // not awaited, never throws: the open must not wait on a notice
     await db.query(
       `INSERT INTO recent_opens (user_id, document_id, opened_at) VALUES ($1, $2, NOW())
        ON CONFLICT (user_id, document_id) DO UPDATE SET opened_at = NOW()`,
