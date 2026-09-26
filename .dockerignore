@@ -11,3 +11,4 @@ license.json
 secrets
 .local-secrets
 .githooks
+server/__tests__
