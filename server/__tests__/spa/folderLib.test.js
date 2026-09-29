@@ -123,7 +123,8 @@ describe('the move summary', () => {
     expect(b).toMatch(/skipped \+= Number\(r\?\.skipped/);
     expect(b).toMatch(/kept \+= Number\(r\?\.kept/);
     expect(b).toMatch(/toast\(transferSummary\(mode, done, skipped, [^)]*, kept\)\)/);
-    expect(body('moveFolderToLibrary')).toMatch(/transferSummary\('move', Number\(r\.count\)/);
+    // A folder's own menu goes through the same dialog (tested in spa/deadEnds.test.js).
+    expect(body('moveFolderToLibrary')).toMatch(/openLibraryTransfer\('move', \{ folders: \[path\] \}\)/);
   });
   test('a large upload names its library when it starts, and finishes in the same one', () => {
     const b = body('uploadFileResumable');
