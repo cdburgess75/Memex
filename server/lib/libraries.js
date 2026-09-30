@@ -143,6 +143,26 @@ async function ensurePersonalLibrary(user, name) {
   return row || null;
 }
 
+/* The same, for an account known only by its id: an administrator changing somebody's role.
+ *
+ * A viewer has no library of their own, so one made a contributor or an admin needs one
+ * then -- they have not just signed in, so the sign-in path would not notice. Only for an
+ * account that has signed in (its address is what the library is named after and owned
+ * by) and is not switched off; anyone else gets theirs from auth the next time they sign in.
+ */
+async function ensurePersonalLibraryFor(userId) {
+  const who = await db.queryOne(
+    `SELECT ur.user_id AS id, ur.role, p.display_name,
+            coalesce(nullif(lower(ur.email), ''), ur.verified_email) AS email
+       FROM user_roles ur
+       LEFT JOIN user_profiles p ON p.user_id = ur.user_id
+      WHERE ur.user_id = $1 AND ur.disabled_at IS NULL`,
+    [userId]
+  );
+  if (!who?.email) return null;
+  return ensurePersonalLibrary(who, who.display_name);
+}
+
 // The caller as shares see them: their verified address, looked up by account id ($idx).
 const verifiedEmailOf = (idx) => `(SELECT ur.verified_email FROM user_roles ur WHERE ur.user_id = $${idx})`;
 function shareSubject(t, idIdx) {
@@ -273,4 +293,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, defaultLibraryFor, ensurePersonalLibrary, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { defaultLibraryId, defaultLibraryFor, ensurePersonalLibrary, ensurePersonalLibraryFor, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };

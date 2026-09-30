@@ -75,7 +75,14 @@ module.exports = async function auth(req, res, next) {
   const emailVerified = emailVerifiedClaim(payload);
   const verifiedEmail = emailVerified === true && userEmail ? userEmail : null;
 
-  let roleRow = await db.queryOne('SELECT role, verified_email, disabled_at FROM user_roles WHERE user_id = $1', [userId]);
+  // has_personal: whether they have a library of their own yet (see below). On the
+  // partial unique index, so asking with every request costs next to nothing.
+  let roleRow = await db.queryOne(
+    `SELECT role, verified_email, disabled_at,
+            EXISTS (SELECT 1 FROM libraries l WHERE l.owner_id = user_roles.user_id AND l.personal) AS has_personal
+       FROM user_roles WHERE user_id = $1`,
+    [userId]
+  );
 
   /* Switched off: refused here, before anything else happens.
    *
@@ -109,18 +116,6 @@ module.exports = async function auth(req, res, next) {
        RETURNING role, verified_email`,
       [userId, userEmail, assignedRole, verifiedEmail]
     ) ?? { role: assignedRole, verified_email: verifiedEmail };
-    // Somewhere of their own, from the first moment they are here: anything they upload
-    // without saying where lands in it, so nothing is ever shared with anybody by
-    // forgetting to choose. Conditional on a unique index, so two first requests racing
-    // make one library. Best-effort: a person who cannot be given one is not a person who
-    // should be refused entry.
-    // A library made just now (ensurePersonalLibrary returns a row only then) gets the
-    // getting-started guide in it, so the first thing they find is how to use the place.
-    const newcomer = { id: userId, email: userEmail, role: roleRow.role };
-    require('../lib/libraries').ensurePersonalLibrary(newcomer, payload?.name || payload?.given_name || null)
-      .catch((e) => { console.error('auth: could not make a personal library:', e.message); return null; })
-      .then((lib) => lib?.id && require('../lib/gettingStarted').seedLibrary(lib.id, newcomer))
-      .catch((e) => console.error('auth: could not add the getting-started guide:', e.message));
     // Auto-provisioning assigns a role with no human approval, so record it in the
     // tamper-evident chain. Best-effort and fire-and-forget: auditing must never
     // block or fail authentication.
@@ -148,6 +143,31 @@ module.exports = async function auth(req, res, next) {
         }).catch(() => {});
       }
     } catch (e) { console.error('auth: admin bootstrap failed:', e.message); }
+  }
+
+  /* Somewhere of their own, from the first moment they can add files: anything they upload
+   * without saying where lands in it, so nothing is ever shared with anybody by forgetting
+   * to choose.
+   *
+   * Not only on a first sign-in. Somebody who arrived as a viewer and was made a
+   * contributor, or who was given a role by an administrator before they ever signed in,
+   * reaches here with a role row and no library. Awaited, so the request that follows lands
+   * in it rather than in the install's shared default; conditional on a unique index, so
+   * two requests racing make one library. Best-effort: a person who cannot be given one is
+   * not a person who should be refused entry.
+   */
+  if (roleRow.role !== 'viewer' && !roleRow.has_personal) {
+    try {
+      const owner = { id: userId, email: userEmail, role: roleRow.role };
+      const lib = await require('../lib/libraries').ensurePersonalLibrary(owner, payload?.name || payload?.given_name || null);
+      // A library made just now (ensurePersonalLibrary returns a row only then) gets the
+      // getting-started guide in it, so the first thing they find is how to use the place.
+      // Not awaited: copying two files is not something a request should wait on.
+      if (lib?.id) {
+        require('../lib/gettingStarted').seedLibrary(lib.id, owner)
+          .catch((e) => console.error('auth: could not add the getting-started guide:', e.message));
+      }
+    } catch (e) { console.error('auth: could not make a personal library:', e.message); }
   }
 
   // Keep the stored verified address in step with the latest token. Written only when

@@ -21,7 +21,8 @@ const auth = require('../../middleware/auth');
 beforeEach(() => {
   jwt.decode.mockReturnValue({ header: { kid: 'key-1' } });
   jwt.verify.mockReturnValue({ sub: 'user-abc', email: 'user@test.com', name: 'Test User' });
-  db.queryOne.mockResolvedValue({ role: 'contributor' });
+  // an account seen before, which already has a library of its own
+  db.queryOne.mockResolvedValue({ role: 'contributor', has_personal: true });
   delete process.env.ADMIN_EMAILS;
 });
 
@@ -117,11 +118,74 @@ test('auto-assigns admin role when a verified email matches ADMIN_EMAILS', async
 });
 
 test('uses existing DB role without inserting again', async () => {
-  db.queryOne.mockResolvedValueOnce({ role: 'admin' });
+  db.queryOne.mockResolvedValueOnce({ role: 'admin', has_personal: true });
   const req = makeReq('token');
   await auth(req, makeRes(), jest.fn());
   expect(req.user.role).toBe('admin');
   expect(db.queryOne).toHaveBeenCalledTimes(1);
+});
+
+// A library of their own for anyone who can add files -- not only on a first sign-in. The
+// real statements are exercised in integration/personalLibraries.pg.
+describe('a library of their own', () => {
+  const made = () => db.queryOne.mock.calls.filter(([sql]) => /INSERT INTO libraries/.test(sql));
+
+  test('the role lookup asks whether they have one', async () => {
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(db.queryOne.mock.calls[0][0]).toMatch(/EXISTS \(SELECT 1 FROM libraries l WHERE l\.owner_id = user_roles\.user_id AND l\.personal\) AS has_personal/);
+  });
+
+  test.each([['contributor'], ['admin']])('an existing %s with none is given one before the request goes on', async (role) => {
+    let settled = false;
+    db.queryOne
+      .mockResolvedValueOnce({ role, verified_email: null, has_personal: false })
+      .mockImplementationOnce(async () => { await new Promise(r => setImmediate(r)); settled = true; return { id: 'lib', name: 'Test User' }; });
+    const next = jest.fn(() => expect(settled).toBe(true));
+    await auth(makeReq('t'), makeRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(made()).toHaveLength(1);
+    expect(made()[0][1]).toEqual(['Test User', 'user-abc', 'user@test.com']);
+  });
+
+  test('a first sign-in is given one', async () => {
+    db.queryOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ role: 'contributor', verified_email: null });
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(made()).toHaveLength(1);
+  });
+
+  test.each([
+    ['a viewer', { role: 'viewer', has_personal: false }],
+    ['somebody who has one', { role: 'contributor', has_personal: true }],
+  ])('%s is not', async (_label, row) => {
+    db.queryOne.mockResolvedValueOnce(row);
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    expect(made()).toHaveLength(0);
+  });
+
+  test('one made for somebody who signed in before (promoted, or given a role first) gets the getting-started guide', async () => {
+    const gettingStarted = require('../../lib/gettingStarted');
+    gettingStarted.seedLibrary.mockClear();
+    db.queryOne
+      .mockResolvedValueOnce({ role: 'contributor', verified_email: null, has_personal: false })
+      .mockResolvedValueOnce({ id: 'lib-promoted', name: 'Test User' });
+    await auth(makeReq('t'), makeRes(), jest.fn());
+    await new Promise((r) => setImmediate(r));
+    expect(gettingStarted.seedLibrary).toHaveBeenCalledWith('lib-promoted', { id: 'user-abc', email: 'user@test.com', role: 'contributor' });
+  });
+
+  test('a failure to make one never fails the request', async () => {
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    db.queryOne
+      .mockResolvedValueOnce({ role: 'contributor', has_personal: false })
+      .mockRejectedValueOnce(new Error('disk full'));
+    const req = makeReq('t');
+    const next = jest.fn();
+    await auth(req, makeRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.user.role).toBe('contributor');
+    expect(err.mock.calls.some(([m]) => /could not make a personal library/.test(m))).toBe(true);
+    err.mockRestore();
+  });
 });
 
 // Whether the identity provider vouches for the address. Shares are about to match by

@@ -68,6 +68,7 @@ suite('the getting-started guide in every personal library', () => {
     app.use(express.json());
     app.use('/api/files', require('../../routes/files'));
     app.use('/api/admin/settings', require('../../routes/settings'));
+    app.use('/api/admin', require('../../routes/admin'));
   });
 
   beforeEach(async () => {
@@ -282,6 +283,20 @@ suite('the getting-started guide in every personal library', () => {
     const docs = await guideDocs(lib.id);
     expect(docs.filter(d => d.name === PDF)).toHaveLength(1);
     expect(docs.filter(d => d.name === DOCX)).toHaveLength(1);
+  });
+
+  test('a viewer an admin makes a contributor gets a library with the guide in it straight away', async () => {
+    await db.query('INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, $3, $2)', [DEE.id, DEE.email, 'admin']);
+    await db.query('INSERT INTO user_roles (user_id, email, role) VALUES ($1, $2, $3)', [BEN.id, BEN.email, 'viewer']);
+    jwt.verify.mockReturnValue({ sub: DEE.id, email: DEE.email, email_verified: true });
+    await request(app).put(`/api/admin/users/${BEN.id}/role`).set('Authorization', 'Bearer t').send({ role: 'contributor' }).expect(200);
+    let docs = [];
+    for (let i = 0; i < 100 && docs.length < 2; i++) {
+      const lib = await libraryOf(BEN);
+      docs = lib ? await guideDocs(lib.id) : [];
+      if (docs.length < 2) await new Promise(r => setTimeout(r, 50));
+    }
+    expect(docs.map(d => d.name)).toEqual([DOCX, PDF]);
   });
 
   test('first sign-in, through the real middleware: a personal library with the guide already in it', async () => {
