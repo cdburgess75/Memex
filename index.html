@@ -3338,9 +3338,9 @@ const FILE_COLUMN_DEFS = [
 // list/grid, density, AND per-column show/hide toggles, so there's no column menu.
 const FILE_COLS_DEFAULT = ['name', 'size', 'modified'];
 let fileVisibleCols = new Set(FILE_COLS_DEFAULT);
-// Single Windows-Explorer-style view-size control: 0 Compact list · 1 List ·
-// 2 Tiles · 3 Gallery. 0-1 render as rows, 2-3 as cards.
-let fileViewSize = (() => { const v = parseInt(localStorage.getItem('memex_file_view_size'), 10); return (v >= 0 && v <= 3) ? v : 1; })();
+// Single Windows-Explorer-style view-size control, 7 stops (FILE_VIEW_STOPS, declared
+// further down): 0-1 render as rows, 2-6 as card grids. Anything else falls back to List.
+let fileViewSize = (() => { const v = parseInt(localStorage.getItem('memex_file_view_size'), 10); return (v >= 0 && v <= 6) ? v : 1; })();
 let fileSort = (() => {
   try { const v = JSON.parse(localStorage.getItem('memex_file_sort')); if (v && v.col) return v; } catch { /* ignore */ }
   return { col: 'name', dir: 1 };
@@ -7707,11 +7707,11 @@ function fileLibraryCommandBarHtml() {
     const singleFile = selected.length === 1 && folderCount === 0;
     const singleFolder = folderCount === 1 && selected.length === 0;
     const label = `${total} selected`;
-    const fileOnly = folderCount === 0;
+    const canCopy = currentUser?.role !== 'viewer'; // copying makes new files: the server refuses viewers
     const parentOf = (name) => String(name || '').split('/').slice(0, -1).join('/');
     const canChange = selected.every(f => canChangeFile(f)) && [...selectedFolderPaths].every(p => canChangeFolder(p));
   const canEnd = canChange && [...selectedFolderPaths].every(p => canDeleteFolder(p));
-    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" data-share-folder="${escAttr([...selectedFolderPaths][0])}" onclick="openFolderShare(this.dataset.shareFolder)">Share</button>${canChange ? `<button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button>${canChange ? `<button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>` : ''}${fileOnly ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button>` : ''}</div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
+    return `<div class="file-library-commandbar has-selection"><div class="file-library-command-left"><button class="file-library-close" title="Clear selection" onclick="clearFileSelection()">×</button><span class="file-library-selected-count">${label}</span><span class="file-library-sep"></span>${selected.length ? `<button class="file-library-tool" onclick="openAskSelected()">Ask Claude</button>` : ''}${singleFile ? `<button class="file-library-tool" onclick="openShareSelected()">Share</button><button class="file-library-tool" onclick="openSelectedFile()">Open</button>` : ''}${singleFolder ? `<button class="file-library-tool" onclick="openSelectedFolder()">Open</button><button class="file-library-tool" data-share-folder="${escAttr([...selectedFolderPaths][0])}" onclick="openFolderShare(this.dataset.shareFolder)">Share</button>${canChange ? `<button class="file-library-tool" onclick="renameSelectedFolder()">Rename…</button>` : ''}` : ''}<button class="file-library-tool" onclick="downloadSelectedItems()">Download</button>${canChange ? `<button class="file-library-tool" onclick="moveSelectedToFolder()">Move to folder…</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="openLibraryTransfer('move')">Move to library…</button>` : ''}${canCopy ? `<button class="file-library-tool" onclick="openLibraryTransfer('copy')">Copy to library…</button>` : ''}${singleFile && currentUser?.role === 'admin' ? `<button class="file-library-tool" onclick="openFileHistory('${first.id}')">History</button>` : ''}${canEnd ? `<button class="file-library-tool" onclick="deleteSelectedItems()">Delete</button>` : ''}</div><div class="file-library-command-right"><button class="file-library-tool" onclick="toggleDetailsPane()">Details</button></div></div>`;
   }
   const activeType = FILE_TYPE_TABS.find(t => t.id === fileFilter) || FILE_TYPE_TABS[0];
   const items = FILE_TYPE_TABS.map(t => `<button class="file-filter-item${fileFilter === t.id ? ' active' : ''}" onclick="setFileFilter('${t.id}')"><span class="file-filter-check" aria-hidden="true">${fileFilter === t.id ? '✓' : ''}</span>${esc(t.label)}</button>`).join('');
@@ -7990,7 +7990,7 @@ function globalSearch() {
 function runAsk(q) {
   openCollectionAsk();
   const box = document.getElementById('file-collection-question');
-  if (box) { box.value = q; submitCollectionAsk(false); }
+  if (box) { box.value = q; submitCollectionAsk(); }
 }
 async function runSearch(opts = {}) {
   const q = (document.getElementById('global-search')?.value || '').trim();
@@ -8058,9 +8058,17 @@ function renderAiModelLabel() {
   renderSearchScope();
 }
 function aiModelMenuInnerHtml() {
-  let html = `<button class="ai-model-item${aiActive === 'off' ? ' active' : ''}" onclick="switchAiModel('off')">⦿ AI off</button>`;
+  // Switching changes the model for the whole workspace (PUT /api/ai/active is admin-only),
+  // so everyone else is told which one is in use and who chooses it.
+  if (currentUser?.role !== 'admin') {
+    const cur = aiModels.find(m => `${m.provider}:${m.id}` === aiActive);
+    const now = !aiModels.length ? 'No models configured.' : aiActive === 'off' ? 'AI is off.' : `In use: ${esc(cur?.label || aiModelShortLabel(aiActive))}.`;
+    return `<div class="ai-model-empty">${now} An administrator chooses the model for everyone.</div>`;
+  }
+  let html = `<div class="ai-model-empty">Your choice applies to everyone in the workspace.</div>`
+    + `<button class="ai-model-item${aiActive === 'off' ? ' active' : ''}" data-model="off" onclick="switchAiModel(this.dataset.model)">⦿ AI off</button>`;
   if (!aiModels.length) {
-    html += `<div class="ai-model-empty">No models configured.${currentUser?.role === 'admin' ? ' Add a provider in Settings → AI.' : ' Ask an admin to add a provider.'}</div>`;
+    html += `<div class="ai-model-empty">No models configured. Add a provider in Settings → AI.</div>`;
     return html;
   }
   html += `<div class="library-menu-sep"></div>`;
@@ -8078,7 +8086,7 @@ function aiModelMenuInnerHtml() {
     html += `<div class="ai-model-group">${esc(labels[provider])}</div>`;
     html += items.map(m => {
       const value = `${m.provider}:${m.id}`;
-      return `<button class="ai-model-item${value === aiActive ? ' active' : ''}" onclick="switchAiModel('${esc(value)}')">${esc(m.label || m.id)}</button>`;
+      return `<button class="ai-model-item${value === aiActive ? ' active' : ''}" data-model="${escAttr(value)}" onclick="switchAiModel(this.dataset.model)">${esc(m.label || m.id)}</button>`;
     }).join('');
   }
   return html;
@@ -8086,6 +8094,7 @@ function aiModelMenuInnerHtml() {
 function closeAiModelMenu() { document.getElementById('ai-model-menu')?.classList.remove('open'); }
 async function switchAiModel(value) {
   closeSearchControlMenu();
+  if (currentUser?.role !== 'admin') return; // the server refuses anyone else
   try {
     await apiPut('/ai/active', { model: value });
     aiActive = value;
@@ -8193,10 +8202,17 @@ async function renameLibrary(id) {
   if (!next || next === lib?.name) return;
   try {
     await apiPatch('/libraries/' + encodeURIComponent(id), { name: next });
-    toast('Renamed');
-    await loadLibraries();
-    renderFileLibrary?.();
-  } catch (e) { toast('Rename failed: ' + (e.body?.error || e.message)); }
+  } catch (e) { toast('Rename failed: ' + (e.body?.error || e.message)); return; }
+  toast('Renamed');
+  await loadLibraries();
+  redrawAfterLibraryChange();
+}
+// A library's name is in the rail heading and the breadcrumb, and putting one away changes
+// what may be added to it: draw the page again, where it is.
+function redrawAfterLibraryChange() {
+  if (state?.tab === 'admin') renderAdmin();
+  else if (document.getElementById('file-library-view')) renderDocumentLibrary(fileView);
+  else if (fileView !== 'mount') setFileView(fileView);
 }
 
 async function setLibraryArchived(id, away) {
@@ -8209,10 +8225,10 @@ async function setLibraryArchived(id, away) {
   })) return;
   try {
     await apiPut('/libraries/' + encodeURIComponent(id) + '/archived', { archived: away });
-    toast(away ? 'Put away' : 'Brought back');
-    await loadLibraries();
-    renderFileLibrary?.();
-  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); }
+  } catch (e) { toast('Failed: ' + (e.body?.error || e.message)); return; }
+  toast(away ? 'Put away' : 'Brought back');
+  await loadLibraries();
+  redrawAfterLibraryChange();
 }
 
 // Handing a library on is only ever offered for somebody who has been switched off: it
@@ -8601,10 +8617,12 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
   setTimeout(() => emailInput.focus(), 0);
 }
 
-function openLibraryTransfer(mode) {
+// Move or copy to another library: the selection (command bar), or the one file or folder
+// a row menu was opened on (items = { files, folders }), which leaves the selection alone.
+function openLibraryTransfer(mode, items) {
   closeLibraryMenu();
-  const selected = selectedFiles();
-  const folders = mode === 'move' ? selectedFolders() : []; // copy is files-only
+  const selected = items ? (items.files || []) : selectedFiles();
+  const folders = items ? (items.folders || []) : selectedFolders();
   const total = selected.length + folders.length;
   if (!total) return;
   // Only libraries the caller can add files to (the server checks each file's folder).
@@ -8612,7 +8630,10 @@ function openLibraryTransfer(mode) {
   if (!targets.length) { toast('No other library you can add files to.'); return; }
   const verb = mode === 'copy' ? 'Copy' : 'Move';
   const srcLib = currentLibraryId;
-  const m = openModal({ id: 'library-transfer-scrim', html: `<h2>${verb} ${total} item${total > 1 ? 's' : ''}</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div>` });
+  const title = total > 1 ? `${verb} ${total} items`
+    : `${verb} “${esc(folders.length ? folders[0].split('/').pop() : fileDisplayName(selected[0]))}”`;
+  const sub = mode === 'copy' ? 'Choose a destination library. The originals stay where they are.' : 'Choose a destination library.';
+  const m = openModal({ id: 'library-transfer-scrim', html: `<h2>${title}</h2><p class="sub">${sub}</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" id="lib-transfer-cancel">Cancel</button></div>` });
   const scrim = m.el;
   const close = () => m.close();
   scrim.querySelector('#lib-transfer-cancel').onclick = close;
@@ -8628,12 +8649,13 @@ function openLibraryTransfer(mode) {
         skipped += Number(r?.skipped || 0);
         kept += Number(r?.kept || 0);
       }
+      if (mode === 'copy' && folders.length) toast('Copying…');
       for (const p of folders) {
-        const r = await apiPost('/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib));
+        const r = await apiPost(mode === 'copy' ? '/files/folder/copy' : '/files/folder/move', inFolderLib({ path: p, library_id: b.dataset.lib }, srcLib));
         if (Number(r?.count) > 0) done++;
         kept += Number(r?.kept || 0);
       }
-      clearFileSelection(false);
+      if (!items) clearFileSelection(false);
       await loadFiles();
       const target = librariesList.find(l => String(l.id) === b.dataset.lib);
       toast(transferSummary(mode, done, skipped, target?.name || 'library', kept));
@@ -8973,7 +8995,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
-        ${fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
+        ${currentUser?.role === 'viewer' ? '' : fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
       ${connMountsNavHtml()}
       <div class="file-nav-section">Quick access</div>
@@ -9305,6 +9327,7 @@ function goHome() {
   setFileView('home');
 }
 function setFileView(view) {
+  if (view === 'trash' && currentUser?.role === 'viewer') view = 'active'; // the server lists Trash for contributors and admins only
   if (state) state.tab = 'files';
   fileView = view;
   currentFolderPath = '';
@@ -10051,11 +10074,11 @@ function closeCollectionAsk() {
 
 function openCollectionAsk() {
   closeCollectionAsk();
-  openModal({ id: 'file-collection-ask-scrim', html: `<h2>Ask the collection</h2><p class="sub">Search across indexed files and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk(false)">Ask</button><button class="ghost-btn" id="file-collection-ask-save" onclick="submitCollectionAsk(true)">Ask & file answer</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
+  openModal({ id: 'file-collection-ask-scrim', html: `<h2>Ask the collection</h2><p class="sub">Search across indexed files and pages from Home or Files.</p><textarea class="file-ask-input" id="file-collection-question" placeholder="Ask anything grounded in what you've gathered"></textarea><div class="btn-row" style="margin-top:12px"><button class="run-btn" id="file-collection-ask-go" onclick="submitCollectionAsk()">Ask</button><button class="ghost-btn" id="file-collection-ask-stop" onclick="stopStream()" style="display:none">Stop</button><button class="ghost-btn" onclick="closeCollectionAsk()">Close</button></div><div class="file-ask-answer dim" id="file-collection-answer">Answer will stream here.</div>`, modalClass: 'file-ask-modal' });
   setTimeout(() => document.getElementById('file-collection-question')?.focus(), 0);
 }
 
-async function submitCollectionAsk(fileIt) {
+async function submitCollectionAsk() {
   const question = document.getElementById('file-collection-question')?.value.trim();
   const answer = document.getElementById('file-collection-answer');
   if (!question || !answer) {
@@ -10063,16 +10086,13 @@ async function submitCollectionAsk(fileIt) {
     return;
   }
   const goBtn = document.getElementById('file-collection-ask-go');
-  const saveBtn = document.getElementById('file-collection-ask-save');
   const stopBtn = document.getElementById('file-collection-ask-stop');
   answer.className = 'file-ask-answer dim';
   answer.textContent = 'Searching the collection...';
   if (goBtn) goBtn.disabled = true;
-  if (saveBtn) saveBtn.disabled = true;
   if (stopBtn) stopBtn.style.display = '';
-  const result = await streamFromApi('/ai/query', { question, fileIt, libraryIds: aiResearchLibs }, answer);
+  await streamFromApi('/ai/query', { question, libraryIds: aiResearchLibs }, answer);
   if (goBtn) goBtn.disabled = false;
-  if (saveBtn) saveBtn.disabled = false;
   if (stopBtn) stopBtn.style.display = 'none';
 }
 
@@ -11598,6 +11618,7 @@ function openFolderMenu(path, event) {
   folderMenuPath = path;
   closeFileMenu();
   const canShare = currentUser?.role !== 'viewer';
+  const canCopy = currentUser?.role !== 'viewer'; // copying makes new files: the server refuses viewers
   const canChange = canChangeFolder(path);
   const canEnd = canDeleteFolder(path);
   const items = [
@@ -11611,7 +11632,7 @@ function openFolderMenu(path, event) {
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();renameFolder(folderMenuPath)">Rename…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>` : '',
     canEnd ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
-    `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>`,
+    canCopy ? `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>` : '',
     canEnd ? `<div class="file-menu-rule"></div>` : '',
     canEnd ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
     canChange && !canEnd ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder is shared with other people. Renaming it or moving it here keeps the sharing; deleting it would end it, so that is the library owner's to do.</div>` : '',
@@ -11716,17 +11737,8 @@ async function undoFolderDelete(opId) {
   } catch (e) { toast("Couldn't put it back: " + folderOpMessage(e)); }
 }
 
-function moveFolderToLibrary(path) {
-  const targets = transferTargets();
-  if (!targets.length) { toast('No other library you can add files to'); return; }
-  const m = openModal({ id: 'folder-move-scrim', html: `<h2>Move "${esc(path.split('/').pop())}" to…</h2><p class="sub">Choose a destination library.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-move-scrim')">Cancel</button></div>` });
-  const scrim = m.el;
-  scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
-    m.close();
-    try { const r = await apiPost('/files/folder/move', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(transferSummary('move', Number(r.count) || 0, 0, librariesList.find(l => String(l.id) === b.dataset.lib)?.name || 'library', Number(r.kept) || 0)); }
-    catch (e) { toast('Move failed: ' + e.message); }
-  });
-}
+// The row menu's way to another library is the command bar's own dialog, for this folder.
+function moveFolderToLibrary(path) { openLibraryTransfer('move', { folders: [path] }); }
 // Move a folder under a different parent folder (reparent). Reuses the folder
 // picker, excluding the folder itself and its own descendants.
 async function moveFolderToParent(path) {
@@ -11743,18 +11755,7 @@ async function moveFolderToParent(path) {
   });
 }
 // Copy every file in a folder into another library (originals stay in place).
-function copyFolderToLibrary(path) {
-  const targets = transferTargets();
-  if (!targets.length) { toast('No other library you can add files to'); return; }
-  const m = openModal({ id: 'folder-copy-scrim', html: `<h2>Copy "${esc(path.split('/').pop())}" to…</h2><p class="sub">Duplicate every file in this folder into another library. The originals stay where they are.</p><div class="library-pick-list">${targets.map(l => `<button class="library-menu-item" data-lib="${esc(String(l.id))}">${esc(l.name)}</button>`).join('')}</div><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="ghost-btn" onclick="closeModal('folder-copy-scrim')">Cancel</button></div>` });
-  const scrim = m.el;
-  scrim.querySelectorAll('.library-menu-item').forEach(b => b.onclick = async () => {
-    m.close();
-    toast('Copying folder…');
-    try { const r = await apiPost('/files/folder/copy', inFolderLib({ path, library_id: b.dataset.lib })); await loadFiles(); toast(`Copied ${r.count} file${r.count === 1 ? '' : 's'}`); }
-    catch (e) { toast('Copy failed: ' + e.message); }
-  });
-}
+function copyFolderToLibrary(path) { openLibraryTransfer('copy', { folders: [path] }); }
 
 // ---- Folder sharing: people and groups (library shares), and public download links ----
 let folderSharePath = null;
@@ -11920,8 +11921,7 @@ async function renameFile(fileId) {
   } catch (e) { toast('Rename failed: ' + e.message); }
 }
 function moveFileToLibrary(fileId) {
-  selectedFileIds = new Set([String(fileId)]);
-  openLibraryTransfer('move');
+  openLibraryTransfer('move', { files: filesList.filter(f => String(f.id) === String(fileId)) });
 }
 // ── Preview overlay: keyboard-flighted paging + a details side panel ──────────
 // ←/→ move through the files in the current view without leaving the overlay;
@@ -12397,7 +12397,7 @@ async function sendFileToCall(file) {
 function pickCallFile() { const inp = document.getElementById('call-file-input'); if (inp) { inp.value = ''; inp.click(); } }
 // Remote control is out of the browser's reach — hand off to ScreenConnect.
 function launchRemote() {
-  if (!screenconnectUrl) { toast('Set a ScreenConnect URL in Settings → System → Integrations'); return; }
+  if (!screenconnectUrl) { toast(currentUser?.role === 'admin' ? 'Set a ScreenConnect URL in Settings → Branding & links' : 'Remote control is not set up. An administrator can add a ScreenConnect URL.'); return; }
   const url = /^https?:\/\//i.test(screenconnectUrl) ? screenconnectUrl : 'https://' + screenconnectUrl;
   window.open(url, '_blank', 'noopener');
   toast('Opening ScreenConnect for remote control…');
