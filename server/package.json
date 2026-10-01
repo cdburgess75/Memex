@@ -21,7 +21,8 @@
       "**/__tests__/**/*.test.js"
     ],
     "setupFilesAfterEnv": [
-      "<rootDir>/__tests__/setup/loopbackServer.js"
+      "<rootDir>/__tests__/setup/loopbackServer.js",
+      "<rootDir>/__tests__/setup/gettingStarted.js"
     ],
     "clearMocks": true,
     "coverageDirectory": "coverage",

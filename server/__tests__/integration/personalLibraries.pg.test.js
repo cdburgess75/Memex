@@ -18,9 +18,6 @@ const suite = PG ? describe : describe.skip;
 if (PG) jest.setTimeout(180000);
 
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => ({})) }));
-// The guide copied into new libraries has its own suite (gettingStarted.pg); here it would
-// try to write real files to local storage.
-jest.mock('../../lib/gettingStarted', () => ({ seedLibrary: jest.fn(async () => false) }));
 // Signing in is real apart from the signature: the token says whatever the test says.
 jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa', () => ({ JwksClient: jest.fn(() => ({ getSigningKey: async () => ({ getPublicKey: () => 'k' }) })) }));

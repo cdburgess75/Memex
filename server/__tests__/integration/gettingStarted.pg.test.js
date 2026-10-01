@@ -12,6 +12,8 @@ const PG = process.env.MEMEX_TEST_PG_URL;
 const suite = PG ? describe : describe.skip;
 if (PG) jest.setTimeout(180000);
 
+// The real guide: every other test file gets a stand-in (see __tests__/setup/gettingStarted.js).
+jest.unmock('../../lib/gettingStarted');
 jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa', () => ({ JwksClient: jest.fn(() => ({ getSigningKey: async () => ({ getPublicKey: () => 'k' }) })) }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => ({})) }));
