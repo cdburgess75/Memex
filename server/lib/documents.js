@@ -144,11 +144,19 @@ function recordUploadNotify(user, displayName, libraryId, documentId = null) {
 // libraryScoped: whether the new file is library content (see libraries.writeRight and
 // migration 0008). The caller decides it from the destination right it checked; it
 // defaults to false, a personal file, which is today's behaviour.
-async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false, libraryScoped = false, resolve = null }) {
+// eventType / logActivity: what the audit chain calls this ('uploaded' unless said) and
+// whether it counts as activity. The getting-started guide passes 'guide_added' and false,
+// so copying it into everyone's library is not mistaken for a burst of uploads.
+// precomputed: { contentHash, documentText } for bytes the caller already knows (the
+// getting-started guide), so they are not downloaded, hashed and parsed again per copy.
+async function createDocumentRecord({ displayName, storagePath, mimetype, storedSize, user, sourceDetail, libraryId, notifyUpload = false, libraryScoped = false, resolve = null, eventType = 'uploaded', logActivity = true, precomputed = null }) {
   let canIngest = false;
   let documentText = null;
   let contentHash = null;
-  if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
+  if (precomputed) {
+    contentHash = precomputed.contentHash || null;
+    documentText = precomputed.documentText ?? null;
+  } else if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
     try {
       const buffer = await storage.download(storagePath);
       contentHash = crypto.createHash('sha256').update(buffer).digest('hex'); // U6: reuse the bytes we already read
@@ -221,11 +229,11 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   // only safe to drop once the row that supersedes it is actually committed.
   if (placed.deduped) {
     await storage.del(storagePath).catch(() => {}); // discard the redundant blob
-    await logEvent(`upload dedupe · ${placed.name}`, user.id, user.email);
+    if (logActivity) await logEvent(`upload dedupe · ${placed.name}`, user.id, user.email);
     return { doc: placed.doc, canIngest: false, deduped: true };
   }
-  await logDocumentEvent(placed.doc.id, 'uploaded', user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
-  await logEvent(`upload · ${placed.name}`, user.id, user.email);
+  await logDocumentEvent(placed.doc.id, eventType, user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
+  if (logActivity) await logEvent(`upload · ${placed.name}`, user.id, user.email);
   // Notify the library owner + folder followers (summary-batched), on real user
   // uploads only — not copies/migrations, which pass notifyUpload:false.
   if (notifyUpload) recordUploadNotify(user, placed.name, lib, placed.doc.id);

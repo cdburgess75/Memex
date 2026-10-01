@@ -3138,6 +3138,7 @@ html.auth-locked .skip-link { display: none; }
         <div class="app-menu-section">Account</div>
         <!-- Phone-only: the header drops the theme toggle to fit one row, so it lives here. -->
         <button class="app-menu-item phone-only" onclick="closeAppMenu();toggleTheme()">Switch light / dark theme</button>
+        <button class="app-menu-item" onclick="closeAppMenu();openGettingStartedGuide()">Getting started guide</button>
         <button class="app-menu-item" onclick="closeAppMenu();signOut()">Sign out</button>
         <div class="app-menu-version" id="app-menu-version"></div>
       </div>
@@ -4382,6 +4383,12 @@ function toggleAppMenu(event) {
 function closeAppMenu() {
   document.getElementById('app-menu')?.classList.remove('open');
 }
+// The getting-started guide, for everyone (viewers have no library to find their copy in,
+// and anyone may have deleted theirs). A fixed same-origin path: nothing is spliced in.
+const GETTING_STARTED_NAMES = new Set(['Getting started with Depot.pdf', 'Getting started with Depot.docx']);
+function openGettingStartedGuide() {
+  window.open('/help/getting-started.pdf', '_blank', 'noopener');
+}
 
 // The header launcher: one grid button opens a 2x2 popover of Meet / Notifications
 // / Theme / Settings, replacing four separate top-bar buttons.
@@ -5496,8 +5503,11 @@ async function saveEncryptionSettings(confirmChange) {
 async function saveIntegrationSettings() {
   const appUrl = document.getElementById('cfg-app-url').value;
   const body = { app_url: appUrl, screenconnect_url: document.getElementById('cfg-screenconnect-url').value, default_office_open: document.getElementById('cfg-office-open')?.value || 'preview' };
+  const guide = document.getElementById('cfg-getting-started');
+  if (guide) body.getting_started_guide = guide.checked ? 'true' : 'false';
   try {
     await apiPut('/admin/settings', body);
+    if (settingsSys && typeof settingsSys === 'object') Object.assign(settingsSys, body); // a redraw shows what was saved
     toast('Integration settings saved');
   } catch (e) { toast('Save failed: ' + e.message); }
 }
@@ -6586,6 +6596,7 @@ const ACTIVITY_LABELS = {
   internal_link_sent: 'Sent a sign-in link', internal_folder_link_sent: 'Sent a folder sign-in link', external_folder_share_sent: 'Sent a folder link', share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
   access_granted: 'Granted access', access_revoked: 'Revoked access',
   version_saved: 'Saved version', version_restored: 'Restored version',
+  guide_added: 'Getting-started guide added automatically',
 };
 function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
 function activityWhen(ts) {
@@ -6855,6 +6866,8 @@ function systemSettingsHtml() {
         </select>
         <label>ScreenConnect URL</label>
         <input type="url" id="cfg-screenconnect-url" value="${esc(s.screenconnect_url||'')}" placeholder="https://yourco.screenconnect.com — Remote button in calls">
+        <label>New users</label>
+        <label class="setup-check" style="justify-self:start"><input type="checkbox" id="cfg-getting-started"${String(s.getting_started_guide || 'true').trim().toLowerCase() !== 'false' ? ' checked' : ''}> Add the getting-started guide to new users' libraries</label>
       </div>
       <button class="ghost-btn" onclick="saveIntegrationSettings()">Save integration settings</button>
 
@@ -9360,8 +9373,11 @@ async function renderHome() {
     const pct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
     const uploads14 = stats.uploads14 || [];
     let activity = [];
-    if (isAdmin) { try { activity = (await apiGet('/admin/activity?limit=8')).events || []; } catch { activity = []; } }
-    const recentFiles = [...files].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
+    if (isAdmin) { try { activity = ((await apiGet('/admin/activity?limit=40')).events || []).filter(a => a.event_type !== 'guide_added'); } catch { activity = []; } }
+    // Every personal library holds its own copy of the getting-started guide; an admin, who
+    // sees them all, should not find Recent files full of other people's copies.
+    const othersGuide = (f) => GETTING_STARTED_NAMES.has(String(f.name || '')) && String(f.uploaded_by || '') !== String(currentUser?.id || '');
+    const recentFiles = [...files].filter(f => !othersGuide(f)).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
     // Widget data: Favorites, Libraries, Needs attention (links expiring within 7 days).
     const pinned = files.filter(f => favoriteFileIds.has(String(f.id))).slice(0, 8);
     const hubs = (librariesList || []);
@@ -9462,7 +9478,7 @@ async function renderHome() {
 
     const recentCardNew = card('Recent files', 'recent', recentFiles.length
       ? `<div class="dash-tbl-wrap"><table class="home-tbl dash-tbl"><thead><tr><th>Name</th><th class="dash-col-type">Type</th><th class="num">Size</th><th>Modified</th><th class="dash-col-owner">Added by</th></tr></thead><tbody>${recentFiles.map(f => { const ext = fileExt(fileDisplayName(f)); return `<tr data-fid="${esc(String(f.id))}" onclick="openFileDefault(this.dataset.fid)"><td><div class="home-tbl-name">${fileRowIconHtml(f, ext)}<button type="button" class="dash-file-btn" title="${esc(fileDisplayName(f))}" onclick="event.stopPropagation();openFileDefault(this.closest('tr').dataset.fid)">${esc(fileDisplayName(f))}</button></div></td><td class="dash-col-type"><span class="type-pill toned" style="--tone:${fileTypeInfo(ext).color}">${fileTypeInfo(ext).label}</span></td><td class="num tnum">${fileSizeLabel(f.size || 0)}</td><td>${fileDate(f.created_at)}</td><td class="dash-col-owner" title="${esc(fileOwner(f))}">${esc(fileOwner(f))}</td></tr>`; }).join('')}</tbody></table></div>`
-      : emptyState('No files yet', 'Files you and your team add will show up here.', canCreate ? `<button class="file-action-btn primary" onclick="chooseUpload('files')">Upload files</button>` : ''),
+      : emptyState('No files yet', 'Files you and your team add will show up here.', (canCreate ? `<button class="file-action-btn primary" onclick="chooseUpload('files')">Upload files</button>` : '') + `<button class="file-action-btn" onclick="openGettingStartedGuide()">Read the getting-started guide</button>`),
       recentFiles.length ? more('All files', 'all') : '');
 
     const notifCard = card('Notifications', 'notifications', notifList.length

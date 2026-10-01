@@ -1,0 +1,18 @@
+{
+  "name": "depot-user-guide",
+  "private": true,
+  "description": "Builds 'Getting started with Depot' (Word + PDF) from a demo copy of the app with made-up data. See README.md.",
+  "scripts": {
+    "demo": "node demo/server.js",
+    "shots": "node capture/run.js",
+    "build": "node build/all.js",
+    "ship": "node build/ship.js"
+  },
+  "dependencies": {
+    "docx": "^9.8.1",
+    "ws": "^8.21.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.35.4"
+  }
+}

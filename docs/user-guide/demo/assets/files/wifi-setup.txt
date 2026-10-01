@@ -1,0 +1,16 @@
+Wi-Fi and printer setup
+=======================
+
+Wi-Fi
+  Network:   Acme-Staff
+  Password:  ask Sam Okafor (changed every quarter)
+  Guests:    Acme-Guest, code on the kitchen board
+
+Printers
+  Studio printer (colour)   near the window
+  Office printer (mono)     next to Operations
+  Both appear automatically on your laptop.
+  If not: Settings > Printers > Add > "Acme Studio".
+
+Problems?
+  Message Sam Okafor or visit the IT desk.

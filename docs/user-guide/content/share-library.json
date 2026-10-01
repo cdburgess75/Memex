@@ -1,0 +1,62 @@
+{
+  "id": "share-library",
+  "part": 2,
+  "order": 15,
+  "theme": "dark",
+  "title": "Sharing a whole library",
+  "intro": "Share a whole library when several people need lasting access to everything in it, including files added later. You can share libraries you own or manage.",
+  "sections": [
+    {
+      "heading": "Open a library's Share window",
+      "text": [
+        "Open the library switcher at the top of the left rail."
+      ],
+      "shot": "switcher-open",
+      "steps": [
+        "Click the **Share** icon next to a library you own."
+      ],
+      "tip": "For the library you are in, you can also click **Share “Client Projects”…** at the bottom of the list.",
+      "note": "A library you do not manage shows **Your access to “Finance”…** instead. It tells you how you can get in, but does not let you change anything."
+    },
+    {
+      "heading": "Share it with a person or a group",
+      "shot": "share-add",
+      "steps": [
+        "Click **Share to user** to add a person, or **Share to group** to add a whole team.",
+        "Type an email address and press Enter, or choose a group from the list.",
+        "Choose **Read-Write** or **Read-only**.",
+        "Click **Share**."
+      ],
+      "bullets": [
+        "**Read-Write** lets someone add, change and delete files, and create links to send things to people outside Acme.",
+        "**Read-only** lets someone open and download files, but not change anything.",
+        "To change someone's level, choose a new one from the dropdown next to their name. Click **Remove** to take away their access."
+      ],
+      "note": "Neither level lets someone add other people. Only you or your administrator can do that. Files someone added before you shared the library stay private to them."
+    },
+    {
+      "heading": "See everyone who has access",
+      "text": [
+        "Click **Who has access** at the top of the window. It lists everyone who can open the library, however they got in, including through a group."
+      ],
+      "shot": "who-access",
+      "steps": [
+        "Click a person's name to see how they can get in.",
+        "Click **Remove**, **Make Read-only** or **Resend email**."
+      ],
+      "bullets": [
+        "Links to files or folders in this library show here too, under **Anyone with a link**, each with its own **Revoke** button.",
+        "People who have not signed in to Depot yet show under **Waiting**. They get in once they sign in with that email address."
+      ]
+    },
+    {
+      "heading": "Create a library of your own",
+      "steps": [
+        "Open the library switcher and click **＋ New library** at the bottom of the list.",
+        "Type a name for the library.",
+        "Click **Create library**."
+      ],
+      "note": "A new library is private until you share it. Only you and your administrator can see it."
+    }
+  ]
+}

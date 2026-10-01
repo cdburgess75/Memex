@@ -1,0 +1,25 @@
+{
+  "id": "phone", "part": 2, "order": 18, "theme": "light",
+  "title": "Depot on your phone",
+  "intro": "Open Depot in your phone's web browser and sign in as usual. The screen rearranges itself to fit.",
+  "sections": [
+    {
+      "heading": "Home on a phone",
+      "text": ["The left rail becomes a row of buttons under the search box. Swipe it sideways to see them all."],
+      "shot": "home",
+      "steps": [
+        "Tap your initials in the top right corner to open your account menu.",
+        "Tap **Switch light / dark theme** to change how Depot looks."
+      ]
+    },
+    {
+      "heading": "Add a photo",
+      "text": ["Tap **Files** in the row of buttons under the search box to see your files."],
+      "shot": "files",
+      "steps": [
+        "Tap **Upload**.",
+        "Tap **Upload files**. Your phone then lets you pick a photo, take a new one, or choose a file."
+      ]
+    }
+  ]
+}

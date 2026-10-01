@@ -1,0 +1,6 @@
+{
+ "sign-in/signin-page": { "chapter": "sign-in", "id": "signin-page", "caption": "The Depot sign-in page with two sign-in buttons", "theme": "light", "device": "desktop", "file": "sign-in/signin-page.png", "ok": true },
+ "sign-in/signin-card": { "chapter": "sign-in", "id": "signin-card", "caption": "Close-up of the sign-in card", "theme": "light", "device": "desktop", "file": "sign-in/signin-card.png", "ok": true },
+ "getting-around/home-overview": { "chapter": "getting-around", "id": "home-overview", "caption": "Depot Home in the dark theme, with your name highlighted at the top right", "theme": "dark", "device": "desktop", "file": "getting-around/home-overview.png", "ok": true },
+ "phone/phone-home": { "chapter": "phone", "id": "phone-home", "caption": "Depot Home on a phone", "theme": "light", "device": "phone", "file": "phone/phone-home.png", "ok": true }
+}

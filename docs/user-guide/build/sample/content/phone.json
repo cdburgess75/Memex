@@ -1,0 +1,22 @@
+{
+  "id": "phone", "part": 2, "order": 18, "theme": "light",
+  "title": "Depot on your phone",
+  "intro": "Depot works in the browser on your phone. There is nothing to install.",
+  "sections": [
+    {
+      "heading": "Open Depot on your phone",
+      "shot": "phone-home",
+      "steps": [
+        "Open the browser on your phone and go to the Depot address.",
+        "Sign in the same way you do on your computer.",
+        "Tap the menu button at the top left to see **Files**, **Favorites** and **My links**.",
+        "Tap a file to preview it. Tap **Download** to save it to your phone."
+      ],
+      "bullets": [
+        "Pictures, PDFs and videos open right in the browser.",
+        "You can share a file from your phone the same way as on a computer."
+      ],
+      "tip": "Add Depot to your home screen from the browser's share menu. It then opens like an app."
+    }
+  ]
+}

@@ -114,10 +114,13 @@ module.exports = async function auth(req, res, next) {
     // forgetting to choose. Conditional on a unique index, so two first requests racing
     // make one library. Best-effort: a person who cannot be given one is not a person who
     // should be refused entry.
-    require('../lib/libraries').ensurePersonalLibrary(
-      { id: userId, email: userEmail, role: roleRow.role },
-      payload?.name || payload?.given_name || null,
-    ).catch((e) => console.error('auth: could not make a personal library:', e.message));
+    // A library made just now (ensurePersonalLibrary returns a row only then) gets the
+    // getting-started guide in it, so the first thing they find is how to use the place.
+    const newcomer = { id: userId, email: userEmail, role: roleRow.role };
+    require('../lib/libraries').ensurePersonalLibrary(newcomer, payload?.name || payload?.given_name || null)
+      .catch((e) => { console.error('auth: could not make a personal library:', e.message); return null; })
+      .then((lib) => lib?.id && require('../lib/gettingStarted').seedLibrary(lib.id, newcomer))
+      .catch((e) => console.error('auth: could not add the getting-started guide:', e.message));
     // Auto-provisioning assigns a role with no human approval, so record it in the
     // tamper-evident chain. Best-effort and fire-and-forget: auditing must never
     // block or fail authentication.

@@ -1,0 +1,32 @@
+{
+  "id": "open-edit",
+  "part": 1,
+  "order": 4,
+  "theme": "dark",
+  "title": "Opening, previewing and editing",
+  "intro": "Click a file's name to look inside it without downloading it. A row of buttons sits above the preview.",
+  "sections": [
+    {
+      "shot": "action-bar",
+      "steps": [
+        "Click **Edit** to change a Word or Excel file in your browser, if your company has turned this on.",
+        "Click **Open in ⌄** for other ways to open it, such as your desktop app.",
+        "Click **Share** to send the file to someone.",
+        "Click **Download** to save a copy to your computer.",
+        "Click **Details** to see who added it, when it changed and where it is kept."
+      ]
+    },
+    {
+      "heading": "What you can preview",
+      "text": [
+        "These files open right inside Depot, without downloading them:"
+      ],
+      "bullets": [
+        "Pictures, PDFs, videos, audio and saved emails.",
+        "Word documents and Excel spreadsheets.",
+        "Text and code files, shown with line numbers."
+      ],
+      "tip": "Click the arrows at the sides of the preview, or press the left or right arrow key, to see the previous or next file."
+    }
+  ]
+}

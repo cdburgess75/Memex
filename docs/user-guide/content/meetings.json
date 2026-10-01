@@ -1,0 +1,45 @@
+{
+  "id": "meetings",
+  "part": 2,
+  "order": 14,
+  "theme": "light",
+  "title": "Meetings and calls",
+  "intro": "Call a colleague, start a call anyone can join, or schedule one for later. Everything starts from the Meetings icon in the top bar.",
+  "sections": [
+    {
+      "heading": "See who is online, and start a call",
+      "shot": "meet-panel",
+      "steps": [
+        "Click the Meetings icon. A green dot means someone else is online.",
+        "Under **People online**, click a name to call that person.",
+        "Type a room name under **Start a meeting** to start a group call.",
+        "Click **Join**. Anyone who joins the same room name joins the same call.",
+        "Click **Schedule a meeting…** to set up a call for later."
+      ]
+    },
+    {
+      "heading": "Schedule a meeting for later",
+      "text": [
+        "Fill in the **Title**, **Date**, **Time** and **Minutes**. Under **Attendees**, type email addresses separated by commas. Then click **Send invites** to email everyone, or **Copy invite** to copy a join link."
+      ],
+      "note": "Everyone who joins needs a Depot account and must sign in."
+    },
+    {
+      "heading": "Answer a call",
+      "text": [
+        "When someone calls you, Depot shows their name. Click **Accept** to join, or **Decline** if you cannot talk."
+      ]
+    },
+    {
+      "heading": "In a call",
+      "shot": "in-call-controls",
+      "steps": [
+        "Click **Mute** to turn your microphone off or on.",
+        "Click **Turn camera off** to stop or start your video.",
+        "Click **Share screen** to show everyone your screen.",
+        "Click **Send a file** to send a file to everyone on the call.",
+        "Click **Leave call** when you are finished."
+      ]
+    }
+  ]
+}

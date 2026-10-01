@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<meta name="author" content="Depot">
+<meta name="description" content="{{SUBTITLE}}">
+<style>
+/* "Getting started with Depot", print edition. US Letter, rendered by headless Chrome
+   (build/pdf.js). Colours are Depot's Ledger palette (index.html :root / html.dark).
+   Sizes are in points so they read the same as the Word file: body 12 pt. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  src: url('{{FONT_URL}}') format('woff2');
+}
+:root {
+  --ink: #17191D; --ink-soft: #5C6069; --ink-faint: #6A6E77;
+  --accent: #0E6FA8; --accent-deep: #0B587F; --accent-wash: #E8F2F9;
+  --line: #CBCBD2; --rule: #E4E4E8; --surface-2: #F4F4F6;
+  --warn: #9A6212; --warn-deep: #6E460C; --warn-wash: #FBF3E6;
+  --dark: #0D0F12; --dark-surface: #15181D; --dark-raised: #1C2027; --dark-rule: #262B33;
+  --dark-ink: #EDEEF1; --dark-soft: #B4BAC4; --dark-faint: #9AA0AB; --dark-accent: #3DA3DC; --dark-accent-soft: #2E86BC; --dark-accent-ink: #08131B;
+  --badge: #F2542D;
+}
+
+@page {
+  size: 8.5in 11in;
+  margin: 0.85in 1in 0.9in 1in;
+  @bottom-left { content: "Getting started with Depot"; font: 500 9.5pt/1 'Inter', sans-serif; color: #5C6069; vertical-align: middle; }
+  @bottom-right { content: counter(page); font: 600 10pt/1 'Inter', sans-serif; color: #17191D; vertical-align: middle; font-variant-numeric: tabular-nums; }
+}
+@page cover {
+  margin: 0;
+  background: #0D0F12;
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+@page dark {
+  background: radial-gradient(ellipse 7in 6in at 108% -6%, rgba(61,163,220,.20), rgba(61,163,220,0) 70%), #0D0F12;
+  @bottom-left { color: #9AA0AB; }
+  @bottom-right { color: #EDEEF1; }
+}
+
+* { box-sizing: border-box; }
+html {
+  font-family: 'Inter', -apple-system, 'Segoe UI', Arial, sans-serif;
+  font-size: 12pt; line-height: 1.55; color: var(--ink);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  text-rendering: geometricPrecision;
+}
+body { margin: 0; }
+p { margin: 0 0 0.1in; orphans: 2; widows: 2; }
+strong { font-weight: 700; }
+a { color: inherit; text-decoration: none; }
+/* Kept invisible but painted, so the PDF bookmark reads "Chapter 6 · Sharing a file". */
+.sep { color: transparent; }
+
+/* ---------- Cover ---------- */
+.cover {
+  page: cover;
+  position: relative; width: 8.5in; height: 10.98in; overflow: hidden;
+  background:
+    radial-gradient(ellipse 7in 6in at 108% -6%, rgba(61,163,220,.20), rgba(61,163,220,0) 70%),
+    radial-gradient(ellipse 6in 5in at -20% 112%, rgba(61,163,220,.08), rgba(61,163,220,0) 70%),
+    var(--dark);
+  color: var(--dark-ink);
+}
+.cover .tile { position: absolute; left: 1in; top: 1.05in; }
+.cover .words { position: absolute; left: 1in; right: 1in; top: 4.05in; }
+.cover .rule { width: 0.7in; height: 4pt; border-radius: 2pt; background: var(--dark-accent); margin-bottom: 0.32in; }
+.cover h1 { font-size: 46pt; line-height: 1.06; font-weight: 750; letter-spacing: -0.02em; margin: 0; color: #FFFFFF; max-width: 5in; }
+.cover .subtitle { font-size: 19pt; line-height: 1.35; font-weight: 450; color: var(--dark-soft); margin: 0.22in 0 0; }
+.cover .edition { position: absolute; left: 1in; bottom: 0.95in; font-size: 11pt; font-weight: 600; letter-spacing: 0.06em; color: var(--dark-faint); }
+.tile {
+  width: 1in; height: 1in; border-radius: 0.27in;
+  background: linear-gradient(165deg, #4DABE0, var(--dark-accent-soft));
+  color: var(--dark-accent-ink);
+  display: grid; place-items: center;
+}
+.tile svg { width: 70%; height: 70%; display: block; }
+
+/* ---------- Contents ---------- */
+.front { break-before: page; }
+.page-title { font-size: 30pt; line-height: 1.15; font-weight: 750; letter-spacing: -0.015em; margin: 0 0 0.26in; }
+.toc { list-style: none; margin: 0; padding: 0; }
+.toc .part-row { display: flex; align-items: baseline; margin: 0.24in 0 0.02in; padding-bottom: 0.05in; border-bottom: 1.25pt solid var(--ink); font-size: 13pt; font-weight: 700; color: var(--ink); }
+.toc .part-row:first-child { margin-top: 0; }
+.toc .part-row .pg { margin-left: auto; letter-spacing: 0; }
+.toc .row { display: flex; align-items: baseline; padding: 0.04in 0; border-bottom: 0.75pt solid var(--rule); font-size: 12pt; line-height: 1.4; }
+.toc .num { flex: 0 0 0.42in; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.toc .t { flex: 1 1 auto; }
+.toc .pg { flex: 0 0 auto; min-width: 0.4in; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.toc .row.front-row .num { color: var(--ink-faint); }
+
+/* ---------- How to use this guide ---------- */
+/* This page always holds the same short, fixed list of tips, so it does not fill a
+   letter page top to bottom the way a chapter does. Centring it as a block (like the
+   part openers below, for the same reason) spreads the leftover space evenly above and
+   below instead of leaving it all as one gap under the last line. */
+.front#how-to-use { height: 9.2in; display: flex; flex-direction: column; justify-content: center; }
+.howto { list-style: none; margin: 0; padding: 0; }
+.howto li { display: flex; gap: 0.18in; margin: 0 0 0.26in; }
+.howto .ico { flex: 0 0 0.3in; height: 0.3in; display: grid; place-items: center; }
+.howto .dot { width: 0.09in; height: 0.09in; border-radius: 50%; background: var(--accent); }
+.howto li > div:last-child { flex: 1; }
+.howto .example { margin: 0.22in 0 0.1in; }
+.howto .swatch { width: 0.3in; height: 0.3in; border-radius: 0.07in; overflow: hidden; display: flex; box-shadow: 0 0 0 0.75pt var(--line); }
+.howto .swatch i { flex: 1; } .howto .swatch i:first-child { background: #FBFBFC; } .howto .swatch i:last-child { background: var(--dark); }
+
+/* ---------- Part openers ---------- */
+/* One page exactly (11in - 0.85in - 0.9in margins), so the title and chapter list can be
+   centred as a block instead of anchored under a fixed top padding: with few chapters
+   (Part 2) that left the bottom of the page looking empty next to a fuller part. */
+.part {
+  page: dark; break-before: page; break-after: page;
+  color: var(--dark-ink);
+  height: 9.2in;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.part .eyebrow, .band .eyebrow { display: block; font-size: 12pt; font-weight: 700; letter-spacing: 0.1em; font-variant-caps: all-small-caps; color: var(--dark-accent); line-height: 1.3; }
+/* Headings keep their spaces when they wrap (break-spaces), or the PDF bookmark runs the words together. */
+h1, h2 { white-space: break-spaces; }
+.part h1 { margin: 0; font-weight: 750; letter-spacing: -0.02em; }
+.part h1 .eyebrow { margin-bottom: 0.12in; font-size: 15pt; }
+.part h1 .title { display: block; font-size: 46pt; line-height: 1.05; color: #FFFFFF; }
+.part .rule { width: 0.7in; height: 4pt; border-radius: 2pt; background: var(--dark-accent); margin: 0.38in 0 0.34in; }
+.part ol { list-style: none; margin: 0; padding: 0; max-width: 5.6in; }
+.part li { display: flex; align-items: baseline; padding: 0.085in 0; border-bottom: 0.75pt solid var(--dark-rule); font-size: 14pt; line-height: 1.35; color: var(--dark-ink); }
+.part li:first-child { border-top: 0.75pt solid var(--dark-rule); }
+.part li .num { flex: 0 0 0.5in; font-weight: 700; color: var(--dark-accent); font-variant-numeric: tabular-nums; }
+
+/* ---------- Chapters ---------- */
+.chapter { break-before: page; }
+.band {
+  background: var(--dark); color: var(--dark-ink);
+  border-radius: 10pt; padding: 0.3in 0.4in 0.32in;
+  margin: 0 0 0.3in;
+  position: relative; overflow: hidden;
+}
+.band::after {  /* the same soft glow as the cover, so a chapter feels part of the set */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 4.5in 2.6in at 104% -30%, rgba(61,163,220,.22), rgba(61,163,220,0) 70%);
+}
+.band > * { position: relative; z-index: 1; }
+.band h1 { margin: 0; font-weight: 750; }
+.band h1 .eyebrow { margin-bottom: 0.05in; }
+.band h1 .title { display: block; font-size: 26pt; line-height: 1.12; letter-spacing: -0.015em; color: #FFFFFF; }
+.band .intro { margin: 0.12in 0 0; font-size: 12.5pt; line-height: 1.5; color: var(--dark-soft); max-width: 5.4in; }
+
+.sec { margin: 0 0 0.3in; }
+.sec + .sec { margin-top: 0.36in; }
+h2 { font-size: 17pt; line-height: 1.25; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 0.1in; break-after: avoid; }
+.keep { break-inside: avoid; }
+.pic { margin: 0.14in 0 0.2in; break-inside: avoid; }
+/* A real border, not a box-shadow: Chrome's print pagination can leak a hairline sliver of
+   a box-shadow onto the bottom of the page before it, right at the page break, when the
+   picture itself lands on the next page (see the light-dark chapter's picture-and-steps
+   split below). A border does not have that print bug and looks the same as the ring did. */
+.pic img { display: block; border-radius: 6pt; border: 0.75pt solid #BFC2CA; box-sizing: content-box; }
+.pic img { margin: 0 auto; }
+.side { display: grid; grid-template-columns: var(--pic-w) 1fr; gap: 0.36in; align-items: start; margin: 0.14in 0 0.2in; break-inside: avoid; }
+.side .pic { margin: 0; }
+.side .steps:first-child { margin-top: 0; }
+
+.steps { list-style: none; margin: 0.06in 0 0.14in; padding: 0; }
+.steps li { display: flex; align-items: flex-start; gap: 0.16in; margin: 0 0 0.12in; break-inside: avoid; }
+.badge {
+  flex: 0 0 auto; width: 0.3in; height: 0.3in; border-radius: 50%;
+  background: var(--badge); color: #FFFFFF;
+  font-size: 12pt; font-weight: 750; line-height: 0.3in; text-align: center;
+  font-variant-numeric: tabular-nums; margin-top: -0.02in;
+}
+.steps li > div { flex: 1; padding-top: 0.01in; }
+
+.bullets { list-style: none; margin: 0.04in 0 0.14in; padding: 0; break-inside: avoid; }
+.bullets li { position: relative; padding-left: 0.3in; margin: 0 0 0.08in; break-inside: avoid; }
+.bullets li::before { content: ""; position: absolute; left: 0.1in; top: 0.085in; width: 0.075in; height: 0.075in; border-radius: 50%; background: var(--ink-soft); }
+
+.box { border-radius: 6pt; padding: 0.14in 0.2in 0.15in 0.22in; margin: 0.12in 0 0.14in; break-inside: avoid; border-left: 4pt solid; }
+.box .label { display: block; font-weight: 750; font-size: 12pt; letter-spacing: 0.02em; margin-bottom: 0.02in; }
+.box p { margin: 0; }
+.tip { background: var(--accent-wash); border-color: var(--accent); }
+.tip .label { color: var(--accent-deep); }
+.note { background: var(--warn-wash); border-color: var(--warn); }
+.note .label { color: var(--warn-deep); }
+</style>
+</head>
+<body>
+{{BODY}}
+</body>
+</html>

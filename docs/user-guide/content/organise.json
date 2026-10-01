@@ -1,0 +1,57 @@
+{
+  "id": "organise",
+  "part": 1,
+  "order": 5,
+  "theme": "light",
+  "title": "Keeping things organised",
+  "intro": "Folders, filters and Trash keep your files easy to find. To add a folder, see “Adding files and folders”.",
+  "sections": [
+    {
+      "heading": "Work on several items at once",
+      "text": [
+        "Select files and folders, and the selection bar appears above the list."
+      ],
+      "shot": "selection-bar",
+      "steps": [
+        "Click the checkbox at the start of each row you want.",
+        "Click **Move to folder…**, then click a folder to move everything into it.",
+        "Click **Move to library…** to move the selected files, not folders, to another library.",
+        "Click **Delete** to move everything you selected to Trash."
+      ]
+    },
+    {
+      "heading": "Rename or move one item",
+      "steps": [
+        "Click the three dots at the end of the row.",
+        "Click **Rename…**, type the new name and click **OK**."
+      ],
+      "bullets": [
+        "The same menu has **Move to folder…**, and you can also drag a row onto a folder in the list.",
+        "Renaming a folder does not change who it is shared with."
+      ]
+    },
+    {
+      "heading": "Delete, undo and restore",
+      "text": [
+        "Deleted files go to Trash, so you can get them back."
+      ],
+      "shot": "delete-undo",
+      "steps": [
+        "Click **Undo** if you change your mind. It stays until you close it or Depot shows another message."
+      ],
+      "bullets": [
+        "Later, click **Trash** in the left rail. The page is called **Recycle bin**.",
+        "Click **Restore** next to the file you want back."
+      ],
+      "note": "Deleting a folder asks you to confirm first, because it can end sharing on that folder."
+    },
+    {
+      "heading": "Filter, sort and change the view",
+      "bullets": [
+        "Click **All types** and choose a type, such as **Images**, to show only those files.",
+        "Click **Name**, **Size** or **Modified** at the top of the list to sort by it. Click again to reverse it.",
+        "Drag the slider next to **Details** to the right for tiles, or to the left for a list."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "share-file",
+  "part": 1,
+  "order": 6,
+  "theme": "dark",
+  "title": "Sharing a file",
+  "intro": "Share turns a file into a link, or an invite to the people you name. You choose who gets it, what they can do and how long it lasts.",
+  "sections": [
+    {
+      "heading": "Choose who gets it and what they can do",
+      "text": [
+        "Click **Share** on a file's row, or in the bar above its preview."
+      ],
+      "shot": "share-people",
+      "steps": [
+        "Under **Who gets it**, choose **Anyone with the link** or **Only people I invite**.",
+        "If you invite people, type each email address and press Enter.",
+        "Under **What they can do**, choose **Can view** or **Can edit**. **Can edit** is for people you invite."
+      ]
+    },
+    {
+      "heading": "Set how long it lasts and how locked it is",
+      "shot": "share-lock",
+      "steps": [
+        "Turn on **Set an expiry date** to choose when it stops working.",
+        "Turn on **Require a password** so only people who know it can open the file.",
+        "Turn on **Let people outside send files back** if you want the people you invited to send files to you.",
+        "Click **Create link** to copy a link, or **Send invite** to email the people you added."
+      ],
+      "note": "A link with no expiry date never expires. An invite with no expiry date expires after 30 days."
+    },
+    {
+      "heading": "What the people you invite receive",
+      "bullets": [
+        "A colleague with a Depot account gets an email with a link. If you can give them access, the file also appears in their **Shared with me**. If not, the link opens a view-only copy, only for them, once they sign in.",
+        "Anyone else, such as people outside Acme, gets a link of their own by email. If the email cannot be sent, Depot shows you the link to pass on.",
+        "A password only protects links for people outside Acme. Colleagues sign in instead. To see the page people outside Acme open, turn to “What the people you share with see”.",
+        "If you can only view a file yourself, you cannot create a link to it or let others edit it."
+      ]
+    },
+    {
+      "heading": "See who has access, and revoke it",
+      "shot": "share-access",
+      "steps": [
+        "Click **Who has access** to see everyone who can open the file, and any links you have made.",
+        "Click **Revoke** next to a person or a link to take away their access."
+      ]
+    }
+  ]
+}

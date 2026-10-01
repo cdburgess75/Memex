@@ -1,0 +1,27 @@
+{
+  "id": "upload",
+  "part": 1,
+  "order": 3,
+  "theme": "light",
+  "title": "Adding files and folders",
+  "intro": "Upload files from your computer, or drag them onto the file list. New files land in the folder you have open.",
+  "sections": [
+    {
+      "heading": "Upload files or a folder",
+      "shot": "upload-menu",
+      "steps": [
+        "Click **Upload** above your files.",
+        "Choose **Upload files** to add one or more files.",
+        "Choose **Upload folder** to add a whole folder, with everything inside it."
+      ]
+    },
+    {
+      "heading": "Create a new file or folder",
+      "steps": [
+        "Click **Create**, then choose **New folder**, **New Word document** or **New Excel spreadsheet**.",
+        "Type a name and click **OK**. A new file opens straight away."
+      ],
+      "note": "In a library shared with you as read-only, **Upload** is hidden. Ask the owner for Read-Write access."
+    }
+  ]
+}

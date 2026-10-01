@@ -1,0 +1,15 @@
+{
+  "id": "light-dark", "part": 1, "order": 12, "theme": "both",
+  "title": "Light or dark: making Depot comfortable",
+  "intro": "Depot has a light look and a dark look. Pick the one that is easier on your eyes.",
+  "sections": [
+    {
+      "heading": "Switch between light and dark",
+      "shot": "theme-toggle-missing",
+      "steps": [
+        "Click the sun or moon button in the top bar.",
+        "Depot switches at once and remembers your choice."
+      ]
+    }
+  ]
+}
