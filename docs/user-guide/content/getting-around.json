@@ -1,0 +1,63 @@
+{
+  "id": "getting-around",
+  "part": 1,
+  "order": 2,
+  "theme": "dark",
+  "title": "Finding your way around",
+  "intro": "Every page in Depot has the same top bar and left rail. Home sums up what is happening in your workspace.",
+  "sections": [
+    {
+      "heading": "The top bar",
+      "text": [
+        "The search box sits at the left of the top bar."
+      ],
+      "shot": "topbar-search",
+      "steps": [
+        "Click the search box to find files. See “Searching and asking questions”."
+      ]
+    },
+    {
+      "heading": "The right side of the top bar",
+      "shot": "topbar-icons",
+      "steps": [
+        "Click **Status** to check that Depot is running normally.",
+        "Click the Meetings icon, a video camera, to see who is online and call them.",
+        "Click the bell to see your **Notifications**.",
+        "Click the gear to open **Settings**, for your profile, appearance and notifications."
+      ],
+      "bullets": [
+        "Click the sun or moon icon to switch between light and dark. See “Light or dark: making Depot comfortable”.",
+        "Click your name, for example **Jordan Lee**, to open a menu with **Sign out**."
+      ]
+    },
+    {
+      "heading": "The left rail",
+      "bullets": [
+        "**Home**, **Files**, **Favorites**, **Shared with me**, **My links** and **Trash** open those pages.",
+        "**Files** shows the library you have open. A library is a set of files and folders, like a shared drive.",
+        "Click the library name at the top of the rail to switch libraries. Click the star next to one to pin it under **Pinned**.",
+        "**Quick access**, further down, lists files you opened recently, newest first."
+      ]
+    },
+    {
+      "heading": "Home",
+      "text": [
+        "Home opens when you sign in. Click **Home** in the left rail to come back to it."
+      ],
+      "shot": "home-stats",
+      "steps": [
+        "**Files** shows how many files you have, and how that is changing.",
+        "**Storage** shows how much space you are using.",
+        "**Shared** shows how many of your files have a link.",
+        "**Libraries** shows how many libraries you can open."
+      ]
+    },
+    {
+      "heading": "Your libraries",
+      "shot": "home-libraries",
+      "steps": [
+        "**Your libraries** lists your own libraries, with **Upload** and **New folder** buttons. **Shared with you** and **Recent files** sit below it."
+      ]
+    }
+  ]
+}

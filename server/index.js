@@ -250,6 +250,9 @@ app.get('/f/:token', (req, res) => {
   res.type('html').send(require('./lib/folderPage')(token));
 });
 
+// The getting-started guide, for anyone (routes/help.js). Before the SPA catch-all.
+app.use('/help', require('./routes/help'));
+
 // Serve only the vendored client libraries statically — NOT the repo root, which
 // would expose server source, compose, and config files. The SPA itself is
 // returned by the catch-all below.
@@ -294,6 +297,12 @@ async function start() {
     } catch (e) {
       console.error('[startup] owner-ACL backfill failed:', e.message);
     }
+    // Once per personal library: the getting-started guide for everyone who was here
+    // before it existed (and a retry for any copy that failed). Not awaited by anything;
+    // it runs one library at a time behind a server that is already answering.
+    require('./lib/gettingStarted').backfill({ log: (m) => console.error('[startup] ' + m) })
+      .then((r) => { if (r.added || r.failed) console.log(`[startup] getting-started guide: added to ${r.added} of ${r.candidates} libraries${r.failed ? `, ${r.failed} failed` : ''}`); })
+      .catch((e) => console.error('[startup] getting-started guide pass failed:', e.message));
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
@@ -355,6 +364,7 @@ function shutdown(signal) {
   if (!server) process.exit(0); // signalled before listen (e.g. mid-migration)
   try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
+  try { require('./lib/gettingStarted').stop(); } catch { /* not started */ }
   const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
   forced.unref?.();
   server.close(() => {

@@ -1,0 +1,30 @@
+{
+  "id": "light-dark",
+  "part": 1,
+  "order": 12,
+  "theme": "both",
+  "title": "Light or dark: making Depot comfortable",
+  "intro": "Click the sun or moon icon in the top bar to switch light and dark.",
+  "sections": [
+    {
+      "heading": "The quick way",
+      "shot": "theme-toggle",
+      "steps": [
+        "Click the sun or moon icon at the right of the top bar. Depot switches right away."
+      ]
+    },
+    {
+      "heading": "More choices in Settings",
+      "text": [
+        "Click the gear in the top bar. **Settings** opens on **Profile & appearance**."
+      ],
+      "shot": "appearance",
+      "steps": [
+        "Under **Mode**, click **Light**, **Auto** or **Dark**. **Auto** follows your computer.",
+        "Click a colour card under **Scheme** to use it on this device.",
+        "Click **Use the workspace scheme** to go back to your company's colours."
+      ],
+      "tip": "On the same page, click **Upload photo** to add your picture, type your name in **Full name**, then click **Save profile**."
+    }
+  ]
+}

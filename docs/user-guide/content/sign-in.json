@@ -1,0 +1,19 @@
+{
+  "id": "sign-in",
+  "part": 1,
+  "order": 1,
+  "theme": "light",
+  "title": "Signing in",
+  "intro": "Depot is where your team keeps and shares files. After you sign in, it opens Home, or the file or folder a share email linked to.",
+  "sections": [
+    {
+      "heading": "The sign-in card",
+      "shot": "card",
+      "steps": [
+        "Click **Sign in with Microsoft 365** if your company has turned it on.",
+        "Otherwise, click **Sign in with email & password**. If you forget your password, ask your administrator."
+      ],
+      "tip": "To sign out, click your name in the top right corner, then click **Sign out**."
+    }
+  ]
+}

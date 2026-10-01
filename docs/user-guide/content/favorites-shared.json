@@ -1,0 +1,28 @@
+{
+  "id": "favorites-shared",
+  "part": 1,
+  "order": 11,
+  "theme": "light",
+  "title": "Favorites and files shared with you",
+  "intro": "Star the files you use most. Find what other people have shared with you.",
+  "sections": [
+    {
+      "heading": "See what other people have shared with you",
+      "shot": "shared-with-me",
+      "steps": [
+        "Click **Shared with me** in the left rail.",
+        "Click any row to open it where it lives. The **Permission** column shows what you can do there."
+      ]
+    },
+    {
+      "heading": "Star a file",
+      "shot": "star-row",
+      "steps": [
+        "Point to a file and click the star on its row. The star turns solid."
+      ],
+      "bullets": [
+        "Click **Favorites** in the left rail to see your starred files in this library."
+      ]
+    }
+  ]
+}

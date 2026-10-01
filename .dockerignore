@@ -12,3 +12,7 @@ secrets
 .local-secrets
 .githooks
 server/__tests__
+
+# The user-guide generator (demo data, screenshots, build scripts). The image needs only
+# the finished guide, which ships under server/assets/getting-started.
+docs/user-guide

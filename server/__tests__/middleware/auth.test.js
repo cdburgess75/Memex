@@ -4,6 +4,7 @@ jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa');
 jest.mock('../../lib/db');
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../lib/gettingStarted', () => ({ seedLibrary: jest.fn().mockResolvedValue(true) }));
 
 const jwt              = require('jsonwebtoken');
 const { JwksClient }   = require('jwks-rsa');  // named export in jwks-rsa v3
@@ -73,6 +74,32 @@ test('auto-assigns contributor role for new user not in ADMIN_EMAILS', async () 
   const req = makeReq('token');
   await auth(req, makeRes(), jest.fn());
   expect(req.user.role).toBe('contributor');
+});
+
+test('a first sign-in that makes a personal library puts the getting-started guide in it', async () => {
+  const gettingStarted = require('../../lib/gettingStarted');
+  db.queryOne.mockImplementation(async (sql) => {
+    if (/FROM user_roles/.test(sql) && !/INSERT/.test(sql)) return null;          // nobody yet
+    if (/INSERT INTO user_roles/.test(sql)) return { role: 'contributor' };
+    if (/INSERT INTO libraries/.test(sql)) return { id: 'lib-new', name: 'Test User' };
+    return null;
+  });
+  await auth(makeReq('token'), makeRes(), jest.fn());
+  await new Promise((r) => setImmediate(r));                                        // it runs beside the request
+  expect(gettingStarted.seedLibrary).toHaveBeenCalledWith('lib-new', { id: 'user-abc', email: 'user@test.com', role: 'contributor' });
+});
+
+test('no new library (it already existed): the guide is not added again', async () => {
+  const gettingStarted = require('../../lib/gettingStarted');
+  gettingStarted.seedLibrary.mockClear();
+  db.queryOne.mockImplementation(async (sql) => {
+    if (/FROM user_roles/.test(sql) && !/INSERT/.test(sql)) return null;
+    if (/INSERT INTO user_roles/.test(sql)) return { role: 'contributor' };
+    return null;                                                                    // ON CONFLICT DO NOTHING
+  });
+  await auth(makeReq('token'), makeRes(), jest.fn());
+  await new Promise((r) => setImmediate(r));
+  expect(gettingStarted.seedLibrary).not.toHaveBeenCalled();
 });
 
 test('auto-assigns admin role when a verified email matches ADMIN_EMAILS', async () => {

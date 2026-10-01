@@ -1,0 +1,35 @@
+{
+  "id": "groups",
+  "part": 2,
+  "order": 16,
+  "theme": "light",
+  "title": "Groups",
+  "intro": "A group lets you share with a whole team in one step. A group can include people outside Acme.",
+  "sections": [
+    {
+      "heading": "Create a group",
+      "text": [
+        "Click the gear in the top bar, then **Groups**."
+      ],
+      "shot": "groups-list",
+      "steps": [
+        "Type a name in the **New group name** box.",
+        "Click **Create group**."
+      ]
+    },
+    {
+      "heading": "Add or remove members",
+      "text": [
+        "Click **Open** next to a group to see who is in it."
+      ],
+      "shot": "group-open",
+      "steps": [
+        "Type an email address in the box, then click **Add**.",
+        "Click **Remove** next to someone to take them out. Only the group's owner, or your administrator, can change a group."
+      ],
+      "bullets": [
+        "Choose **Share to group** when you share a library or folder. See “Sharing a whole library”. People you add to the group later get the same access."
+      ]
+    }
+  ]
+}

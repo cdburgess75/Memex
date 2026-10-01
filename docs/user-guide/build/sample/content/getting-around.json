@@ -1,0 +1,29 @@
+{
+  "id": "getting-around", "part": 1, "order": 2, "theme": "dark",
+  "title": "Finding your way around",
+  "intro": "Home shows what is new at a glance. The bar on the left takes you to everything else.",
+  "sections": [
+    {
+      "text": ["Every page has the same top bar. The search box, the bell and your name are always in the same place."],
+      "shot": "home-overview",
+      "steps": [
+        "Click your name at the top right to open your menu. **Sign out** is at the bottom of it."
+      ],
+      "bullets": [
+        "**Home** shows your libraries, recent files and notifications.",
+        "**Files** shows the folders and files in the library you are in.",
+        "**My links** lists every link you have made."
+      ]
+    },
+    {
+      "heading": "Notifications and links on Home",
+      "shot": "home-panels",
+      "text": ["The right side of **Home** shows two short lists."],
+      "bullets": [
+        "**Notifications** shows the newest things that happened to your files.",
+        "**Links you sent** shows links that are still active."
+      ],
+      "tip": "Click an item in either list to go straight to that file."
+    }
+  ]
+}

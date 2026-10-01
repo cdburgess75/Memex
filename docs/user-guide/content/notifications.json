@@ -1,0 +1,77 @@
+{
+  "id": "notifications",
+  "part": 1,
+  "order": 9,
+  "theme": "light",
+  "title": "Getting notified about files and folders",
+  "intro": "Depot tells you when the files and folders you care about change. You choose what it tells you about.",
+  "sections": [
+    {
+      "heading": "Follow a file",
+      "text": [
+        "Every file has its own bell. Point to a file's row to show it."
+      ],
+      "shot": "file-bell",
+      "steps": [
+        "Click the bell icon, **Follow this file for updates**. The bell loses its slash and turns blue."
+      ],
+      "tip": "Depot now tells you when someone edits the file, or downloads it from a link."
+    },
+    {
+      "heading": "See everything in the bell",
+      "text": [
+        "Click the bell in the top bar to open **Notifications**. The newest notices are at the top."
+      ],
+      "shot": "notif-panel",
+      "steps": [
+        "Click a notice to jump straight to the file or folder.",
+        "Click **Mark all read** to clear every unread dot."
+      ],
+      "bullets": [
+        "Notices tell you when someone opens or downloads something you shared, or sends files back to you.",
+        "They also tell you when you are given access to something, or a file you follow is edited."
+      ]
+    },
+    {
+      "heading": "Hear about new files in a folder",
+      "text": [
+        "Folders you own already tell you when a new file lands in them. You do not need to turn this on."
+      ],
+      "shot": "folder-notifications",
+      "steps": [
+        "Point to one of your folders. Its bell icon is already blue, with no slash through it.",
+        "Click the three dots at the end of the folder's row.",
+        "Click **Turn off new-file notifications** to stop. Anyone the folder is shared with can do the same for themselves."
+      ]
+    },
+    {
+      "heading": "Choose what the bell does",
+      "text": [
+        "Click the gear in the top bar, then click **Notifications**."
+      ],
+      "shot": "settings-notifications",
+      "steps": [
+        "Turn off **Show notifications in the bell menu** to stop notices in the bell.",
+        "Turn off **Tell me when someone comes online** to stop those messages."
+      ]
+    },
+    {
+      "heading": "Get notices by email",
+      "text": [
+        "Depot can also email you, so you hear about things even when Depot is not open. The email has a link straight to the file or folder.",
+        "To see which notices you get by email, click the gear in the top bar, then **Notifications**. Look under **Email notifications**."
+      ],
+      "shot": "email-notices",
+      "steps": [
+        "This list shows every notice Depot emails to you, and the address it uses."
+      ],
+      "bullets": [
+        "Someone shares a file, folder or library with you.",
+        "Someone opens something you shared, the first time each person does.",
+        "Files arrive in a library or folder you follow, or through a link you sent.",
+        "A file you follow is edited."
+      ],
+      "note": "Your administrator chooses which emails everyone at your company gets. If the page says email isn't set up yet, ask your administrator to turn it on."
+    }
+  ]
+}

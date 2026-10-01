@@ -1,0 +1,45 @@
+{
+  "id": "recipient",
+  "part": 1,
+  "order": 13,
+  "theme": "dark",
+  "title": "What the people you share with see",
+  "intro": "People outside Acme do not sign in to Depot. Your link opens a plain page with only what you sent them. You can pass these steps on if they need help.",
+  "sections": [
+    {
+      "heading": "A shared file",
+      "text": [
+        "The page shows the file's name and size, who sent it and when the link stops working."
+      ],
+      "shot": "file-page",
+      "steps": [
+        "They click **Download** to save the file.",
+        "If you let them send files back, they use **Send files back** to send files to you."
+      ],
+      "note": "If you set a password, the page asks for it first. They type it in the **Password** box and click **Unlock**. Give them the password another way, such as by phone."
+    },
+    {
+      "heading": "A shared folder",
+      "text": [
+        "A folder page lets them look inside first. Subfolders show up in the list, alongside the files."
+      ],
+      "shot": "folder-page",
+      "steps": [
+        "They click **Download \"Northfield Clinic\" as ZIP** to get every file at once.",
+        "They click a folder in the list to open it.",
+        "They click **Download** next to a file to get only that one.",
+        "If you let them add files, they use **Add your files** to send files into the folder."
+      ],
+      "note": "A folder you sent to named people shows new files as you add them. A link anyone can open only shows what was there when you made it."
+    },
+    {
+      "heading": "When a link stops working",
+      "text": [
+        "An expired or revoked file link opens a page headed **Link unavailable**. The line under it says why, such as **This link has expired.**",
+        "A folder link that no longer works shows **This link isn't available** instead."
+      ],
+      "shot": "link-gone",
+      "tip": "If they still need the file, create a new link and send it to them."
+    }
+  ]
+}

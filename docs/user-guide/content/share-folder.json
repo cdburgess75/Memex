@@ -1,0 +1,46 @@
+{
+  "id": "share-folder",
+  "part": 1,
+  "order": 7,
+  "theme": "light",
+  "title": "Sharing a folder",
+  "intro": "Share a folder when someone needs more than one file. Create a link anyone can open, or send it to named people.",
+  "sections": [
+    {
+      "heading": "Open the folder's Share window",
+      "shot": "open",
+      "steps": [
+        "Point to the folder, then click the **Share** icon on its row."
+      ],
+      "tip": "You can also click the folder's checkbox, then click **Share** in the selection bar.",
+      "note": "If you own or manage the library, the window also has **People and groups** at the top. It works the same way as in “Sharing a whole library”."
+    },
+    {
+      "heading": "Create a link anyone can open",
+      "text": [
+        "Use **Anyone with the link** for one link to hand around. It only shows the files in the folder right now, not ones you add later."
+      ],
+      "shot": "anyone-link",
+      "steps": [
+        "Under **Anyone with the link**, choose how long it lasts under **Expires**.",
+        "Add a **Password** if you want one.",
+        "Click **Create link**. Depot copies the link so you can paste it anywhere."
+      ]
+    },
+    {
+      "heading": "Send it to named people",
+      "text": [
+        "Use **Send to people** when you know who needs the folder. They always see its newest files, including ones you add later."
+      ],
+      "shot": "send-to-people",
+      "steps": [
+        "Under **Send to people**, type each email address and press Enter.",
+        "Under **Expires**, choose how long the link should work.",
+        "Add a **Password** if the files are sensitive, and a **Note** to say why you sent them.",
+        "Turn on **Let them add files to this folder** if they should send files back.",
+        "Click **Send to 1**. The number is how many people you added."
+      ],
+      "note": "Colleagues sign in to open the folder. Anyone else can open the link without signing in, so add a password if it must not be passed on. To stop any folder link working, click **Revoke** next to it in this window."
+    }
+  ]
+}

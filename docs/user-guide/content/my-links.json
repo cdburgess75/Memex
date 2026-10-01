@@ -1,0 +1,41 @@
+{
+  "id": "my-links",
+  "part": 1,
+  "order": 8,
+  "theme": "dark",
+  "title": "Keeping track of what you've shared",
+  "intro": "My links keeps a record of every link you have made, from any file or folder, whether it still works or not.",
+  "sections": [
+    {
+      "heading": "See your links",
+      "shot": "overview",
+      "steps": [
+        "Click **My links** in the left rail.",
+        "Click the chips above the list to show or hide links by status."
+      ],
+      "bullets": [
+        "**Active** links work right now.",
+        "**Paused** links will not open, because you lost the right to edit the file or folder. The card explains why.",
+        "**Expired** links have passed their expiry date.",
+        "**Revoked** links are ones you turned off.",
+        "**Deleted** links point to a file or folder that no longer exists."
+      ],
+      "tip": "Each card shows who the link was sent to and when it expires. It also shows how often it was opened, and whether it needs a password."
+    },
+    {
+      "heading": "Revoke a link",
+      "shot": "revoke",
+      "steps": [
+        "Click **Revoke** on the link's card, then click **Revoke link** to confirm."
+      ],
+      "note": "Nobody can use the link after that. Colleagues who already had access in Depot keep it."
+    },
+    {
+      "heading": "Keep an eye on links from Home",
+      "bullets": [
+        "The **Links you sent** card on Home lists your newest links, and whether each has been opened.",
+        "A bar above your libraries on Home warns you when a link expires within a week."
+      ]
+    }
+  ]
+}

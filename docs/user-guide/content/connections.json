@@ -1,0 +1,44 @@
+{
+  "id": "connections", "part": 2, "order": 17, "theme": "dark",
+  "title": "SharePoint and Windows file shares",
+  "intro": "If your company has connected SharePoint or a Windows file share, you can browse it from Depot. Files stay where they are.",
+  "sections": [
+    {
+      "heading": "Open a connection",
+      "shot": "browse",
+      "steps": [
+        "Click a name under **Connections**, near the bottom of the left rail.",
+        "Click **Upload** to add files from your computer.",
+        "Click **New folder** to add a folder here.",
+        "Click **Download** on a file's row to save a copy.",
+        "Click **Share** on a SharePoint file's row to see your sharing options."
+      ],
+      "bullets": [
+        "Click **Rename** or **Delete** on a file's row to rename or remove it.",
+        "Click a SharePoint file's name to open it in Microsoft 365.",
+        "Windows file shares have no **Share** button."
+      ]
+    },
+    {
+      "heading": "Share a SharePoint file",
+      "shot": "share-menu",
+      "steps": [
+        "Click **Copy view link** to copy a link anyone can open.",
+        "Click **Copy edit link** to copy a link people can also change.",
+        "Click **Email people…** to send it to named people by email."
+      ]
+    },
+    {
+      "heading": "Unlock a personal Windows share",
+      "text": ["Some Windows file shares ask for your own network sign-in the first time, so you see only what your account allows."],
+      "shot": "unlock",
+      "steps": [
+        "Type your **Domain**.",
+        "Type your **Username**.",
+        "Type your **Password**.",
+        "Click **Unlock**."
+      ],
+      "note": "Depot uses your sign-in only for this session, and never saves it. On a shared computer, click **Lock** at the top of the share to make Depot forget it straight away."
+    }
+  ]
+}

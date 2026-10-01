@@ -1,0 +1,32 @@
+{
+  "id": "sign-in", "part": 1, "order": 1, "theme": "light",
+  "title": "Signing in",
+  "intro": "Depot opens in your web browser. You sign in once and it remembers you on that computer.",
+  "sections": [
+    {
+      "heading": "Open the sign-in page",
+      "text": ["Your company gives you the Depot address. It works in any up-to-date browser, such as Edge, Chrome or Safari."],
+      "shot": "signin-page",
+      "steps": [
+        "Open your web browser and go to the Depot address.",
+        "Click **Sign in with Microsoft 365** if your company has turned on Microsoft 365 sign-in.",
+        "Otherwise click **Sign in with email & password** and enter the details your company gave you."
+      ],
+      "tip": "Add the Depot address to your browser's bookmarks. Then you can open it again with one click."
+    },
+    {
+      "heading": "Choose how to sign in",
+      "text": ["The sign-in card shows the ways your company allows. You may see one button or two."],
+      "shot": "signin-card",
+      "steps": [
+        "Click **Sign in with Microsoft 365** to use your work account.",
+        "Click **Sign in with email & password** to use a Depot password."
+      ],
+      "bullets": [
+        "After you sign in, Depot opens on **Home**.",
+        "If you opened a link from a share email, Depot takes you straight to that file."
+      ],
+      "note": "Depot has no **Forgot password** button. If you cannot sign in, ask the person who looks after Depot at your company."
+    }
+  ]
+}

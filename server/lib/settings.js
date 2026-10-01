@@ -59,6 +59,7 @@ const ENV_MAP = {
   turn_username:                  'TURN_USERNAME',
   turn_credential:                'TURN_CREDENTIAL',
   screenconnect_url:              'SCREENCONNECT_URL',
+  getting_started_guide:          'GETTING_STARTED_GUIDE',
   email_provider:                 'EMAIL_PROVIDER',
   email_from:                     'EMAIL_FROM',
   smtp_host:                      'SMTP_HOST',

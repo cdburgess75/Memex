@@ -1,0 +1,47 @@
+{
+  "id": "search-ai",
+  "part": 1,
+  "order": 10,
+  "theme": "dark",
+  "title": "Searching and asking questions",
+  "intro": "The search box in the top bar finds files by name or by what is inside them. If your company has turned on AI, you can also ask questions.",
+  "sections": [
+    {
+      "heading": "Search for a file",
+      "text": [
+        "Click the search box and type a word or a file name. Depot lists matches as you type, even when the word is only inside a file."
+      ]
+    },
+    {
+      "heading": "Choose what you search",
+      "shot": "search-scope",
+      "steps": [
+        "Click the button next to the search box. It starts with **Auto**.",
+        "Choose **Auto** to search names and contents, or answer a question.",
+        "Choose **Contents** to search file names and what is inside files.",
+        "Choose **File names** to match file names only.",
+        "Choose **Ask AI** to treat everything you type as a question."
+      ]
+    },
+    {
+      "heading": "Ask a question",
+      "text": [
+        "Type a full question in the search box and press Enter. For example: What does the Northfield Clinic proposal cost? A window called **Ask the collection** opens."
+      ],
+      "shot": "ask-window",
+      "steps": [
+        "Your question appears at the top.",
+        "The answer appears underneath. It only uses files you are allowed to open.",
+        "Click **Close** when you are done."
+      ]
+    },
+    {
+      "heading": "Ask about particular files",
+      "steps": [
+        "Select the files you want to ask about.",
+        "Click the **Ask Claude** button in the selection bar. You can also right-click a file and choose **Ask AI about this**.",
+        "Type your question, then click **Ask Claude**. The answer only uses the files you chose."
+      ]
+    }
+  ]
+}
