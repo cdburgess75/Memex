@@ -180,6 +180,20 @@ router.put('/users/:userId/role', auth, requireRole('admin'), async (req, res) =
         });
       } catch (e) { console.error('audit role_changed failed:', e.message); }
     }
+    // A viewer has no library of their own; one who can now add files needs one. Made here
+    // for somebody who has signed in; anyone else gets theirs when they do. Idempotent, and
+    // best-effort: the role has changed either way.
+    if (role !== 'viewer') {
+      try {
+        const lib = await require('../lib/libraries').ensurePersonalLibraryFor(userId);
+        // and the getting-started guide in it, as on a first sign-in (not awaited)
+        if (lib?.id) {
+          const owner = await require('../lib/documentAccess').resolveActor(userId);
+          if (owner) require('../lib/gettingStarted').seedLibrary(lib.id, owner)
+            .catch((e) => console.error('admin: could not add the getting-started guide:', e.message));
+        }
+      } catch (e) { console.error('admin: could not make a personal library:', e.message); }
+    }
     res.json({ role });
   } catch (e) {
     serverError(res, e);
