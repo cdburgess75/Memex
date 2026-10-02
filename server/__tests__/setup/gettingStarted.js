@@ -13,5 +13,6 @@ jest.mock('../../lib/gettingStarted', () => ({
   backfill: jest.fn(async () => ({ candidates: 0, added: 0, failed: 0 })),
   enabled: jest.fn(async () => true),
   stop: jest.fn(),
+  settled: jest.fn(async () => {}),
   pdfPath: jest.fn(() => require('path').join(__dirname, '../../assets/getting-started/Getting started with Depot.pdf')),
 }));

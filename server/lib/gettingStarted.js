@@ -70,7 +70,19 @@ async function bundle() {
 // this call finished it, false when there was nothing to do (switched off, no files in
 // this build, already done or being done, not this person's live personal library, a
 // viewer). Throws only when adding failed, after giving the claim back.
-async function seedLibrary(libraryId, user) {
+// Sign-in starts a seed without waiting for it. Each one is tracked until it finishes so
+// settled() can wait for them: a database reset (tests) or a shutdown that runs while a
+// seed is mid-transaction otherwise deadlocks against it.
+const _inFlight = new Set();
+function seedLibrary(libraryId, user) {
+  const p = seedLibraryNow(libraryId, user);
+  _inFlight.add(p);
+  p.then(() => _inFlight.delete(p), () => _inFlight.delete(p));
+  return p;
+}
+async function settled() { await Promise.allSettled([..._inFlight]); }
+
+async function seedLibraryNow(libraryId, user) {
   if (!libraryId || !user?.id || user.role === 'viewer') return false;
   if (!(await enabled())) return false;
   const files = await bundle();
@@ -147,4 +159,4 @@ async function backfill({ log = () => {} } = {}) {
   return { candidates: rows.length, added, failed };
 }
 
-module.exports = { seedLibrary, backfill, enabled, stop, pdfPath, ASSET_DIR, FILES, _resetForTests: () => { _bundle = null; _stopping = false; } };
+module.exports = { seedLibrary, settled, backfill, enabled, stop, pdfPath, ASSET_DIR, FILES, _resetForTests: () => { _bundle = null; _stopping = false; } };
