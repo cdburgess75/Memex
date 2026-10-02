@@ -169,8 +169,7 @@ ANTHROPIC_MODEL=claude-sonnet-4-6
 STORAGE_PROVIDER=local
 STORAGE_ENCRYPTION_KEY=...         # AES-256-GCM at rest. If lost, encrypted files are unrecoverable.
 
-# In-browser Office editing
-COLLABORA_ENABLED=true
+# In-browser Office editing (switched on by an admin in Settings, not here)
 COLLABORA_SSL_TERMINATION=true     # true behind HTTPS, false for plain-http local
 
 # Public HTTPS

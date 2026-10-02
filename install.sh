@@ -150,9 +150,10 @@ APP_URL=$APP_URL
 TRUST_PROXY=$TRUST_PROXY
 STORAGE_PROVIDER=local
 STORAGE_ENCRYPTION_KEY=$STORAGE_ENCRYPTION_KEY
-# In-browser Office editing (Collabora) on by default. SSL termination follows
-# the deployment mode: true behind HTTPS (wss), false for plain-http local (ws).
-COLLABORA_ENABLED=true
+# In-browser Office editing (Collabora) starts switched off; an admin turns it on
+# in Settings. These only describe how the editor runs once it is on. SSL
+# termination follows the deployment mode: true behind HTTPS (wss), false for
+# plain-http local (ws).
 COLLABORA_SSL_TERMINATION=$COLLABORA_SSL
 COLLABORA_ADMIN_USER=admin
 COLLABORA_ADMIN_PASSWORD=$COLLABORA_ADMIN_PASSWORD
@@ -168,9 +169,9 @@ else
   [ -n "$MODE" ] || MODE="$(grep -q '^TRUST_PROXY=1' .env && echo public || echo local)"
   METHOD="${METHOD:-prebuilt}"
   # Existing .env from an older installer may predate in-browser editing — make
-  # sure the Collabora flags are present so editing works after this run too.
+  # sure the Collabora flags are present so the editor can run once it is switched
+  # on in Settings. (Whether it is on is the admin's switch, not an .env line.)
   grep -q '^MEMEX_MODE=' .env || printf 'MEMEX_MODE=%s\n' "$MODE" >> .env
-  grep -q '^COLLABORA_ENABLED=' .env || printf 'COLLABORA_ENABLED=true\n' >> .env
   grep -q '^COLLABORA_SSL_TERMINATION=' .env \
     || printf 'COLLABORA_SSL_TERMINATION=%s\n' "$([ "$MODE" = public ] && echo true || echo false)" >> .env
   # Backfill the Collabora admin password on older installs that ran with 'changeme'.
@@ -226,6 +227,9 @@ for _ in $(seq 1 60); do
 done
 
 echo
+# Schedule the helper that starts and stops the in-browser editor to match the
+# switch in Settings (Linux servers; elsewhere it says how to run it by hand).
+[ -x scripts/editor-switch.sh ] && { ./scripts/editor-switch.sh --install </dev/null || true; }
 if [ "$ok" = "1" ]; then info "Depot is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
 
 # Public (internet-facing) installs: narrow Keycloak's sign-in redirect URIs from
@@ -300,7 +304,8 @@ else
 fi
 echo
 echo "  ${B}Included${N}"
-echo "    In-browser Office editing (Collabora) is enabled."
+echo "    In-browser Office editing is switched off to save memory (about 600 MB)."
+echo "    Turn it on in Settings → Branding & links → In-browser editing."
 echo "    Optional per-deployment setup (Settings → …): Workspace branding, Email (365/SMTP)."
 echo
 echo "  ${B}Manage${N}"

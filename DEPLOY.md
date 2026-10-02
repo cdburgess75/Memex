@@ -27,7 +27,8 @@ curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/install.sh |
 ```
 
 It generates strong secrets, asks a few questions, writes `.env`, pulls the
-prebuilt image, and starts the stack (Postgres + Keycloak + app + Collabora).
+prebuilt image, and starts the stack (Postgres + Keycloak + app). The in-browser
+Office editor (Collabora) is not downloaded or started until an admin turns it on.
 
 Answer the prompts:
 
@@ -47,8 +48,10 @@ ANTHROPIC_API_KEY=sk-ant-... \
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/install.sh)"
 ```
 
-In-browser Office editing (Collabora) is enabled by default, with the correct
-SSL mode for whichever Mode you chose.
+In-browser Office editing (Collabora) starts switched off, because the editor
+costs about 600 MB of memory whether or not anyone uses it. An admin turns it on
+in Settings → Branding & links → In-browser editing; the installer has already set
+the correct SSL mode for whichever Mode you chose.
 
 ---
 
@@ -76,12 +79,20 @@ required for the Office editor to build correct same-origin URLs.
 
 ---
 
-## 4. Verify Office editing
+## 4. Turn on and verify Office editing (optional)
 
-Open any Word or Excel file, click Edit. The Collabora editor should load and be
-editable. If it is blank:
+In Depot, an admin ticks Settings → Branding & links → In-browser editing. Depot
+only records the choice; `scripts/editor-switch.sh`, run every minute from cron on
+the server, starts the editor to match (the first start downloads a 1.9 GB image).
+The line under the box reads Starting…, then On. Unticking it stops the editor
+within a minute.
 
-- Confirm `.env` has `COLLABORA_ENABLED=true`.
+On a host without cron (Docker Desktop on a Mac, say) run
+`./scripts/editor-switch.sh` in the install folder after changing the switch.
+
+Then open any Word or Excel file and click Edit. The Collabora editor should load
+and be editable. If it is blank:
+
 - Public/HTTPS deployments must have `COLLABORA_SSL_TERMINATION=true`; plain-http
   local deployments must have `false`. The installer sets this from the Mode, but
   a hand-edited `.env` can drift. After changing it: `docker compose up -d app`.
@@ -159,6 +170,26 @@ Pull a specific release on each host:
 cd /opt/memex     # wherever this deployment lives
 ./upgrade.sh v2026.07.11.003    # or ./upgrade.sh to take :latest
 ```
+
+`upgrade.sh` also brings the host files up to date with the release it deploys:
+it copies `docker-compose.yml`, `docker-compose.prod.yml`, itself and `scripts/`
+out of the new image, keeps the replaced copies in `.host-previous/`, then runs
+`docker compose up -d` so a changed service definition takes effect. `.env`, the
+Caddyfile and the Keycloak realm file are never touched.
+
+A server installed before October 2026 has an `upgrade.sh` that does not do this
+yet. Once, after its next update, run:
+
+```bash
+cd /opt/memex
+docker compose cp app:/app/upgrade.sh upgrade.sh && chmod +x upgrade.sh
+./upgrade.sh "$(sed -n 's/^MEMEX_TAG=//p' .env)"
+```
+
+That refreshes the host files, puts Keycloak under its memory limit (sign-in is
+unavailable for about half a minute while it restarts), schedules
+`scripts/editor-switch.sh`, and stops the in-browser editor until an admin turns
+it on in Settings.
 
 If you deploy from a source checkout instead of the prebuilt image:
 

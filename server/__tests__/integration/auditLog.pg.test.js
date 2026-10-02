@@ -58,7 +58,7 @@ suite('auditLog against real Postgres', () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     // Stand-ins for base-schema tables later migrations touch: 0005 tidies a row out of
     // system_settings; 0007 adds a verified-address column to user_roles.
-    await db.query('CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT)');
+    await db.query('CREATE TABLE system_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_by UUID)');
     await db.query('CREATE TABLE user_roles (user_id UUID PRIMARY KEY, email TEXT, role TEXT)');
     // A pre-existing row (hash NULL) that must stay outside the chain.
     await db.query("INSERT INTO document_events (event_type, actor_email, detail) VALUES ('legacy', 'old@x.com', 'pre-chain row')");
