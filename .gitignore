@@ -22,3 +22,6 @@ secrets/
 # never committed; the public license-verify key is the one deliberate exception.
 keys/
 !keys/ptech-license-public.pem
+
+# Host files replaced by upgrade.sh are kept here for one release.
+.host-previous/

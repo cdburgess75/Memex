@@ -74,6 +74,9 @@ suite('the getting-started guide in every personal library', () => {
   });
 
   beforeEach(async () => {
+    // A sign-in in the previous test may still be adding the guide in the background;
+    // dropping the schema under it deadlocks.
+    await guide.settled();
     await reset();
     await migrate();
     settings._reset();

@@ -2826,6 +2826,10 @@ html.dark .file-action-btn.danger { color: #E57373; }
 .setup-hint { font-weight: 400; color: var(--ink-faint); font-size: 11px; }
 .setup-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); margin: 8px 0; }
 .setup-check input { width: auto; height: auto; }
+.editor-switch .setup-check { margin: 0 0 4px; font-size: 14px; }
+.editor-switch-status { font-size: 14px; line-height: 1.45; color: var(--ink-soft); max-width: 60ch; }
+.editor-switch-status[data-state="on"] { color: var(--ink); }
+.editor-switch-status[data-state="failed"], .editor-switch-status[data-state="lingering"] { color: var(--danger); }
 .setup-brand-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .setup-result { font-size: 12px; min-height: 16px; margin: 2px 0 6px; line-height: 1.4; }
 .setup-ok { color: var(--success); }
@@ -5512,6 +5516,51 @@ async function saveIntegrationSettings() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+/* In-browser editing switch (Settings → Branding & links → Integrations). The editor is a
+   separate service that costs the server about 600 MB, so it is off until an admin turns
+   it on here. Depot only records the choice; the server starts or stops the editor within
+   a minute, so the line under the box reports where that has got to and keeps asking
+   until it settles. Edit buttons follow the editor actually answering, not the box. */
+const EDITOR_SWITCH_TEXT = {
+  off: 'Off. Office files open in the preview, or in Word and Excel on the person\u2019s own computer. Turning this on uses about 600 MB of the server\u2019s memory.',
+  starting: 'Starting\u2026 this usually takes about a minute. The first time, the server downloads the editor before starting it, which can take several minutes.',
+  on: 'On. People see Edit on Office files the next time they load Depot.',
+  failed: 'Couldn\u2019t start. This server is not starting the editor on its own. In the Depot folder on the server, run ./scripts/editor-switch.sh',
+  stopping: 'Stopping\u2026',
+  lingering: 'Off, but the editor is still running on the server. To stop it, run ./scripts/editor-switch.sh in the Depot folder on the server.',
+};
+let editorSwitchTimer = null;
+function renderEditorSwitch(st) {
+  const box = document.getElementById('cfg-editor-on');
+  const line = document.getElementById('cfg-editor-status');
+  clearTimeout(editorSwitchTimer);
+  if (!box || !line) return; // the tab was left
+  box.disabled = false;
+  box.checked = !!st.enabled;
+  line.textContent = EDITOR_SWITCH_TEXT[st.state] || '';
+  line.dataset.state = st.state;
+  // What this admin sees follows at once; everyone else picks it up on their next load.
+  if (appConfig) appConfig.editingEnabled = st.state === 'on';
+  if (st.state === 'starting' || st.state === 'stopping') editorSwitchTimer = setTimeout(loadEditorSwitch, 4000);
+}
+async function loadEditorSwitch() {
+  if (!document.getElementById('cfg-editor-on')) return;
+  try { renderEditorSwitch(await apiGet('/admin/editor')); }
+  catch (e) {
+    const line = document.getElementById('cfg-editor-status');
+    if (line) { line.textContent = 'Could not check the editor: ' + e.message; line.dataset.state = 'failed'; }
+  }
+}
+async function setEditorSwitch(on) {
+  const box = document.getElementById('cfg-editor-on');
+  if (box) box.disabled = true;
+  try { renderEditorSwitch(await apiPut('/admin/editor', { enabled: !!on })); }
+  catch (e) {
+    toast('Could not change in-browser editing: ' + e.message);
+    if (box) { box.checked = !on; box.disabled = false; }
+  }
+}
+
 /* Sign-in methods (Settings) — thin wrappers over /setup/login-*; those routes
    push the real config into Keycloak, so secrets pass through and are cleared
    from the form on success. */
@@ -5904,6 +5953,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
   body.scrollTop = 0;
   bindLabels(body);
+  if (tab === 'workspace') loadEditorSwitch(); // fills in the in-browser editing switch
 }
 
 // ---- External storage connections ----
@@ -6859,9 +6909,14 @@ function systemSettingsHtml() {
       <div class="settings-grid">
         <label>App URL</label>
         <input type="url" id="cfg-app-url" value="${esc(s.app_url||'')}" placeholder="https://memex.yourco.com (required for Office Online editing)">
+        <label>In-browser editing</label>
+        <div class="editor-switch">
+          <label class="setup-check"><input type="checkbox" id="cfg-editor-on" disabled onchange="setEditorSwitch(this.checked)"> Edit Word, Excel and PowerPoint files in the browser</label>
+          <div class="editor-switch-status" id="cfg-editor-status" role="status">Checking…</div>
+        </div>
         <label>Office files' main action</label>
         <select id="cfg-office-open">
-          <option value="preview"${s.default_office_open!=='desktop'?' selected':''}>Edit in browser (default)</option>
+          <option value="preview"${s.default_office_open!=='desktop'?' selected':''}>Edit in browser, when it is on (default)</option>
           <option value="desktop"${s.default_office_open==='desktop'?' selected':''}>Desktop Word / Excel (this computer)</option>
         </select>
         <label>ScreenConnect URL</label>
@@ -7879,7 +7934,7 @@ function fileCommandCreateUploadHtml() {
   // A library of your own: what you put in it is yours until you share it.
   const mineAlone = currentLibrary()?.personal && !currentLibrary()?.shared && canAdd;
   const createItems = canAdd
-    ? `<button onclick="closeCreateMenu();createFolder()">New folder</button><button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button><button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button>${mineAlone ? '<div class="menu-rule"></div><div class="file-create-note">This library is yours. Only you (and admins) will see what you put in it, until you share it.</div>' : ''}${canCreateLib ? '<div class="menu-rule"></div>' : ''}`
+    ? `<button onclick="closeCreateMenu();createFolder()">New folder</button>${appConfig?.editingEnabled ? `<button onclick="closeCreateMenu();createFile('docx')">New Word document</button><button onclick="closeCreateMenu();createFile('xlsx')">New Excel spreadsheet</button>` : ''}<button onclick="closeCreateMenu();createFile('md')">New Markdown file</button><button onclick="closeCreateMenu();createFile('txt')">New Text file</button>${mineAlone ? '<div class="menu-rule"></div><div class="file-create-note">This library is yours. Only you (and admins) will see what you put in it, until you share it.</div>' : ''}${canCreateLib ? '<div class="menu-rule"></div>' : ''}`
     : '';
   const create = (createItems || canCreateLib)
     ? `<div class="file-upload-actions masthead-upload-wrap"><button class="masthead-upload" type="button" onclick="toggleCreateMenu(event)"><span class="plus">+</span><span>Create</span><span class="chev">⌄</span></button><div class="file-upload-menu file-create-menu" id="file-create-menu">${createItems}${canCreateLib ? `<button onclick="closeCreateMenu();openNewLibraryModal()">New library</button>` : ''}</div></div>`
@@ -11371,7 +11426,8 @@ async function editInBrowser(fileId) {
   try {
     const data = await apiGet('/files/' + fileId + '/office');
     if (data.editUrl) { openEditorModal(data.editUrl, data.name || 'Document'); return; }
-    toast('In-browser editing is not set up on this server. An admin can enable it by configuring the Collabora editor URL.');
+    if (appConfig) appConfig.editingEnabled = false; // it was switched off since this page loaded
+    toast('In-browser editing is switched off on this server. An admin can turn it on in Settings.');
   } catch (e) { toast('Error: ' + e.message); }
 }
 function openEditorModal(url, name) {
@@ -12078,11 +12134,15 @@ async function previewFile(fileId, opts = {}) {
   // Fixed action-bar slots on every file: [Primary] [Open in ⌄] [Share] [Download] [Close].
   // A slot with nothing real to offer is hidden, never faked. The Office primary
   // follows the workspace preference (Settings → System); text files' primary is Save.
+  // With in-browser editing off, the desktop app is the only way to edit, so it takes the
+  // primary slot whatever the preference says, and the "Open in" menu (which would hold
+  // that one same choice) is left out.
+  const canEditInBrowser = !!appConfig?.editingEnabled;
   let primaryBtn = '';
   if (canEdit) primaryBtn = `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>`;
-  else if (isOfficeFile && (appConfig?.defaultOfficeOpen === 'desktop')) primaryBtn = `<button class="run-btn" onclick="openInDesktopOffice('${fileId}')">${appName} (this computer)</button>`;
-  else if (isOfficeFile && appConfig?.editingEnabled) primaryBtn = `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>`;
-  const openWith = isOfficeFile ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button></div></div>` : '';
+  else if (isOfficeFile && (appConfig?.defaultOfficeOpen === 'desktop' || !canEditInBrowser)) primaryBtn = `<button class="run-btn" onclick="openInDesktopOffice('${fileId}')">${appName} (this computer)</button>`;
+  else if (isOfficeFile) primaryBtn = `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>`;
+  const openWith = (isOfficeFile && canEditInBrowser) ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button></div></div>` : '';
   const shareBtn = (currentUser?.role !== 'viewer') ? `<button class="ghost-btn" onclick="closeFilePreview();openShareFile('${fileId}')">Share</button>` : '';
   closeFilePreview();
   const navPrev = _previewIdx > 0 ? '' : ' disabled';

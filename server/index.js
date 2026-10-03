@@ -110,13 +110,11 @@ function browserKeycloakUrl(req) {
 
 // Public config — lets the frontend bootstrap auth without a build step
 app.get('/api/config', async (req, res) => {
-  // In-browser Office editing is on when Collabora is proxied same-origin
-  // (collabora_enabled) or a direct browser URL is configured (collabora_url).
+  // In-browser Office editing is offered only when an admin has switched it on AND
+  // the editor is answering — so no client shows an Edit button that opens nothing
+  // while the editor is off or still starting (lib/editorStatus.js).
   let editingEnabled = false;
-  try {
-    editingEnabled = String((await settings.getOrEnv('collabora_enabled')) || '').toLowerCase() === 'true'
-      || !!(await settings.getOrEnv('collabora_url'));
-  } catch { /* default off */ }
+  try { editingEnabled = await require('./lib/editorStatus').available(); } catch { /* default off */ }
   // Workspace branding (admin-set). Public so the login card — shown before
   // auth — can render the org's name/logo/scheme.
   let brand = { name: '', logo: '', scheme: '' };
@@ -199,6 +197,7 @@ app.use('/api/log', require('./routes/log'));
 app.use('/api/security', require('./routes/security'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin/settings', require('./routes/settings'));
+app.use('/api/admin/editor', require('./routes/editor'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/preferences', require('./routes/preferences'));
