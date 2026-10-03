@@ -40,9 +40,10 @@ describe('available (what every client is told)', () => {
     await editorStatus.available(); await editorStatus.available(); await editorStatus.available();
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
-  test('a directly-exposed editor (collabora_url) still counts without the switch', async () => {
-    world({ enabled: null, up: true, url: 'https://office.example.com' });
-    expect(await editorStatus.available()).toBe(true);
+  test('a directly-exposed editor (collabora_url) does not count while the switch is off', async () => {
+    world({ enabled: 'false', up: true, url: 'https://office.example.com' });
+    expect(await editorStatus.available()).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

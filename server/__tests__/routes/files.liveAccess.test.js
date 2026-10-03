@@ -206,7 +206,7 @@ describe('the Collabora editing token', () => {
     const files = require('../../routes/files');
     const settings = require('../../lib/settings');
     const realFetch = global.fetch;
-    const conf = { collabora_url: 'http://collabora:9980', wopi_internal_url: 'http://memex-app:3000' };
+    const conf = { collabora_enabled: 'true', collabora_url: 'http://collabora:9980', wopi_internal_url: 'http://memex-app:3000' };
     settings.getOrEnv.mockImplementation(async (k) => conf[k] || null);
     global.fetch = jest.fn(async () => ({ ok: true, text: async () => '<wopi-discovery><net-zone name="external-http"><app name="x"><action name="edit" ext="docx" urlsrc="http://collabora:9980/c.html?"/></app></net-zone></wopi-discovery>' }));
     try {

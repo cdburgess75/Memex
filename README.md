@@ -133,7 +133,7 @@ One command clones the repo, generates strong secrets, writes `.env`, and starts
 curl -fsSL https://raw.githubusercontent.com/cdburgess75/Memex/main/install.sh | bash
 ```
 
-It asks a few questions (local vs public mode, admin email, Anthropic key, domain). It never reuses placeholder secrets: each deployment gets its own random Postgres, Keycloak, and encryption credentials. In-browser Office editing is enabled by default with the correct SSL mode for your choice.
+It asks a few questions (local vs public mode, admin email, Anthropic key, domain). It never reuses placeholder secrets: each deployment gets its own random Postgres, Keycloak, and encryption credentials. In-browser Office editing starts switched off (an admin turns it on in Settings); the installer sets the correct SSL mode for your choice.
 
 For a scripted / non-interactive install:
 

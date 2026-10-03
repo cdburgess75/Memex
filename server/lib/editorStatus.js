@@ -56,10 +56,10 @@ async function running({ maxAgeMs = PROBE_TTL_MS } = {}) {
 }
 
 // What every signed-in client is told (editingEnabled in /api/config): offer editing
-// only when it will actually open.
+// only when it will actually open. The switch decides; collabora_url only says where
+// a directly-exposed editor lives once it is on.
 async function available() {
-  const configured = (await switchedOn()) || !!(await settings.getOrEnv('collabora_url'));
-  if (!configured) return false;
+  if (!(await switchedOn())) return false;
   return running();
 }
 
@@ -81,6 +81,8 @@ async function status() {
   const age = changedAt ? Date.now() - changedAt : Infinity;
   let state;
   if (enabled) state = up ? 'on' : (age < STARTING_GRACE_MS ? 'starting' : 'failed');
+  // 'failed' is advice, not a verdict: if the editor answers later (a slow first
+  // download, or the admin ran the script), the next read says 'on'.
   else state = !up ? 'off' : (age < STOPPING_GRACE_MS ? 'stopping' : 'lingering');
   return { enabled, running: up, state };
 }

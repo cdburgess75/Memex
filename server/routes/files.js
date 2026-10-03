@@ -249,8 +249,8 @@ function discoveryUrlSrc(xml, ext) {
 async function collaboraEditUrl(doc, ext, req) {
   if (!COLLABORA_EDIT_EXTS.has(ext)) return null;
   const enabled = String((await settings.getOrEnv('collabora_enabled')) || '').toLowerCase() === 'true';
+  if (!enabled) return null; // switched off in Settings — read-only preview
   const configuredBase = (await settings.getOrEnv('collabora_url') || '').replace(/\/$/, '');
-  if (!enabled && !configuredBase) return null; // editing not configured — read-only preview
   // Same-origin by default (editor proxied through this app); a configured
   // collabora_url overrides for setups that expose Collabora directly. Use the
   // real request origin (not publicAppBase, which can swap in a stale app_url) —

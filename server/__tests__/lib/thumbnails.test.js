@@ -3,7 +3,9 @@
 // (sharp/poppler/ffmpeg/Collabora) is exercised in the deployed container, not
 // here — these tests never invoke a renderer, so they need no native binaries.
 jest.mock('../../lib/storage', () => ({ download: jest.fn(), upload: jest.fn() }));
+jest.mock('../../lib/editorStatus', () => ({ running: jest.fn(async () => false) }));
 const storage = require('../../lib/storage');
+const editorStatus = require('../../lib/editorStatus');
 const thumbs = require('../../lib/thumbnails');
 
 beforeEach(() => jest.clearAllMocks());
@@ -54,6 +56,23 @@ describe('getThumbnail', () => {
     const out = await thumbs.getThumbnail({ id: 'd2', name: 'a.exe', size: 1000, storage_path: 'documents/z' });
     expect(out).toBeNull();
     expect(storage.download).not.toHaveBeenCalled();
+  });
+
+  test('an Office file while the editor is not answering: null without reading the source', async () => {
+    // The editor is off by default; downloading (and decrypting) a whole document only
+    // to fail the conversion would repeat on every card view.
+    storage.download.mockRejectedValueOnce(new Error('cache miss'));
+    editorStatus.running.mockResolvedValueOnce(false);
+    const out = await thumbs.getThumbnail({ id: 'd4', name: 'deck.pptx', size: 5 * 1024 * 1024, storage_path: 'documents/deck', content_hash: 'deck' });
+    expect(out).toBeNull();
+    expect(storage.download).toHaveBeenCalledTimes(1); // the cache probe only
+    expect(storage.download).not.toHaveBeenCalledWith('documents/deck');
+  });
+
+  test('a non-Office file does not ask whether the editor is up', async () => {
+    storage.download.mockRejectedValueOnce(new Error('cache miss')).mockRejectedValueOnce(new Error('gone'));
+    await thumbs.getThumbnail({ id: 'd5', name: 'a.png', size: 1000, storage_path: 'documents/p', content_hash: 'p' });
+    expect(editorStatus.running).not.toHaveBeenCalled();
   });
 
   test('skips rendering for a source over the size ceiling', async () => {

@@ -55,12 +55,12 @@ WANT="$(printf '%s' "$WANT" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
 RUNNING="$($DC $COMPOSE --profile editor ps -q --status running collabora </dev/null 2>/dev/null || true)"
 
 if [ "$WANT" = "true" ]; then
-  if [ -z "$RUNNING" ]; then
-    echo "editor-switch: editing is switched on - starting the editor"
-    # --no-deps: never touch the app or database containers from here.
-    # shellcheck disable=SC2086
-    $DC $COMPOSE --profile editor up -d --no-deps collabora </dev/null
-  fi
+  [ -n "$RUNNING" ] || echo "editor-switch: editing is switched on - starting the editor"
+  # Run `up` whether or not it is already running: a release that changed the editor's
+  # definition is applied this way (it does nothing when nothing changed).
+  # --no-deps: never touch the app or database containers from here.
+  # shellcheck disable=SC2086
+  $DC $COMPOSE --profile editor up -d --no-deps collabora </dev/null >/dev/null
 elif [ -n "$RUNNING" ]; then
   echo "editor-switch: editing is switched off - stopping the editor"
   # shellcheck disable=SC2086
