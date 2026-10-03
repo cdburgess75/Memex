@@ -70,6 +70,8 @@ refresh_host_files() {
         [ -f "$f" ] || continue
         local name; name="scripts/$(basename "$f")"
         cmp -s "$f" "$name" && continue
+        mkdir -p .host-previous/scripts
+        [ -f "$name" ] && cp -p "$name" ".host-previous/$name"
         cp -p "$f" "$name.new" && mv -f "$name.new" "$name" && info "Updated $name"
       done
     fi
@@ -103,6 +105,16 @@ for _ in $(seq 1 40); do
 done
 if [ "$ok" = "1" ]; then info "Upgrade complete — now running :$TAG. 🎉"
 else warn "App didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
+
+# Keycloak is recreated when its definition changed (a memory limit, say); nobody can
+# sign in until it answers, so wait for it too before calling the update done.
+KC_PORT="$(grep -E '^KEYCLOAK_PUBLIC_PORT=' .env | head -1 | cut -d= -f2)"; KC_PORT="${KC_PORT:-8080}"
+kc_ok=0
+for _ in $(seq 1 40); do
+  if [ "$(curl -s -m3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$KC_PORT/realms/memex/.well-known/openid-configuration" 2>/dev/null || true)" = "200" ]; then kc_ok=1; break; fi
+  sleep 3
+done
+[ "$kc_ok" = "1" ] || warn "Keycloak isn't answering on :$KC_PORT yet — sign-in may take a little longer; check '$DC $COMPOSE logs -f keycloak'."
 
 # Keep the editor's on/off helper scheduled, and apply the switch once now.
 [ -x scripts/editor-switch.sh ] && { ./scripts/editor-switch.sh --install </dev/null || true; }

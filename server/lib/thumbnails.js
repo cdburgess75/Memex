@@ -367,6 +367,10 @@ async function getThumbnail(doc) {
 
   // 2) Generate.
   if ((Number(doc.size) || 0) > MAX_SOURCE_BYTES) return null;
+  // Office pages are rendered by the editor. While it is switched off (the default) or
+  // still starting there is nothing to render, so skip reading the source rather than
+  // download and decrypt a whole document only to fail the conversion.
+  if (OFFICE_EXTS.includes(ext) && !(await require('./editorStatus').running())) return null;
   let src;
   try { src = await storage.download(doc.storage_path); } catch { return null; }
 
