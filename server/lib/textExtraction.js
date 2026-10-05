@@ -1,6 +1,15 @@
 'use strict';
 
+// Postgres TEXT cannot hold U+0000, and some PDFs yield it: one in the text refuses the
+// whole upload ("invalid byte sequence for encoding UTF8: 0x00"). Every caller stores what
+// this returns, so it is stripped here, once, and no path can store it.
+const stripNul = (text) => (typeof text === 'string' ? text.replace(/\u0000/g, '') : text);
+
 async function extractText(buffer, filename) {
+  return stripNul(await extractRawText(buffer, filename));
+}
+
+async function extractRawText(buffer, filename) {
   const ext = String(filename || '').split('.').pop().toLowerCase();
   const MAX = 100_000;
 
