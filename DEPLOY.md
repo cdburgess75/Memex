@@ -191,7 +191,10 @@ docker compose cp app:/app/upgrade.sh upgrade.sh && chmod +x upgrade.sh
 ```
 
 That refreshes the host files, puts Keycloak under its memory limit (sign-in is
-unavailable for about half a minute while it restarts), schedules
+unavailable for about half a minute while it restarts; confirm it is back with
+`curl -s https://<your-domain>/realms/memex/.well-known/openid-configuration | head -c 80`,
+and if it stays down check `docker logs memex-keycloak-1` for "Killed": then raise
+`KEYCLOAK_MEM_LIMIT` in `.env` and `docker compose up -d keycloak`), schedules
 `scripts/editor-switch.sh`, and stops the in-browser editor until an admin turns
 it on in Settings.
 
