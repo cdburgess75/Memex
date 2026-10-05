@@ -23,7 +23,7 @@ module.exports = [
     clip: MODAL,
     caption: 'Previewing a PDF without downloading it',
   },
-  // 2. The action bar. Details stays closed here (its own picture would collide with
+  // 2. The action bar (the last shot). Details stays closed here (its own picture would collide with
   // the callout below the Details button); its contents are described in the text instead.
   {
     id: 'action-bar',
@@ -38,32 +38,14 @@ module.exports = [
     // badges and just the title and "Prepared for" line of the document, and cuts off
     // before the Summary heading so no unreferenced body text is prominent on the page.
     clip: { x: 230, y: 43, width: 980, height: 230 },
+    // Editing in the browser is off unless an admin turns it on, so the first button
+    // hands the file to Word on the person's computer and there is no "Open in" menu.
     callouts: [
       { n: 1, selector: '.file-preview-head-actions .run-btn', place: 'b' },
-      { n: 2, selector: '.file-preview-head-actions button[onclick="togglePreviewOpenMenu(event)"]', place: 'b' },
-      { n: 3, selector: '.file-preview-head-actions button[onclick*="openShareFile"]', place: 'b' },
-      { n: 4, selector: '.file-preview-head-actions button[onclick*="downloadFile"]', place: 'b' },
-      { n: 5, selector: '.file-preview-head-actions button[onclick="togglePreviewInfo()"]', place: 'b' },
+      { n: 2, selector: '.file-preview-head-actions button[onclick*="openShareFile"]', place: 'b' },
+      { n: 3, selector: '.file-preview-head-actions button[onclick*="downloadFile"]', place: 'b' },
+      { n: 4, selector: '.file-preview-head-actions button[onclick="togglePreviewInfo()"]', place: 'b' },
     ],
     caption: 'The action bar above a preview, cropped just below the document title',
-  },
-  // 3. The "Open in" menu for an Office file: edit in browser, or hand off to desktop Office.
-  {
-    id: 'open-in-menu',
-    theme: 'dark',
-    route: '#/files/Proposals/2026',
-    localStorage: MY,
-    setup: async (page) => {
-      await preview(F['Northfield Clinic proposal'].id, 1800)(page);
-      await page.click('button[onclick="togglePreviewOpenMenu(event)"]');
-      await sleep(400);
-      await unfocus(page);
-    },
-    clip: MODAL,
-    callouts: [
-      { n: 1, selector: '#preview-open-menu button[onclick*="editInBrowser"]', place: 'l' },
-      { n: 2, selector: '#preview-open-menu button[onclick*="openInDesktopOffice"]', place: 'l' },
-    ],
-    caption: 'Choosing how to open a Word, Excel or PowerPoint file',
   },
 ];

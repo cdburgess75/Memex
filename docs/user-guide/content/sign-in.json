@@ -11,7 +11,7 @@
       "shot": "card",
       "steps": [
         "Click **Sign in with Microsoft 365** if your company has turned it on.",
-        "Otherwise, click **Sign in with email & password**. If you forget your password, ask your administrator."
+        "Otherwise, click **Sign in with email & password**, then type your email and password on the page that opens. If you forget your password, ask your administrator."
       ],
       "tip": "To sign out, click your name in the top right corner, then click **Sign out**."
     }

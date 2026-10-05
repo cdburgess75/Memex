@@ -105,6 +105,11 @@ function renderChapter(ch) {
         body = `<div class="keep">${head.join('')}${img}${steps}</div>`;
         tail.push(bullets, ...boxes);
       }
+    } else if (!s.steps.length) {
+      // No picture and no steps: the bullets ARE the content, so they travel with the
+      // heading and lead text (otherwise "What you can preview" ended a page with its
+      // list overleaf).
+      body = `<div class="keep">${head.join('')}${bullets}</div>`; tail.push(...boxes);
     } else { head.push(steps); body = `<div class="keep">${head.join('')}</div>`; tail.push(bullets, ...boxes); }
     out.push(`<section class="sec">${body}${tail.join('')}</section>`);
   }

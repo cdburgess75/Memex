@@ -9504,7 +9504,7 @@ async function renderHome() {
     const statsStrip = `<div class="dash-stats">${[
       stat('Files', files.length.toLocaleString(), trend(filesDelta), files.length ? homeSpark(filesSeries, sparkColor(filesDelta), 84, 34) : '', '--info', 'files'),
       totalBytes > 0
-        ? stat('Storage', `${Math.round(pct)}%`, `${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}`, homeDonut(pct, 44, storeTone), storeTone.slice(4, -1), 'storage')
+        ? stat('Storage', `${Math.round(pct)}%`, stats.freeBytes != null ? `${fileSizeLabel(usedBytes)} used · ${fileSizeLabel(stats.freeBytes)} free` : `${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}`, homeDonut(pct, 44, storeTone), storeTone.slice(4, -1), 'storage')
         : stat('Storage', fileSizeLabel(usedBytes), `across ${plural(files.length, 'file')}`, '', '--success', 'storage'),
       stat('Shared', shared.toLocaleString(), `${plural(liveShares.length + liveFolderLinks.length, 'active link')}`, '', '--state-shared', 'shared'),
       stat('Libraries', libs.toLocaleString(), sharedLibs.length ? `${sharedLibs.length} shared with you` : (isAdmin ? 'in this workspace' : 'you can open'), '', '--warning', 'libraries'),

@@ -425,7 +425,7 @@ function search(q) {
 }
 
 // ─── routes ───
-const CONFIG = { keycloakUrl: 'http://127.0.0.1', keycloakRealm: 'demo', keycloakClientId: 'demo', version: 'v2026.09.19.005', editingEnabled: true, defaultOfficeOpen: 'preview', loginIdps: ['microsoft'], brand: { name: 'Acme Co', logo: '', scheme: 'ledger' }, maxUploadMb: 2048, maxUploadFiles: 1000, setupRequired: false };
+const CONFIG = { keycloakUrl: 'http://127.0.0.1', keycloakRealm: 'demo', keycloakClientId: 'demo', version: 'v2026.09.19.005', editingEnabled: false, defaultOfficeOpen: 'preview', loginIdps: ['microsoft'], brand: { name: 'Acme Co', logo: '', scheme: 'ledger' }, maxUploadMb: 2048, maxUploadFiles: 1000, setupRequired: false };
 // The app draws its first view before it has asked who you are and which libraries you have
 // (index.html _afterLogin). A real server answers the file list more slowly than those, so the
 // first view already knows them; an instant fixture would win the race and draw a Home with

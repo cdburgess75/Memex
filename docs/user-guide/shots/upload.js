@@ -76,8 +76,8 @@ module.exports = [
     callouts: [
       { n: 1, selector: CREATE_BTN, place: 't' },
       { n: 2, selector: '#file-create-menu button[onclick*="createFolder"]', place: 'r' },
-      { n: 3, selector: '#file-create-menu button[onclick*="createFile(\'docx\')"]', place: 'r' },
-      { n: 4, selector: '#file-create-menu button[onclick*="createFile(\'xlsx\')"]', place: 'r' },
+      { n: 3, selector: '#file-create-menu button[onclick*="createFile(\'md\')"]', place: 'r' },
+      { n: 4, selector: '#file-create-menu button[onclick*="createFile(\'txt\')"]', place: 'r' },
     ],
     caption: 'The Create menu, open above the file list',
   },

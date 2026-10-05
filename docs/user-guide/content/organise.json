@@ -15,7 +15,7 @@
       "steps": [
         "Click the checkbox at the start of each row you want.",
         "Click **Move to folder…**, then click a folder to move everything into it.",
-        "Click **Move to library…** to move the selected files, not folders, to another library.",
+        "Click **Move to library…** to move everything you selected to another library.",
         "Click **Delete** to move everything you selected to Trash."
       ]
     },

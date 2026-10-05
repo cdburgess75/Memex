@@ -176,8 +176,10 @@ cd /opt/memex     # wherever this deployment lives
 `upgrade.sh` also brings the host files up to date with the release it deploys:
 it copies `docker-compose.yml`, `docker-compose.prod.yml`, itself and `scripts/`
 out of the new image, keeps the replaced copies in `.host-previous/`, then runs
-`docker compose up -d` so a changed service definition takes effect. `.env`, the
-Caddyfile and the Keycloak realm file are never touched.
+`docker compose up -d` so a changed service definition takes effect. Once the
+new release is healthy it removes older Depot images that no container uses (each
+release used to leave one behind). `.env`, the Caddyfile and the Keycloak realm
+file are never touched.
 
 A server installed before October 2026 has an `upgrade.sh` that does not do this
 yet. Once, **after** that server has been updated to an October 2026 release or

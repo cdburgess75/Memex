@@ -48,7 +48,7 @@
       "steps": [
         "**Files** shows how many files you have, and how that is changing.",
         "**Storage** shows how much space you are using.",
-        "**Shared** shows how many of your files have a link.",
+        "**Shared** counts files others added, and your live links.",
         "**Libraries** shows how many libraries you can open."
       ]
     },
