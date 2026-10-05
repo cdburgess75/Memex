@@ -1174,14 +1174,20 @@ router.get('/home-stats', auth, async (req, res) => {
     // Storage donut: an explicit workspace quota (setting) if present — used vs
     // quota; otherwise the real disk (used vs total), which gives a meaningful
     // ring rather than a near-empty one against a huge free volume.
-    let usedBytes = null, totalBytes = null;
+    //
+    // On the disk, "used" is what is actually stored and "free" is what Depot can still
+    // write; their sum is the space Depot can really use. The filesystem's own reserve
+    // (5% on ext4, kept for the system) is in neither, so it no longer shows up as used:
+    // on a 1 TB disk that reserve alone read as 45 GB of phantom usage.
+    let usedBytes = null, totalBytes = null, freeBytes = null;
     const qs = await settings.getOrEnv('storage_quota_gb');
     try {
       const st = await require('fs').promises.statfs(await storage.localBase());
-      const diskTotal = Number(st.blocks) * Number(st.bsize);
-      const diskFree = Number(st.bavail) * Number(st.bsize);
+      const bs = Number(st.bsize);
+      const diskUsed = (Number(st.blocks) - Number(st.bfree)) * bs;
+      const diskFree = Number(st.bavail) * bs;
       if (qs && Number(qs) > 0) { totalBytes = Number(qs) * 1024 * 1024 * 1024; usedBytes = null; /* client fills workspace bytes */ }
-      else { totalBytes = diskTotal; usedBytes = diskTotal - diskFree; }
+      else { usedBytes = diskUsed; freeBytes = diskFree; totalBytes = diskUsed + diskFree; }
     } catch { /* unknown */ }
 
     // Uploads per day over the last 14 days (admin: workspace-wide; else the
@@ -1206,7 +1212,7 @@ router.get('/home-stats', auth, async (req, res) => {
     let activeUsers = 1;
     if (isAdmin) { try { const a = await db.queryOne(`SELECT count(distinct user_email)::int n FROM activity_log WHERE created_at > now() - interval '7 days'`); activeUsers = a?.n || 0; } catch { /* */ } }
 
-    res.json({ usedBytes, totalBytes, uploads14, activeUsers });
+    res.json({ usedBytes, totalBytes, freeBytes, uploads14, activeUsers });
   } catch (e) { serverError(res, e); }
 });
 
