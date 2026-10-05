@@ -9,12 +9,12 @@
     {
       "shot": "action-bar",
       "steps": [
-        "Click **Edit** to change a Word or Excel file in your browser, if your company has turned this on.",
-        "Click **Open in ⌄** for other ways to open it, such as your desktop app.",
+        "Click **Word (this computer)** to open a Word file in Word on your computer and make your changes there. Excel and PowerPoint files get a matching button.",
         "Click **Share** to send the file to someone.",
         "Click **Download** to save a copy to your computer.",
         "Click **Details** to see who added it, when it changed and where it is kept."
-      ]
+      ],
+      "note": "If your company has turned on editing in the browser, the first button is **Edit** instead, and an **Open in ⌄** button beside it offers both ways of opening the file."
     },
     {
       "heading": "What you can preview",
@@ -24,7 +24,7 @@
       "bullets": [
         "Pictures, PDFs, videos, audio and saved emails.",
         "Word documents and Excel spreadsheets.",
-        "Text and code files, shown with line numbers."
+        "Text, Markdown, CSV, JSON and log files, shown with line numbers."
       ],
       "tip": "Click the arrows at the sides of the preview, or press the left or right arrow key, to see the previous or next file."
     }

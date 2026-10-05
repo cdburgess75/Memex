@@ -17,11 +17,15 @@
     },
     {
       "heading": "Create a new file or folder",
+      "shot": "create-menu",
       "steps": [
-        "Click **Create**, then choose **New folder**, **New Word document** or **New Excel spreadsheet**.",
-        "Type a name and click **OK**. A new file opens straight away."
+        "Click **Create** above your files.",
+        "Choose **New folder** to make a folder.",
+        "Choose **New Markdown file** for notes with headings and lists.",
+        "Choose **New Text file** for plain text."
       ],
-      "note": "In a library shared with you as read-only, **Upload** is hidden. Ask the owner for Read-Write access."
+      "tip": "Type a name and click **OK**. A new file opens straight away, ready to type into.",
+      "note": "If your company has turned on editing in the browser, the menu also offers **New Word document** and **New Excel spreadsheet**. In a library shared with you as read-only, **Upload** is hidden and **Create** offers only **New library**. Ask the owner for Read-Write access."
     }
   ]
 }

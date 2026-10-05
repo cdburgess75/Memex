@@ -321,15 +321,16 @@ function chapter(ch, assets, counter) {
       spacing: { before: 0, after: 140 },
       children: text(t),
     }));
-    const bulletParas = s.bullets.map((t) => new Paragraph({
+    const bulletParas = s.bullets.map((t, i) => new Paragraph({
       numbering: { reference: 'bullets', level: 0 },
-      keepLines: true,
+      // A list with no picture or steps is the section's content: keep it in one piece.
+      keepNext: !s.picture && !s.steps.length && i < s.bullets.length - 1, keepLines: true,
       spacing: { before: 0, after: 100 },
       children: text(t),
     }));
     const lead = (s.text.length > 0);
     if (s.heading) kids.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: text(s.heading, { bold: true }) }));
-    s.text.forEach((t, i) => kids.push(new Paragraph({ keepNext: i === s.text.length - 1 && (hasPic || s.steps.length > 0), children: text(t) })));
+    s.text.forEach((t, i) => kids.push(new Paragraph({ keepNext: i === s.text.length - 1 && (hasPic || s.steps.length > 0 || s.bullets.length > 0), children: text(t) })));
     const side = hasPic && s.picture.size.layout === 'side';
     const sideBoxes = [];
     if (side) {

@@ -116,6 +116,15 @@ for _ in $(seq 1 40); do
 done
 [ "$kc_ok" = "1" ] || warn "Keycloak isn't answering on :$KC_PORT yet — sign-in may take a little longer; check '$DC $COMPOSE logs -f keycloak'."
 
+# Every release leaves the previous Depot image behind, and they add up (124 of them,
+# 42 GB, had filled one server's disk). Once the new release is healthy, remove the Depot
+# images no container uses. Only images carrying Depot's own label: Postgres, Keycloak,
+# Caddy and the editor are never touched. Rolling back downloads the older image again.
+if [ "$ok" = "1" ]; then
+  docker image prune -a -f --filter "label=org.opencontainers.image.source=https://github.com/cdburgess75/Memex" </dev/null >/dev/null 2>&1 \
+    && info "Removed older Depot images." || true
+fi
+
 # Keep the editor's on/off helper scheduled, and apply the switch once now.
 [ -x scripts/editor-switch.sh ] && { ./scripts/editor-switch.sh --install </dev/null || true; }
 exit 0

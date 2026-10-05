@@ -15,7 +15,7 @@
       "steps": [
         "Click the bell icon, **Follow this file for updates**. The bell loses its slash and turns blue."
       ],
-      "tip": "Depot now tells you when someone edits the file, or downloads it from a link."
+      "tip": "Depot now tells you when someone downloads the file from a link. If your company has turned on editing in the browser, it also tells you when someone edits it."
     },
     {
       "heading": "See everything in the bell",
@@ -29,7 +29,7 @@
       ],
       "bullets": [
         "Notices tell you when someone opens or downloads something you shared, or sends files back to you.",
-        "They also tell you when you are given access to something, or a file you follow is edited."
+        "They also tell you when you are given access to something."
       ]
     },
     {
@@ -69,7 +69,7 @@
         "Someone shares a file, folder or library with you.",
         "Someone opens something you shared, the first time each person does.",
         "Files arrive in a library or folder you follow, or through a link you sent.",
-        "A file you follow is edited."
+        "A file you follow is edited in the browser, if your company has turned that on."
       ],
       "note": "Your administrator chooses which emails everyone at your company gets. If the page says email isn't set up yet, ask your administrator to turn it on."
     }
