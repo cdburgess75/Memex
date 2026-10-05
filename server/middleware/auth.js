@@ -162,7 +162,7 @@ module.exports = async function auth(req, res, next) {
       const lib = await require('../lib/libraries').ensurePersonalLibrary(owner, payload?.name || payload?.given_name || null);
       // A library made just now (ensurePersonalLibrary returns a row only then) gets the
       // getting-started guide in it, so the first thing they find is how to use the place.
-      // Not awaited: copying two files is not something a request should wait on.
+      // Not awaited: copying the guide is not something a request should wait on.
       if (lib?.id) {
         require('../lib/gettingStarted').seedLibrary(lib.id, owner)
           .catch((e) => console.error('auth: could not add the getting-started guide:', e.message));

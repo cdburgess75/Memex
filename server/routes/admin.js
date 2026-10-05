@@ -343,6 +343,9 @@ function activityFilters(q) {
   if (from) add('de.created_at >= $?', from);
   const to = String(q.to || '').trim();
   if (to) add('de.created_at < ($?::date + INTERVAL \'1 day\')', to);
+  // Home's activity card leaves out what the server does to the getting-started guide on
+  // its own. Filtered here, before the LIMIT, so a burst of it cannot empty the card.
+  if (String(q.housekeeping || '') === 'hide') where.push("de.event_type NOT IN ('guide_added', 'guide_updated', 'guide_removed')");
   return { clause: where.length ? 'WHERE ' + where.join(' AND ') : '', params };
 }
 

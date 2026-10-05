@@ -299,9 +299,16 @@ async function start() {
     // Once per personal library: the getting-started guide for everyone who was here
     // before it existed (and a retry for any copy that failed). Not awaited by anything;
     // it runs one library at a time behind a server that is already answering.
-    require('./lib/gettingStarted').backfill({ log: (m) => console.error('[startup] ' + m) })
+    const guide = require('./lib/gettingStarted');
+    const guideLog = (m) => console.error('[startup] ' + m);
+    guide.backfill({ log: guideLog })
       .then((r) => { if (r.added || r.failed) console.log(`[startup] getting-started guide: added to ${r.added} of ${r.candidates} libraries${r.failed ? `, ${r.failed} failed` : ''}`); })
-      .catch((e) => console.error('[startup] getting-started guide pass failed:', e.message));
+      .catch((e) => console.error('[startup] getting-started guide pass failed:', e.message))
+      // Then the copies earlier releases made: Word copies go, older PDFs become the
+      // current edition. Nothing to do on most starts.
+      .then(() => guide.tidy({ log: guideLog }))
+      .then((r) => { if (r.wordRemoved || r.pdfUpdated || r.changedKept || r.failed) console.log(`[startup] getting-started guide: removed ${r.wordRemoved} Word copies, updated ${r.pdfUpdated} PDFs to the current edition, left ${r.changedKept} changed copies alone${r.failed ? `, ${r.failed} failed` : ''}`); })
+      .catch((e) => console.error('[startup] getting-started guide tidy failed:', e.message));
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.

@@ -1,23 +1,32 @@
 'use strict';
 // The getting-started guide, copied into each person's own library.
 //
-// Every personal library gets one copy of "Getting started with Depot" (a PDF and a Word
-// file) at its root: when the library is made at the person's first sign-in, and, for
-// libraries that existed before this release, by a pass at startup. The copy is theirs
-// like anything they uploaded: they can rename it, move it or delete it, and a later
-// release never replaces it.
+// Every personal library gets one copy of "Getting started with Depot" (a PDF) at its
+// root: when the library is made at the person's first sign-in, and, for libraries that
+// existed before the guide did, by a pass at startup. The copy is theirs like anything
+// they uploaded: they can rename it, move it or delete it.
 //
 // Once, and only once (migration 0018):
 // - A library is CLAIMED (getting_started_claimed_at) before anything is written, so two
 //   starts, or a first sign-in racing the startup pass, never add it twice. A claim older
 //   than CLAIM_LEASE is treated as abandoned (the process died mid-way) and can be taken
 //   again; a failure gives the claim back at once.
-// - getting_started_at is stamped only after both files are in place. From then on the
-//   library is never touched again, whatever its owner does with the files.
-// - A file is skipped if the library has EVER held those exact bytes (live, in the trash,
-//   renamed or moved): a retry after a half-finished attempt must not bring back a copy
-//   the person already deleted or put somewhere else. A different file that happens to
-//   carry the guide's name at the root is kept, and the guide is not added beside it.
+// - getting_started_at is stamped only after the file is in place. From then on nothing
+//   is ever ADDED to the library again, whatever its owner does with the file.
+// - The file is skipped if the library has EVER held those exact bytes (live, in the
+//   trash, renamed or moved): a retry after a half-finished attempt must not bring back a
+//   copy the person already deleted or put somewhere else. A different file that happens
+//   to carry the guide's name at the root is kept, and the guide is not added beside it.
+//
+// Kept accurate (tidy(), at every start; it finds nothing to do on most of them):
+// - Earlier releases added a Word copy beside the PDF. Those copies are removed, so each
+//   account holds one guide, not two.
+// - A copy that is an OLDER edition of the PDF is swapped for the current one, in place:
+//   same file, same name, same folder, same links.
+// - Only copies this module made, and only while nobody has changed them: the bytes in
+//   storage must still be exactly an edition that was shipped, with no saved versions.
+//   A copy somebody edited is their own work and is left alone. A copy somebody deleted
+//   never comes back.
 //
 // It is not an upload: the audit chain records 'guide_added', not 'uploaded', and the
 // activity log is left alone, so the upload trend on Home and the "active people" count
@@ -26,7 +35,7 @@
 // and every question put to the AI. Found by name, not by contents.
 //
 // An admin can switch it off for the workspace (setting getting_started_guide, on unless
-// set to 'false'). Off means no new copies; it removes none.
+// set to 'false'). Off means no new copies; the tidying above still runs.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -36,10 +45,8 @@ const storage = require('./storage');
 
 const ASSET_DIR = path.join(__dirname, '..', 'assets', 'getting-started');
 const PDF_NAME = 'Getting started with Depot.pdf';
-const FILES = [
-  { name: PDF_NAME, mime: 'application/pdf' },
-  { name: 'Getting started with Depot.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-];
+const FILES = [{ name: PDF_NAME, mime: 'application/pdf' }];
+const PAST_EDITIONS = path.join(ASSET_DIR, 'past-editions.json');
 const CLAIM_LEASE = "interval '15 minutes'";
 const pdfPath = () => path.join(ASSET_DIR, PDF_NAME);
 
@@ -159,4 +166,128 @@ async function backfill({ log = () => {} } = {}) {
   return { candidates: rows.length, added, failed };
 }
 
-module.exports = { seedLibrary, settled, backfill, enabled, stop, pdfPath, ASSET_DIR, FILES, _resetForTests: () => { _bundle = null; _stopping = false; } };
+// Every edition that was ever copied into people's libraries, by the SHA-256 of its bytes:
+// the PDFs before the current one, and the Word copies that are no longer made. Written by
+// docs/user-guide/build/ship.js each time a new edition ships.
+let _past = null;
+function pastEditions() {
+  if (_past) return _past;
+  let listed = {};
+  try { listed = JSON.parse(fs.readFileSync(PAST_EDITIONS, 'utf8')); } catch { /* none recorded in this build */ }
+  const hashes = (v) => (Array.isArray(v) ? v.filter(h => /^[0-9a-f]{64}$/.test(String(h))) : []);
+  _past = { pdf: hashes(listed.pdf), word: hashes(listed.word) };
+  return _past;
+}
+
+const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+const SYSTEM = 'system@guide';
+
+// A Word copy goes: the row first (and only if it is still the file that was checked),
+// then its blob, as the trash sweeper does it. Whatever hangs off the row (its grants, its
+// links, its follows) goes with it.
+// A live copy goes under the library's lock and, like any delete, leaves a shared folder
+// it was the last file in standing (empty, still shared) rather than as a bare name a
+// future folder could inherit (see keepMarker.js).
+async function removeCopy(d) {
+  const { withFolderOp } = require('./folderOps');
+  const { keepSharedFoldersAlive } = require('./keepMarker');
+  const { gone, planted } = await withFolderOp({ libraryIds: [d.library_id], kind: 'placement', mode: 'shared' }, async (q) => {
+    const rows = await q.query(
+      `DELETE FROM documents d
+        WHERE d.id = $1 AND d.storage_path = $2 AND d.content_hash = $3
+          AND NOT EXISTS (SELECT 1 FROM document_versions v WHERE v.document_id = d.id)
+        RETURNING d.storage_path, d.name, d.deleted_at`, [d.id, d.storage_path, d.content_hash]);
+    if (!rows.length) return { gone: null, planted: [] };   // edited, or already removed, in the meantime
+    const live = rows.filter(r => !r.deleted_at).map(r => r.name);
+    return { gone: rows[0], planted: live.length ? await keepSharedFoldersAlive(q, d.library_id, live) : [] };
+  });
+  if (!gone) return false;
+  for (const m of planted) await storage.upload(m.storagePath, Buffer.alloc(0), 'application/octet-stream').catch(() => {});
+  await storage.del(gone.storage_path).catch(() => {});
+  await require('./auditLog').append({
+    documentId: d.id, eventType: 'guide_removed', actorId: null, actorEmail: SYSTEM,
+    detail: `Word copy of the getting-started guide · ${d.name || ''}`.trim(),
+  }).catch(() => {});
+  return true;
+}
+
+// An older PDF becomes the current one in place. The new bytes are stored first, under a
+// path of their own, and the row is pointed at them only if it is still the file that was
+// checked; the old blob goes last. A crash in between leaves a blob nobody points at,
+// never a row pointing at nothing.
+async function replaceCopy(d, current) {
+  const storagePath = `documents/${crypto.randomUUID()}-${current.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  await storage.upload(storagePath, current.bytes, current.mime);
+  let swapped = null;
+  try {
+    swapped = await db.queryOne(
+      `UPDATE documents d SET storage_path = $2, size = $3, content_hash = $4
+        WHERE d.id = $1 AND d.storage_path = $5 AND d.content_hash = $6 AND d.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM document_versions v WHERE v.document_id = d.id)
+        RETURNING d.id`, [d.id, storagePath, current.bytes.length, current.hash, d.storage_path, d.content_hash]);
+  } finally {
+    // Dropped only when the row is known not to point at it: an UPDATE that errored on
+    // the way back may still have committed.
+    if (!swapped) {
+      const using = await db.queryOne('SELECT 1 FROM documents WHERE id = $1 AND storage_path = $2', [d.id, storagePath]).catch(() => ({}));
+      if (!using) await storage.del(storagePath).catch(() => {});
+    }
+  }
+  if (!swapped) return false;   // edited, binned or already swapped in the meantime
+  await storage.del(d.storage_path).catch(() => {});
+  await require('./auditLog').append({
+    documentId: d.id, eventType: 'guide_updated', actorId: null, actorEmail: SYSTEM,
+    detail: `getting-started guide brought up to the current edition · ${d.name || ''}`.trim(),
+  }).catch(() => {});
+  return true;
+}
+
+// Bring the copies earlier releases made into line with this one (see the top of the
+// file). Safe to run at every start and to stop half-way: each copy is settled on its own,
+// and a copy already dealt with no longer matches.
+//
+// documents.content_hash is written when a file is created and NOT when it is edited, so
+// it finds the copies this module made but cannot say whether they are still untouched.
+// That is settled by reading the bytes back from storage.
+async function tidy({ log = () => {} } = {}) {
+  const out = { wordRemoved: 0, pdfUpdated: 0, changedKept: 0, failed: 0 };
+  const past = pastEditions();
+  const current = (await bundle()).find(f => f.name === PDF_NAME) || null;
+  const word = new Set(past.word);
+  // Without a PDF in this build there is nothing to bring an older copy up to.
+  const olderPdf = new Set(current ? past.pdf.filter(h => h !== current.hash) : []);
+  const wanted = [...word, ...olderPdf];
+  if (!wanted.length) return out;
+  const rows = await db.query(
+    `SELECT d.id, d.name, d.storage_path, d.content_hash, d.deleted_at, d.library_id
+       FROM documents d
+      WHERE d.content_hash = ANY($1::text[])
+        AND (EXISTS (SELECT 1 FROM document_events e WHERE e.document_id = d.id AND e.event_type = 'guide_added')
+             -- A copy the server placed whose 'guide_added' was lost (the process stopped
+             -- between the row and the audit entry): in its owner's own library, by them,
+             -- with nothing at all on record for it. A person's own upload of the same
+             -- bytes always has its 'uploaded' entry.
+             OR (NOT EXISTS (SELECT 1 FROM document_events e WHERE e.document_id = d.id)
+                 AND EXISTS (SELECT 1 FROM libraries l WHERE l.id = d.library_id AND l.personal AND l.owner_id = d.uploaded_by)))
+      ORDER BY d.created_at`, [wanted]);
+  for (const d of rows) {
+    if (_stopping) break;
+    const isWord = word.has(d.content_hash);
+    // An older PDF in the trash is left to the trash: its owner already let it go.
+    if (!isWord && d.deleted_at) continue;
+    try {
+      const versions = await db.queryOne('SELECT 1 FROM document_versions WHERE document_id = $1 LIMIT 1', [d.id]);
+      if (versions || sha256(await storage.download(d.storage_path)) !== d.content_hash) { out.changedKept++; continue; }
+      if (isWord) { if (await removeCopy(d)) out.wordRemoved++; }
+      else if (await replaceCopy(d, current)) out.pdfUpdated++;
+    } catch (e) { out.failed++; log(`getting-started guide: could not tidy ${d.id}: ${e.message}`); }
+  }
+  return out;
+}
+
+module.exports = {
+  seedLibrary, settled, backfill, tidy, enabled, stop, pdfPath, pastEditions, ASSET_DIR, FILES, PAST_EDITIONS,
+  _resetForTests: () => { _bundle = null; _past = null; _stopping = false; },
+  _setPastForTests: (past) => { _past = past; },
+};
+
