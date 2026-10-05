@@ -4390,6 +4390,9 @@ function closeAppMenu() {
 // The getting-started guide, for everyone (viewers have no library to find their copy in,
 // and anyone may have deleted theirs). A fixed same-origin path: nothing is spliced in.
 const GETTING_STARTED_NAMES = new Set(['Getting started with Depot.pdf', 'Getting started with Depot.docx']);
+// What the server does with those copies on its own (add one, bring an old one up to date,
+// remove the Word copy older releases made): housekeeping, not something a person did.
+const GUIDE_EVENTS = new Set(['guide_added', 'guide_updated', 'guide_removed']);
 function openGettingStartedGuide() {
   window.open('/help/getting-started.pdf', '_blank', 'noopener');
 }
@@ -6651,6 +6654,8 @@ const ACTIVITY_LABELS = {
   access_granted: 'Granted access', access_revoked: 'Revoked access',
   version_saved: 'Saved version', version_restored: 'Restored version',
   guide_added: 'Getting-started guide added automatically',
+  guide_updated: 'Getting-started guide updated automatically',
+  guide_removed: 'Getting-started guide (Word copy) removed automatically',
 };
 function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
 function activityWhen(ts) {
@@ -9455,7 +9460,7 @@ async function renderHome() {
     const pct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
     const uploads14 = stats.uploads14 || [];
     let activity = [];
-    if (isAdmin) { try { activity = ((await apiGet('/admin/activity?limit=40')).events || []).filter(a => a.event_type !== 'guide_added'); } catch { activity = []; } }
+    if (isAdmin) { try { activity = ((await apiGet('/admin/activity?limit=40&housekeeping=hide')).events || []).filter(a => !GUIDE_EVENTS.has(a.event_type)); } catch { activity = []; } }
     // Every personal library holds its own copy of the getting-started guide; an admin, who
     // sees them all, should not find Recent files full of other people's copies.
     const othersGuide = (f) => GETTING_STARTED_NAMES.has(String(f.name || '')) && String(f.uploaded_by || '') !== String(currentUser?.id || '');

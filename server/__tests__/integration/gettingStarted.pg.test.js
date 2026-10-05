@@ -90,17 +90,19 @@ suite('the getting-started guide in every personal library', () => {
     try { await db.end(); } catch { /* already closed */ }
   });
 
-  test('the build carries both files', () => {
-    for (const f of guide.FILES) expect(fs.existsSync(path.join(guide.ASSET_DIR, f.name))).toBe(true);
+  test('the build carries the PDF, and only the PDF', () => {
+    expect(guide.FILES.map(f => f.name)).toEqual([PDF]);
+    expect(fs.existsSync(path.join(guide.ASSET_DIR, PDF))).toBe(true);
+    expect(fs.existsSync(path.join(guide.ASSET_DIR, DOCX))).toBe(false);
   });
 
-  test('a new library gets both files at its root, owned by its person, as library content', async () => {
+  test('a new library gets the PDF at its root, owned by its person, as library content', async () => {
     await person(ANA);
     const lib = await libraries.ensurePersonalLibrary(ANA, 'Ana');
     expect(await guide.seedLibrary(lib.id, ANA)).toBe(true);
 
     const docs = await guideDocs(lib.id);
-    expect(docs.map(d => d.name)).toEqual([DOCX, PDF]);
+    expect(docs.map(d => d.name)).toEqual([PDF]);            // one guide, not a Word copy beside it
     for (const d of docs) {
       expect(d.name).not.toContain('/');               // the root, not a folder
       expect(d.library_scoped).toBe(true);
@@ -108,7 +110,7 @@ suite('the getting-started guide in every personal library', () => {
       const acl = await db.queryOne('SELECT 1 FROM document_acl WHERE document_id = $1', [d.id]);
       expect(acl).toBeTruthy();                        // the owner can manage it like any upload
     }
-    expect(storage.blobs.size).toBe(2);
+    expect(storage.blobs.size).toBe(1);
     const lib2 = await libraryOf(ANA);
     expect(lib2.getting_started_at).not.toBeNull();
     expect(lib2.getting_started_claimed_at).toBeNull();
@@ -123,7 +125,7 @@ suite('the getting-started guide in every personal library', () => {
     const lib = await libraries.ensurePersonalLibrary(ANA, 'Ana');
     await guide.seedLibrary(lib.id, ANA);
     const kinds = auditLog.append.mock.calls.map(([e]) => e.eventType);
-    expect(kinds.filter(k => k === 'guide_added')).toHaveLength(2);
+    expect(kinds.filter(k => k === 'guide_added')).toHaveLength(1);
     expect(kinds).not.toContain('uploaded');
     const activity = await db.query('SELECT event FROM activity_log');
     expect(activity).toHaveLength(0);
@@ -138,7 +140,7 @@ suite('the getting-started guide in every personal library', () => {
     const r = await guide.backfill();
     expect(r.added).toBe(0);
     const live = (await guideDocs(lib.id)).filter(d => !d.deleted_at).map(d => d.name);
-    expect(live).toEqual([DOCX]);
+    expect(live).toEqual([]);
   });
 
   test('the startup pass covers people who were here before, once, and leaves the switched-off and the put-away alone', async () => {
@@ -149,7 +151,7 @@ suite('the getting-started guide in every personal library', () => {
 
     const first = await guide.backfill();
     expect(first.added).toBe(2);
-    for (const p of [ANA, BEN]) expect((await guideDocs((await libraryOf(p)).id))).toHaveLength(2);
+    for (const p of [ANA, BEN]) expect((await guideDocs((await libraryOf(p)).id))).toHaveLength(1);
     for (const p of [CAL, DEE]) {
       const lib = await libraryOf(p);
       expect(await guideDocs(lib.id)).toHaveLength(0);
@@ -157,10 +159,10 @@ suite('the getting-started guide in every personal library', () => {
     }
     const again = await guide.backfill();
     expect(again.added).toBe(0);
-    expect((await db.queryOne(`SELECT count(*)::int n FROM documents WHERE name LIKE 'Getting started%'`)).n).toBe(4);    // each copy has its own blob, so deleting one can never take another library's copy
+    expect((await db.queryOne(`SELECT count(*)::int n FROM documents WHERE name LIKE 'Getting started%'`)).n).toBe(2);    // each copy has its own blob, so deleting one can never take another library's copy
     const paths = (await db.query(`SELECT storage_path FROM documents WHERE name LIKE 'Getting started%'`)).map(r => r.storage_path);
-    expect(new Set(paths).size).toBe(4);
-    expect(storage.blobs.size).toBe(4);
+    expect(new Set(paths).size).toBe(2);
+    expect(storage.blobs.size).toBe(2);
   });
 
   test('only personal libraries: a library someone owns and shares is never given the guide', async () => {
@@ -187,7 +189,7 @@ suite('the getting-started guide in every personal library', () => {
     await guide.backfill();
     await db.query('UPDATE user_roles SET disabled_at = NULL WHERE user_id = $1', [CAL.id]);
     expect((await guide.backfill()).added).toBe(1);
-    expect(await guideDocs((await libraryOf(CAL)).id)).toHaveLength(2);
+    expect(await guideDocs((await libraryOf(CAL)).id)).toHaveLength(1);
   });
 
   test('switched off by an admin in Settings: nothing is added and nothing is marked', async () => {
@@ -205,35 +207,35 @@ suite('the getting-started guide in every personal library', () => {
     expect((await libraryOf(ANA)).getting_started_at).toBeNull();
   });
 
-  test('a failure gives the claim back, and the retry adds only what is missing', async () => {
+  test('a failure gives the claim back, and the retry adds the guide', async () => {
     await person(ANA);
     const lib = await libraries.ensurePersonalLibrary(ANA, 'Ana');
-    storage.upload.mockImplementationOnce(async (p, buf) => { storage.blobs.set(p, Buffer.from(buf)); })   // the PDF lands
-      .mockImplementationOnce(async () => { throw new Error('disk full'); });                             // the Word file does not
+    storage.upload.mockImplementationOnce(async () => { throw new Error('disk full'); });
     await expect(guide.seedLibrary(lib.id, ANA)).rejects.toThrow('disk full');
     const after = await libraryOf(ANA);
     expect(after.getting_started_at).toBeNull();
     expect(after.getting_started_claimed_at).toBeNull();
-    expect((await guideDocs(lib.id)).map(d => d.name)).toEqual([PDF]);
+    expect(await guideDocs(lib.id)).toHaveLength(0);
     expect((await guide.backfill()).added).toBe(1);
-    expect((await guideDocs(lib.id)).map(d => d.name)).toEqual([DOCX, PDF]);
+    expect((await guideDocs(lib.id)).map(d => d.name)).toEqual([PDF]);
   });
 
   test('a retry never brings back a copy the person deleted or moved in between', async () => {
     await person(ANA); await person(BEN);
     for (const p of [ANA, BEN]) await libraries.ensurePersonalLibrary(p, null);
     const a = (await libraryOf(ANA)).id, b = (await libraryOf(BEN)).id;
-    for (let i = 0; i < 2; i++) {
-      storage.upload.mockImplementationOnce(async (p, buf) => { storage.blobs.set(p, Buffer.from(buf)); })
-        .mockImplementationOnce(async () => { throw new Error('disk full'); });
-    }
+    // The file lands, and then the attempt fails before the library is stamped as done.
+    auditLog.append.mockRejectedValueOnce(new Error('audit chain busy')).mockRejectedValueOnce(new Error('audit chain busy'));
     await expect(guide.seedLibrary(a, ANA)).rejects.toThrow();
     await expect(guide.seedLibrary(b, BEN)).rejects.toThrow();
+    for (const lib of [a, b]) expect((await guideDocs(lib)).map(d => d.name)).toEqual([PDF]);
+    expect((await libraryOf(ANA)).getting_started_at).toBeNull();
     await db.query(`UPDATE documents SET deleted_at = NOW() WHERE library_id = $1 AND name = $2`, [a, PDF]);       // Ana bins it
     await db.query(`UPDATE documents SET name = 'Help/' || name WHERE library_id = $1 AND name = $2`, [b, PDF]);   // Ben files it away
-    expect((await guide.backfill()).added).toBe(2);
-    expect((await guideDocs(a)).filter(d => !d.deleted_at).map(d => d.name)).toEqual([DOCX]);
-    expect((await guideDocs(b)).map(d => d.name).sort()).toEqual([DOCX, 'Help/' + PDF].sort());
+    expect((await guide.backfill()).added).toBe(2);                 // both libraries are settled now
+    expect((await guideDocs(a)).filter(d => !d.deleted_at)).toHaveLength(0);
+    expect((await guideDocs(b)).map(d => d.name)).toEqual(['Help/' + PDF]);
+    expect(storage.blobs.size).toBe(2);                             // and nothing was stored a second time
   });
 
   test('a claim abandoned by a process that died is taken again later; a fresh one is left alone', async () => {
@@ -242,7 +244,7 @@ suite('the getting-started guide in every personal library', () => {
     await db.query(`UPDATE libraries SET getting_started_claimed_at = NOW() - interval '20 minutes' WHERE owner_id = $1`, [ANA.id]);
     await db.query(`UPDATE libraries SET getting_started_claimed_at = NOW() - interval '1 minute' WHERE owner_id = $1`, [BEN.id]);
     expect((await guide.backfill()).added).toBe(1);
-    expect(await guideDocs((await libraryOf(ANA)).id)).toHaveLength(2);
+    expect(await guideDocs((await libraryOf(ANA)).id)).toHaveLength(1);
     expect(await guideDocs((await libraryOf(BEN)).id)).toHaveLength(0);
   });
 
@@ -287,7 +289,7 @@ suite('the getting-started guide in every personal library', () => {
     await guide.seedLibrary(lib.id, ANA);
     const docs = await guideDocs(lib.id);
     expect(docs.filter(d => d.name === PDF)).toHaveLength(1);
-    expect(docs.filter(d => d.name === DOCX)).toHaveLength(1);
+    expect(docs.filter(d => d.name === DOCX)).toHaveLength(0);
   });
 
   test('a viewer an admin makes a contributor gets a library with the guide in it straight away', async () => {
@@ -296,12 +298,13 @@ suite('the getting-started guide in every personal library', () => {
     jwt.verify.mockReturnValue({ sub: DEE.id, email: DEE.email, email_verified: true });
     await request(app).put(`/api/admin/users/${BEN.id}/role`).set('Authorization', 'Bearer t').send({ role: 'contributor' }).expect(200);
     let docs = [];
-    for (let i = 0; i < 100 && docs.length < 2; i++) {
+    for (let i = 0; i < 100 && docs.length < 1; i++) {
       const lib = await libraryOf(BEN);
       docs = lib ? await guideDocs(lib.id) : [];
-      if (docs.length < 2) await new Promise(r => setTimeout(r, 50));
+      if (docs.length < 1) await new Promise(r => setTimeout(r, 50));
     }
-    expect(docs.map(d => d.name)).toEqual([DOCX, PDF]);
+    await guide.settled();
+    expect(docs.map(d => d.name)).toEqual([PDF]);
   });
 
   test('first sign-in, through the real middleware: a personal library with the guide already in it', async () => {
@@ -309,12 +312,13 @@ suite('the getting-started guide in every personal library', () => {
     await request(app).get('/api/files').set('Authorization', 'Bearer t').expect(200);
     // the library and its guide are made alongside the request, not in front of it
     let docs = [];
-    for (let i = 0; i < 100 && docs.length < 2; i++) {
+    for (let i = 0; i < 100 && docs.length < 1; i++) {
       const lib = await libraryOf(NEW);
       docs = lib ? await guideDocs(lib.id) : [];
-      if (docs.length < 2) await new Promise(r => setTimeout(r, 50));
+      if (docs.length < 1) await new Promise(r => setTimeout(r, 50));
     }
-    expect(docs.map(d => d.name)).toEqual([DOCX, PDF]);
+    await guide.settled();
+    expect(docs.map(d => d.name)).toEqual([PDF]);
   });
 
 });

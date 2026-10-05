@@ -1,0 +1,10 @@
+{
+  "about": "SHA-256 of every edition of the guide that was ever copied into people's libraries, other than the current PDF. server/lib/gettingStarted.js uses it to find untouched copies: an older PDF is swapped for the current one, a Word copy is removed. docs/user-guide/build/ship.js adds the outgoing PDF whenever a new edition ships.",
+  "pdf": [
+    "355d4db14ed32ccc63a16cac58bb4f80624bc1ec6de148cd620ac4ccad880119"
+  ],
+  "word": [
+    "6aaad82a7d0e703857c3213934b2f8e2aee481f21b9e77cdd9c6a21df1aad44e",
+    "ddaf67412a8c716bfaa1497c93b4b67190a332a84db7d95401e2163f20458b81"
+  ]
+}

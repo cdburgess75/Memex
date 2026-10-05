@@ -1,8 +1,8 @@
 # Getting started with Depot: the user guide
 
 This folder builds **Getting started with Depot**, the guide every new user finds at the root
-of their personal library (and anyone can open from the account menu). It produces a Word
-file and a PDF from the same chapters, with screenshots taken from a demo copy of Depot that
+of their personal library (and anyone can open from the account menu). It produces a PDF, which
+is what ships, and a Word file from the same chapters, with screenshots taken from a demo copy of Depot that
 uses made-up data (the fictional company Acme Co.). No real server or data is involved.
 
 ## Rebuild after the app's screens change
@@ -12,12 +12,17 @@ cd docs/user-guide
 npm install                      # once: docx, ws, and sharp (for print-size pictures)
 node capture/run.js              # re-take every screenshot (or: node capture/run.js share-file)
 node build/all.js                # writes out/Getting started with Depot.docx and .pdf
-node build/ship.js               # copies both into server/assets/getting-started/
+node build/ship.js               # copies the PDF into server/assets/getting-started/
 ```
 
-Commit `server/assets/getting-started/` with the change. People who already have the guide keep
-their copy; only new personal libraries get the new edition. The account menu always opens the
-newest PDF.
+Commit `server/assets/getting-started/` with the change. Only the PDF goes into the app. `ship.js`
+also lists the edition it replaces in `past-editions.json`; when the server next starts it swaps
+every copy of a listed edition that nobody has changed for the new one, so everyone ends up with
+the current guide. A copy somebody edited is left alone, and a deleted copy never comes back. The
+account menu always opens the newest PDF.
+
+Run `ship.js` only for an edition you mean to release: every build of the PDF has different
+bytes, and each one that passes through `ship.js` is listed.
 
 Useful extras:
 - `swift build/render-pages.swift "out/Getting started with Depot.pdf" out/pages 110` renders
