@@ -83,13 +83,21 @@ describe('collaboraEditUrl', () => {
     expect(url).not.toContain('10.5.91.18');
   });
 
+  test('returns null when only collabora_url is set: the switch in Settings decides', async () => {
+    settingsMap({ collabora_url: 'https://edit.acme.com', collabora_internal_url: 'http://collabora:9980' });
+    global.fetch = jest.fn();
+    expect(await collaboraEditUrl(doc, 'docx', req)).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test('returns null for a non-editable extension even when configured', async () => {
-    settingsMap({ collabora_url: 'https://edit.acme.com' });
+    settingsMap({ collabora_enabled: 'true', collabora_url: 'https://edit.acme.com' });
     expect(await collaboraEditUrl(doc, 'png', req)).toBeNull();
   });
 
   test('builds an editor URL rebased onto the browser origin with WOPISrc + token', async () => {
     settingsMap({
+      collabora_enabled: 'true',
       collabora_url: 'https://edit.acme.com',
       collabora_internal_url: 'http://collabora:9980',
       wopi_internal_url: 'http://app:3000',
@@ -109,7 +117,7 @@ describe('collaboraEditUrl', () => {
   test('falls back to COLLABORA_URL for discovery when no internal URL is set', async () => {
     // app_url is required so the WOPI callback host is a configured value (not the
     // client Host); it does not affect which host discovery is fetched from.
-    settingsMap({ collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
+    settingsMap({ collabora_enabled: 'true', collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
     global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => DISCOVERY });
     await collaboraEditUrl(doc, 'docx', req);
     expect(global.fetch).toHaveBeenCalledWith('https://edit.acme.com/hosting/discovery', expect.anything());
@@ -151,7 +159,7 @@ describe('collaboraEditUrl', () => {
   });
 
   test('returns null (graceful) when discovery is unreachable', async () => {
-    settingsMap({ collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
+    settingsMap({ collabora_enabled: 'true', collabora_url: 'https://edit.acme.com', app_url: 'https://memex.acme.com' });
     global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
     expect(await collaboraEditUrl(doc, 'docx', req)).toBeNull();
   });

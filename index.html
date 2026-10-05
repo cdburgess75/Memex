@@ -5537,14 +5537,18 @@ function renderEditorSwitch(st) {
   if (!box || !line) return; // the tab was left
   box.disabled = false;
   box.checked = !!st.enabled;
-  line.textContent = EDITOR_SWITCH_TEXT[st.state] || '';
+  const text = EDITOR_SWITCH_TEXT[st.state] || '';
+  if (line.textContent !== text) line.textContent = text; // a live region re-reads every rewrite
   line.dataset.state = st.state;
   // What this admin sees follows at once; everyone else picks it up on their next load.
   if (appConfig) appConfig.editingEnabled = st.state === 'on';
-  if (st.state === 'starting' || st.state === 'stopping') editorSwitchTimer = setTimeout(loadEditorSwitch, 4000);
+  // Keep asking until it settles. The host applies the switch once a minute, so every
+  // 10 s is plenty; 'failed' keeps being asked too, since a slow first download or the
+  // admin running the script turns it into 'on' without a reload.
+  if (st.state !== 'on' && st.state !== 'off') editorSwitchTimer = setTimeout(loadEditorSwitch, 10000);
 }
 async function loadEditorSwitch() {
-  if (!document.getElementById('cfg-editor-on')) return;
+  if (!document.getElementById('cfg-editor-on') || !document.getElementById('settings-scrim')?.classList.contains('open')) return;
   try { renderEditorSwitch(await apiGet('/admin/editor')); }
   catch (e) {
     const line = document.getElementById('cfg-editor-status');

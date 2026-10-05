@@ -87,7 +87,9 @@ the server, starts the editor to match (the first start downloads a 1.9 GB image
 The line under the box reads Starting…, then On. Unticking it stops the editor
 within a minute.
 
-On a host without cron (Docker Desktop on a Mac, say) run
+The installer schedules the helper only when it runs as root on Linux. If you
+installed as a normal user in the docker group, or on Docker Desktop (a Mac,
+say), either run `sudo ./scripts/editor-switch.sh --install` once, or run
 `./scripts/editor-switch.sh` in the install folder after changing the switch.
 
 Then open any Word or Excel file and click Edit. The Collabora editor should load
@@ -178,7 +180,9 @@ out of the new image, keeps the replaced copies in `.host-previous/`, then runs
 Caddyfile and the Keycloak realm file are never touched.
 
 A server installed before October 2026 has an `upgrade.sh` that does not do this
-yet. Once, after its next update, run:
+yet. Once, **after** that server has been updated to an October 2026 release or
+later (the command copies the new `upgrade.sh` out of the running app, so an
+older app would hand back the old one), run:
 
 ```bash
 cd /opt/memex
@@ -187,14 +191,17 @@ docker compose cp app:/app/upgrade.sh upgrade.sh && chmod +x upgrade.sh
 ```
 
 That refreshes the host files, puts Keycloak under its memory limit (sign-in is
-unavailable for about half a minute while it restarts), schedules
+unavailable for about half a minute while it restarts; confirm it is back with
+`curl -s https://<your-domain>/realms/memex/.well-known/openid-configuration | head -c 80`,
+and if it stays down check `docker logs memex-keycloak-1` for "Killed": then raise
+`KEYCLOAK_MEM_LIMIT` in `.env` and `docker compose up -d keycloak`), schedules
 `scripts/editor-switch.sh`, and stops the in-browser editor until an admin turns
 it on in Settings.
 
 If you deploy from a source checkout instead of the prebuilt image:
 
 ```bash
-cd /opt/memex && git checkout -- VERSION && git pull --ff-only && docker compose up -d --build app
+cd /opt/memex && git checkout -- . && git pull --ff-only && docker compose up -d --build
 ```
 
 Open tabs auto-detect a new version and show a "Memex was updated, Refresh"
@@ -209,7 +216,7 @@ banner within a few minutes.
 - [ ] DNS A record + forward 80/443 (public)
 - [ ] First login, changed the seeded password, promoted the customer admin
 - [ ] Set App URL (public)
-- [ ] Verified Office editing loads
+- [ ] Verified Office editing loads (if turned on in Settings)
 - [ ] Workspace branding (name, logo, scheme)
 - [ ] Email provider configured + test email sent (optional)
 - [ ] Scheduled backups on

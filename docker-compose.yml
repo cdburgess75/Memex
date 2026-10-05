@@ -27,9 +27,12 @@ services:
     command: ${KC_START_CMD:-start-dev --import-realm}
     # Sign-in is a small job, but left alone the JVM sizes itself to the whole host
     # and sat at 1.4 GB idle. Capped, with the heap held to half the cap so the rest
-    # of the JVM has room: about 340 MB idle and 400 MB under a burst of sign-ins.
-    # Raise KEYCLOAK_MEM_LIMIT in .env for a workspace with hundreds of people.
-    mem_limit: ${KEYCLOAK_MEM_LIMIT:-512m}
+    # of the JVM has room: about 400 MB once running. The cap must still fit the
+    # server-image rebuild that production mode (`start`) runs at every boot: 512 MB
+    # was enough on a laptop and not on a real box, where that build was killed over
+    # and over and nobody could sign in. 1 GB is the floor; the cap reserves nothing,
+    # so the running cost stays the same. Raise it in .env for hundreds of people.
+    mem_limit: ${KEYCLOAK_MEM_LIMIT:-1g}
     environment:
       JAVA_OPTS_KC_HEAP: "${KEYCLOAK_HEAP_OPTS:--XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=30 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20}"
       KC_DB: postgres
