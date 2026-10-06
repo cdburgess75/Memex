@@ -1575,6 +1575,15 @@ html.dark .settings-tab.active { color: var(--accent); }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
+.library-menu-search { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
+.library-menu-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.library-menu-list { display: grid; gap: 2px; max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
+.library-menu-fold { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 4px; }
+.library-menu-fold:hover { background: var(--surface-2); color: var(--ink-soft); }
+.library-menu-fold .chev { margin-left: auto; transition: transform .15s; }
+.library-menu-fold.open .chev { transform: rotate(180deg); }
+.library-menu-count { font-weight: 500; letter-spacing: 0; color: var(--ink-faint); }
+.library-menu-empty { padding: 10px; color: var(--ink-faint); font: 500 13px var(--ui); }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 14px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
 /* Groups (Settings → Groups) */
@@ -7670,6 +7679,7 @@ function navPush() {
 async function openLibraryAt(libId, folder = '') {
   closeLibraryMenu();
   currentLibraryId = libId;
+  noteRecentLibrary(libId);
   try { localStorage.setItem('memex_library_id', libId); } catch { /* private mode */ }
   if (state) state.tab = 'files';
   document.documentElement.classList.add('file-home-mode');
@@ -8316,22 +8326,104 @@ function libraryMenuRow(l) {
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
   return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
 }
-function libraryMenuInnerHtml() {
-  const mine = librariesList.filter(l => l.my_access === 'owner');
-  const shared = librariesList.filter(l => ['rw', 'r', 'folders'].includes(l.my_access));
-  const other = librariesList.filter(l => !mine.includes(l) && !shared.includes(l));
+// ---- Library menu ----
+// With a handful of libraries the menu is a plain list. Past LIBRARY_MENU_COMPACT it gets a
+// search box and a Recent group, and long tails fold away: other people's own libraries
+// (an admin sees every one) and libraries that were put away. Each library is listed once,
+// in the first group it belongs to: Pinned, Recent, My libraries, Shared with me, Other
+// libraries, People's own libraries, Put away.
+const LIBRARY_MENU_COMPACT = 8;
+const RECENT_LIBRARIES_KEY = 'memex_recent_libraries';
+const RECENT_LIBRARIES_SHOWN = 5;
+let libraryMenuQuery = '';
+const libraryMenuOpenGroups = new Set();
+function recentLibraryIds() {
+  try { const v = JSON.parse(localStorage.getItem(RECENT_LIBRARIES_KEY) || '[]'); return Array.isArray(v) ? v.map(String) : []; }
+  catch { return []; }
+}
+function noteRecentLibrary(id) {
+  if (!id || id === 'null') return;
+  try { localStorage.setItem(RECENT_LIBRARIES_KEY, JSON.stringify([String(id), ...recentLibraryIds().filter(x => x !== String(id))].slice(0, 12))); }
+  catch { /* private mode: no recents, nothing else lost */ }
+}
+function libraryMenuLibraries() { return (librariesList || []).filter(l => l && l.id); }
+function libraryMenuIsLong() { return libraryMenuLibraries().length > LIBRARY_MENU_COMPACT; }
+function libraryMenuGroups() {
+  const all = libraryMenuLibraries();
+  const isCurrent = (l) => String(l.id) === String(currentLibraryId);
+  const live = all.filter(l => !l.archived_at || isCurrent(l));
+  const used = new Set();
+  const take = (rows) => rows.filter(l => { const k = String(l.id); if (used.has(k)) return false; used.add(k); return true; });
+  const byId = new Map(live.map(l => [String(l.id), l]));
+  const pinned = take(live.filter(l => pinnedLibraryIds.has(String(l.id))));
+  const recent = libraryMenuIsLong()
+    ? take(recentLibraryIds().filter(id => !used.has(id)).map(id => byId.get(id)).filter(Boolean).slice(0, RECENT_LIBRARIES_SHOWN))
+    : [];
+  const mine = take(live.filter(l => l.my_access === 'owner'));
+  const shared = take(live.filter(l => ['rw', 'r', 'folders'].includes(l.my_access)));
+  const people = take(live.filter(l => l.personal));
+  const other = take(live);
+  const away = all.filter(l => !live.includes(l));
+  return { pinned, recent, mine, shared, other, people, away, anyShared: live.some(l => ['rw', 'r', 'folders'].includes(l.my_access)) };
+}
+function libraryMenuListHtml() {
+  const q = libraryMenuQuery.trim().toLowerCase();
+  if (q) {
+    const hits = libraryMenuLibraries()
+      .filter(l => String(l.name || '').toLowerCase().includes(q) || String(l.owner_email || '').toLowerCase().includes(q))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    return hits.length ? hits.map(libraryMenuRow).join('') : `<div class="library-menu-empty">No library matches “${esc(libraryMenuQuery.trim())}”.</div>`;
+  }
+  const g = libraryMenuGroups();
   const section = (label, rows) => (rows.length ? `<div class="library-menu-label">${label}</div>${rows.map(libraryMenuRow).join('')}` : '');
+  const fold = (key, label, rows) => {
+    if (!rows.length) return '';
+    const open = libraryMenuOpenGroups.has(key);
+    return `<button class="library-menu-label library-menu-fold${open ? ' open' : ''}" type="button" aria-expanded="${open}" onclick="toggleLibraryMenuGroup(event,'${key}')"><span>${label}</span><span class="library-menu-count">${rows.length}</span><span class="chev" aria-hidden="true">⌄</span></button>`
+      + (open ? rows.map(libraryMenuRow).join('') : '');
+  };
+  const named = g.pinned.length || g.recent.length || g.mine.length || g.shared.length;
+  return section('Pinned', g.pinned) + section('Recent', g.recent) + section('My libraries', g.mine) + section('Shared with me', g.shared)
+    + (g.anyShared ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setFileView('shared')">See everything shared with you →</button>` : '')
+    + section(named ? 'Other libraries' : 'Libraries', g.other)
+    + fold('people', 'People’s own libraries', g.people)
+    + fold('away', 'Put away', g.away);
+}
+function libraryMenuInnerHtml() {
   const cur = currentLibrary();
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
-  return section('My libraries', mine) + section('Shared with me', shared)
-    + (shared.length ? `<button class="library-menu-item" type="button" onclick="closeLibraryMenu();setFileView('shared')">See everything shared with you →</button>` : '')
-    + section(mine.length || shared.length ? 'Other libraries' : 'Libraries', other)
+  if (!libraryMenuIsLong()) libraryMenuQuery = '';
+  const search = libraryMenuIsLong()
+    ? `<input type="search" class="library-menu-search" id="library-menu-search" placeholder="Find a library…" aria-label="Find a library" autocomplete="off" value="${escAttr(libraryMenuQuery)}" onclick="event.stopPropagation()" oninput="libraryMenuSearch(this.value)" onkeydown="libraryMenuSearchKey(event)">`
+    : '';
+  return search + `<div class="library-menu-list" id="library-menu-list">${libraryMenuListHtml()}</div>`
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
     + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
+}
+function libraryMenuSearch(value) {
+  libraryMenuQuery = String(value || '');
+  const list = document.getElementById('library-menu-list');
+  if (list) list.innerHTML = libraryMenuListHtml();
+}
+function libraryMenuSearchKey(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    document.querySelector('#library-menu-list .library-menu-item')?.click();   // the first match
+  } else if (e.key === 'Escape' && libraryMenuQuery) {
+    e.preventDefault(); e.stopPropagation();
+    e.target.value = '';
+    libraryMenuSearch('');
+  }
+}
+function toggleLibraryMenuGroup(event, key) {
+  event?.preventDefault(); event?.stopPropagation();
+  libraryMenuOpenGroups.has(key) ? libraryMenuOpenGroups.delete(key) : libraryMenuOpenGroups.add(key);
+  const list = document.getElementById('library-menu-list');
+  if (list) list.innerHTML = libraryMenuListHtml();
 }
 // Share buttons carry the library id in data-share-lib (never spliced into an onclick).
 document.addEventListener('click', (e) => {
@@ -8368,8 +8460,11 @@ function toggleLibraryMenu(event) {
   event?.stopPropagation();
   const menu = document.getElementById('library-menu');
   if (!menu) return;
-  if (!menu.classList.contains('open')) menu.innerHTML = libraryMenuInnerHtml(); // refresh from current list on open
+  const opening = !menu.classList.contains('open');
+  if (opening) { libraryMenuQuery = ''; menu.innerHTML = libraryMenuInnerHtml(); } // refresh from current list on open
   menu.classList.toggle('open');
+  // Straight to typing on a computer; on a phone the keyboard would cover the list.
+  if (opening && !window.matchMedia?.('(pointer: coarse)').matches) document.getElementById('library-menu-search')?.focus();
 }
 function closeLibraryMenu() {
   document.getElementById('library-menu')?.classList.remove('open');
@@ -8377,6 +8472,7 @@ function closeLibraryMenu() {
 function switchLibrary(id) {
   closeLibraryMenu();
   currentLibraryId = (!id || id === 'null') ? null : id;
+  noteRecentLibrary(currentLibraryId);
   if (currentLibraryId) localStorage.setItem('memex_library_id', currentLibraryId);
   else localStorage.removeItem('memex_library_id');
   setFileView('active');
