@@ -74,7 +74,7 @@ Plain top-level globals, no store: `state = { tab, log }`, `currentUser`, `appCo
 
 ### Storage
 
-`server/lib/storage.js` is a provider-agnostic layer selected by the `storage_provider` setting: **`local`** (default; `STORAGE_LOCAL_PATH`, works over NAS/NFS/iSCSI mounts) or **`s3`** (AWS/R2/B2/MinIO/Spaces via `@aws-sdk/client-s3`; `STORAGE_S3_ENDPOINT` + `STORAGE_S3_FORCE_PATH_STYLE` for non-AWS). Local files are encrypted at rest (GCM); changing `storage_encryption_key` is guarded server-side because it would orphan existing files. All file routes go through this layer.
+`server/lib/storage.js` is a provider-agnostic layer selected by the `storage_provider` setting: **`local`** (default; `STORAGE_LOCAL_PATH`, works over NAS/NFS/iSCSI mounts) or **`s3`** (AWS/R2/B2/MinIO/Spaces via `@aws-sdk/client-s3`; `STORAGE_S3_ENDPOINT` + `STORAGE_S3_FORCE_PATH_STYLE` for non-AWS). Local files are encrypted at rest: AES-256-GCM in 1 MiB segments with a per-file HKDF key (`lib/encryption.js`), so there is no size ceiling and a byte range decrypts only the segments it covers; older single-message files (`MXEC`) still read. Changing `storage_encryption_key` is guarded server-side because it would orphan existing files. All file routes go through this layer.
 
 ### Editing (Collabora, via WOPI)
 

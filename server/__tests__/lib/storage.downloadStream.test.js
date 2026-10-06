@@ -48,7 +48,7 @@ describe('downloadStream (local)', () => {
     const data = Buffer.from('secret payload '.repeat(6000)); // ~90 KB => multi-chunk stream
     await storage.upload('documents/enc.bin', data, 'application/octet-stream');
     const onDisk = fs.readFileSync(path.join(TMP, 'documents/enc.bin'));
-    expect(onDisk.subarray(0, 4).toString()).toBe('MXEC'); // actually encrypted at rest
+    expect(onDisk.subarray(0, 4).toString()).toBe('MXES'); // actually encrypted at rest (segmented)
     const { stream, length } = await storage.downloadStream('documents/enc.bin');
     expect(length).toBe(data.length);
     expect((await collect(stream)).equals(data)).toBe(true);
@@ -79,7 +79,7 @@ describe('downloadStream (local)', () => {
     const data = Buffer.from('integrity matters '.repeat(100));
     await storage.upload('documents/tamper.bin', data, 'application/octet-stream');
     const p = path.join(TMP, 'documents/tamper.bin');
-    const raw = fs.readFileSync(p); raw[40] ^= 0xff; fs.writeFileSync(p, raw); // flip a ciphertext byte (offset >= 32)
+    const raw = fs.readFileSync(p); raw[60] ^= 0xff; fs.writeFileSync(p, raw); // flip a ciphertext byte (past the 48-byte header)
     const { stream } = await storage.downloadStream('documents/tamper.bin');
     await expect(collect(stream)).rejects.toThrow();
   });
@@ -148,13 +148,14 @@ describe('downloadStream HTTP Range (local)', () => {
     expect(r.totalSize).toBe(data.length);
   });
 
-  test('an encrypted file ignores Range and streams the full plaintext (GCM is not seekable)', async () => {
+  test('an encrypted file serves a range too (its segments decrypt independently)', async () => {
     cfg(KEY);
-    const data = Buffer.from('encrypted no-seek '.repeat(50));
+    const data = Buffer.from('encrypted and seekable '.repeat(50000)); // ~1.15 MB => two 1 MiB segments
     await storage.upload('documents/rangeenc.bin', data, 'application/octet-stream');
-    const { stream, range, totalSize } = await storage.downloadStream('documents/rangeenc.bin', { rangeHeader: 'bytes=10-20' });
-    expect(range).toBeNull();
+    const { stream, range, length, totalSize } = await storage.downloadStream('documents/rangeenc.bin', { rangeHeader: 'bytes=1048570-1048585' });
+    expect(range).toEqual({ start: 1048570, end: 1048585 });
+    expect(length).toBe(16);
     expect(totalSize).toBe(data.length);
-    expect((await collect(stream)).equals(data)).toBe(true);
+    expect((await collect(stream)).equals(data.subarray(1048570, 1048586))).toBe(true);
   });
 });
