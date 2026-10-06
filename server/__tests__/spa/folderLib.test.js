@@ -151,12 +151,14 @@ describe('library relationships and where you can add files', () => {
   const run = (ctx) => {
     vm.runInNewContext(['currentLibrary', 'libraryRelation', 'canWriteHere', 'canChangeFile', 'folderIsShared', 'canShareLibrary', 'libraryMenuRow', 'libraryMenuInnerHtml'].map(fnSource).join('\n')
       + `\nconst LIBRARY_PILL = { rw: 'Read-Write', r: 'Read-only', folders: 'Folders' };`
+      // the menu's own helpers: search, recents and folded groups
+      + '\n' + html.slice(html.indexOf('// ---- Library menu ----'), html.indexOf('function libraryMenuInnerHtml('))
       + `\nthis.api = { currentLibrary, libraryRelation, canWriteHere, canChangeFile, folderIsShared, canShareLibrary, libraryMenuInnerHtml };`, ctx);
     return ctx.api;
   };
   const base = (over) => ({
     esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '<svg/>', pinnedLibraryIds: new Set(),
-    currentUser: { role: 'contributor' }, currentLibraryId: 'L1', librariesList: [], ...over,
+    currentUser: { role: 'contributor' }, currentLibraryId: 'L1', librariesList: [], localStorage: { getItem: () => null, setItem: () => {} }, ...over,
   });
 
   test.each([
