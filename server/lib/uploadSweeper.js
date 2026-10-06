@@ -9,8 +9,11 @@
 //
 // This sweeper: (1) cancels 'active' sessions with no chunk written for STALE_HOURS
 // and removes their staged chunks, (2) removes orphaned chunk dirs that have no
-// matching active session (belt-and-suspenders for a failed inline cleanup), and
-// (3) purges old terminal session rows so the table stays bounded.
+// matching active session (belt-and-suspenders for a failed inline cleanup),
+// (3) purges old terminal session rows so the table stays bounded, and (4) removes
+// orphaned `<final>.<16 hex>.upload` temp files that storage.localUploadStream writes
+// beside the final file. Its catch block unlinks them on a normal failure, but a hard
+// stop mid-upload (SIGKILL, OOM, reboot) leaves one behind as big as the upload.
 const path = require('path');
 const fs = require('fs').promises;
 const db = require('./db');
@@ -24,10 +27,12 @@ const TERMINAL_RETENTION_DAYS = num(process.env.UPLOAD_SWEEP_RETENTION_DAYS, 30)
 let _timer = null;
 let _running = false;
 
+const TEMP_RE = /\.[0-9a-f]{16}\.upload$/;
+
 // Null when storage isn't local (resumable uploads require local storage, so there
-// are no chunk dirs to sweep — only the DB rows, which we still tidy).
-async function chunkRoot() {
-  try { return (await storage.isLocalProvider()) ? path.join(await storage.localBase(), '.uploads') : null; }
+// are no chunk dirs or temp files to sweep — only the DB rows, which we still tidy).
+async function localRoot() {
+  try { return (await storage.isLocalProvider()) ? await storage.localBase() : null; }
   catch { return null; }
 }
 
@@ -35,9 +40,45 @@ async function removeDir(root, name) {
   await fs.rm(path.join(root, name), { recursive: true, force: true }).catch(() => {});
 }
 
+// A matching temp file is removed only once its mtime is stale (an upload in progress
+// keeps writing, so keeps it fresh) and no document or version row points at it: the
+// stored name ends in the user's file name, so a real file can match the pattern too.
+async function removeIfOrphanTemp(base, full, staleMs) {
+  try {
+    const st = await fs.lstat(full);
+    if (!st.isFile() || (Date.now() - st.mtimeMs) <= staleMs) return false;
+    const owned = await db.queryOne(
+      'SELECT 1 FROM documents WHERE storage_path = $1 UNION ALL SELECT 1 FROM document_versions WHERE storage_path = $1 LIMIT 1',
+      [path.relative(base, full)]
+    );
+    if (owned) return false;
+    await fs.unlink(full);
+    return true;
+  } catch { return false; } // on fs or DB error, keep it
+}
+
+// Depth-first walk of the document tree. opendir streams entries, so memory is one open
+// dir per level rather than whole listings; a Dirent for a symlink is neither a file nor
+// a dir, so links aren't followed. Unreadable dirs are skipped; nothing throws.
+async function sweepTempFiles(dir, skip, base, staleMs, result) {
+  let handle;
+  try { handle = await fs.opendir(dir); } catch { return; }
+  try {
+    for await (const e of handle) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (full !== skip) await sweepTempFiles(full, skip, base, staleMs, result);
+      } else if (e.isFile() && TEMP_RE.test(e.name)) {
+        if (await removeIfOrphanTemp(base, full, staleMs)) result.tempFilesRemoved += 1;
+      }
+    }
+  } catch { /* read failed mid-dir: skip the rest of it */ }
+}
+
 async function sweepOnce({ staleHours = STALE_HOURS, retentionDays = TERMINAL_RETENTION_DAYS } = {}) {
-  const result = { canceledStale: 0, orphanDirsRemoved: 0, terminalRowsPurged: 0 };
-  const root = await chunkRoot();
+  const result = { canceledStale: 0, orphanDirsRemoved: 0, terminalRowsPurged: 0, tempFilesRemoved: 0 };
+  const base = await localRoot();
+  const root = base ? path.join(base, '.uploads') : null;
 
   // 1) Cancel active sessions idle for staleHours; remove their staged chunks.
   let stale = [];
@@ -81,6 +122,10 @@ async function sweepOnce({ staleHours = STALE_HOURS, retentionDays = TERMINAL_RE
     result.terminalRowsPurged = purged.length;
   } catch { /* ignore */ }
 
+  // 4) Remove orphaned upload temp files from the document tree (the staging dir is
+  //    step 2's job).
+  if (base) await sweepTempFiles(base, root, base, staleHours * 3600 * 1000, result);
+
   return result;
 }
 
@@ -89,8 +134,8 @@ async function runGuarded() {
   _running = true;
   try {
     const r = await sweepOnce();
-    if (r.canceledStale || r.orphanDirsRemoved || r.terminalRowsPurged) {
-      console.log(`[upload-sweeper] canceled ${r.canceledStale} stale session(s), removed ${r.orphanDirsRemoved} orphan dir(s), purged ${r.terminalRowsPurged} old row(s)`);
+    if (r.canceledStale || r.orphanDirsRemoved || r.terminalRowsPurged || r.tempFilesRemoved) {
+      console.log(`[upload-sweeper] canceled ${r.canceledStale} stale session(s), removed ${r.orphanDirsRemoved} orphan dir(s), purged ${r.terminalRowsPurged} old row(s), removed ${r.tempFilesRemoved} orphan temp file(s)`);
     }
   } catch (e) {
     console.error('[upload-sweeper] sweep failed:', e.message);
