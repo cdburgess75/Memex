@@ -7,9 +7,12 @@ async function PROVIDER() {
 
 // ─── At-rest encryption (local storage) ─────────────────────────────────────
 // AES-256-GCM. Key can be a 64-char hex string (32 raw bytes) or any passphrase
-// (scrypt-derived). Wire format: MAGIC(4) + IV(12) + AUTH_TAG(16) + CIPHERTEXT.
-// Files uploaded before encryption was enabled are detected by missing magic bytes
-// and returned as-is, so enabling encryption is non-destructive to existing files.
+// (scrypt-derived). Files are written in the segmented format (encryption.js): fixed-
+// size segments, each sealed on its own, so there is no size ceiling and a byte range
+// decrypts only the segments it covers. Files written before that are one GCM message,
+// MAGIC(4) + IV(12) + AUTH_TAG(16) + CIPHERTEXT, and still read. Files uploaded before
+// encryption was enabled are detected by missing magic bytes and returned as-is, so
+// enabling encryption is non-destructive to existing files.
 
 const enc  = require('./encryption');
 const fsSync = require('fs');
@@ -17,12 +20,17 @@ const fs   = fsSync.promises;
 const nodePath = require('path');
 const crypto   = require('crypto');
 const { pipeline } = require('stream/promises');
-const { Transform } = require('stream');
+const { Readable, Transform } = require('stream');
 
 async function _encKey() {
   const raw = await settings.getOrEnv('storage_encryption_key');
   return enc.resolveKey(raw);
 }
+
+// Segment size for newly written files. Readers take it from each file's header, so
+// changing it never affects existing files; tests shrink it to cover many segments.
+let _segmentSize = enc.SEGMENT_SIZE;
+function _setSegmentSizeForTests(n) { _segmentSize = n || enc.SEGMENT_SIZE; }
 
 async function localBase() {
   const p = await settings.getOrEnv('storage_local_path');
@@ -49,7 +57,7 @@ function validateLocalToken(token) {
 
 async function localUpload(storagePath, buffer) {
   const key = await _encKey();
-  const data = key ? enc.encrypt(buffer, key) : buffer;
+  const data = key ? enc.encryptSegmented(buffer, key, { segmentSize: _segmentSize }) : buffer;
   const fullPath = nodePath.join(await localBase(), storagePath);
   await fs.mkdir(nodePath.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, data);
@@ -72,46 +80,17 @@ async function localUploadStream(storagePath, readable) {
   const tmpPath = `${fullPath}.${crypto.randomBytes(8).toString('hex')}.upload`;
   let bytes = 0;
 
+  // One pass: the segmented header is known up front, so the file is written in order.
+  // Every stage is inside the pipeline, so a failure anywhere (source, cipher, disk)
+  // rejects here and the temp file goes.
+  const stages = [readable, byteCounter(n => { bytes += n; })];
+  if (key) stages.push(enc.encryptSegments(key, { segmentSize: _segmentSize }));
   try {
-    if (!key) {
-      await pipeline(
-        readable,
-        byteCounter(n => { bytes += n; }),
-        fsSync.createWriteStream(tmpPath)
-      );
-      await fs.rename(tmpPath, fullPath);
-      return { size: bytes };
-    }
-
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    await pipeline(
-      readable,
-      byteCounter(n => { bytes += n; }),
-      cipher,
-      fsSync.createWriteStream(tmpPath)
-    );
-
-    const cipherTextPath = `${tmpPath}.ciphertext`;
-    await fs.rename(tmpPath, cipherTextPath);
-    await new Promise((resolve, reject) => {
-      const out = fsSync.createWriteStream(tmpPath);
-      const input = fsSync.createReadStream(cipherTextPath);
-      out.on('error', reject);
-      input.on('error', reject);
-      out.write(enc.MAGIC);
-      out.write(iv);
-      out.write(cipher.getAuthTag());
-      input.pipe(out);
-      input.on('end', () => out.end());
-      out.on('finish', resolve);
-    });
-    await fs.unlink(cipherTextPath);
+    await pipeline(...stages, fsSync.createWriteStream(tmpPath));
     await fs.rename(tmpPath, fullPath);
     return { size: bytes };
   } catch (e) {
     await fs.unlink(tmpPath).catch(() => {});
-    await fs.unlink(`${tmpPath}.ciphertext`).catch(() => {});
     throw e;
   }
 }
@@ -139,50 +118,62 @@ function parseRange(rangeHeader, totalSize) {
 }
 
 // Streaming download: never buffers the whole file. Returns { stream, length,
-// totalSize, range, unsatisfiable }. opts.rangeHeader enables HTTP Range (206) for
-// non-encrypted files (used for media seeking). GCM ciphertext isn't seekable, so an
-// encrypted file ignores Range and streams in full (still no OOM). For an encrypted
-// file we peek the MAGIC+IV+TAG header and pipe the ciphertext through a streaming
-// decipher; legacy/plaintext files (no magic) stream as-is.
+// totalSize, range, unsatisfiable }. opts.rangeHeader enables HTTP Range (206), used
+// for media seeking. A segmented encrypted file serves a range by reading and
+// decrypting only the segments it covers. A single-message encrypted file (written
+// before segments) isn't seekable, so it ignores Range and streams in full (still no
+// OOM). Plaintext files (no magic) stream as-is.
 async function localDownloadStream(storagePath, opts = {}) {
   const fullPath = nodePath.join(await localBase(), storagePath);
   const key = await _encKey();
   const stat = await fs.stat(fullPath);
 
-  let encrypted = false, iv = null, tag = null;
+  let seg = null, single = null;
   if (key) {
     const fd = await fs.open(fullPath, 'r');
     try {
-      const b = Buffer.alloc(Math.min(32, stat.size));
+      const b = Buffer.alloc(Math.min(enc.SEG_HEADER_LEN, stat.size));
       const { bytesRead } = await fd.read(b, 0, b.length, 0);
       const header = b.subarray(0, bytesRead);
-      if (header.length >= 32 && header.subarray(0, 4).equals(enc.MAGIC)) {
-        encrypted = true; iv = header.subarray(4, 16); tag = header.subarray(16, 32);
+      seg = enc.parseSegmentedHeader(header);
+      if (!seg && header.length >= 32 && header.subarray(0, 4).equals(enc.MAGIC)) {
+        single = { iv: Buffer.from(header.subarray(4, 16)), tag: Buffer.from(header.subarray(16, 32)) };
       }
     } finally { await fd.close(); }
   }
-  const totalSize = encrypted ? stat.size - 32 : stat.size;
 
-  if (opts.rangeHeader && !encrypted) {
-    const r = parseRange(opts.rangeHeader, totalSize);
-    if (r && r.unsatisfiable) return { unsatisfiable: true, totalSize };
-    if (r) {
-      return {
-        stream: fsSync.createReadStream(fullPath, { start: r.start, end: r.end }),
-        length: r.end - r.start + 1, totalSize, range: { start: r.start, end: r.end },
-      };
-    }
+  // The streams below are generators, so a decrypt failure (a tampered or cut-short
+  // file) errors the stream for whoever consumes it, and the file is opened only once
+  // something reads.
+  if (single) {
+    const totalSize = stat.size - 32;
+    const stream = Readable.from((async function* () {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, single.iv);
+      decipher.setAuthTag(single.tag);
+      for await (const c of fsSync.createReadStream(fullPath, { start: 32 })) yield decipher.update(c);
+      const tail = decipher.final(); // checks the tag, which covers the whole file
+      if (tail.length) yield tail;
+    })(), { objectMode: false });
+    return { stream, length: totalSize, totalSize, range: null };
   }
 
-  if (!encrypted) {
-    return { stream: fsSync.createReadStream(fullPath), length: totalSize, totalSize, range: null };
+  const totalSize = seg ? enc.segmentedLayout(seg, stat.size).plainSize : stat.size;
+  const r = opts.rangeHeader ? parseRange(opts.rangeHeader, totalSize) : null;
+  if (r && r.unsatisfiable) return { unsatisfiable: true, totalSize };
+  const range = r ? { start: r.start, end: r.end } : null;
+  const length = range ? range.end - range.start + 1 : totalSize;
+  if (!seg) {
+    return { stream: fsSync.createReadStream(fullPath, range || {}), length, totalSize, range };
   }
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  const ciphertext = fsSync.createReadStream(fullPath, { start: 32 });
-  ciphertext.on('error', (e) => decipher.destroy(e));
-  ciphertext.pipe(decipher);
-  return { stream: decipher, length: totalSize, totalSize, range: null };
+  const plan = enc.segmentedReadPlan(seg, stat.size, range);
+  const stream = Readable.from((async function* () {
+    // One sealed segment per read, so each arrives whole and decrypts without a copy.
+    const sealed = fsSync.createReadStream(fullPath, {
+      start: plan.readStart, end: plan.readEnd, highWaterMark: seg.segmentSize + enc.SEG_TAG_LEN,
+    });
+    yield* enc.decryptSegments(key, seg, plan)(sealed);
+  })(), { objectMode: false });
+  return { stream, length, totalSize, range };
 }
 
 async function localGetUrl(storagePath, ttl) {
@@ -386,4 +377,4 @@ async function copy(fromStoragePath, toStoragePath) {
   }
 }
 
-module.exports = { upload, uploadStream, download, downloadStream, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase, parseRange };
+module.exports = { upload, uploadStream, download, downloadStream, getUrl, del, copy, validateLocalToken, isLocalProvider, localBase, parseRange, _setSegmentSizeForTests };
