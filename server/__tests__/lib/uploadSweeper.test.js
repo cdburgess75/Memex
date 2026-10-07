@@ -51,6 +51,28 @@ describe('uploadSweeper.sweepOnce: orphaned upload temp files', () => {
     expect(fs.existsSync(done)).toBe(true);
   });
 
+  test("also removes the stale .ciphertext temp an older release's encrypted upload left beside it", async () => {
+    const tmp = put(`documents/123-big.iso.${HEX}.upload`, 48);
+    const ct = put(`documents/123-big.iso.${HEX}.upload.ciphertext`, 48);
+    const done = put('documents/123-other.iso', 48);
+
+    const r = await uploadSweeper.sweepOnce({ staleHours: 24 });
+
+    expect(r.tempFilesRemoved).toBe(2);
+    expect(fs.existsSync(tmp)).toBe(false);
+    expect(fs.existsSync(ct)).toBe(false);
+    expect(fs.existsSync(done)).toBe(true);
+  });
+
+  test('keeps a .ciphertext temp that is still being written', async () => {
+    const ct = put(`documents/123-big.iso.${HEX}.upload.ciphertext`, 1);
+
+    const r = await uploadSweeper.sweepOnce({ staleHours: 24 });
+
+    expect(r.tempFilesRemoved).toBe(0);
+    expect(fs.existsSync(ct)).toBe(true);
+  });
+
   test('keeps a temp file that is still being written', async () => {
     const tmp = put(`documents/123-big.iso.${HEX}.upload`, 1);
 

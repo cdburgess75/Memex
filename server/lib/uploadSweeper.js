@@ -13,7 +13,10 @@
 // (3) purges old terminal session rows so the table stays bounded, and (4) removes
 // orphaned `<final>.<16 hex>.upload` temp files that storage.localUploadStream writes
 // beside the final file. Its catch block unlinks them on a normal failure, but a hard
-// stop mid-upload (SIGKILL, OOM, reboot) leaves one behind as big as the upload.
+// stop mid-upload (SIGKILL, OOM, reboot) leaves one behind as big as the upload. With
+// encryption on, releases before segmented encryption also wrote a second temp,
+// `<final>.<16 hex>.upload.ciphertext`, the whole ciphertext before its header went on:
+// a hard stop then leaves that one too, just as big, so it is swept the same way.
 const path = require('path');
 const fs = require('fs').promises;
 const db = require('./db');
@@ -27,7 +30,7 @@ const TERMINAL_RETENTION_DAYS = num(process.env.UPLOAD_SWEEP_RETENTION_DAYS, 30)
 let _timer = null;
 let _running = false;
 
-const TEMP_RE = /\.[0-9a-f]{16}\.upload$/;
+const TEMP_RE = /\.[0-9a-f]{16}\.upload(\.ciphertext)?$/;
 
 // Null when storage isn't local (resumable uploads require local storage, so there
 // are no chunk dirs or temp files to sweep — only the DB rows, which we still tidy).
