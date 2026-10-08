@@ -10,6 +10,28 @@ const compliance = require('../lib/compliance');
 const documentAccess = require('../lib/documentAccess');
 const storage = require('../lib/storage');
 
+// GET /api/admin/files?q=&limit= — Admin's Files tab: the newest files (200 by default),
+// or those whose name or uploader matches q, plus the workspace totals. The tab used to
+// build one table row per file in the workspace. Folder markers (.keep) are left out.
+router.get('/files', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+    const q = String(req.query.q || '').trim().slice(0, 200);
+    const live = `d.deleted_at IS NULL AND d.name !~ '(^|/)\\.keep$'`;
+    const totals = await db.queryOne(`SELECT count(*)::int AS files, coalesce(sum(d.size), 0)::bigint AS bytes FROM documents d WHERE ${live}`);
+    const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+    const files = await db.query(
+      `SELECT d.id, d.name, d.size, d.mime_type, d.uploaded_by_email, d.created_at, d.library_id
+         FROM documents d
+        WHERE ${live} AND ($1 = '' OR d.name ILIKE $2 OR d.uploaded_by_email ILIKE $2)
+        ORDER BY d.created_at DESC LIMIT ${limit}`, [q, like]);
+    const matched = q
+      ? (await db.queryOne(`SELECT count(*)::int AS n FROM documents d WHERE ${live} AND (d.name ILIKE $1 OR d.uploaded_by_email ILIKE $1)`, [like])).n
+      : totals.files;
+    res.json({ total: totals.files, bytes: Number(totals.bytes) || 0, matched, files });
+  } catch (e) { serverError(res, e); }
+});
+
 // GET /api/admin/stats
 router.get('/stats', auth, requireRole('admin'), async (req, res) => {
   try {
