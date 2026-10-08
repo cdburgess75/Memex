@@ -2345,9 +2345,9 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .library-menu-item-wrap { display: flex; align-items: center; }
 .library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; }
 .library-menu-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.library-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-faint); opacity: 0.7; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.library-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-soft); font-size: 17px; line-height: 1; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 .library-pin-star.pinned { color: var(--accent); opacity: 1; }
-.library-pin-star:hover { opacity: 1; background: var(--surface-2); }
+.library-pin-star:hover { color: var(--accent); background: var(--surface-2); }
 .library-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* In-rail folder tree (reuses .file-commander-folder rows, transparent in the rail) */
 .file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; }
@@ -3257,6 +3257,11 @@ let currentFolderPath = '';
 // per-device file favorites. All client-persisted (localStorage) — see plan.
 const _loadIdSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]').map(String)); } catch { return new Set(); } };
 let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
+// The library to open at sign-in ("Open this library when I sign in"); null = whichever
+// this browser had open last. Saved with the other preferences so it follows the person.
+let startLibraryId = (() => { try { return localStorage.getItem('memex_start_library') || null; } catch { return null; } })();
+let _prefsLoaded = false;      // the server's preferences have arrived (see sendPreferences)
+let _signInDeepLink = false;   // sign-in was asked to open a particular place
 let favoriteFileIds = _loadIdSet('memex_favorite_files');
 // Inline-bell state: which files the user follows, and their notify prefs for
 // the current library (owner default on / member default off).
@@ -3271,7 +3276,10 @@ function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON
 // toggles becomes a single request.
 function sendPreferences() {
   if (!currentUser) return Promise.resolve();
-  return apiPut('/preferences', { pinnedLibraries: [...pinnedLibraryIds], favoriteFiles: [...favoriteFileIds] }).catch(() => {});
+  const body = { pinnedLibraries: [...pinnedLibraryIds], favoriteFiles: [...favoriteFileIds] };
+  // Only once the saved choice is known, so an early pin cannot clear it.
+  if (_prefsLoaded) body.startLibrary = startLibraryId;
+  return apiPut('/preferences', body).catch(() => {});
 }
 let _prefSyncTimer = null;
 function syncPreferencesToServer() {
@@ -3292,6 +3300,9 @@ async function loadServerPreferences() {
     }
     pinnedLibraryIds = new Set(sPins);
     favoriteFileIds = new Set(sFavs);
+    startLibraryId = p?.startLibrary ? String(p.startLibrary) : null;
+    try { startLibraryId ? localStorage.setItem('memex_start_library', startLibraryId) : localStorage.removeItem('memex_start_library'); } catch { /* private mode */ }
+    _prefsLoaded = true;
     localStorage.setItem('memex_pinned_libraries', JSON.stringify(sPins));
     localStorage.setItem('memex_favorite_files', JSON.stringify(sFavs));
   } catch { /* offline / unavailable — keep the localStorage cache */ }
@@ -3615,6 +3626,15 @@ async function _afterLogin() {
   // library open is not that one, load it again.
   if (document.getElementById('file-library-view') && filesListKey && !filesListKey.startsWith(`${currentLibraryId}|`)) await loadFiles();
   await loadServerPreferences();
+  // Open the library this person chose for sign-in, unless they came by a link to a
+  // particular place.
+  if (!_signInDeepLink && startLibraryId && String(startLibraryId) !== String(currentLibraryId)
+      && librariesList.some(l => String(l.id) === String(startLibraryId))) {
+    currentLibraryId = startLibraryId;
+    try { localStorage.setItem('memex_library_id', currentLibraryId); } catch { /* private mode */ }
+    if (fileView === 'home' && document.getElementById('home-view')) renderHome();
+    else if (document.getElementById('file-library-view')) { currentFolderPath = ''; await loadFiles(); }
+  }
   await loadAiModels();
   renderSearchScope();
   renderUserChip();
@@ -3988,6 +4008,7 @@ async function loadFromServer() {
       try { history.replaceState(null, '', location.pathname + location.search + deepHash); } catch (e) {}
     }
     const deep = hashToNav(deepHash);
+    _signInDeepLink = !!deep;
     if (deep) await navApply(deep); else await setTab('files', 'home'); // login lands on Home
   } catch (e) {
     toast('Could not load: ' + e.message);
@@ -8491,7 +8512,7 @@ function libraryMenuRow(l) {
     ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
     : (LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
-  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to rail'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
+  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
 }
 // ---- Library menu ----
 // With a handful of libraries the menu is a plain list. Past LIBRARY_MENU_COMPACT it gets a
@@ -8567,9 +8588,21 @@ function libraryMenuInnerHtml() {
     + `<div class="library-menu-sep"></div>`
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
+    + (cur && cur.id ? (String(startLibraryId) === String(cur.id)
+        ? `<button class="library-menu-item" type="button" onclick="setStartLibrary(null)" title="Click to stop opening it at sign-in">✓ “${esc(cur.name)}” opens when you sign in</button>`
+        : `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="setStartLibrary(this.dataset.lib)">Open “${esc(cur.name)}” when I sign in</button>`) : '')
     + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
+}
+function setStartLibrary(id) {
+  startLibraryId = id ? String(id) : null;
+  try { startLibraryId ? localStorage.setItem('memex_start_library', startLibraryId) : localStorage.removeItem('memex_start_library'); } catch { /* private mode */ }
+  _prefsLoaded = true;   // a deliberate choice: send it
+  syncPreferencesToServer();
+  closeLibraryMenu();
+  const lib = librariesList.find(l => String(l.id) === String(id));
+  toast(startLibraryId ? `“${lib?.name || 'This library'}” will open when you sign in` : 'Sign-in will open the library you used last');
 }
 function libraryMenuSearch(value) {
   libraryMenuQuery = String(value || '');

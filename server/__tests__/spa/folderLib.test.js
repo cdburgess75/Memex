@@ -158,7 +158,7 @@ describe('library relationships and where you can add files', () => {
   };
   const base = (over) => ({
     esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '<svg/>', pinnedLibraryIds: new Set(),
-    currentUser: { role: 'contributor' }, currentLibraryId: 'L1', librariesList: [], localStorage: { getItem: () => null, setItem: () => {} }, ...over,
+    currentUser: { role: 'contributor' }, currentLibraryId: 'L1', librariesList: [], localStorage: { getItem: () => null, setItem: () => {} }, startLibraryId: null, ...over,
   });
 
   test.each([
@@ -241,5 +241,35 @@ describe('library relationships and where you can add files', () => {
     expect(fnSource('handleFilePickerChange')).toMatch(/intoFolder\(dest, file\.webkitRelativePath \|\| file\.name\)/);
     expect(fnSource('handleFolderPickerChange')).toMatch(/const dest = uploadDestination\(\);/);
     expect(fnSource('handleFileHomeDrop')).toMatch(/if \(!canWriteHere\(dest\)\)/);
+  });
+});
+
+describe('the library opened at sign-in, in the library menu', () => {
+  const fnSource = (name) => {
+    const start = html.search(new RegExp(`function ${name}\\(`));
+    const open = html.indexOf('{', start);
+    let depth = 0;
+    for (let j = open; j < html.length; j++) { if (html[j] === '{') depth++; else if (html[j] === '}' && --depth === 0) return html.slice(start, j + 1); }
+    throw new Error(name);
+  };
+  const menuFor = (startLibraryId) => {
+    const ctx = { esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '', pinnedLibraryIds: new Set(), currentUser: { role: 'contributor' },
+      currentLibraryId: 'L1', librariesList: [{ id: 'L1', name: 'Clients', my_access: 'owner', can_manage: true }],
+      localStorage: { getItem: () => null, setItem: () => {} }, startLibraryId };
+    vm.runInNewContext(['currentLibrary', 'canShareLibrary', 'libraryMenuRow', 'libraryMenuInnerHtml'].map(fnSource).join('\n')
+      + `\nconst LIBRARY_PILL = {};\n` + html.slice(html.indexOf('// ---- Library menu ----'), html.indexOf('function libraryMenuInnerHtml('))
+      + `\nthis.menu = libraryMenuInnerHtml;`, ctx);
+    return ctx.menu();
+  };
+  test('offers to open the current library at sign-in', () => {
+    expect(menuFor(null)).toContain('Open “Clients” when I sign in');
+  });
+  test('says when it already does, and that click turns it off', () => {
+    const m = menuFor('L1');
+    expect(m).toContain('“Clients” opens when you sign in');
+    expect(m).toContain('setStartLibrary(null)');
+  });
+  test('every row has a pin star', () => {
+    expect(menuFor(null)).toMatch(/class="library-pin-star"/);
   });
 });
