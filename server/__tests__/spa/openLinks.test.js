@@ -47,7 +47,7 @@ describe('the file preview', () => {
   // previewFile is too large to lift out whole; its opening lines are what matter: the id
   // is checked BEFORE it is recorded, fetched, or written into the dialog's inline handlers.
   const start = html.indexOf('async function previewFile(fileId, opts = {}) {');
-  const head = html.slice(start, html.indexOf("const f = filesList.find", start));
+  const head = html.slice(start, html.indexOf("const f = findFile(", start));
   const run = async (fileId) => {
     const seen = { toast: null, recorded: false };
     const c = { toast: (m) => { seen.toast = m; }, recordOpen: () => { seen.recorded = true; } };

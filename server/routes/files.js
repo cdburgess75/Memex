@@ -53,7 +53,7 @@ const {
 } = require('../lib/shareLinks');
 const {
   DOCUMENT_COLUMNS, TEXT_EXTRACTION_MAX_BYTES, fileSizeLabelForEvent,
-  safeDocName, destinationFolder, recordUploadNotify, createDocumentRecord,
+  safeDocName, destinationFolder, recordUploadNotify, createDocumentRecord, prefixRange,
 } = require('../lib/documents');
 
 // Uploads are gated by an extension blocklist so the workspace can't become a
@@ -949,10 +949,46 @@ router.get('/share/:token', async (req, res) => {
   }
 });
 
-// GET /api/files
+// GET /api/files — files the caller can read, newest first.
+//   library=<id>   only that library
+//   folder=<path>  only the files directly in that folder ('' = the library's root), no
+//                  folder markers. A library opens one folder at a time: with tens of
+//                  thousands of files, sending the whole library made opening it slow.
+//   ids=<id,...>   only these files (Favorites)
+//   q=<text>       names or the adder's address containing text, anywhere in the
+//                  library; at most 500
+// With none of folder / ids / q it answers as before: everything (Home no longer asks).
+const DIRECT_LIMIT = 20000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 router.get('/', auth, async (req, res) => {
   try {
     const libParam = req.query.library || null;
+    const where = [];
+    const params = [...documentAccess.userParams(req.user, 'read'), libParam];
+    const add = (v) => { params.push(v); return '$' + params.length; };
+    let limit = '';
+    if (req.query.folder !== undefined) {
+      const folder = String(req.query.folder || '').replace(/^\/+|\/+$/g, '');
+      if (folder) {
+        const pp = add(folder);
+        where.push(`${prefixRange('d', pp)} AND strpos(substr(d.name, char_length(${pp}) + 2), '/') = 0`);
+      } else {
+        where.push(`strpos(d.name, '/') = 0`);
+      }
+      where.push(`d.name !~ '(^|/)\\.keep$'`);
+      limit = `LIMIT ${DIRECT_LIMIT}`;
+    }
+    if (req.query.ids !== undefined) {
+      const ids = String(req.query.ids || '').split(',').map(x => x.trim()).filter(x => UUID_RE.test(x)).slice(0, 500);
+      where.push(`d.id = ANY(${add(ids)}::uuid[])`);
+    }
+    if (req.query.q !== undefined) {
+      const q = String(req.query.q || '').trim().slice(0, 200);
+      const like = add('%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%');
+      where.push(`(d.name ILIKE ${like} OR coalesce(d.uploaded_by_email, '') ILIKE ${like} OR coalesce(up.display_name, '') ILIKE ${like})`);
+      where.push(`d.name !~ '(^|/)\\.keep$'`);
+      limit = 'LIMIT 500';
+    }
     const rows = await db.query(
       `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
        FROM documents d
@@ -960,13 +996,42 @@ router.get('/', auth, async (req, res) => {
        WHERE d.deleted_at IS NULL
          AND ${documentAccess.condition('d', 1)}
          AND ($6::uuid IS NULL OR d.library_id = $6)
-       ORDER BY d.created_at DESC`,
-      [...documentAccess.userParams(req.user, 'read'), libParam]
+         ${where.map(w => 'AND ' + w).join('\n         ')}
+       ORDER BY d.created_at DESC ${limit}`,
+      params
     );
     res.json(rows);
   } catch (e) {
     serverError(res, e);
   }
+});
+
+// GET /api/files/folders?library=<id> — every folder in the library that the caller can
+// see something in, with how many files are under it (at any depth; markers are not
+// files). The folder tree, the folder rows and the Move/Copy pickers are drawn from this,
+// so none of them needs the library's files. A folder made empty on purpose (only its
+// .keep marker) is listed with 0.
+router.get('/folders', auth, async (req, res) => {
+  try {
+    const libParam = req.query.library || null;
+    const rows = await db.query(
+      `WITH v AS MATERIALIZED (
+         SELECT btrim(d.name, '/') AS name FROM documents d
+          WHERE d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)}
+            AND ($6::uuid IS NULL OR d.library_id = $6)
+            AND strpos(btrim(d.name, '/'), '/') > 0
+       ), dirs AS (
+         SELECT regexp_replace(name, '/[^/]*$', '') AS dir,
+                count(*) FILTER (WHERE name !~ '(^|/)\\.keep$')::int AS n
+           FROM v GROUP BY 1
+       )
+       SELECT array_to_string(parts[1:i], '/') AS path, sum(n)::int AS count
+         FROM (SELECT string_to_array(dir, '/') AS parts, n FROM dirs) s,
+              generate_series(1, array_length(parts, 1)) i
+        GROUP BY 1 ORDER BY 1`,
+      [...documentAccess.userParams(req.user, 'read'), libParam]);
+    res.json(rows.map(r => ({ path: r.path, name: r.path.split('/').pop(), count: r.count })));
+  } catch (e) { serverError(res, e); }
 });
 
 // POST /api/files/library-transfer — move or copy selected files into a library
@@ -1226,7 +1291,6 @@ router.get('/home-stats', auth, async (req, res) => {
 //   favorites  the caller's starred files that still exist and they can read (at most 8)
 // Folder markers (.keep) are not files and count nowhere.
 const GUIDE_NAMES = ['Getting started with Depot.pdf', 'Getting started with Depot.docx'];
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 router.get('/summary', auth, async (req, res) => {
   try {
     const p = documentAccess.userParams(req.user, 'read');

@@ -479,7 +479,29 @@ exports.routes = {
   'POST /api/access/folder-preview': ({ body }) => ({ previews: (body.ops || []).map(op => ({ op: op.op, lose_visible: true, gain_visible: true, lose: [], changed: [], gain: [], admins_unaffected: 0, shares_moving: 0, shares_ending: [], fingerprint: 'sha256:demo', generated_at: new Date().toISOString() })) }),
 
   // files: lists
-  'GET /api/files': async ({ query }) => { await wait(LIST_LATENCY); return visibleFiles(query.library || null).map(pub); },
+  // The same options the server takes: folder= (only that folder's own files), ids=, q=.
+  'GET /api/files': async ({ query }) => {
+    await wait(LIST_LATENCY);
+    let list = visibleFiles(query.library || null);
+    const isKeep = (f) => /(^|\/)\.keep$/.test(f.name);
+    if (query.folder !== undefined) {
+      const folder = String(query.folder || '').replace(/^\/+|\/+$/g, '');
+      list = list.filter(f => !isKeep(f) && (folder ? f.name.startsWith(folder + '/') && !f.name.slice(folder.length + 1).includes('/') : !f.name.includes('/')));
+    }
+    if (query.ids !== undefined) { const ids = new Set(String(query.ids || '').split(',')); list = list.filter(f => ids.has(String(f.id))); }
+    if (query.q !== undefined) { const q = String(query.q || '').toLowerCase(); list = list.filter(f => !isKeep(f) && (f.name.toLowerCase().includes(q) || String(f.uploaded_by_email || '').toLowerCase().includes(q))); }
+    return list.map(pub);
+  },
+  'GET /api/files/folders': async ({ query }) => {
+    await wait(LIST_LATENCY);
+    const counts = new Map();
+    for (const f of visibleFiles(query.library || null)) {
+      const parts = f.name.split('/').filter(Boolean); const base = parts.pop();
+      let acc = '';
+      for (const x of parts) { acc = acc ? acc + '/' + x : x; counts.set(acc, (counts.get(acc) || 0) + (base === '.keep' ? 0 : 1)); }
+    }
+    return [...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([path, count]) => ({ path, name: path.split('/').pop(), count }));
+  },
   // Home's summary, worked out from the same files the list returns (the server does this in SQL).
   'GET /api/files/summary': async ({ query }) => {
     await wait(LIST_LATENCY);
