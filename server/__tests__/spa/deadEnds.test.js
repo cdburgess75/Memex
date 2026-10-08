@@ -61,6 +61,7 @@ describe('moving and copying to another library', () => {
     };
     vm.runInNewContext(`${['esc', 'inFolderLib', 'transferSummary', 'openLibraryTransfer', 'moveFolderToLibrary', 'copyFolderToLibrary', 'moveFileToLibrary'].map(block).join('\n')}
       function selectedFiles() { return filesList.filter(f => selectedFileIds.has(String(f.id))); }
+      function findFile(id) { return filesList.find(f => String(f.id) === String(id)) || null; }
       function selectedFolders() { return [...selectedFolderPaths]; }
       this.start = () => ${start};`, ctx);
     ctx.start();

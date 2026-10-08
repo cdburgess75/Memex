@@ -1583,6 +1583,7 @@ html.dark .settings-tab.active { color: var(--accent); }
 .library-menu-fold .chev { margin-left: auto; transition: transform .15s; }
 .library-menu-fold.open .chev { transform: rotate(180deg); }
 .library-menu-count { font-weight: 500; letter-spacing: 0; color: var(--ink-faint); }
+.file-list-more { padding: 14px; text-align: center; color: var(--ink-faint); font: 500 13px var(--ui); }
 .library-menu-empty { padding: 10px; color: var(--ink-faint); font: 500 13px var(--ui); }
 .lib-member-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--rule-soft); font-size: 14px; color: var(--ink); }
 .lib-member-row:last-child { border-bottom: 0; }
@@ -3330,14 +3331,15 @@ function refreshFileRailTree() {
 // tree so the active folder is actually visible (keeps rail in sync with the pane).
 function expandRailAncestors(path) {
   if (!path) return;
-  const set = commanderCollapsed();
+  const set = railExpanded();
   const parts = path.split('/').filter(Boolean);
   let anc = '', changed = false;
-  for (let i = 0; i < parts.length; i++) {
+  // the folder's parents open, so it can be seen; the folder itself stays as it was
+  for (let i = 0; i < parts.length - 1; i++) {
     anc = anc ? `${anc}/${parts[i]}` : parts[i];
-    if (set.has(anc)) { set.delete(anc); changed = true; }
+    if (!set.has(anc)) { set.add(anc); changed = true; }
   }
-  if (changed) localStorage.setItem('memex_commander_collapsed', JSON.stringify([...set]));
+  if (changed) saveRailExpanded(set);
 }
 
 // ---- file table columns (sortable + show/hide, persisted) ----
@@ -3565,6 +3567,9 @@ async function _afterLogin() {
     showSetupLocked(); return;
   }
   await loadLibraries();
+  // The first screen can be drawn before the server says which library is yours; if the
+  // library open is not that one, load it again.
+  if (document.getElementById('file-library-view') && filesListKey && !filesListKey.startsWith(`${currentLibraryId}|`)) await loadFiles();
   await loadServerPreferences();
   await loadAiModels();
   renderSearchScope();
@@ -7620,13 +7625,27 @@ function fileViewSliderHtml() {
     + `<svg class="fvs-end" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>`
     + `</div>`;
 }
-function openFolder(path = '', push = true) {
+let openFolderSeq = 0;
+async function openFolder(path = '', push = true) {
   currentFolderPath = normalizeFilePath(path);
   expandRailAncestors(currentFolderPath);
   clearFileSelection(false);
   detailsPaneOpen = false;
-  renderDocumentLibraryList();
   if (push) navPush();
+  const want = `${currentLibraryId}|${fileView === 'favorites' ? '*fav' : currentFolderPath}`;
+  if (filesListKey !== want && document.getElementById('file-library-view')) {
+    const seq = ++openFolderSeq;
+    filesList = [];
+    const el = document.getElementById('file-list');
+    if (el) el.innerHTML = emptyState('Opening folder', '');
+    refreshFileRailTree();
+    const bc = document.getElementById('file-library-breadcrumb');
+    if (bc) bc.innerHTML = fileBreadcrumbHtml();
+    try { await Promise.all([loadCurrentFolderFiles(), folderIndexLib === currentLibraryId ? null : loadFolderIndex()]); }
+    catch (e) { if (seq === openFolderSeq && el) el.innerHTML = emptyState('Could not open this folder', e.message || 'Try again.'); return; }
+    if (seq !== openFolderSeq) return;   // another folder was opened meanwhile
+  }
+  renderDocumentLibraryList();
 }
 
 // ---- Unified browser history for in-app navigation ----
@@ -7786,12 +7805,21 @@ function commanderCollapsed() {
   try { return new Set(JSON.parse(localStorage.getItem('memex_commander_collapsed') || '[]')); }
   catch { return new Set(); }
 }
+// The rail's folder tree starts CLOSED: only the folders someone opened (and the way to
+// the folder they are in) are drawn. It used to open everything, thousands of rows deep.
+function railExpanded() {
+  try { return new Set(JSON.parse(localStorage.getItem('memex_rail_expanded') || '[]')); }
+  catch { return new Set(); }
+}
+function saveRailExpanded(set) {
+  try { localStorage.setItem('memex_rail_expanded', JSON.stringify([...set].slice(-300))); } catch { /* private mode */ }
+}
 function toggleCommanderFolder(event, path) {
   event.stopPropagation(); // don't also open the folder
-  const set = commanderCollapsed();
+  const set = railExpanded();
   set.has(path) ? set.delete(path) : set.add(path);
-  localStorage.setItem('memex_commander_collapsed', JSON.stringify([...set]));
-  renderDocumentLibraryList();
+  saveRailExpanded(set);
+  refreshFileRailTree();
 }
 function fileLibraryCommandBarHtml() {
   const selected = selectedFiles();
@@ -7870,7 +7898,7 @@ function filterFilesForHome(filter, list = filesList, applyTextQuery = true) {
   });
 }
 function openRecommendedFile(fileId) {
-  if (filesList.find(x => String(x.id) === String(fileId))) openFileDefault(fileId);
+  if (findFile(fileId)) openFileDefault(fileId);
 }
 let fileFilter = 'all';
 let fileSearchTimer = null;
@@ -7941,26 +7969,22 @@ function filePinnedSectionHtml() {
 // Finder-style folder tree shown in the rail under the Files item. Reuses the
 // Commander collapse/expand state and folder model so toggling stays in sync.
 function fileRailTreeHtml() {
-  const folders = allFoldersForFiles(filesList);
-  if (!folders.length) return '';
-  const collapsed = commanderCollapsed();
-  const hasChildren = p => folders.some(f => f.path.startsWith(p + '/'));
-  const hiddenByAncestor = p => {
-    const parts = p.split('/').filter(Boolean);
-    let anc = '';
-    for (let i = 0; i < parts.length - 1; i++) {
-      anc = anc ? `${anc}/${parts[i]}` : parts[i];
-      if (collapsed.has(anc)) return true;
+  if (!folderIndex.length) return '';
+  const open = railExpanded();
+  const out = [];
+  const walk = (parent, depth) => {
+    for (const folder of childFoldersFromIndex(parent)) {
+      const kids = folderChildren.has(folder.path);
+      const isOpen = open.has(folder.path);
+      const caret = kids
+        ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${isOpen ? 'Collapse' : 'Expand'}">${isOpen ? '▼' : '▶'}</span>`
+        : '<span class="fc-caret fc-caret-empty"></span>';
+      out.push(`<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`);
+      if (kids && isOpen) walk(folder.path, depth + 1);
     }
-    return false;
   };
-  return folders.filter(f => !hiddenByAncestor(f.path)).map(folder => {
-    const depth = folder.path.split('/').filter(Boolean).length - 1;
-    const caret = hasChildren(folder.path)
-      ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${collapsed.has(folder.path) ? 'Expand' : 'Collapse'}">${collapsed.has(folder.path) ? '▶' : '▼'}</span>`
-      : '<span class="fc-caret fc-caret-empty"></span>';
-    return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`;
-  }).join('');
+  walk('', 0);
+  return out.join('');
 }
 
 // The production Create + Upload buttons, emitted from the file command bar (so
@@ -8127,6 +8151,73 @@ function currentLibraryName() {
 // Files endpoint scoped to the active library.
 function filesEndpoint() {
   return currentLibraryId ? `/files?library=${encodeURIComponent(currentLibraryId)}` : '/files';
+}
+
+// ---- One folder at a time ----
+// A library no longer comes down whole: with tens of thousands of files that made
+// opening it slow. filesList holds the files DIRECTLY in the folder being viewed (or the
+// Favorites, or a name search's results); the folders come from a separate, light list
+// (GET /api/files/folders) that the tree, the folder rows and the Move/Copy pickers use.
+let folderIndex = [];                 // [{ path, name, count }] for the library being viewed
+let folderChildren = new Map();       // parent path ('' = root) -> its child folders, by name
+let filesListKey = null;              // which library + folder filesList holds
+const knownFiles = new Map();         // id -> file, for every file the page has been sent
+function rememberFiles(list) { (list || []).forEach(f => { if (f && f.id != null) knownFiles.set(String(f.id), f); }); return list; }
+function findFile(id) {
+  const k = String(id);
+  return filesList.find(x => String(x.id) === k) || nameSearch.rows.find(x => String(x.id) === k) || knownFiles.get(k) || null;
+}
+function libraryQuery(extra = {}) {
+  const p = new URLSearchParams();
+  if (currentLibraryId) p.set('library', currentLibraryId);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  return p.toString();
+}
+function setFolderIndex(list) {
+  folderIndex = (Array.isArray(list) ? list : []).map(f => ({ path: f.path, name: f.name || String(f.path).split('/').pop(), count: Number(f.count) || 0 }));
+  folderChildren = new Map();
+  for (const f of folderIndex) {
+    const i = f.path.lastIndexOf('/');
+    const parent = i < 0 ? '' : f.path.slice(0, i);
+    if (!folderChildren.has(parent)) folderChildren.set(parent, []);
+    folderChildren.get(parent).push(f);
+  }
+  for (const kids of folderChildren.values()) kids.sort((a, b) => a.name.localeCompare(b.name));
+}
+let folderIndexLib;   // the library folderIndex belongs to
+async function loadFolderIndex() {
+  const lib = currentLibraryId;
+  setFolderIndex(await apiGet('/files/folders?' + libraryQuery()).catch(() => []));
+  folderIndexLib = lib;
+}
+async function loadCurrentFolderFiles() {
+  const key = `${currentLibraryId}|${fileView === 'favorites' ? '*fav' : currentFolderPath}`;
+  if (fileView === 'favorites') {
+    const ids = [...favoriteFileIds].slice(0, 500);
+    filesList = ids.length ? rememberFiles(await apiGet('/files?' + libraryQuery({ ids: ids.join(',') }))) : [];
+  } else {
+    filesList = rememberFiles(await apiGet('/files?' + libraryQuery({ folder: currentFolderPath || '' })));
+  }
+  filesListKey = key;
+}
+async function loadLibraryData() {
+  nameSearch = { key: '', rows: [] };
+  await Promise.all([loadFolderIndex(), loadCurrentFolderFiles()]);
+}
+// Searching by name inside a library asks the server (it reaches every folder); the
+// result is kept until the words, the library or the files change.
+let nameSearch = { key: '', rows: [] };
+let nameSearchSeq = 0;
+async function runNameSearch(key, q) {
+  const seq = ++nameSearchSeq;
+  let rows = [];
+  try { rows = rememberFiles(await apiGet('/files?' + libraryQuery({ q }))); } catch (e) { toast('Search failed: ' + e.message); }
+  if (seq !== nameSearchSeq) return;
+  nameSearch = { key, rows: Array.isArray(rows) ? rows : [] };
+  if (document.getElementById('file-library-view')) renderDocumentLibraryList({ rowsOnly: true });
+}
+function childFoldersFromIndex(parentPath = currentFolderPath) {
+  return folderChildren.get(normalizeFilePath(parentPath)) || [];
 }
 
 // ---- AI model picker ----
@@ -8892,7 +8983,7 @@ async function saveFileText(fileId) {
   try {
     await apiPut('/files/' + fileId + '/content', { content: ta.value });
     codeEdSaved();
-    const f = filesList.find(x => String(x.id) === String(fileId));
+    const f = findFile(fileId);
     if (f) f.size = new Blob([ta.value]).size;
     toast('Saved');
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : null;
@@ -9540,7 +9631,7 @@ async function renderDocumentLibrary(view = 'active') {
   const quick = document.getElementById('file-quick-list');
   if (quick) quick.innerHTML = quickAccessHtml();
   try {
-    filesList = await apiGet(filesEndpoint());
+    await loadLibraryData();
     await Promise.all([loadFollowState(), loadFolderNotifyState(), ensureMediaTicket()]); // inline-bell state + thumbnail ticket
     renderDocumentLibraryList();
   } catch (e) {
@@ -9751,8 +9842,7 @@ async function purgeFile(fileId, name) {
 
 async function loadFiles() {
   try {
-    const [files] = await Promise.all([apiGet(filesEndpoint()), loadRecentOpens(), ensureMediaTicket()]);
-    filesList = files;
+    await Promise.all([document.getElementById('file-library-view') ? loadLibraryData() : apiGet(filesEndpoint()).then(f => { filesList = rememberFiles(f); }), loadRecentOpens(), ensureMediaTicket()]);
     document.getElementById('file-library-view') ? renderDocumentLibraryList() : renderFileList();
   } catch (e) { const el = document.getElementById('file-list'); if (el) el.innerHTML = emptyState('Could not load files', e.message || 'Try refreshing the page.'); }
 }
@@ -9856,20 +9946,28 @@ function renderDocumentLibraryList(opts = {}) {
   document.documentElement.setAttribute('data-density', fileViewSize === 0 ? 'compact' : 'comfortable');
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
-  selectedFileIds = new Set([...selectedFileIds].filter(id => filesList.some(f => String(f.id) === id)));
   if (!opts.rowsOnly && quick) quick.innerHTML = quickAccessHtml();
   if (!el) return;
   const q = (document.getElementById('global-search')?.value || '').trim().toLowerCase();
-  const source = fileView === 'favorites' ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
-  const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   // Favorites is a flat, cross-folder view (like Shared): show every matching file
   // regardless of which folder it lives in, and don't surface folder rows.
   const flatView = fileView === 'favorites';
+  // A name search reaches the whole library, so the server answers it (runNameSearch).
+  const serverSearch = q && !flatView;
+  if (serverSearch && nameSearch.key !== `${currentLibraryId}|${q}`) {
+    el.innerHTML = emptyState('Searching…', 'Looking through file names in this library.');
+    runNameSearch(`${currentLibraryId}|${q}`, q);
+    return;
+  }
+  const source = serverSearch ? nameSearch.rows : flatView ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
+  const shownIds = new Set(source.map(f => String(f.id)));
+  selectedFileIds = new Set([...selectedFileIds].filter(id => shownIds.has(id)));
+  const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || serverSearch || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   const rows = (q || flatView ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
-  const folders = (q || flatView) ? [] : childFoldersForPath(source);
+  const folders = (q || flatView) ? [] : childFoldersFromIndex();
   lastRenderedFolderPaths = folders.map(f => f.path);
   selectedFolderPaths = new Set([...selectedFolderPaths].filter(p => lastRenderedFolderPaths.includes(p)));
-  const tableRows = [...folders.map(folderLibraryRow), ...sortFiles(rows).map(fileLibraryRow)].join('');
+  const sortedRows = sortFiles(rows);
   lastRenderedFileIds = rows.map(f => String(f.id));
   const selectables = [...lastRenderedFileIds, ...lastRenderedFolderPaths.map(p => 'f:' + p)];
   const isSel = key => key.startsWith('f:') ? selectedFolderPaths.has(key.slice(2)) : selectedFileIds.has(key);
@@ -9881,21 +9979,53 @@ function renderDocumentLibraryList(opts = {}) {
     if (bc) bc.innerHTML = fileBreadcrumbHtml();
     refreshFileRailTree();
   }
-  const inner = (!folders.length && !rows.length)
+  // Long lists are drawn LIST_PAGE at a time: more are added as the end comes into view.
+  // A redraw of the same list (a checkbox, a sort) keeps as many as were already shown.
+  const card = fileViewSize >= 2;
+  const items = [...folders.map(f => ({ folder: f })), ...sortedRows.map(f => ({ file: f }))];
+  const itemHtml = (it) => it.folder ? (card ? folderCardHtml(it.folder) : folderLibraryRow(it.folder)) : (card ? fileCardHtml(it.file) : fileLibraryRow(it.file));
+  const listKey = [currentLibraryId, fileView, currentFolderPath, q, fileFilter, card].join('|');
+  const shown = Math.min(items.length, Math.max(LIST_PAGE, listKey === _list.key ? _list.shown : 0));
+  _list = { key: listKey, items, itemHtml, shown, card };
+  const first = items.slice(0, shown).map(itemHtml).join('');
+  const inner = !items.length
     ? (q
         ? emptyState('No matching files', 'Try a broader search or clear the current filter.')
         : emptyState(currentFolderPath ? 'This folder is empty' : 'No files in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
-    : fileViewSize >= 2
-      ? (() => { const m = FILE_CARD_MIN[fileViewSize] || 184; return `<div class="file-card-grid" style="grid-template-columns:repeat(auto-fill,minmax(${m}px,1fr));gap:${m < 160 ? 12 : 16}px">${folders.map(folderCardHtml).join('')}${sortFiles(rows).map(fileCardHtml).join('')}</div>`; })()
-      : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody>${tableRows}</tbody></table></div>`;
+    : card
+      ? (() => { const m = FILE_CARD_MIN[fileViewSize] || 184; return `<div class="file-card-grid" id="file-list-items" style="grid-template-columns:repeat(auto-fill,minmax(${m}px,1fr));gap:${m < 160 ? 12 : 16}px">${first}</div>`; })()
+      : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody id="file-list-items">${first}</tbody></table></div>`;
   // The folder tree now lives in the rail, so the main pane is always the flat
   // list (folders + files) for the current folder.
-  el.innerHTML = inner;
+  el.innerHTML = inner + (shown < items.length ? `<div class="file-list-more" id="file-list-more">Showing ${shown.toLocaleString()} of ${items.length.toLocaleString()}…</div>` : '');
+  watchListEnd();
   if (!opts.rowsOnly) updateFileLibraryChrome();
 }
 
+const LIST_PAGE = 200;
+let _list = { key: null, items: [], itemHtml: null, shown: 0, card: false };
+let _listObserver = null;
+function showMoreListItems() {
+  const box = document.getElementById('file-list-items');
+  const more = document.getElementById('file-list-more');
+  if (!box || !_list.itemHtml) return;
+  const next = _list.items.slice(_list.shown, _list.shown + LIST_PAGE);
+  box.insertAdjacentHTML('beforeend', next.map(_list.itemHtml).join(''));
+  _list.shown += next.length;
+  if (_list.shown >= _list.items.length) { more?.remove(); _listObserver?.disconnect(); }
+  else if (more) more.textContent = `Showing ${_list.shown.toLocaleString()} of ${_list.items.length.toLocaleString()}…`;
+}
+function watchListEnd() {
+  _listObserver?.disconnect();
+  const more = document.getElementById('file-list-more');
+  if (!more) return;
+  if (typeof IntersectionObserver === 'undefined') { while (document.getElementById('file-list-more')) showMoreListItems(); return; }
+  _listObserver = new IntersectionObserver((entries) => { if (entries.some(e => e.isIntersecting)) showMoreListItems(); }, { rootMargin: '600px 0px' });
+  _listObserver.observe(more);
+}
+
 function selectedFiles() {
-  return filesList.filter(f => selectedFileIds.has(String(f.id)));
+  return [...selectedFileIds].map(findFile).filter(Boolean);
 }
 
 function selectSingleFile(fileId) {
@@ -10110,7 +10240,7 @@ async function moveItemsIntoFolder(payload, targetPath) {
   let moved = 0;
   try {
     for (const id of files) {
-      const f = filesList.find(x => String(x.id) === String(id));
+      const f = findFile(id);
       if (!f) continue;
       const newName = targetPath ? `${targetPath}/${fileDisplayName(f)}` : fileDisplayName(f);
       if (newName === f.name) continue;
@@ -10130,7 +10260,7 @@ async function moveItemsIntoFolder(payload, targetPath) {
 // Folder picker — the reliable, click-based way to move items into a folder.
 function openFolderPicker(title, excludePaths, onPick) {
   const exclude = new Set(excludePaths || []);
-  const folders = allFoldersForFiles(filesList).filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')) && canWriteHere(f.path));
+  const folders = folderIndex.filter(f => !exclude.has(f.path) && ![...exclude].some(x => f.path === x || f.path.startsWith(x + '/')) && canWriteHere(f.path));
   const rootOk = canWriteHere('');
   const items = [rootOk ? `<button class="library-menu-item" data-path="">⌂ All files (root)</button>` : '',
     ...folders.map(f => `<button class="library-menu-item" data-path="${esc(f.path)}">${esc(f.path)}</button>`)].join('');
@@ -11400,6 +11530,8 @@ async function uploadFiles(items) {
     };
     await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, items.length) }, worker));
   }
+  // New files can mean new folders (a folder upload) and new counts in the tree.
+  if (uploaded && document.getElementById('file-library-view')) await loadFolderIndex().catch(() => {});
   renderList();
   if (statusEl) statusEl.textContent = (uploaded || failed) ? `Uploaded ${uploaded} item${uploaded === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.` : '';
   if (many) toast(`Uploaded ${uploaded} file${uploaded === 1 ? '' : 's'}${failed ? `, ${failed} failed (${firstErrors[0] || ''})` : ''}`);
@@ -11590,7 +11722,7 @@ async function downloadFile(fileId) {
 }
 
 async function deleteFile(fileId, name) {
-  const f = filesList.find(x => String(x.id) === String(fileId));
+  const f = findFile(fileId);
   name = name || (f ? fileDisplayName(f) : 'this file');
   if (!await askConfirm(`Move "${name}" to Trash? You can restore it later.`, { danger: true, okLabel: 'Move to Trash' })) return;
   try {
@@ -11687,7 +11819,7 @@ function openFileDefault(fileId) {
 function closeFileMenu() { document.getElementById('file-row-menu')?.remove(); }
 function openFileMenu(fileId, event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
-  const f = filesList.find(x => String(x.id) === String(fileId));
+  const f = findFile(fileId);
   if (!f) return false;
   const ext = fileExt(f.name);
   const isOffice = OFFICE_EXTS.includes(ext);
@@ -12082,7 +12214,7 @@ async function revokeFolderShareLink(id) {
 }
 async function openInDesktopOffice(fileId) {
   recordOpen(fileId);
-  const f = filesList.find(x => String(x.id) === String(fileId));
+  const f = findFile(fileId);
   const scheme = { doc: 'ms-word', docx: 'ms-word', xls: 'ms-excel', xlsx: 'ms-excel', ppt: 'ms-powerpoint', pptx: 'ms-powerpoint' }[f ? fileExt(f.name) : ''];
   if (!scheme) { toast('No desktop app for this file type'); return; }
   try {
@@ -12094,7 +12226,7 @@ async function openInDesktopOffice(fileId) {
   } catch (e) { toast('Error: ' + e.message); }
 }
 async function renameFile(fileId) {
-  const f = filesList.find(x => String(x.id) === String(fileId));
+  const f = findFile(fileId);
   if (!f) return;
   const folder = fileFolderPath(f);
   const current = fileDisplayName(f);
@@ -12109,7 +12241,7 @@ async function renameFile(fileId) {
   } catch (e) { toast('Rename failed: ' + e.message); }
 }
 function moveFileToLibrary(fileId) {
-  openLibraryTransfer('move', { files: filesList.filter(f => String(f.id) === String(fileId)) });
+  openLibraryTransfer('move', { files: [findFile(fileId)].filter(Boolean) });
 }
 // ── Preview overlay: keyboard-flighted paging + a details side panel ──────────
 // ←/→ move through the files in the current view without leaving the overlay;
@@ -12237,7 +12369,7 @@ async function previewFile(fileId, opts = {}) {
   // ours; refuse anything else rather than trust every caller, present and future.
   if (!OPEN_ID.test(String(fileId || ''))) { toast('That file could not be opened.'); return; }
   recordOpen(fileId);
-  const f = filesList.find(x => String(x.id) === String(fileId));
+  const f = findFile(fileId);
   // Ordered ids in whatever view is showing (list rows or gallery cards), for ←/→ paging.
   try { _previewIds = [...new Set([...document.querySelectorAll('#file-list [data-fid], #panel [data-fid]')].map(el => el.dataset.fid))]; _previewIdx = _previewIds.indexOf(String(fileId)); } catch (e) { _previewIds = []; _previewIdx = -1; }
   const ext = f ? fileExt(f.name) : '';
