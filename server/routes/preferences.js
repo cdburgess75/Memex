@@ -26,12 +26,13 @@ function idList(v, cap) {
 router.get('/', auth, async (req, res) => {
   try {
     const row = await db.queryOne(
-      'SELECT pinned_libraries, favorite_files FROM user_preferences WHERE user_id = $1',
+      'SELECT pinned_libraries, favorite_files, start_library FROM user_preferences WHERE user_id = $1',
       [req.user.id]
     );
     res.json({
       pinnedLibraries: row?.pinned_libraries || [],
       favoriteFiles: row?.favorite_files || [],
+      startLibrary: row?.start_library || null,
     });
   } catch {
     // Degrade gracefully (e.g. the table isn't migrated yet) rather than 500 — the
@@ -41,20 +42,26 @@ router.get('/', auth, async (req, res) => {
 });
 
 // PUT /api/preferences — replace the caller's preferences with the provided sets.
+// startLibrary is changed only when the body names it (an id, or null to clear it), so
+// a page that does not know about it never wipes it.
 router.put('/', auth, async (req, res) => {
   try {
     const pins = idList(req.body?.pinnedLibraries, MAX_PINNED);
     const favs = idList(req.body?.favoriteFiles, MAX_FAVORITES);
-    await db.query(
-      `INSERT INTO user_preferences (user_id, pinned_libraries, favorite_files, updated_at)
-       VALUES ($1, $2::jsonb, $3::jsonb, NOW())
+    const setStart = req.body && Object.prototype.hasOwnProperty.call(req.body, 'startLibrary');
+    const start = setStart && req.body.startLibrary != null ? String(req.body.startLibrary).slice(0, 64) : null;
+    const row = await db.queryOne(
+      `INSERT INTO user_preferences (user_id, pinned_libraries, favorite_files, start_library, updated_at)
+       VALUES ($1, $2::jsonb, $3::jsonb, $5, NOW())
        ON CONFLICT (user_id) DO UPDATE
          SET pinned_libraries = EXCLUDED.pinned_libraries,
              favorite_files   = EXCLUDED.favorite_files,
-             updated_at       = NOW()`,
-      [req.user.id, JSON.stringify(pins), JSON.stringify(favs)]
+             start_library    = CASE WHEN $4 THEN EXCLUDED.start_library ELSE user_preferences.start_library END,
+             updated_at       = NOW()
+       RETURNING start_library`,
+      [req.user.id, JSON.stringify(pins), JSON.stringify(favs), setStart, start]
     );
-    res.json({ ok: true, pinnedLibraries: pins, favoriteFiles: favs });
+    res.json({ ok: true, pinnedLibraries: pins, favoriteFiles: favs, startLibrary: row?.start_library || null });
   } catch (e) {
     serverError(res, e);
   }
