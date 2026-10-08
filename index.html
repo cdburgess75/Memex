@@ -5453,7 +5453,8 @@ async function renderAdmin() {
         <button class="dash-act" onclick="openSettingsAt('email')">Email</button>
         <button class="dash-act" onclick="openSettingsAt('groups')">Groups</button>
         <button class="dash-act" onclick="openSettingsAt('connections')">SharePoint &amp; SMB connections</button>
-        <button class="dash-act" onclick="openSettingsAt('activity')">Activity &amp; access review</button>
+        <button class="dash-act" onclick="openSettingsAt('access')">Users &amp; access</button>
+        <button class="dash-act" onclick="openSettingsAt('activity')">Activity log</button>
         <button class="dash-act" onclick="openSettingsAt('ai')">AI providers</button>
       </div>`)}`;
     const TABS = [['overview', 'Overview', overviewHtml], ['people', 'People', teamHtml], ['files', 'Files', storageHtml], ['usage', 'AI usage', usageHtml || '<p class="wdash-empty">No usage recorded.</p>'], ['compliance', 'Compliance', complianceHtml(compliance)]];
@@ -6016,6 +6017,7 @@ function settingsTabsList() {
   const tabs = [{ group: 'You' }, { id: 'profile', label: 'Profile & appearance' }, { id: 'notifications', label: 'Notifications' }, { id: 'groups', label: 'Groups' }];
   if (currentUser?.role === 'admin') tabs.push(
     { group: 'Workspace' },
+    { id: 'access', label: 'Users & access' },
     { id: 'workspace', label: 'Branding & links' },
     { id: 'signin', label: 'Sign-in methods' },
     { id: 'email', label: 'Email' },
@@ -6053,7 +6055,8 @@ function switchSettingsTab(tab) {
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
   else if (tab === 'groups') { body.innerHTML = groupsSettingsHtml(); loadGroups(); }
   else if (tab === 'connections') { body.innerHTML = connectionsSettingsHtml(); loadConnections(); }
-  else if (tab === 'activity') { body.innerHTML = activitySettingsHtml(); loadActivity(true); loadAccessReview(); }
+  else if (tab === 'activity' && admin) { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
+  else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
   else if (tab === 'signin') body.innerHTML = systemSections('Sign-in methods');
   else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
@@ -7219,12 +7222,14 @@ function activitySettingsHtml() {
         <input type="date" id="act-to" onchange="loadActivity(true)" title="To date" aria-label="To date">
         <button class="ghost-btn" type="button" onclick="exportActivityCsv()">Export CSV</button>
       </div>
-      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>
-
-      <div class="settings-sub" style="margin-top:20px">Access review</div>
-      <p class="settings-notice">Every user, their role, library access, direct file shares, and last activity, for periodic review and sign-off.</p>
+      <div id="activity-list" class="activity-list">${emptyState('Loading activity', 'Fetching the audit trail.')}</div>`;
+}
+// Who everyone is and what they can open: its own section, not a footnote to the activity log.
+function accessSettingsHtml() {
+  return `<div class="settings-sub">Users &amp; access</div>
+      <p class="settings-notice">Every user, their role, the libraries they own, the libraries, folders and groups that give them access, direct file shares, and last activity. Use it for periodic review and sign-off.</p>
       <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
-      <div id="access-review">${emptyState('Loading review', 'Building the access review.')}</div>`;
+      <div id="access-review">${emptyState('Loading users', 'Working out who can open what.')}</div>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};
