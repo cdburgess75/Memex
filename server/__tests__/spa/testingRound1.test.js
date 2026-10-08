@@ -50,6 +50,13 @@ describe('Settings: the old System tab, split', () => {
     expect(ids).not.toContain('system');
   });
   test("anything still asking for 'system' lands somewhere", () => expect(sw).toMatch(/if \(tab === 'system'\) tab = 'workspace'/));
+  test('the access review is its own page, not the bottom of Activity', () => {
+    expect(block('settingsTabsList')).toContain("{ id: 'access', label: 'Access review' }");
+    expect(block('activitySettingsHtml')).not.toContain('access-review');
+    expect(block('accessReviewSettingsHtml')).toContain('id="access-review"');
+    expect(sw).toMatch(/tab === 'access'\) \{ body\.innerHTML = accessReviewSettingsHtml\(\); loadAccessReview\(\); \}/);
+    expect(sw).not.toMatch(/activitySettingsHtml\(\);[^\n]*loadAccessReview/);
+  });
 });
 
 describe('calls', () => {
