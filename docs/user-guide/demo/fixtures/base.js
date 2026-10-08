@@ -480,6 +480,32 @@ exports.routes = {
 
   // files: lists
   'GET /api/files': async ({ query }) => { await wait(LIST_LATENCY); return visibleFiles(query.library || null).map(pub); },
+  // Home's summary, worked out from the same files the list returns (the server does this in SQL).
+  'GET /api/files/summary': async ({ query }) => {
+    await wait(LIST_LATENCY);
+    const parts = (n) => String(n || '').split('/').filter(Boolean);
+    const files = visibleFiles(null).filter(f => parts(f.name).pop() !== '.keep');
+    const libs = new Map(), types = new Map();
+    for (const f of files) {
+      const k = f.library_id == null ? null : f.library_id;
+      const e = libs.get(k) || { library_id: k, files: 0, bytes: 0, last: null, dirs: new Set() };
+      e.files++; e.bytes += Number(f.size) || 0;
+      if (!e.last || new Date(f.created_at) > new Date(e.last)) e.last = f.created_at;
+      const p = parts(f.name); p.pop(); let acc = ''; for (const x of p) { acc = acc ? acc + '/' + x : x; e.dirs.add(acc); }
+      libs.set(k, e);
+      const ext = (parts(f.name).pop().split('.').pop() || '').toLowerCase();
+      const t = types.get(ext) || { ext, n: 0, bytes: 0 }; t.n++; t.bytes += Number(f.size) || 0; types.set(ext, t);
+    }
+    const fav = new Set(String(query.fav || '').split(',').filter(Boolean));
+    const newest = [...files].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return {
+      totals: { files: files.length, bytes: files.reduce((a, f) => a + (Number(f.size) || 0), 0), others: files.filter(f => String(f.uploaded_by_email || '').toLowerCase() !== ME.email.toLowerCase()).length },
+      libraries: [...libs.values()].map(({ dirs, ...e }) => ({ ...e, folders: dirs.size })),
+      types: [...types.values()],
+      recent: newest.slice(0, 6).map(pub),
+      favorites: newest.filter(f => fav.has(String(f.id))).slice(0, 8).map(pub),
+    };
+  },
   'GET /api/files/home-stats': { usedBytes: 186 * 1024 ** 3, totalBytes: 480 * 1024 ** 3, uploads14: [1, 0, 2, 3, 0, 1, 2, 4, 1, 0, 3, 2, 2, 5], activeUsers: 1 },
   'GET /api/files/media-ticket': () => ({ ticket: 'demo-media-ticket', expiresAt: ahead(HOUR) }),
   // Quick access (the rail) lists these. Kept to short names on purpose: the rail is a grid

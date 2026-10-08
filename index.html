@@ -3288,6 +3288,8 @@ async function loadServerPreferences() {
   const menu = document.getElementById('library-menu');
   if (menu) menu.innerHTML = libraryMenuInnerHtml();
   if (document.getElementById('file-library-view')) renderDocumentLibraryList();
+  if (fileView === 'home' && document.getElementById('home-view') && _homeFavKey !== null
+      && _homeFavKey !== [...favoriteFileIds].slice(0, 200).join(',')) renderHome();
 }
 function toggleLibraryPin(event, id) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -5133,6 +5135,44 @@ function fmtBytes(bytes) {
   return (b / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+function adminFileRows(list) {
+  if (!list.length) return `<tr><td colspan="6" style="color:var(--ink-faint);font-style:italic">No files.</td></tr>`;
+  return list.map(f => {
+    const ext = (String(f.name || '').split('.').pop() || '').toUpperCase();
+    const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    return `<tr>
+      <td title="${esc(f.name)}">${esc(f.name)}</td>
+      <td>${esc(ext)}</td>
+      <td>${fmtBytes(f.size || 0)}</td>
+      <td title="${esc(f.uploaded_by_email || '')}">${esc(f.uploaded_by_email || '')}</td>
+      <td>${t}</td>
+      <td><button class="ghost-btn admin-del" aria-label="Delete ${escAttr(f.name)}"
+        data-fid="${escAttr(String(f.id))}" data-fname="${escAttr(f.name)}"
+        onclick="adminDeleteFile(this.dataset.fid, this.dataset.fname)">Delete</button></td>
+    </tr>`;
+  }).join('');
+}
+function adminFilesNote(data, q) {
+  const shown = (data?.files || []).length, matched = Number(data?.matched || 0);
+  if (!data) return "Couldn't load the file list.";
+  if (q) return matched ? (matched > shown ? `Showing the newest ${shown.toLocaleString()} of ${matched.toLocaleString()} matches.` : `${matched.toLocaleString()} match${matched === 1 ? '' : 'es'}.`) : 'No file matches that.';
+  return matched > shown ? `Showing the newest ${shown.toLocaleString()}. Search to find any other file.` : '';
+}
+let _adminFilesTimer = null, _adminFilesSeq = 0;
+function adminFilesSearch(input) {
+  clearTimeout(_adminFilesTimer);
+  _adminFilesTimer = setTimeout(async () => {
+    const q = input.value.trim();
+    const seq = ++_adminFilesSeq;
+    let data = null;
+    try { data = await apiGet('/admin/files?' + new URLSearchParams({ q })); } catch { data = null; }
+    if (seq !== _adminFilesSeq) return;   // a later search already answered
+    const body = document.getElementById('admin-files-body');
+    const note = document.getElementById('admin-files-note');
+    if (body && data) body.innerHTML = adminFileRows(data.files || []);
+    if (note) note.textContent = adminFilesNote(data, q);
+  }, 250);
+}
 async function adminDeleteFile(fileId, fileName) {
   if (!await askConfirm(`Move "${fileName}" to Trash? You can restore it from Trash later.`, { danger: true, okLabel: 'Move to Trash' })) return;
   try {
@@ -5220,7 +5260,7 @@ async function renderAdmin() {
       apiGet('/admin/stats'),
       apiGet('/admin/usage').catch(() => null),
       apiGet('/admin/users').catch(() => []),
-      apiGet('/files').catch(() => []),
+      apiGet('/admin/files').catch(() => null),
       apiGet('/admin/compliance').catch(() => null)
     ]);
     const activityCount = Array.isArray(stats.recentActivity) ? stats.recentActivity.length : (stats.activityCount ?? 0);
@@ -5313,40 +5353,21 @@ async function renderAdmin() {
       </table></div><p class="admin-none" id="admin-people-none" hidden>Nobody matches that.</p>`,
       adminFind('admin-people-table', 'Find a person'));
 
-    // Build storage section
-    const fileList = Array.isArray(files) ? files : [];
-    // f.size arrives as a string (Postgres bigint -> JSON string); Number() it so
-    // the reduce adds instead of concatenating into an Infinity-coercing megastring.
-    const totalBytes = fileList.reduce((s, f) => s + (Number(f.size) || 0), 0);
-    const fileRows = fileList.length
-      ? [...fileList].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).map(f => {
-          const ext = (f.name.split('.').pop() || '').toUpperCase();
-          const t = new Date(f.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-          return `<tr>
-            <td title="${esc(f.name)}">${esc(f.name)}</td>
-            <td>${esc(ext)}</td>
-            <td>${fmtBytes(f.size || 0)}</td>
-            <td title="${esc(f.uploaded_by_email || '')}">${esc(f.uploaded_by_email || '')}</td>
-            <td>${t}</td>
-            <td><button class="ghost-btn admin-del" aria-label="Delete ${escAttr(f.name)}"
-              data-fid="${f.id}" data-fname="${esc(f.name)}"
-              onclick="adminDeleteFile(this.dataset.fid, this.dataset.fname)">Delete</button></td>
-          </tr>`;
-        }).join('')
-      : `<tr><td colspan="6" style="color:var(--ink-faint);font-style:italic">No files uploaded yet.</td></tr>`;
-
-    const storageHtml = adminCard(`Every file <span class="admin-count">${fileList.length.toLocaleString()} · ${fmtBytes(totalBytes)} · newest first</span>`,
+    // Build storage section: the newest files and the workspace totals, from the server.
+    // Searching asks the server too, so it reaches every file, not only the ones listed.
+    const fileList = Array.isArray(files?.files) ? files.files : [];
+    const storageHtml = adminCard(`Every file <span class="admin-count">${Number(files?.total || 0).toLocaleString()} · ${fmtBytes(files?.bytes || 0)}</span>`,
       `<div class="table-scroll"><table class="data-table admin-files" id="admin-files-table">
         <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded by</th><th>Date</th><th><span class="sr-only">Actions</span></th></tr></thead>
-        <tbody>${fileRows}</tbody>
-      </table></div><p class="admin-none" id="admin-files-none" hidden>No file matches that.</p>`,
-      adminFind('admin-files-table', 'Find a file or a person'));
+        <tbody id="admin-files-body">${adminFileRows(fileList)}</tbody>
+      </table></div><p class="admin-none" id="admin-files-note">${adminFilesNote(files, '')}</p>`,
+      `<input type="search" class="admin-find" aria-label="Find a file or a person" placeholder="Find a file or a person…" oninput="adminFilesSearch(this)">`);
 
     // One page, five sections on tabs: an admin comes here to do ONE of these things, and the
     // old single column stacked all of them into two thousand pixels of scrolling, 680 wide.
     const overviewHtml = `<div class="dash-stats">
         ${adminStat('People', userList.length.toLocaleString(), offCount ? `${offCount} switched off` : 'all active')}
-        ${adminStat('Files', fileList.length.toLocaleString(), fmtBytes(totalBytes))}
+        ${adminStat('Files', Number(files?.total || 0).toLocaleString(), fmtBytes(files?.bytes || 0))}
         ${adminStat('Events', activityCount.toLocaleString(), 'recent activity')}
         ${adminStat('Contributors', contributors.length.toLocaleString(), 'have added files')}
       </div>
@@ -9530,6 +9551,9 @@ async function renderDocumentLibrary(view = 'active') {
 
 // Dashboard "Home" — a workspace-at-a-glance landing. Every tile is computed
 // from real data (the user's files + recent + admin activity); nothing is faked.
+// The starred files Home last asked for. Sign-in draws Home before the saved preferences
+// arrive; when they do and the stars differ, Home is drawn again (loadServerPreferences).
+let _homeFavKey = null;
 async function renderHome() {
   fileView = 'home';
   currentFolderPath = '';
@@ -9538,16 +9562,22 @@ async function renderHome() {
   if (quick) quick.innerHTML = quickAccessHtml();
   try {
     const isAdmin = currentUser?.role === 'admin';
-    const [all, stats] = await Promise.all([
-      apiGet('/files').catch(() => []),
+    // The server works out the totals, the recent files and the per-library numbers: the
+    // whole file list (tens of thousands of entries for an admin) never comes down.
+    const favParam = [...favoriteFileIds].slice(0, 200).join(',');
+    _homeFavKey = favParam;
+    const [sum, stats] = await Promise.all([
+      apiGet('/files/summary' + (favParam ? '?' + new URLSearchParams({ fav: favParam }) : '')).catch(() => null),
       apiGet('/files/home-stats').catch(() => ({})),
       ensureMediaTicket(),
       loadNotifications().catch(() => {}),
     ]);
     const swmP = apiGet('/access/shared-with-me').catch(() => null); // asked for now, awaited where it is drawn
-    const files = (all || []).filter(f => !isFolderMarker(f));
-    const totalSize = files.reduce((s, f) => s + (Number(f.size) || 0), 0);
-    const shared = files.filter(isSharedFile).length;
+    const totals = sum?.totals || { files: 0, bytes: 0, others: 0 };
+    const fileCount = Number(totals.files) || 0;
+    const totalSize = Number(totals.bytes) || 0;
+    const shared = Number(totals.others) || 0;
+    const libStats = new Map((sum?.libraries || []).map(r => [String(r.library_id == null ? '' : r.library_id), r]));
     const libs = (librariesList || []).length || 1;
     const totalBytes = Number(stats.totalBytes) || 0;
     // In quota mode the server sends no usedBytes (client fills workspace bytes);
@@ -9559,10 +9589,10 @@ async function renderHome() {
     if (isAdmin) { try { activity = ((await apiGet('/admin/activity?limit=40&housekeeping=hide')).events || []).filter(a => !GUIDE_EVENTS.has(a.event_type)); } catch { activity = []; } }
     // Every personal library holds its own copy of the getting-started guide; an admin, who
     // sees them all, should not find Recent files full of other people's copies.
-    const othersGuide = (f) => GETTING_STARTED_NAMES.has(String(f.name || '')) && String(f.uploaded_by || '') !== String(currentUser?.id || '');
-    const recentFiles = [...files].filter(f => !othersGuide(f)).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6);
+    // (The server leaves those out of `recent`.)
+    const recentFiles = sum?.recent || [];
     // Widget data: Favorites, Libraries, Needs attention (links expiring within 7 days).
-    const pinned = files.filter(f => favoriteFileIds.has(String(f.id))).slice(0, 8);
+    const pinned = sum?.favorites || [];
     const hubs = (librariesList || []);
     let shares = [], folderLinks = [];
     try { const sd = await apiGet('/files/shares'); shares = sd.shares || (Array.isArray(sd) ? sd : []); folderLinks = sd.folder_links || []; } catch (e) { shares = []; }
@@ -9579,8 +9609,7 @@ async function renderHome() {
 
     // Real 14-day daily series bucketed from the file list (uploads & shares).
     const now = Date.now(), DAY = 86400000;
-    const bucket = (pred) => { const arr = new Array(14).fill(0); files.forEach(f => { const t = new Date(f.created_at || 0).getTime(); const idx = 13 - Math.floor((now - t) / DAY); if (idx >= 0 && idx < 14 && pred(f)) arr[idx]++; }); return arr; };
-    const filesSeries = (uploads14 && uploads14.length > 1) ? uploads14 : bucket(() => true);
+    const filesSeries = (uploads14 && uploads14.length > 1) ? uploads14 : new Array(14).fill(0);
     const filesDelta = homeDelta(filesSeries);
     const sparkColor = (d) => d ? (d.up ? 'var(--success)' : 'var(--danger)') : 'var(--accent)';
 
@@ -9591,7 +9620,6 @@ async function renderHome() {
     // libraries used to fill the whole first screen with three copies of the same buttons.
     const canCreate = currentUser && currentUser.role !== 'viewer';
     const libKey = (x) => String(x == null ? '' : x);
-    const docLib = new Map(files.map(f => [String(f.id), libKey(f.library_id)]));
     const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
 
     const stat = (label, value, sub, viz, tone, icon) => `<div class="dash-stat" style="--tone:var(${tone || '--accent'})">${icon && !viz ? `<span class="dash-stat-ic">${navIcon(icon, 'dash-stat-svg')}</span>` : ''}<div class="dash-stat-txt"><span class="dash-stat-label">${label}</span><span class="dash-stat-value tnum">${value}</span><span class="dash-stat-sub">${sub}</span></div>${viz ? `<span class="dash-stat-viz">${viz}</span>` : ''}</div>`;
@@ -9603,10 +9631,10 @@ async function renderHome() {
     const sharedLibs = hubs.filter(l => SHARED_ACCESS[l.my_access]);
     const myLibs = hubs.filter(l => !SHARED_ACCESS[l.my_access]);
     const statsStrip = `<div class="dash-stats">${[
-      stat('Files', files.length.toLocaleString(), trend(filesDelta), files.length ? homeSpark(filesSeries, sparkColor(filesDelta), 84, 34) : '', '--info', 'files'),
+      stat('Files', fileCount.toLocaleString(), trend(filesDelta), fileCount ? homeSpark(filesSeries, sparkColor(filesDelta), 84, 34) : '', '--info', 'files'),
       totalBytes > 0
         ? stat('Storage', `${Math.round(pct)}%`, stats.freeBytes != null ? `${fileSizeLabel(usedBytes)} used · ${fileSizeLabel(stats.freeBytes)} free` : `${fileSizeLabel(usedBytes)} of ${fileSizeLabel(totalBytes)}`, homeDonut(pct, 44, storeTone), storeTone.slice(4, -1), 'storage')
-        : stat('Storage', fileSizeLabel(usedBytes), `across ${plural(files.length, 'file')}`, '', '--success', 'storage'),
+        : stat('Storage', fileSizeLabel(usedBytes), `across ${plural(fileCount, 'file')}`, '', '--success', 'storage'),
       stat('Shared', shared.toLocaleString(), `${plural(liveShares.length + liveFolderLinks.length, 'active link')}`, '', '--state-shared', 'shared'),
       stat('Libraries', libs.toLocaleString(), sharedLibs.length ? `${sharedLibs.length} shared with you` : (isAdmin ? 'in this workspace' : 'you can open'), '', '--warning', 'libraries'),
     ].join('')}</div>`;
@@ -9615,12 +9643,11 @@ async function renderHome() {
 
     const libRow = (l) => {
       const hid = libKey(l.id);
-      const hf = files.filter(f => libKey(f.library_id) === hid && !isFolderMarker(f));
-      const folderCount = allFoldersForFiles(hf).length;
-      const size = hf.reduce((a, f) => a + (Number(f.size) || 0), 0);
-      const lastTs = hf.reduce((mx, f) => Math.max(mx, new Date(f.created_at || 0).getTime()), 0);
-      const links = liveShares.filter(s => docLib.get(String(s.document_id)) === hid).length;
-      const bits = [plural(hf.length, 'file'), plural(folderCount, 'folder'), fileSizeLabel(size)];
+      const ls = libStats.get(hid) || { files: 0, folders: 0, bytes: 0, last: null };
+      const size = Number(ls.bytes) || 0;
+      const lastTs = ls.last ? new Date(ls.last).getTime() : 0;
+      const links = liveShares.filter(s => libKey(s.library_id) === hid).length;
+      const bits = [plural(Number(ls.files) || 0, 'file'), plural(Number(ls.folders) || 0, 'folder'), fileSizeLabel(size)];
       if (lastTs) bits.push(`updated ${fileDate(new Date(lastTs).toISOString())}`);
       if (SHARED_ACCESS[l.my_access] && l.owner_email) bits.unshift(`from ${String(l.owner_email).split('@')[0]}`);
       const acts = canCreate && (l.add_right || !l.id)
@@ -9651,11 +9678,11 @@ async function renderHome() {
 
     // What is in here, by kind: one bar, the file-type colours the icons already use.
     const fam = new Map();
-    files.forEach(f => { const t = fileTypeInfo(fileExt(fileDisplayName(f))); const k = t.label; const e = fam.get(k) || { label: k, color: t.color, n: 0, bytes: 0 }; e.n++; e.bytes += Number(f.size) || 0; fam.set(k, e); });
+    (sum?.types || []).forEach(x => { const t = fileTypeInfo(String(x.ext || '')); const k = t.label; const e = fam.get(k) || { label: k, color: t.color, n: 0, bytes: 0 }; e.n += Number(x.n) || 0; e.bytes += Number(x.bytes) || 0; fam.set(k, e); });
     const fams = [...fam.values()].sort((a, b) => b.n - a.n);
     const topFams = fams.slice(0, 5); const restN = fams.slice(5).reduce((a, x) => a + x.n, 0);
     if (restN) topFams.push({ label: 'Other', color: 'var(--ink-faint)', n: restN, bytes: fams.slice(5).reduce((a, x) => a + x.bytes, 0) });
-    const typesCard = files.length ? card('What you keep here', 'files',
+    const typesCard = fileCount ? card('What you keep here', 'files',
       `<div class="dash-typebar" role="img" aria-label="${escAttr(topFams.map(x => `${x.n} ${x.label}`).join(', '))}">${topFams.map(x => `<span style="flex:${x.n};background:${x.color}"></span>`).join('')}</div>`
       + `<ul class="dash-typelegend">${topFams.map(x => `<li><span class="dash-dot" style="background:${x.color}"></span><span class="dash-type-name">${esc(x.label)}</span><span class="dash-type-n tnum">${x.n.toLocaleString()}</span><span class="dash-type-sz tnum">${fileSizeLabel(x.bytes)}</span></li>`).join('')}</ul>`) : '';
 

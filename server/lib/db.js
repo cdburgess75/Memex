@@ -8,6 +8,11 @@ function getPool() {
     max: Number(process.env.PG_POOL_MAX) || 20,
     // Fail fast instead of hanging forever if the pool is momentarily exhausted.
     connectionTimeoutMillis: Number(process.env.PG_CONN_TIMEOUT_MS) || 5000,
+    // No JIT compilation. Postgres compiles a query to machine code when its cost
+    // ESTIMATE is high, and the access rule makes every listing look expensive: with
+    // 80,000 files, Home's summary spent 1.2 s of 1.8 s compiling and 0.6 s running.
+    // Nothing Depot asks runs long enough for compiled code to pay that back.
+    options: '-c jit=off',
   });
   return _pool;
 }

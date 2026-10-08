@@ -1216,6 +1216,66 @@ router.get('/home-stats', auth, async (req, res) => {
   } catch (e) { serverError(res, e); }
 });
 
+// GET /api/files/summary?fav=<id,id,...> — what Home shows, worked out here instead of
+// in the browser: Home used to download every file the caller can read (for an admin,
+// every file in the workspace) to draw six recent files and a few totals.
+//   totals     { files, bytes, others }  others = files someone else added
+//   libraries  [{ library_id, files, folders, bytes, last }]
+//   types      [{ ext, n, bytes }]   ext as the page's fileExt(name) reads it
+//   recent     the six newest files (other people's copies of the getting-started guide left out)
+//   favorites  the caller's starred files that still exist and they can read (at most 8)
+// Folder markers (.keep) are not files and count nowhere.
+const GUIDE_NAMES = ['Getting started with Depot.pdf', 'Getting started with Depot.docx'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.get('/summary', auth, async (req, res) => {
+  try {
+    const p = documentAccess.userParams(req.user, 'read');
+    const visible = `d.deleted_at IS NULL AND ${documentAccess.condition('d', 1)} AND d.name !~ '(^|/)\\.keep$'`;
+    const agg = await db.queryOne(
+      `WITH v AS MATERIALIZED (
+         SELECT d.name, d.size, d.created_at, d.library_id, d.uploaded_by_email FROM documents d WHERE ${visible}
+       )
+       SELECT
+         (SELECT json_build_object('files', count(*), 'bytes', coalesce(sum(size), 0),
+                                   'others', count(*) FILTER (WHERE lower(coalesce(uploaded_by_email, '')) <> lower($6))) FROM v) AS totals,
+         (SELECT coalesce(json_agg(x), '[]') FROM (
+            SELECT library_id, count(*)::int AS files, coalesce(sum(size), 0)::bigint AS bytes, max(created_at) AS last FROM v GROUP BY library_id) x) AS libraries,
+         (SELECT coalesce(json_agg(x), '[]') FROM (
+            -- every level of every folder a file is in: the distinct folders first (a few
+            -- thousand), and only then each one's parents
+            SELECT library_id, count(DISTINCT array_to_string(parts[1:i], '/'))::int AS folders
+              FROM (SELECT library_id, string_to_array(dir, '/') AS parts FROM (
+                      SELECT DISTINCT library_id, regexp_replace(btrim(name, '/'), '/[^/]*$', '') AS dir
+                        FROM v WHERE strpos(btrim(name, '/'), '/') > 0) dirs) s,
+                   generate_series(1, array_length(parts, 1)) i
+             GROUP BY library_id) x) AS folders,
+         (SELECT coalesce(json_agg(x), '[]') FROM (
+            SELECT lower(substring(name from '[^/.]*$')) AS ext,   -- after the last dot of the file's own name
+                   count(*)::int AS n, coalesce(sum(size), 0)::bigint AS bytes
+              FROM v GROUP BY 1) x) AS types`,
+      [...p, String(req.user.email || '')]);
+    const recent = await db.query(
+      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
+         FROM documents d LEFT JOIN user_profiles up ON up.user_id = d.uploaded_by
+        WHERE ${visible} AND (d.name <> ALL($6::text[]) OR d.uploaded_by IS NOT DISTINCT FROM $2)
+        ORDER BY d.created_at DESC LIMIT 6`, [...p, GUIDE_NAMES]);
+    const favIds = String(req.query.fav || '').split(',').map(x => x.trim()).filter(x => UUID_RE.test(x)).slice(0, 200);
+    const favorites = favIds.length ? await db.query(
+      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
+         FROM documents d LEFT JOIN user_profiles up ON up.user_id = d.uploaded_by
+        WHERE ${visible} AND d.id = ANY($6::uuid[])
+        ORDER BY d.created_at DESC LIMIT 8`, [...p, favIds]) : [];
+    const folders = new Map((agg.folders || []).map(r => [String(r.library_id), r.folders]));
+    res.json({
+      totals: { files: Number(agg.totals.files) || 0, bytes: Number(agg.totals.bytes) || 0, others: Number(agg.totals.others) || 0 },
+      libraries: (agg.libraries || []).map(r => ({ library_id: r.library_id, files: r.files, folders: folders.get(String(r.library_id)) || 0, bytes: Number(r.bytes) || 0, last: r.last })),
+      types: (agg.types || []).map(r => ({ ext: r.ext || '', n: r.n, bytes: Number(r.bytes) || 0 })),
+      recent,
+      favorites,
+    });
+  } catch (e) { serverError(res, e); }
+});
+
 // GET /api/files/follows — doc ids the current user follows (for the file bells).
 router.get('/follows', auth, async (req, res) => {
   try { res.json({ ids: await docFollows.followedIds(req.user.email) }); }
