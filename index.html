@@ -1450,7 +1450,17 @@ html.file-home-mode .masthead-actions { display: flex; }
 .file-workspace-content { max-width: 1120px; }
 .file-workspace-content .panel { margin: 0; }
 .file-home-shell { position: relative; min-height: calc(100vh - var(--masthead-h)); display: grid; grid-template-columns: var(--memex-rail-w, 248px) minmax(0, 1fr); background: var(--surface-2); color: var(--ink); }
-.file-home-nav { padding: 18px 14px 28px; border-right: 1px solid var(--rule); background: var(--surface-2); overflow-y: auto; }
+.file-home-nav { padding: 0; border-right: 1px solid var(--rule); background: var(--surface-2); }
+/* The rail scrolls on its own and stays in view while the files scroll: with hundreds of
+   folders, scrolling the rail used to scroll the whole page, files and all, so a folder
+   picked near the bottom opened its files far above, out of sight. */
+.file-home-nav-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 18px 14px 28px; box-sizing: border-box; }
+.file-rail-find { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
+.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.file-rail-tree .fc-path { display: block; color: var(--ink-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-rail-tree .fc-name-wrap { min-width: 0; overflow: hidden; }
+.file-rail-tree .fc-name-wrap .fc-name { display: block; }
+.file-rail-note { padding: 6px 10px; color: var(--ink-faint); font: 500 13px var(--ui); }
 .rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
 .rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
 .rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
@@ -2621,7 +2631,8 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-library-nav-body { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 -12px; padding: 0 12px 10px; scroll-snap-type: x proximity; }
   .file-library-nav-body::-webkit-scrollbar { display: none; }
   .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main { display: contents; }
-  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree { display: none; }
+  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .file-rail-find { display: none; }
+  .file-home-nav-inner { position: static; max-height: none; overflow: visible; padding: 0; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; gap: 6px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
   .file-nav-link.active { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; }
   .file-nav-link > span > span:last-child:not(:first-child) { display: none; } /* connection pills: name only */
@@ -3326,6 +3337,39 @@ function toggleFileFavorite(id, event) {
 function refreshFileRailTree() {
   const tree = document.getElementById('file-rail-tree');
   if (tree) tree.innerHTML = fileRailTreeHtml();
+  const find = document.getElementById('file-rail-find');
+  if (find) find.hidden = !railFindWanted();
+}
+// "Find a folder" above the rail tree: once a library has more than a screenful of
+// folders, typing narrows the tree to the folders whose names match, at any depth.
+const RAIL_FIND_FROM = 12, RAIL_FIND_MAX = 100;
+let railFindQuery = '';
+function railFindWanted() { return folderIndex.length > RAIL_FIND_FROM || !!railFindQuery; }
+function railFindMatches() {
+  const q = railFindQuery.trim().toLowerCase();
+  if (!q) return [];
+  const hits = folderIndex.filter(f => f.name.toLowerCase().includes(q));
+  const starts = (f) => (f.name.toLowerCase().startsWith(q) ? 0 : 1);
+  return hits.sort((a, b) => starts(a) - starts(b) || a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+}
+function railFind(value) {
+  railFindQuery = String(value || '');
+  const tree = document.getElementById('file-rail-tree');
+  if (tree) tree.innerHTML = fileRailTreeHtml();
+  const inner = document.getElementById('file-home-nav-inner');
+  const find = document.getElementById('file-rail-find');
+  if (inner && find && railFindQuery) inner.scrollTop = Math.max(0, find.offsetTop - 12);
+}
+function railFindKey(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const first = document.querySelector('#file-rail-tree .file-commander-folder');
+    if (first) openFolder(first.dataset.folder);
+  } else if (e.key === 'Escape' && railFindQuery) {
+    e.preventDefault(); e.stopPropagation();
+    e.target.value = '';
+    railFind('');
+  }
 }
 // When navigating into a folder, make sure its ancestors are expanded in the rail
 // tree so the active folder is actually visible (keeps rail in sync with the pane).
@@ -7646,6 +7690,8 @@ async function openFolder(path = '', push = true) {
     if (seq !== openFolderSeq) return;   // another folder was opened meanwhile
   }
   renderDocumentLibraryList();
+  // Its files start at the top, in view, wherever the page had been scrolled to.
+  if (push && document.getElementById('file-library-view')) window.scrollTo({ top: 0 });
 }
 
 // ---- Unified browser history for in-app navigation ----
@@ -7970,6 +8016,14 @@ function filePinnedSectionHtml() {
 // Commander collapse/expand state and folder model so toggling stays in sync.
 function fileRailTreeHtml() {
   if (!folderIndex.length) return '';
+  if (railFindQuery.trim()) {
+    const all = railFindMatches();
+    if (!all.length) return `<div class="file-rail-note">No folder matches “${esc(railFindQuery.trim())}”.</div>`;
+    return all.slice(0, RAIL_FIND_MAX).map(folder => {
+      const parent = folder.path.includes('/') ? folder.path.slice(0, folder.path.lastIndexOf('/')) : '';
+      return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" title="${esc(folder.path)}"><span class="fc-caret fc-caret-empty"></span>${FOLDER_SVG}<span class="fc-name-wrap"><span class="fc-name">${esc(folder.name)}</span>${parent ? `<span class="fc-path">in ${esc(parent)}</span>` : ''}</span><span class="file-commander-count">${folder.count}</span></button>`;
+    }).join('') + (all.length > RAIL_FIND_MAX ? `<div class="file-rail-note">Showing ${RAIL_FIND_MAX} of ${all.length}. Type more to narrow it.</div>` : '');
+  }
   const open = railExpanded();
   const out = [];
   const walk = (parent, depth) => {
@@ -8187,6 +8241,7 @@ function setFolderIndex(list) {
 let folderIndexLib;   // the library folderIndex belongs to
 async function loadFolderIndex() {
   const lib = currentLibraryId;
+  if (lib !== folderIndexLib) railFindQuery = '';
   setFolderIndex(await apiGet('/files/folders?' + libraryQuery()).catch(() => []));
   folderIndexLib = lib;
 }
@@ -9263,7 +9318,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Home', 'home', `setFileView('home')`, activeWorkspace === 'files' && activeFile === 'home')}
         ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
-        ${activeFile === 'files' ? `<div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
+        ${activeFile === 'files' ? `<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"${railFindWanted() ? '' : ' hidden'}><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
@@ -9568,7 +9623,7 @@ function previewMountEntry(i) {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav">${fileHomeNav(activeWorkspace, activeFile)}</aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav"><div class="file-home-nav-inner" id="file-home-nav-inner">${fileHomeNav(activeWorkspace, activeFile)}</div></aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {

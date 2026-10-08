@@ -116,3 +116,18 @@ test('opening a library from anywhere records it as recent', () => {
   expect(fnText('switchLibrary')).toContain('noteRecentLibrary(');
   expect(html).toMatch(/async function openLibraryAt[\s\S]{0,200}noteRecentLibrary\(/);
 });
+
+describe('the rail: its own scroll, and Find a folder', () => {
+  test('the rail scrolls on its own, beside the files', () => {
+    expect(html).toMatch(/\.file-home-nav-inner \{ position: sticky; top: 0; max-height: 100vh; overflow-y: auto;/);
+    expect(fnText('fileHomeShell')).toContain('<div class="file-home-nav-inner" id="file-home-nav-inner">');
+  });
+  test('opening a folder brings its files into view', () => {
+    expect(html).toMatch(/async function openFolder[\s\S]{0,1800}window\.scrollTo\(\{ top: 0 \}\)/);
+  });
+  test('Find a folder matches names at any depth, names that start with the words first', () => {
+    const ctx = { folderIndex: [{ path: 'Walton Dental', name: 'Walton Dental' }, { path: 'Acme/Walton', name: 'Walton' }, { path: 'Old Walton files', name: 'Old Walton files' }, { path: 'Baker', name: 'Baker' }] };
+    vm.runInNewContext(`let railFindQuery = 'walton';\n${fnText('railFindMatches')}\nthis.m = railFindMatches;`, ctx);
+    expect(ctx.m().map(f => f.path)).toEqual(['Acme/Walton', 'Walton Dental', 'Old Walton files']);
+  });
+});
