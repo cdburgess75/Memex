@@ -16,6 +16,26 @@ function isUploadPath(req) {
   return UPLOAD_PATH_RE.test(String(req.originalUrl || req.url || '').split('?')[0]);
 }
 
+// Card thumbnails: one request per file shown, so a page of 200 rows is 200 requests.
+// They have their own generous budget instead of eating the general one: with them in
+// it, browsing a few folders used up 300 requests and the next page load was refused.
+const THUMBNAIL_PATH_RE = /^\/api\/files\/[^/]+\/thumbnail\/?$/;
+function isThumbnailPath(req) {
+  return req.method === 'GET' && THUMBNAIL_PATH_RE.test(String(req.originalUrl || req.url || '').split('?')[0]);
+}
+// The first thing the page asks for, before anyone signs in. Refusing it shows "Depot is
+// offline", which sends people chasing a server that is fine. It is small and public.
+function isBootPath(req) {
+  return req.method === 'GET' && /^\/api\/config\/?$/.test(String(req.originalUrl || req.url || '').split('?')[0]);
+}
+// A request that carries a sign-in token. People using the app make far more requests
+// than the anonymous surface needs (every folder opened, every search), and a whole
+// office can share one public address, so they get a much larger budget. A made-up
+// token only buys the larger budget, not access: every route still checks it.
+function presentsBearer(req) {
+  return /^Bearer\s+\S+/i.test(String((req.headers || {}).authorization || ''));
+}
+
 function intFromEnv(name, fallback) {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -63,9 +83,15 @@ function makeRateLimiters() {
   return {
     apiLimiter: createLimiter({
       windowMs,
-      limit: intFromEnv('RATE_LIMIT_API_MAX', 300),
+      limit: (req) => (presentsBearer(req) ? intFromEnv('RATE_LIMIT_API_SIGNED_IN_MAX', 6000) : intFromEnv('RATE_LIMIT_API_MAX', 300)),
       message: 'Too many requests. Please slow down and try again shortly.',
-      skip: isUploadPath, // bulk-upload routes use uploadLimiter instead
+      // bulk uploads and thumbnails have limiters of their own; the boot request has none
+      skip: (req) => isUploadPath(req) || isThumbnailPath(req) || isBootPath(req),
+    }),
+    thumbnailLimiter: createLimiter({
+      windowMs,
+      limit: intFromEnv('RATE_LIMIT_THUMBNAIL_MAX', 20000),
+      message: 'Too many requests. Please slow down and try again shortly.',
     }),
     uploadLimiter: createLimiter({
       windowMs,
@@ -109,4 +135,4 @@ function makeRateLimiters() {
 // to the mount: "/<token>/ticket".) Anything else presents a ticket or nothing.
 const presentsPassword = (req) => /^\/[^/]+\/ticket\/?$/.test(req.path || '') || !!(req.headers || {})['x-share-password'] || (req.query || {}).password != null;
 
-module.exports = { presentsPassword, intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath, uploadRequestLimit, UPLOAD_LIMIT_FLOOR, UPLOAD_REQUESTS_PER_FILE };
+module.exports = { presentsPassword, intFromEnv, rateLimitEnabled, makeRateLimiters, UPLOAD_PATH_RE, isUploadPath, isThumbnailPath, isBootPath, presentsBearer, uploadRequestLimit, UPLOAD_LIMIT_FLOOR, UPLOAD_REQUESTS_PER_FILE };

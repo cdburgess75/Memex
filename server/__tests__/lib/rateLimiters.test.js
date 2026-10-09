@@ -127,3 +127,40 @@ describe('a folder link: guessing a password and downloading files answer to dif
     } finally { delete process.env.RATE_LIMIT_ENABLED; delete process.env.RATE_LIMIT_SHARE_MAX; delete process.env.RATE_LIMIT_FOLDER_BROWSE_MAX; }
   });
 });
+
+describe('the general API budget', () => {
+  const express = require('express');
+  const request = require('supertest');
+  const appWith = (env) => {
+    jest.resetModules();
+    Object.assign(process.env, env);
+    const { makeRateLimiters: make, isThumbnailPath } = require('../../lib/rateLimiters');
+    const l = make();
+    const app = express();
+    app.use('/api/files', (req, res, next) => (isThumbnailPath(req) ? l.thumbnailLimiter(req, res, next) : next()));
+    app.use('/api', l.apiLimiter);
+    app.get('/api/config', (_q, r) => r.json({ ok: 1 }));
+    app.get('/api/files', (_q, r) => r.json([]));
+    app.get('/api/files/:id/thumbnail', (_q, r) => r.send('img'));
+    return app;
+  };
+  const hit = async (app, path, n, headers = {}) => { const codes = []; for (let i = 0; i < n; i++) codes.push((await request(app).get(path).set(headers)).status); return codes; };
+  afterEach(() => { for (const k of ['RATE_LIMIT_API_MAX', 'RATE_LIMIT_API_SIGNED_IN_MAX', 'RATE_LIMIT_THUMBNAIL_MAX']) delete process.env[k]; });
+
+  test('anonymous requests keep the tight budget', async () => {
+    const app = appWith({ RATE_LIMIT_API_MAX: '3', RATE_LIMIT_API_SIGNED_IN_MAX: '10' });
+    expect(await hit(app, '/api/files', 4)).toEqual([200, 200, 200, 429]);
+  });
+  test('signed-in requests get the larger one', async () => {
+    const app = appWith({ RATE_LIMIT_API_MAX: '3', RATE_LIMIT_API_SIGNED_IN_MAX: '6' });
+    const codes = await hit(app, '/api/files', 7, { Authorization: 'Bearer t' });
+    expect(codes.slice(0, 6).every(c => c === 200)).toBe(true);
+    expect(codes[6]).toBe(429);
+  });
+  test('thumbnails do not use up the general budget, and the page can always start', async () => {
+    const app = appWith({ RATE_LIMIT_API_MAX: '2', RATE_LIMIT_API_SIGNED_IN_MAX: '2', RATE_LIMIT_THUMBNAIL_MAX: '50' });
+    expect((await hit(app, '/api/files/abc/thumbnail', 30)).every(c => c === 200)).toBe(true);
+    expect(await hit(app, '/api/files', 2, { Authorization: 'Bearer t' })).toEqual([200, 200]);
+    expect((await hit(app, '/api/config', 10)).every(c => c === 200)).toBe(true);
+  });
+});
