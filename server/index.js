@@ -62,7 +62,8 @@ app.use(securityHeaders);
 // don't go through this parser — they stream via the upload routes.)
 app.use(express.json({ limit: '1mb' }));
 
-const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter } = makeRateLimiters();
+const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter, thumbnailLimiter } = makeRateLimiters();
+const { isThumbnailPath } = require('./lib/rateLimiters');
 app.use('/api/auth', authLimiter);
 // Recipient uploads (one POST per file) get the generous limiter so a dropped
 // folder isn't 429'd mid-batch; everything else under /share — info, ticket,
@@ -84,6 +85,8 @@ app.use('/api/files/folder/share', (req, res, next) =>
 app.use('/api/files/upload', uploadLimiter);
 app.use('/api/files/upload-stream', uploadLimiter);
 app.use('/api/files/uploads', uploadLimiter);
+// Thumbnails: one per file on screen, so they get their own budget (lib/rateLimiters).
+app.use('/api/files', (req, res, next) => (isThumbnailPath(req) ? thumbnailLimiter(req, res, next) : next()));
 app.use('/api', apiLimiter);
 
 function browserUrlFromRequest(req, fallbackPort) {
