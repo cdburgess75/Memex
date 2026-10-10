@@ -32,7 +32,7 @@ async function extractRawText(buffer, filename) {
     return (await pdfParse(buffer)).text.slice(0, MAX);
   }
 
-  if (['txt', 'md', 'csv'].includes(ext)) return buffer.toString('utf8').slice(0, MAX);
+  if (['txt', 'md', 'csv'].includes(ext) || require('./textTypes').isEditableText(filename)) return buffer.toString('utf8').slice(0, MAX);
   return null;
 }
 

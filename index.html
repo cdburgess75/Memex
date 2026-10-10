@@ -8217,6 +8217,7 @@ function renderContentSearchResults(rows, q) {
   const el = document.getElementById('file-list');
   if (!el) return;
   if (!rows.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents.`); return; }
+  rememberFiles(rows);   // so opening one knows what it is and whether it can be edited
   lastRenderedFileIds = rows.map(f => String(f.id));
   const body = rows.map(fileLibraryRow).join('');
   el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th class="file-col-select"></th>${visibleFileColumns().map(c => `<th class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th class="file-col-actions" style="text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
@@ -8406,9 +8407,8 @@ function libraryRelation(l) {
 }
 // Whether the caller may add or change files at this folder ('' = the library root).
 // Only hides controls that would be refused; the server checks every write itself.
-function canWriteHere(path = '') {
+function canWriteHere(path = '', l = currentLibrary()) {
   if (currentUser?.role === 'viewer') return false;
-  const l = currentLibrary();
   if (!l || !l.id) return true; // nothing known about this library: leave it to the server
   if (l.add_right) return true;
   const p = String(path || '');
@@ -8419,7 +8419,10 @@ function canWriteHere(path = '') {
 function canChangeFile(f) {
   if (!f || currentUser?.role === 'viewer') return false;
   const parent = String(f.name || '').split('/').slice(0, -1).join('/');
-  return canWriteHere(parent) || (!f.library_scoped && !!currentUser?.id && String(f.uploaded_by || '') === String(currentUser.id));
+  // Judged in the file's own library: a search can find files in libraries other than
+  // the one that is open.
+  const lib = f.library_id != null ? librariesList.find(l => String(l.id) === String(f.library_id)) : null;
+  return canWriteHere(parent, lib || currentLibrary()) || (!f.library_scoped && !!currentUser?.id && String(f.uploaded_by || '') === String(currentUser.id));
 }
 // Is this folder shared, or is anything inside it? Managers are told which folders are
 // shared; everyone else knows the ones shared with them.
@@ -8845,6 +8848,17 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     if (st.tab === 'user' && !takeTyped()) return;
     const permission = $('[data-ls-level]').value;
     const body = { permission, folder_path: folderPath };
+    // Sharing a WHOLE library is a big step: everything in it, every folder, and whatever
+    // is added later. Said plainly, with the folder alternative, before it happens.
+    if (!folderPath) {
+      const libName = librariesList.find(l => String(l.id) === String(libraryId))?.name || 'this library';
+      const groupName = st.tab === 'group' ? (st.groups?.find(g => String(g.id) === $('[data-ls-group]').value)?.name || 'the group') : '';
+      const who = st.tab === 'group' ? `everyone in ${groupName}` : (st.emails.length === 1 ? st.emails[0] : `${st.emails.length} people`);
+      const ok = await askConfirm(
+        `${who} will be able to ${permission === 'write' ? 'open, change and delete' : 'open'} every file and folder in “${libName}”, including anything added later. To share less, share a single folder instead: open the folder's ⋯ menu and choose Share.`,
+        { title: `Share all of “${libName}”?`, okLabel: 'Share the whole library' });
+      if (!ok) return;
+    }
     st.busy = true; updateAdd();
     try {
       if (st.tab === 'group') {
@@ -9070,17 +9084,27 @@ async function createFile(ext) {
     previewFile(doc.id, { edit: true });
   } catch (e) { toast('Could not create file: ' + e.message); }
 }
-async function saveFileText(fileId) {
+let _textSaving = null;
+async function saveFileText(fileId, opts = {}) {
   const ta = document.getElementById('file-edit-text');
   if (!ta || ta.readOnly) return;
+  if (_textSaving) { await _textSaving.catch(() => {}); }   // one save at a time
+  const content = ta.value;
+  _textSaving = apiPut('/files/' + fileId + '/content', { content });
   try {
-    await apiPut('/files/' + fileId + '/content', { content: ta.value });
-    codeEdSaved();
+    await _textSaving;
+    if (_codeEd && _codeEd.fileId === fileId) { _codeEd.saved = content; codeEdLines(); }
     const f = findFile(fileId);
-    if (f) f.size = new Blob([ta.value]).size;
-    toast('Saved');
-    document.getElementById('file-library-view') ? renderDocumentLibraryList() : null;
-  } catch (e) { toast('Save failed: ' + e.message); }
+    if (f) f.size = new Blob([content]).size;
+    if (opts.auto) {
+      const st = document.getElementById('code-ed-state');
+      if (st && ta.value === content) { st.textContent = 'Saved automatically'; st.className = ''; }
+    } else {
+      toast('Saved');
+      document.getElementById('file-library-view') ? renderDocumentLibraryList() : null;
+    }
+  } catch (e) { toast((opts.auto ? 'Autosave failed: ' : 'Save failed: ') + e.message); }
+  finally { _textSaving = null; }
 }
 
 function toggleCreateMenu(event) {
@@ -11898,7 +11922,15 @@ function rowThumbFailed(img) {
   const wrap = img.parentElement;
   if (wrap) wrap.outerHTML = fileIconHtml(wrap.dataset.ext || '');
 }
-const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'txt', 'md', 'csv', 'log', 'json', ...VIDEO_EXTS, ...AUDIO_EXTS];
+// Opened in the built-in editor, and saved as plain text. The server keeps the same list
+// (server/lib/textTypes.js); a test checks they match.
+const TEXT_EDIT_EXTS = [
+  'txt', 'md', 'markdown', 'log', 'json', 'csv', 'tsv',
+  'conf', 'config', 'cfg', 'ini', 'properties', 'env', 'toml', 'yaml', 'yml', 'xml',
+  'html', 'htm', 'css', 'scss', 'js', 'mjs', 'ts', 'jsx', 'tsx', 'php', 'py', 'rb', 'pl',
+  'ps1', 'psm1', 'psd1', 'bat', 'cmd', 'sh', 'bash', 'zsh', 'sql', 'nfo', 'srt', 'vtt',
+];
+const PREVIEW_EXTS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', ...TEXT_EDIT_EXTS, ...VIDEO_EXTS, ...AUDIO_EXTS];
 let recentOpensList = [];
 function recordOpen(fileId) { apiPost('/files/' + fileId + '/open', {}).catch(() => {}); }
 async function loadRecentOpens() { try { recentOpensList = await apiGet('/files/recent'); } catch { recentOpensList = []; } }
@@ -12380,11 +12412,13 @@ const codeEdWrapOn = () => { try { return localStorage.getItem('memex_editor_wra
 function codeEdMount(fileId, { canEdit, note }) {
   const ta = document.getElementById('file-edit-text'), root = document.getElementById('code-ed'); if (!ta || !root) return;
   if (!canEdit) ta.readOnly = true;
-  _codeEd = { fileId, saved: ta.value, canEdit };
+  _codeEd = { fileId, saved: ta.value, value: ta.value, canEdit };
   const wrapBox = document.getElementById('code-ed-wrap'); if (wrapBox) wrapBox.checked = codeEdWrapOn();
+  const autoBox = document.getElementById('code-ed-autosave'); if (autoBox) autoBox.checked = codeEdAutosaveOn();
+  const autoLabel = document.getElementById('code-ed-autosave-label'); if (autoLabel) autoLabel.hidden = !canEdit;
   root.classList.toggle('wrap', codeEdWrapOn()); ta.setAttribute('wrap', codeEdWrapOn() ? 'soft' : 'off');
   if (note) { const st = document.getElementById('code-ed-state'); if (st) { st.textContent = note; st.className = 'warn'; } }
-  ta.addEventListener('input', () => { codeEdLines(); codeEdCursor(); });
+  ta.addEventListener('input', () => { _codeEd.value = ta.value; codeEdLines(); codeEdCursor(); codeEdAutosaveSoon(); });
   ta.addEventListener('scroll', codeEdScroll, { passive: true });
   ['keyup', 'click', 'select', 'focus'].forEach(ev => ta.addEventListener(ev, codeEdCursor));
   ta.addEventListener('keydown', codeEdKeydown);
@@ -12434,6 +12468,36 @@ function codeEdSetWrap(on) {
   ta?.setAttribute('wrap', on ? 'soft' : 'off'); codeEdLines(); codeEdCursor();
   if (on && ta && ta.value.split('\n').length > CODE_ED_WRAP_MAX_LINES) toast('Line numbers are approximate with wrapping on in a file this long');
 }
+// Autosave (a checkbox in the editor's bar, remembered per browser, off until turned on):
+// a few seconds after typing stops, and on closing the file. Saving overwrites the file,
+// as Save does.
+const CODE_ED_AUTOSAVE_MS = 3000;
+let _codeEdAutoTimer = null;
+const codeEdAutosaveOn = () => { try { return localStorage.getItem('memex_editor_autosave') === '1'; } catch { return false; } };
+function codeEdSetAutosave(on) {
+  try { localStorage.setItem('memex_editor_autosave', on ? '1' : '0'); } catch { /* this visit only */ }
+  if (on) codeEdAutosaveSoon();
+}
+function codeEdAutosaveSoon() {
+  clearTimeout(_codeEdAutoTimer);
+  if (!_codeEd?.canEdit || !codeEdAutosaveOn()) return;
+  const fileId = _codeEd.fileId;
+  _codeEdAutoTimer = setTimeout(() => {
+    const ta = document.getElementById('file-edit-text');
+    if (ta && _codeEd?.fileId === fileId && ta.value !== _codeEd.saved) saveFileText(fileId, { auto: true });
+  }, CODE_ED_AUTOSAVE_MS);
+}
+// The file is closing: with autosave on, what was typed since the last save is saved now.
+// The editor is already gone from the page by then, so the text comes from _codeEd.value.
+function codeEdFlush() {
+  clearTimeout(_codeEdAutoTimer);
+  if (!_codeEd?.canEdit || !codeEdAutosaveOn() || _codeEd.value === _codeEd.saved) return;
+  const fileId = _codeEd.fileId, content = _codeEd.value;
+  _codeEd.saved = content;
+  apiPut('/files/' + fileId + '/content', { content })
+    .then(() => { const f = findFile(fileId); if (f) f.size = new Blob([content]).size; toast('Saved'); })
+    .catch((e) => toast('Autosave failed, your last changes were not saved: ' + e.message));
+}
 function codeEdSaved() { const ta = document.getElementById('file-edit-text'); if (_codeEd && ta) { _codeEd.saved = ta.value; codeEdLines(); } }
 function codeEdKeydown(e) {
   const ta = e.target;
@@ -12465,14 +12529,16 @@ async function previewFile(fileId, opts = {}) {
   const f = findFile(fileId);
   // Ordered ids in whatever view is showing (list rows or gallery cards), for ←/→ paging.
   try { _previewIds = [...new Set([...document.querySelectorAll('#file-list [data-fid], #panel [data-fid]')].map(el => el.dataset.fid))]; _previewIdx = _previewIds.indexOf(String(fileId)); } catch (e) { _previewIds = []; _previewIdx = -1; }
-  const ext = f ? fileExt(f.name) : '';
-  const isText = ['txt', 'md', 'csv', 'log', 'json'].includes(ext);
+  let data;
+  try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
+  // The type comes from the file's own name, even when this page was never sent the file
+  // (a link straight to it).
+  const ext = fileExt(f ? f.name : String(data.name || ''));
+  const isText = TEXT_EDIT_EXTS.includes(ext);
   const isSheet = ['xlsx', 'xls'].includes(ext);
   const isDoc = ext === 'docx';
   const isEml = ext === 'eml';
   const canEdit = isText && canChangeFile(f);
-  let data;
-  try { data = await apiGet('/files/' + fileId + '/url'); } catch (e) { toast('Preview error: ' + e.message); return; }
   const url = data.url;
   const inlineUrl = url + (url.includes('?') ? '&' : '?') + 'inline=1'; // render in-browser, not download
   const name = data.name || (f ? fileDisplayName(f) : 'File');
@@ -12482,7 +12548,7 @@ async function previewFile(fileId, opts = {}) {
   else if (VIDEO_EXTS.includes(ext)) body = `<video src="${esc(inlineUrl)}" class="file-preview-media" controls playsinline preload="metadata"></video>`;
   else if (AUDIO_EXTS.includes(ext)) body = `<audio src="${esc(inlineUrl)}" class="file-preview-audio" controls preload="metadata"></audio>`;
   else if (isText) body = `<div class="code-ed" id="code-ed"><div class="code-ed-main"><div class="code-ed-gutter" id="code-ed-gutter" aria-hidden="true"></div><div class="code-ed-pane"><div class="code-ed-line" id="code-ed-line" hidden></div><div class="code-ed-mirror" id="code-ed-mirror" aria-hidden="true"></div><textarea class="file-preview-edit" id="file-edit-text" aria-label="File contents" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea></div></div>`
-    + `<div class="code-ed-bar"><span id="code-ed-pos" role="status">Ln 1, Col 1</span><span id="code-ed-count"></span><span id="code-ed-state"></span><span class="grow"></span><label><input type="checkbox" id="code-ed-wrap" onchange="codeEdSetWrap(this.checked)"> Wrap long lines</label></div></div>`;
+    + `<div class="code-ed-bar"><span id="code-ed-pos" role="status">Ln 1, Col 1</span><span id="code-ed-count"></span><span id="code-ed-state"></span><span class="grow"></span><label id="code-ed-autosave-label"><input type="checkbox" id="code-ed-autosave" onchange="codeEdSetAutosave(this.checked)"> Autosave</label><label><input type="checkbox" id="code-ed-wrap" onchange="codeEdSetWrap(this.checked)"> Wrap long lines</label></div></div>`;
   else if (isSheet || isDoc) body = `<div class="file-preview-office" id="file-office-body"><div class="file-office-loading">Rendering preview…</div></div>`;
   else if (isEml) body = `<div class="file-preview-office" id="file-eml-body"><div class="file-office-loading">Reading email…</div></div>`;
   else body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(ext)}<div class="file-info-meta"><div class="file-row-title">${esc(name)}</div><div class="file-row-sub">${esc(fileKind(ext))} · ${fileSizeLabel(f?.size || 0)}${f?.created_at ? ' · added ' + fileDate(f.created_at) : ''}${f ? ' · ' + esc(fileOwner(f)) : ''}</div></div></div><p class="settings-notice" style="margin-top:10px">No inline view for this type yet — use the actions above.</p></div>`;
@@ -12504,7 +12570,7 @@ async function previewFile(fileId, opts = {}) {
   closeFilePreview();
   const navPrev = _previewIdx > 0 ? '' : ' disabled';
   const navNext = (_previewIdx >= 0 && _previewIdx < _previewIds.length - 1) ? '' : ' disabled';
-  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
+  openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
   if (isText) {
     const el = document.getElementById('file-edit-text');
     let tooBig = false, failed = false;
