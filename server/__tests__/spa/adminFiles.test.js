@@ -42,5 +42,5 @@ test('the note says when there is more than is shown, and what a search found', 
   expect(ctx.note({ files: new Array(200), matched: 512 }, 'pdf')).toBe('Showing the newest 200 of 512 matches.');
   expect(ctx.note({ files: [{}], matched: 1 }, 'x')).toBe('1 match.');
   expect(ctx.note({ files: [], matched: 0 }, 'zzz')).toBe('No file matches that.');
-  expect(ctx.note(null, '')).toBe("Couldn't load the file list.");
+  expect(ctx.note(null, '')).toBe("Couldn't load the file list. Refresh the page to try again.");
 });
