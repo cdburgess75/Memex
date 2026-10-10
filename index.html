@@ -538,6 +538,8 @@ html.dark .masthead-upload.masthead-upload-secondary { background: transparent; 
 }
 #page-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 #page-search::placeholder { color: var(--ink-faint); }
+/* The browser's default placeholder grey fails 4.5:1 on the dark surfaces; the faint-ink token passes everywhere. */
+input.file-rail-find::placeholder, input.library-menu-search::placeholder, input.admin-find::placeholder { color: var(--ink-faint); }
 .cat-filter {
   display: flex;
   flex-wrap: wrap;
@@ -1455,8 +1457,8 @@ html.file-home-mode .masthead-actions { display: flex; }
    folders, scrolling the rail used to scroll the whole page, files and all, so a folder
    picked near the bottom opened its files far above, out of sight. */
 .file-home-nav-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 18px 14px 28px; box-sizing: border-box; }
-.file-rail-find { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
-.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+input.file-rail-find { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
+input.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .file-rail-tree .fc-path { display: block; color: var(--ink-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-rail-tree .fc-name-wrap { min-width: 0; overflow: hidden; }
 .file-rail-tree .fc-name-wrap .fc-name { display: block; }
@@ -1585,10 +1587,11 @@ html.dark .settings-tab.active { color: var(--accent); }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
-.library-menu-search { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
-.library-menu-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
-.library-menu-list { display: grid; gap: 2px; max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
-.library-menu-fold { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 4px; }
+input.library-menu-search { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
+input.library-menu-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+/* One column that can shrink: a long library name must truncate, never widen every row past the menu. */
+.library-menu-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
+.library-menu-fold { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 4px; }
 .library-menu-fold:hover { background: var(--surface-2); color: var(--ink-soft); }
 .library-menu-fold .chev { margin-left: auto; transition: transform .15s; }
 .library-menu-fold.open .chev { transform: rotate(180deg); }
@@ -1914,7 +1917,7 @@ html.file-home-mode #panel > .panel.admin-view { padding: 8px 4px 40px; }
 .admin-count { font-weight: 500; color: var(--ink-faint); margin-inline-start: 6px; }
 .dash-card-h .admin-find { flex: 0 1 280px; width: 280px; max-width: 55%; }
 .admin-view .dash-card-h .wdash-h { white-space: nowrap; }
-.admin-find { padding: 7px 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
+input.admin-find { padding: 7px 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: 13px var(--ui); }
 .admin-none { font-size: 13px; color: var(--ink-faint); padding: 10px 2px; }
 .admin-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-view .data-table { font-size: 13px; margin: 0; }
@@ -2311,13 +2314,19 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-commander-shell { display: grid; grid-template-columns: minmax(190px, 260px) minmax(0, 1fr); gap: 14px; }
 .file-commander-folders { border: 1px solid var(--rule); border-radius: 10px; padding: 10px; overflow: auto; background: var(--surface); }
 .file-commander-title { color: var(--ink-faint); font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; margin: 2px 6px 8px; }
-.file-commander-folder { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); display: grid; grid-template-columns: 14px 22px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 8px 9px; text-align: left; font: 500 13px var(--ui); cursor: pointer; }
+.file-commander-folder { width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 8px 9px; text-align: left; font: 500 13px var(--ui); cursor: pointer; }
 .file-commander-folder:hover { background: var(--surface-2); color: var(--ink); }
 .file-commander-folder.active { background: var(--accent-wash); color: var(--accent); }
 .file-commander-folder .fc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-commander-folder .fc-ico { display: inline-flex; align-items: center; justify-content: center; opacity: 0.85; }
-.fc-caret { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 18px; font-size: 9px; color: var(--ink-faint); border-radius: 4px; }
+.fc-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 2px; }
+.fc-row.active { background: var(--accent-wash); border-radius: 8px; }
+/* The expand control is a real button: keyboard reachable, named, 24px square. */
+.fc-caret { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--ink-faint); border-radius: 4px; cursor: pointer; }
+.fc-caret svg { transition: transform .15s; }
+.fc-caret[aria-expanded="true"] svg { transform: rotate(90deg); }
 .fc-caret:not(.fc-caret-empty):hover { background: var(--surface-2); color: var(--accent); }
+.fc-caret:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fc-caret-empty { visibility: hidden; }
 .file-commander-count { color: var(--ink-faint); font-size: 12px; }
 .file-commander-folder .fc-dots { display: inline-flex; align-items: center; justify-content: center; opacity: 0.4; color: var(--ink-faint); cursor: pointer; border-radius: 4px; padding: 1px; }
@@ -2343,16 +2352,27 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Library dropdown rows: switch button + pin button as siblings */
 .library-menu-item-wrap { display: flex; align-items: center; }
-.library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; }
-.library-menu-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.library-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--ink-soft); font-size: 17px; line-height: 1; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.library-menu-item-wrap .library-menu-item .pill { margin-left: 0; flex: 0 0 auto; }
+.library-menu-item-name { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-pin-star { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 24px; border: 0; background: transparent; color: var(--ink-soft); padding: 2px 6px; border-radius: 4px; cursor: pointer; }
+.library-pin-star .library-pin-ic { display: inline-flex; }
+.library-pin-star .library-pin-ic svg { width: 16px; height: 16px; display: block; }
+.library-pin-star.pinned .library-pin-ic svg { fill: currentColor; }
 .library-pin-star.pinned { color: var(--accent); opacity: 1; }
 .library-pin-star:hover { color: var(--accent); background: var(--surface-2); }
 .library-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* In-rail folder tree (reuses .file-commander-folder rows, transparent in the rail) */
-.file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; }
+/* Workspace › Admin is pinned to the viewport's bottom-left, the rail's width, so it is in view
+   whatever the rail or the page has scrolled to. The rail's end keeps room to scroll above it. */
+.file-rail-foot { position: fixed; left: 0; bottom: 0; z-index: 3; width: var(--memex-rail-w, 248px); box-sizing: border-box; padding: 6px 14px 10px; background: var(--surface-2); border-top: 1px solid var(--rule-soft); border-right: 1px solid var(--rule); }
+html.dark .file-rail-foot { background: var(--surface); }
+/* 112px: the block's own height plus the masthead's, since at the top of the page the rail's scroll box begins beneath the masthead. */
+.file-library-nav-body:has(.file-rail-foot) { padding-bottom: 112px; }
+/* The tree keeps to its own scroll region so Favorites, Trash and the rest of the rail stay within reach however many folders there are. */
+.file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
 .file-rail-tree:empty { display: none; }
-.file-rail-tree .file-commander-folder { grid-template-columns: 14px 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+.file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
 /* Breadcrumb — its own row directly under the Create/Upload toolbar, left-aligned */
 .file-library-breadcrumb-row { margin: 8px 0 2px; }
 .file-library-breadcrumb .crumb-root { font-weight: 700; color: var(--ink); }
@@ -2603,6 +2623,7 @@ html.dark .file-link-status.revoked { background: #35191B; color: #FFB3B8; }
 html.dark .file-link-status.paused { color: var(--warning); background: color-mix(in srgb, var(--warning) 16%, var(--paper)); }
 @media (max-width: 1100px) {
   .file-home-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .file-rail-foot { width: 220px; }
   .file-home-main { padding: 28px 24px 40px; }
   .file-home-insights { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
   .file-rec-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
@@ -2630,7 +2651,9 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-nav-icon, .file-nav-icon svg { width: 16px; height: 16px; }
   .file-library-nav-body { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 -12px; padding: 0 12px 10px; scroll-snap-type: x proximity; }
   .file-library-nav-body::-webkit-scrollbar { display: none; }
-  .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main { display: contents; }
+  .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main, .file-rail-foot, .file-rail-foot > .file-nav-main { display: contents; }
+  .file-rail-foot { position: static; width: auto; }
+  .file-library-nav-body:has(.file-rail-foot) { padding-bottom: 10px; }
   .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .file-rail-find { display: none; }
   .file-home-nav-inner { position: static; max-height: none; overflow: visible; padding: 0; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; gap: 6px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
@@ -3257,7 +3280,7 @@ let currentFolderPath = '';
 // per-device file favorites. All client-persisted (localStorage) — see plan.
 const _loadIdSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]').map(String)); } catch { return new Set(); } };
 let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
-// The library to open at sign-in ("Open this library when I sign in"); null = whichever
+// The library to open at sign-in ("Open this library when you sign in"); null = whichever
 // this browser had open last. Saved with the other preferences so it follows the person.
 let startLibraryId = (() => { try { return localStorage.getItem('memex_start_library') || null; } catch { return null; } })();
 let _prefsLoaded = false;      // the server's preferences have arrived (see sendPreferences)
@@ -3347,7 +3370,18 @@ function toggleFileFavorite(id, event) {
 }
 function refreshFileRailTree() {
   const tree = document.getElementById('file-rail-tree');
-  if (tree) tree.innerHTML = fileRailTreeHtml();
+  if (!tree) return;
+  // Redrawing the tree replaces its buttons; whoever had one focused (a keyboard user
+  // expanding a branch) gets the same one back.
+  const had = document.activeElement && tree.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = had && { caret: had.classList.contains('fc-caret'), folder: had.dataset.folder };
+  tree.innerHTML = fileRailTreeHtml();
+  if (focusKey && focusKey.folder != null) {
+    const sel = `${focusKey.caret ? '.fc-caret' : '.file-commander-folder'}[data-folder="${CSS.escape(focusKey.folder)}"]`;
+    tree.querySelector(sel)?.focus();
+  }
+  // The tree scrolls on its own now: keep the folder being viewed in sight.
+  if (!railFindQuery) tree.querySelector('.file-commander-folder.active')?.scrollIntoView({ block: 'nearest' });
   const find = document.getElementById('file-rail-find');
   if (find) find.hidden = !railFindWanted();
 }
@@ -5224,7 +5258,7 @@ function adminFileRows(list) {
 }
 function adminFilesNote(data, q) {
   const shown = (data?.files || []).length, matched = Number(data?.matched || 0);
-  if (!data) return "Couldn't load the file list.";
+  if (!data) return "Couldn't load the file list. Refresh the page to try again.";
   if (q) return matched ? (matched > shown ? `Showing the newest ${shown.toLocaleString()} of ${matched.toLocaleString()} matches.` : `${matched.toLocaleString()} match${matched === 1 ? '' : 'es'}.`) : 'No file matches that.';
   return matched > shown ? `Showing the newest ${shown.toLocaleString()}. Search to find any other file.` : '';
 }
@@ -7259,7 +7293,10 @@ function accessWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLoc
 async function loadAccessReview() {
   const el = document.getElementById('access-review'); if (!el) return;
   try { el.innerHTML = renderAccessReview(await apiGet('/admin/access-review')); }
-  catch (e) { el.innerHTML = emptyState('Could not load review', esc(e.message)); }
+  catch (e) {
+    el.innerHTML = emptyState('Could not load the users list', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
+      '<button class="ghost-btn" type="button" onclick="loadAccessReview()">Try again</button>');
+  }
 }
 function renderAccessReview(r) {
   const open = (r.openLibraries && r.openLibraries.length)
@@ -7712,7 +7749,11 @@ async function openFolder(path = '', push = true) {
     const bc = document.getElementById('file-library-breadcrumb');
     if (bc) bc.innerHTML = fileBreadcrumbHtml();
     try { await Promise.all([loadCurrentFolderFiles(), folderIndexLib === currentLibraryId ? null : loadFolderIndex()]); }
-    catch (e) { if (seq === openFolderSeq && el) el.innerHTML = emptyState('Could not open this folder', e.message || 'Try again.'); return; }
+    catch (e) {
+      if (seq === openFolderSeq && el) el.innerHTML = emptyState('Could not open this folder', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
+        `<button class="file-action-btn primary" type="button" data-folder="${escAttr(currentFolderPath)}" onclick="openFolder(this.dataset.folder, false)">Try again</button>`);
+      return;
+    }
     if (seq !== openFolderSeq) return;   // another folder was opened meanwhile
   }
   renderDocumentLibraryList();
@@ -7870,6 +7911,7 @@ window.addEventListener('hashchange', () => {
   const s = hashToNav(location.hash);
   if (s) navApply(s);
 });
+const ICON_CARET = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 const FOLDER_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></span>';
 const ALL_FILES_SVG = '<span class="fc-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 3l9 8h-2.5v8.5H14V14h-4v5.5H5.5V11H3z"/></svg></span>';
 // Persisted set of collapsed folder paths in the Commander tree.
@@ -8044,10 +8086,11 @@ function fileRailTreeHtml() {
   if (!folderIndex.length) return '';
   if (railFindQuery.trim()) {
     const all = railFindMatches();
-    if (!all.length) return `<div class="file-rail-note">No folder matches “${esc(railFindQuery.trim())}”.</div>`;
+    if (!all.length) return `<div class="file-rail-note">No folder matches “${esc(railFindQuery.trim())}”. Clear the box to see every folder.</div>`;
     return all.slice(0, RAIL_FIND_MAX).map(folder => {
       const parent = folder.path.includes('/') ? folder.path.slice(0, folder.path.lastIndexOf('/')) : '';
-      return `<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" title="${esc(folder.path)}"><span class="fc-caret fc-caret-empty"></span>${FOLDER_SVG}<span class="fc-name-wrap"><span class="fc-name">${esc(folder.name)}</span>${parent ? `<span class="fc-path">in ${esc(parent)}</span>` : ''}</span><span class="file-commander-count">${folder.count}</span></button>`;
+      const active = folder.path === currentFolderPath ? ' active' : '';
+      return `<div class="fc-row${active}"><span class="fc-caret fc-caret-empty" aria-hidden="true"></span><button class="file-commander-folder${active}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" title="${esc(folder.path)}">${FOLDER_SVG}<span class="fc-name-wrap"><span class="fc-name">${esc(folder.name)}</span>${parent ? `<span class="fc-path">in ${esc(parent)}</span>` : ''}</span><span class="file-commander-count">${folder.count}</span></button></div>`;
     }).join('') + (all.length > RAIL_FIND_MAX ? `<div class="file-rail-note">Showing ${RAIL_FIND_MAX} of ${all.length}. Type more to narrow it.</div>` : '');
   }
   const open = railExpanded();
@@ -8056,10 +8099,13 @@ function fileRailTreeHtml() {
     for (const folder of childFoldersFromIndex(parent)) {
       const kids = folderChildren.has(folder.path);
       const isOpen = open.has(folder.path);
+      // The caret is a button of its own (a button cannot hold a button), so a keyboard
+      // reaches it and a screen reader hears what it does and whether the branch is open.
       const caret = kids
-        ? `<span class="fc-caret" data-folder="${esc(folder.path)}" onclick="toggleCommanderFolder(event, this.dataset.folder)" title="${isOpen ? 'Collapse' : 'Expand'}">${isOpen ? '▼' : '▶'}</span>`
-        : '<span class="fc-caret fc-caret-empty"></span>';
-      out.push(`<button class="file-commander-folder${folder.path === currentFolderPath ? ' active' : ''}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" style="padding-left:${9 + depth * 15}px" title="${esc(folder.path)}">${caret}${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button>`);
+        ? `<button class="fc-caret" type="button" data-folder="${esc(folder.path)}" aria-expanded="${isOpen}" aria-label="${isOpen ? 'Collapse' : 'Expand'} ${esc(folder.name)}" onclick="toggleCommanderFolder(event, this.dataset.folder)">${ICON_CARET}</button>`
+        : '<span class="fc-caret fc-caret-empty" aria-hidden="true"></span>';
+      const active = folder.path === currentFolderPath ? ' active' : '';
+      out.push(`<div class="fc-row${active}" style="padding-inline-start:${depth * 15}px">${caret}<button class="file-commander-folder${active}" data-folder="${esc(folder.path)}" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)" title="${esc(folder.path)}">${FOLDER_SVG}<span class="fc-name">${esc(folder.name)}</span><span class="file-commander-count">${folder.count}</span></button></div>`);
       if (kids && isOpen) walk(folder.path, depth + 1);
     }
   };
@@ -8292,12 +8338,13 @@ let nameSearch = { key: '', rows: [] };
 let nameSearchSeq = 0;
 async function runNameSearch(key, q) {
   const seq = ++nameSearchSeq;
-  let rows = [];
-  try { rows = rememberFiles(await apiGet('/files?' + libraryQuery({ q }))); } catch (e) { toast('Search failed: ' + e.message); }
+  let rows = [], failed = '';
+  try { rows = rememberFiles(await apiGet('/files?' + libraryQuery({ q }))); } catch (e) { failed = e.message || 'search failed'; }
   if (seq !== nameSearchSeq) return;
-  nameSearch = { key, rows: Array.isArray(rows) ? rows : [] };
+  nameSearch = { key, rows: Array.isArray(rows) ? rows : [], failed };
   if (document.getElementById('file-library-view')) renderDocumentLibraryList({ rowsOnly: true });
 }
+function retryNameSearch() { nameSearch = { key: '', rows: [] }; renderDocumentLibraryList({ rowsOnly: true }); }
 function childFoldersFromIndex(parentPath = currentFolderPath) {
   return folderChildren.get(normalizeFilePath(parentPath)) || [];
 }
@@ -8520,7 +8567,7 @@ function libraryMenuRow(l) {
     ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
     : (LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
-  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${pinned ? '★' : '☆'}</button></div>`;
+  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
 }
 // ---- Library menu ----
 // With a handful of libraries the menu is a plain list. Past LIBRARY_MENU_COMPACT it gets a
@@ -8568,7 +8615,7 @@ function libraryMenuListHtml() {
     const hits = libraryMenuLibraries()
       .filter(l => String(l.name || '').toLowerCase().includes(q) || String(l.owner_email || '').toLowerCase().includes(q))
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    return hits.length ? hits.map(libraryMenuRow).join('') : `<div class="library-menu-empty">No library matches “${esc(libraryMenuQuery.trim())}”.</div>`;
+    return hits.length ? hits.map(libraryMenuRow).join('') : `<div class="library-menu-empty">No library matches “${esc(libraryMenuQuery.trim())}”. Clear the box to see them all.</div>`;
   }
   const g = libraryMenuGroups();
   const section = (label, rows) => (rows.length ? `<div class="library-menu-label">${label}</div>${rows.map(libraryMenuRow).join('')}` : '');
@@ -8598,7 +8645,7 @@ function libraryMenuInnerHtml() {
     + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
     + (cur && cur.id ? (String(startLibraryId) === String(cur.id)
         ? `<button class="library-menu-item" type="button" onclick="setStartLibrary(null)" title="Click to stop opening it at sign-in">✓ “${esc(cur.name)}” opens when you sign in</button>`
-        : `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="setStartLibrary(this.dataset.lib)">Open “${esc(cur.name)}” when I sign in</button>`) : '')
+        : `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="setStartLibrary(this.dataset.lib)">Open “${esc(cur.name)}” when you sign in</button>`) : '')
     + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
     + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
     + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
@@ -8671,11 +8718,18 @@ function toggleLibraryMenu(event) {
   const opening = !menu.classList.contains('open');
   if (opening) { libraryMenuQuery = ''; menu.innerHTML = libraryMenuInnerHtml(); } // refresh from current list on open
   menu.classList.toggle('open');
+  document.querySelector('.file-library-heading')?.setAttribute('aria-expanded', String(opening));
   // Straight to typing on a computer; on a phone the keyboard would cover the list.
   if (opening && !window.matchMedia?.('(pointer: coarse)').matches) document.getElementById('library-menu-search')?.focus();
 }
 function closeLibraryMenu() {
-  document.getElementById('library-menu')?.classList.remove('open');
+  const menu = document.getElementById('library-menu');
+  if (!menu || !menu.classList.contains('open')) return;
+  menu.classList.remove('open');
+  const heading = document.querySelector('.file-library-heading');
+  heading?.setAttribute('aria-expanded', 'false');
+  // Focus that was inside the menu goes back to the button that opened it (Escape).
+  if (heading && menu.contains(document.activeElement)) heading.focus();
 }
 function switchLibrary(id) {
   closeLibraryMenu();
@@ -8853,9 +8907,9 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     if (!folderPath) {
       const libName = librariesList.find(l => String(l.id) === String(libraryId))?.name || 'this library';
       const groupName = st.tab === 'group' ? (st.groups?.find(g => String(g.id) === $('[data-ls-group]').value)?.name || 'the group') : '';
-      const who = st.tab === 'group' ? `everyone in ${groupName}` : (st.emails.length === 1 ? st.emails[0] : `${st.emails.length} people`);
+      const who = st.tab === 'group' ? `Everyone in ${groupName}` : (st.emails.length === 1 ? st.emails[0] : `${st.emails.length} people`);
       const ok = await askConfirm(
-        `${who} will be able to ${permission === 'write' ? 'open, change and delete' : 'open'} every file and folder in “${libName}”, including anything added later. To share less, share a single folder instead: open the folder's ⋯ menu and choose Share.`,
+        `${who} will be able to ${permission === 'write' ? 'open, change and delete' : 'open'} every file and folder in “${libName}”, including anything added later. To share less, share a single folder instead: open the folder's actions menu and choose Share.`,
         { title: `Share all of “${libName}”?`, okLabel: 'Share the whole library' });
       if (!ok) return;
     }
@@ -9191,7 +9245,7 @@ function anyMenuOpen() {
   return !!document.querySelector(
     '.app-menu-popover.open, #status-popover.open, #notif-panel.open, #meet-panel.open,' +
     '#apps-menu.open, #search-control-menu.open, #file-create-menu.open, #file-upload-menu.open,' +
-    '#file-filter-menu.open, #file-search-menu.open, #file-cols-menu.open, #preview-open-menu.open, #file-row-menu'
+    '#file-filter-menu.open, #file-search-menu.open, #file-cols-menu.open, #preview-open-menu.open, #library-menu.open, #file-row-menu'
   );
 }
 // Static scrims declared in the page markup toggle their `.open` class; dynamic
@@ -9372,7 +9426,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
   return `<section class="file-library-nav${collapsed}" id="file-library-nav">
     <div class="library-switch-wrap">
-      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
+      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true" aria-expanded="false" aria-controls="library-menu"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
       <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
     ${filePinnedSectionHtml()}
@@ -9386,10 +9440,10 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
+      ${currentUser?.role === 'admin' ? `<div class="file-rail-foot"><div class="file-nav-section">Workspace</div><div class="file-nav-main">${fileNavButton('Admin', 'admin', "setTab('admin')", activeWorkspace === 'admin')}</div></div>` : ''}
       ${connMountsNavHtml()}
       <div class="file-nav-section">Quick access</div>
       <div class="file-quick-list" id="file-quick-list"><div class="file-quick-pill">Loading…</div></div>
-      ${currentUser?.role === 'admin' ? `<div class="file-nav-section">Workspace</div><div class="file-nav-main">${fileNavButton('Admin', 'admin', "setTab('admin')", activeWorkspace === 'admin')}</div>` : ''}
     </div>
   </section>`;
 }
@@ -9680,7 +9734,7 @@ function previewMountEntry(i) {
   closeFilePreview();
   const primary = e.openUrl ? `<button class="run-btn" data-openurl="${escAttr(e.openUrl)}" onclick="connOpenExternal(this.dataset.openurl)" title="Opens in your Microsoft 365 with your own sign-in — full editing and co-authoring">Open in Microsoft 365</button>` : '';
   const body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(fileExt(e.name))}<div class="file-info-meta"><div class="file-row-title">${esc(e.name)}</div><div class="file-row-sub">${fmtBytes(e.size || 0)}${e.modified ? ' · ' + new Date(e.modified).toLocaleString() : ''} · via ${esc(m.name)}</div></div></div><p class="settings-notice" style="margin-top:10px">This file lives in ${esc(m.kind || 'the connected system')} — Depot streams it on demand; nothing is copied.</p></div>`;
-  openModal({ id: 'file-preview-scrim', html: `<div class="file-preview-head"><strong title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><div class="file-preview-stage">${body}</div></div>`, modalClass: 'file-preview-modal' });
+  openModal({ id: 'file-preview-scrim', labelledBy: 'fp-title', html: `<div class="file-preview-head"><strong id="fp-title" title="${esc(e.name)}">${esc(e.name)}</strong><div class="file-preview-head-actions">${primary}<button class="ghost-btn" data-mid="${escAttr(m.id)}" data-path="${escAttr(e.path)}" data-name="${escAttr(e.name)}" onclick="connDownload(this.dataset.mid, this.dataset.path, this.dataset.name)">Download</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><div class="file-preview-stage">${body}</div></div>`, modalClass: 'file-preview-modal' });
 }
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
@@ -9753,7 +9807,8 @@ async function renderDocumentLibrary(view = 'active') {
     renderDocumentLibraryList();
   } catch (e) {
     const el = document.getElementById('file-list');
-    if (el) el.innerHTML = `<p class="note" style="color:var(--accent)">Could not load files: ${esc(e.message)}</p>`;
+    if (el) el.innerHTML = emptyState('Could not load files', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
+      `<button class="file-action-btn primary" type="button" data-view="${escAttr(view)}" onclick="renderDocumentLibrary(this.dataset.view)">Try again</button>`);
   }
 }
 
@@ -10074,6 +10129,11 @@ function renderDocumentLibraryList(opts = {}) {
   if (serverSearch && nameSearch.key !== `${currentLibraryId}|${q}`) {
     el.innerHTML = emptyState('Searching…', 'Looking through file names in this library.');
     runNameSearch(`${currentLibraryId}|${q}`, q);
+    return;
+  }
+  if (serverSearch && nameSearch.failed) {
+    el.innerHTML = emptyState('Search failed', `Try again, or refresh the page if it keeps happening. (${nameSearch.failed})`,
+      '<button class="file-action-btn primary" type="button" onclick="retryNameSearch()">Try again</button>');
     return;
   }
   const source = serverSearch ? nameSearch.rows : flatView ? filesList.filter(f => favoriteFileIds.has(String(f.id))) : filesList;
@@ -11454,7 +11514,7 @@ async function renderFileList() {
     } catch (e) {
       if (seq !== fileSearchSeq) return;
       searchableFiles = filesList;
-      toast('Search failed: ' + e.message);
+      toast(`Search failed. Try again, or refresh the page if it keeps happening. (${e.message})`);
     }
   } else {
     fileSearchSeq += 1;
@@ -12548,7 +12608,7 @@ async function previewFile(fileId, opts = {}) {
   else if (VIDEO_EXTS.includes(ext)) body = `<video src="${esc(inlineUrl)}" class="file-preview-media" controls playsinline preload="metadata"></video>`;
   else if (AUDIO_EXTS.includes(ext)) body = `<audio src="${esc(inlineUrl)}" class="file-preview-audio" controls preload="metadata"></audio>`;
   else if (isText) body = `<div class="code-ed" id="code-ed"><div class="code-ed-main"><div class="code-ed-gutter" id="code-ed-gutter" aria-hidden="true"></div><div class="code-ed-pane"><div class="code-ed-line" id="code-ed-line" hidden></div><div class="code-ed-mirror" id="code-ed-mirror" aria-hidden="true"></div><textarea class="file-preview-edit" id="file-edit-text" aria-label="File contents" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" ${canEdit ? '' : 'readonly'} placeholder="Empty file">Loading…</textarea></div></div>`
-    + `<div class="code-ed-bar"><span id="code-ed-pos" role="status">Ln 1, Col 1</span><span id="code-ed-count"></span><span id="code-ed-state"></span><span class="grow"></span><label id="code-ed-autosave-label"><input type="checkbox" id="code-ed-autosave" onchange="codeEdSetAutosave(this.checked)"> Autosave</label><label><input type="checkbox" id="code-ed-wrap" onchange="codeEdSetWrap(this.checked)"> Wrap long lines</label></div></div>`;
+    + `<div class="code-ed-bar"><span id="code-ed-pos" role="status">Ln 1, Col 1</span><span id="code-ed-count"></span><span id="code-ed-state" role="status"></span><span class="grow"></span><label id="code-ed-autosave-label"><input type="checkbox" id="code-ed-autosave" onchange="codeEdSetAutosave(this.checked)"> Autosave</label><label><input type="checkbox" id="code-ed-wrap" onchange="codeEdSetWrap(this.checked)"> Wrap long lines</label></div></div>`;
   else if (isSheet || isDoc) body = `<div class="file-preview-office" id="file-office-body"><div class="file-office-loading">Rendering preview…</div></div>`;
   else if (isEml) body = `<div class="file-preview-office" id="file-eml-body"><div class="file-office-loading">Reading email…</div></div>`;
   else body = `<div class="file-preview-fallback"><div class="file-info-card">${fileIconHtml(ext)}<div class="file-info-meta"><div class="file-row-title">${esc(name)}</div><div class="file-row-sub">${esc(fileKind(ext))} · ${fileSizeLabel(f?.size || 0)}${f?.created_at ? ' · added ' + fileDate(f.created_at) : ''}${f ? ' · ' + esc(fileOwner(f)) : ''}</div></div></div><p class="settings-notice" style="margin-top:10px">No inline view for this type yet — use the actions above.</p></div>`;
@@ -12570,7 +12630,7 @@ async function previewFile(fileId, opts = {}) {
   closeFilePreview();
   const navPrev = _previewIdx > 0 ? '' : ' disabled';
   const navNext = (_previewIdx >= 0 && _previewIdx < _previewIds.length - 1) ? '' : ' disabled';
-  openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, html: `<div class="file-preview-head"><strong title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
+  openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, labelledBy: 'fp-title', html: `<div class="file-preview-head"><strong id="fp-title" title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
   if (isText) {
     const el = document.getElementById('file-edit-text');
     let tooBig = false, failed = false;

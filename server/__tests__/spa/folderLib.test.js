@@ -157,7 +157,7 @@ describe('library relationships and where you can add files', () => {
     return ctx.api;
   };
   const base = (over) => ({
-    esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '<svg/>', pinnedLibraryIds: new Set(),
+    esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '<svg/>', navIcon: () => '<svg/>', pinnedLibraryIds: new Set(),
     currentUser: { role: 'contributor' }, currentLibraryId: 'L1', librariesList: [], localStorage: { getItem: () => null, setItem: () => {} }, startLibraryId: null, ...over,
   });
 
@@ -253,7 +253,7 @@ describe('the library opened at sign-in, in the library menu', () => {
     throw new Error(name);
   };
   const menuFor = (startLibraryId) => {
-    const ctx = { esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '', pinnedLibraryIds: new Set(), currentUser: { role: 'contributor' },
+    const ctx = { esc: (x) => String(x), escAttr: (x) => String(x), ICON_SHARE: '', navIcon: () => '<svg/>', pinnedLibraryIds: new Set(), currentUser: { role: 'contributor' },
       currentLibraryId: 'L1', librariesList: [{ id: 'L1', name: 'Clients', my_access: 'owner', can_manage: true }],
       localStorage: { getItem: () => null, setItem: () => {} }, startLibraryId };
     vm.runInNewContext(['currentLibrary', 'canShareLibrary', 'libraryMenuRow', 'libraryMenuInnerHtml'].map(fnSource).join('\n')
@@ -262,7 +262,7 @@ describe('the library opened at sign-in, in the library menu', () => {
     return ctx.menu();
   };
   test('offers to open the current library at sign-in', () => {
-    expect(menuFor(null)).toContain('Open “Clients” when I sign in');
+    expect(menuFor(null)).toContain('Open “Clients” when you sign in');
   });
   test('says when it already does, and that click turns it off', () => {
     const m = menuFor('L1');
