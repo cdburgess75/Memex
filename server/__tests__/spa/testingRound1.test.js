@@ -67,6 +67,8 @@ describe('calls', () => {
 describe('the text editor', () => {
   test('a file too big to show whole cannot be saved over', () => {
     expect(html).toMatch(/canEdit: canEdit && !tooBig && !failed/);
-    expect(block('saveFileText')).toContain('ta.readOnly');
+    // to the function's closing line (a brace count stops at the `opts = {}` default)
+    const start = html.indexOf('async function saveFileText(');
+    expect(html.slice(start, html.indexOf('\n}\n', start))).toContain('if (!ta || ta.readOnly) return;');
   });
 });

@@ -1178,6 +1178,7 @@ router.get('/search', auth, async (req, res) => {
       `SELECT
          d.id, d.name, d.size, d.mime_type, d.storage_path,
          d.uploaded_by, d.uploaded_by_email, d.created_at, d.deleted_at, d.deleted_by,
+         d.library_id, d.library_scoped,
          ts_headline(
            'english',
            coalesce(d.document_text, ''),
@@ -2542,13 +2543,12 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
 });
 
 
-// PUT /api/files/:id/content — overwrite a text file's content (md/txt/csv) and re-index
+// PUT /api/files/:id/content — overwrite a text file's content (lib/textTypes) and re-index
 router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    const ext = (doc.name.split('.').pop() || '').toLowerCase();
-    if (!['md', 'txt', 'csv', 'log', 'json'].includes(ext)) return res.status(400).json({ error: 'Only text files are editable in-app' });
+    if (!require('../lib/textTypes').isEditableText(doc.name)) return res.status(400).json({ error: 'Only text files are editable in-app' });
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
     const buffer = Buffer.from(content, 'utf8');
     await storage.upload(doc.storage_path, buffer, doc.mime_type || 'text/plain');
