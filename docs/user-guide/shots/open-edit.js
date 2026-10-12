@@ -48,4 +48,34 @@ module.exports = [
     ],
     caption: 'The action bar above a preview, cropped just below the document title',
   },
+  // 3. A text file in the preview: Depot's own editor, with Save, Autosave and Open in a tab.
+  // The whole modal this time: the text with its line numbers IS what the section is about.
+  {
+    id: 'text-preview',
+    theme: 'dark',
+    route: '#/files',
+    localStorage: MY,
+    // A shorter viewport: the modal is 86% of it, and this file's 19 lines fill a 620px
+    // modal nicely where a 774px one is half empty.
+    height: 720,
+    setup: preview(F['Meeting notes'].id, 2200),
+    clip: MODAL,
+    callouts: [
+      { n: 1, selector: '#fp-save', place: 'b' },
+      { n: 2, selector: '#code-ed-autosave-label', place: 't' },
+      { n: 3, selector: '.file-preview-head-actions button[onclick*="openTextTab"]', place: 'b' },
+    ],
+    caption: 'A Markdown file open in the preview, with Save, Autosave and Open in a tab',
+  },
+  // 4. The same file in a browser tab of its own (#/edit/file/<id>): the editor fills the page,
+  // nothing else of Depot is loaded. A smaller viewport so the whole page prints legibly.
+  {
+    id: 'text-tab',
+    theme: 'dark',
+    route: '#/edit/file/' + F['Meeting notes'].id,
+    localStorage: MY,
+    width: 1100, height: 580,
+    setup: async (page) => { await sleep(2200); await unfocus(page); },
+    caption: 'The same file in a browser tab of its own',
+  },
 ];
