@@ -18,7 +18,7 @@ Most teams end up with files scattered across a consumer cloud drive, notes in a
 
 - **One private place for your files.** Upload documents into permissioned libraries with folders, versioning, sharing, and audit, all in one self-hosted hub.
 - **AI that only knows what you give it.** Ask questions and get answers grounded in your own indexed files and pages, with the AI provider and model configurable (Anthropic by default, OpenAI-compatible endpoints, or a self-hosted Ollama).
-- **Edit in the browser, keep the data.** Word, Excel, and PowerPoint files open in a self-hosted Collabora editor over WOPI. No Microsoft or Google account, and the bytes never leave your server.
+- **Edit in the browser, keep the data.** Word, Excel, and PowerPoint files open in a self-hosted Collabora editor over WOPI. No Microsoft or Google account, and the bytes never leave your server. Text, Markdown, and code files open in Depot's own editor, in the page or in a browser tab of their own, with autosave on by default and a guard against saving over someone else's change.
 - **Built for review and audit.** Every file event is written to a tamper-evident, hash-chained activity log. Admins get a one-click access review, a compliance readiness view across six frameworks, and evidence exports.
 
 It stands out because it is genuinely self-contained: a Docker Compose stack you run on your own box, with authentication, encryption at rest, backups, and compliance tooling included rather than bolted on. An MSP can replicate it per customer; a single team can run one instance for themselves.

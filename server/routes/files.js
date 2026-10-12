@@ -29,6 +29,8 @@ const notifications = require('../lib/notifications');
 const emailEvents = require('../lib/emailEvents');
 const email = require('../lib/email');
 const { extractText } = require('../lib/textExtraction');
+const textTypes = require('../lib/textTypes');
+const textEdits = require('../lib/textEdits');
 const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const externalUpload = require('../lib/externalUpload');
@@ -2543,20 +2545,87 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
 });
 
 
-// PUT /api/files/:id/content — overwrite a text file's content (lib/textTypes) and re-index
+// Once per sitting (lib/textEdits): the file's owner, while they can still read it, and anyone
+// following it, minus whoever made the edit. Never awaited; a notice must not hold up a save.
+function tellAboutTextEdit(doc, user) {
+  (async () => {
+    const editor = email.actingAs(user);
+    const me = String(user.email || '').toLowerCase();
+    const owner = String(doc.uploaded_by_email || '').toLowerCase();
+    const ownerCanRead = owner ? (await documentAccess.readersAmong([doc.id], [owner])).get(owner)?.has(String(doc.id)) : false;
+    if (ownerCanRead && owner !== me) {
+      notifications.create({ userId: doc.uploaded_by || null, userEmail: doc.uploaded_by_email, type: 'document_edited', title: `${editor.label} edited your file`, body: `"${doc.name}"`, refType: 'document', refId: doc.id, dedupeMinutes: 30 }).catch(() => {});
+      emailEvents.send('document_edited', { to: doc.uploaded_by_email, subject: `${editor.label} edited your file: ${doc.name}`, text: `${editor.label} edited "${doc.name}" in Depot.\n\nSign in to Depot to review the changes.`, actorEmail: editor.sendAs }).catch(() => {});
+    }
+    for (const to of await docFollows.followersOf(doc.id, user.email)) {
+      if (owner && to.toLowerCase() === owner) continue; // told above
+      notifications.create({ userEmail: to, type: 'document_edited', title: `A file you follow was edited: ${doc.name}`, body: `"${doc.name}"`, refType: 'document', refId: doc.id, dedupeMinutes: 30 }).catch(() => {});
+      emailEvents.send('document_edited', { to, subject: `A file you follow was edited: ${doc.name}`, text: `${editor.label} edited "${doc.name}" in Depot.`, actorEmail: editor.sendAs }).catch(() => {});
+    }
+  })().catch((e) => console.error('text edit notices failed:', e.message));
+}
+
+// GET /api/files/:id/text — a text file for the built-in editor: its content, a revision
+// marker to save over it safely (lib/textEdits), where it lives, and whether this person may
+// change it. A file too big to edit here comes back cut, and read-only.
+router.get('/:id/text', auth, async (req, res) => {
+  try {
+    if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Document not found' });
+    const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'read', columns: DOCUMENT_COLUMNS, deleted: 'active' });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (!textTypes.isEditableText(doc.name)) return res.status(400).json({ error: 'Not a text file' });
+    const buf = await storage.download(doc.storage_path);
+    const text = buf.toString('utf8');
+    const tooBig = text.length > textEdits.MAX_CHARS;
+    const writer = req.user.role === 'admin' || req.user.role === 'contributor';
+    const canWrite = writer && !!(await documentAccess.getAccessibleDocument({ id: doc.id, user: req.user, required: 'write', columns: 'd.id', deleted: 'active' }));
+    const lib = doc.library_id ? await db.queryOne('SELECT id, name FROM libraries WHERE id = $1', [doc.library_id]) : null;
+    const cut = String(doc.name).lastIndexOf('/');
+    res.json({
+      id: doc.id, name: doc.name.slice(cut + 1), path: doc.name, folder: cut < 0 ? '' : doc.name.slice(0, cut),
+      library: lib ? { id: lib.id, name: lib.name } : null,
+      size: buf.length, mime_type: doc.mime_type || 'text/plain',
+      content: tooBig ? text.slice(0, textEdits.MAX_CHARS) : text, too_big: tooBig,
+      revision: textEdits.revisionOf(buf), can_edit: canWrite && !tooBig,
+    });
+  } catch (e) { serverError(res, e); }
+});
+
+// PUT /api/files/:id/content — save a text file from the built-in editor (lib/textTypes),
+// re-indexing its text. { content, base_revision?, force? }: with base_revision (what the
+// editor loaded), a save over a file that changed since is refused, 409 FILE_CHANGED with
+// the revision now, unless force is true. The first save of a sitting keeps the previous
+// content as a version and is the sitting's one "edited" entry; the owner and followers are
+// told once per sitting too (lib/textEdits).
 router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const doc = await documentAccess.getAccessibleDocument({ id: req.params.id, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
-    if (!require('../lib/textTypes').isEditableText(doc.name)) return res.status(400).json({ error: 'Only text files are editable in-app' });
+    if (!textTypes.isEditableText(doc.name)) return res.status(400).json({ error: 'Only text files are editable in-app' });
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
     const buffer = Buffer.from(content, 'utf8');
+    const base = typeof req.body?.base_revision === 'string' && req.body.base_revision ? req.body.base_revision : null;
+    // The bytes as they are now: for the revision check, and kept as a version when a sitting starts.
+    const before = await storage.download(doc.storage_path).catch(() => null);
+    const current = before ? textEdits.revisionOf(before) : null;
+    if (base && current && base !== current && req.body?.force !== true) {
+      return res.status(409).json({ code: 'FILE_CHANGED', error: 'This file changed since you opened it', revision: current });
+    }
+    const sitting = await textEdits.startsSitting(doc.id, req.user.id);
+    let keptVersion = false;
+    if (sitting && before && before.length) {
+      try { await saveDocumentVersion(doc, req.user, 'edit'); keptVersion = true; }
+      catch (e) { console.error('text edit: could not keep a version:', e.message); }
+    }
     await storage.upload(doc.storage_path, buffer, doc.mime_type || 'text/plain');
     let documentText = null;
     try { documentText = await extractText(buffer, doc.name); } catch { /* non-fatal */ }
     await db.query('UPDATE documents SET size = $2, document_text = $3 WHERE id = $1', [doc.id, buffer.length, documentText]);
-    await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
-    res.json({ ok: true, size: buffer.length });
+    if (sitting) {
+      await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
+      tellAboutTextEdit(doc, req.user);
+    }
+    res.json({ ok: true, size: buffer.length, revision: textEdits.revisionOf(buffer), new_sitting: sitting, kept_version: keptVersion });
   } catch (e) { serverError(res, e); }
 });
 

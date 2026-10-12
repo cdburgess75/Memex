@@ -66,7 +66,9 @@ describe('calls', () => {
 
 describe('the text editor', () => {
   test('a file too big to show whole cannot be saved over', () => {
-    expect(html).toMatch(/canEdit: canEdit && !tooBig && !failed/);
+    // the server says whether the whole file arrived (GET /files/:id/text: too_big); the page only edits what it has
+    expect(html).toMatch(/const editable = !!\(t && t\.can_edit\);/);
+    expect(html).toMatch(/t\.too_big \? 'Too large to edit here: showing the first part only\. Download it to edit\.'/);
     // to the function's closing line (a brace count stops at the `opts = {}` default)
     const start = html.indexOf('async function saveFileText(');
     expect(html.slice(start, html.indexOf('\n}\n', start))).toContain('if (!ta || ta.readOnly) return;');
