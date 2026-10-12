@@ -27,6 +27,27 @@
         "Text, Markdown, CSV, JSON and log files, shown with line numbers."
       ],
       "tip": "Click the arrows at the sides of the preview, or press the left or right arrow key, to see the previous or next file."
+    },
+    {
+      "shot": "text-preview",
+      "heading": "Text files: type straight into them",
+      "text": [
+        "Text, Markdown, CSV, JSON and other plain-text files open in Depot's own editor, with line numbers. You can change them right there."
+      ],
+      "steps": [
+        "Type your changes into the file. Click **Save**, or press ⌘S (Ctrl+S on Windows), to save them straight away.",
+        "**Autosave** is on: a few seconds after you stop typing, Depot saves for you, and again when you close the file or switch to another tab. Untick it if you would rather save by hand.",
+        "Click **Open in a tab** to give the file a browser tab of its own."
+      ],
+      "note": "A new text file (**+ Create**, then **New Markdown file** or **New Text file**) opens in a tab of its own straight away. You can also hold ⌘ (Ctrl on Windows) while you click a text file in the list, or click it with the middle mouse button."
+    },
+    {
+      "shot": "text-tab",
+      "heading": "A file in a tab of its own",
+      "text": [
+        "The tab is named after the file, so you can keep several open while you work in Depot and come back to them like any other browser tab. Everything works the same there: **Save**, **Autosave** and the line numbers. The folder name under the file's name opens that folder in Depot."
+      ],
+      "note": "If someone else saved the same file while you were typing, Depot will not save over their work. The bar at the bottom says the file changed elsewhere, and you choose **Use theirs** or **Keep mine**."
     }
   ]
 }
