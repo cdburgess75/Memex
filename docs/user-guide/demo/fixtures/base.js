@@ -575,6 +575,16 @@ exports.routes = {
 
   // files: one file
   'GET /api/files/:id/thumbnail': ({ params, res }) => { const p = thumbFile(fileById(params.id)); if (!p) return noContent(res); return { __file: p, type: 'image/webp' }; },
+  // The built-in editor, in the dialog or in a tab of its own: the text, where it lives, and a revision to save over.
+  'GET /api/files/:id/text': ({ params }) => {
+    const f = fileById(params.id); if (!f) return notFound();
+    const ext = extOf(f.name);
+    let content;
+    try { content = require('fs').readFileSync(require('path').join(__dirname, '..', 'assets', 'files', `${f._asset || 'missing'}.${ext}`), 'utf8'); }
+    catch { content = `# ${f.name.split('/').pop()}\n\nNotes from the demo workspace.\n`; }
+    const cut = f.name.lastIndexOf('/');
+    return { id: f.id, name: f.name.slice(cut + 1), path: f.name, folder: cut < 0 ? '' : f.name.slice(0, cut), library: { id: f.library_id, name: libById(f.library_id).name }, size: Buffer.byteLength(content), mime_type: ext === 'md' ? 'text/markdown' : 'text/plain', content, too_big: false, revision: 'demo-rev-1', can_edit: writable(f) };
+  },
   'GET /api/files/:id/url': ({ params }) => { const f = fileById(params.id); if (!f) return notFound(); return { url: `/demo-assets/files/${f._asset || 'missing'}.${extOf(f.name)}`, name: f.name }; },
   'GET /api/files/:id/office': ({ params }) => { const f = fileById(params.id); return f ? { editUrl: null, ext: extOf(f.name) } : notFound(); },
   'POST /api/files/:id/open': { ok: true },
@@ -595,7 +605,7 @@ exports.routes = {
   'POST /api/files/:id/access/resend': { ok: true, sent: true },
   'DELETE /api/files/:id/access/:grantId': { ok: true },
   'PUT /api/files/:id/rename': ({ params, body }) => { const f = fileById(params.id); return { ...(f ? pub(f) : {}), id: params.id, name: body.name }; },
-  'PUT /api/files/:id/content': { ok: true },
+  'PUT /api/files/:id/content': ({ body }) => ({ ok: true, size: Buffer.byteLength(String(body.content || '')), revision: 'demo-rev-' + Date.now(), new_sitting: false, kept_version: false }),
   'DELETE /api/files/:id': { ok: true },
   'POST /api/files/:id/restore': { ok: true },
 
