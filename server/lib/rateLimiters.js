@@ -88,6 +88,21 @@ function makeRateLimiters() {
       // bulk uploads and thumbnails have limiters of their own; the boot request has none
       skip: (req) => isUploadPath(req) || isThumbnailPath(req) || isBootPath(req),
     }),
+    // Public API: each token has a budget of its own (setting api_token_rate_limit, default
+    // 6000 per window), so one busy script cannot use up an office's shared-address budget.
+    // Ordinary sign-ins calling /api/v1 are not counted here.
+    tokenLimiter: createLimiter({
+      windowMs,
+      limit: async (req) => {
+        if (!req.apiToken) return 1000000;
+        let v = 0;
+        try { v = Number.parseInt((await settings.getOrEnv('api_token_rate_limit')) || '', 10); } catch { /* default */ }
+        return Number.isFinite(v) && v > 0 ? v : 6000;
+      },
+      keyGenerator: (req) => `token:${req.apiToken?.id || 'none'}`,
+      skip: (req) => !req.apiToken,
+      message: 'This token has made too many requests. Wait a few minutes and try again.',
+    }),
     thumbnailLimiter: createLimiter({
       windowMs,
       limit: intFromEnv('RATE_LIMIT_THUMBNAIL_MAX', 20000),

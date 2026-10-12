@@ -4,11 +4,12 @@
 // routes/files.js (ST-1) so every file sub-router logs through one place.
 const db = require('./db');
 const auditLog = require('./auditLog');
+const requestContext = require('./requestContext');
 
 async function logEvent(event, userId, userEmail) {
   await db.query(
     'INSERT INTO activity_log (event, user_id, user_email) VALUES ($1, $2, $3)',
-    [event, userId, userEmail]
+    [event + requestContext.tokenSuffix(), userId, userEmail]
   );
 }
 

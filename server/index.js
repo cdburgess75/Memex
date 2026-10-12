@@ -60,7 +60,10 @@ app.use(securityHeaders);
 // caps logos at 256 KB, which becomes ~342 KB once base64-encoded into the settings
 // JSON. 1 MB leaves headroom for that plus the rest of the payload. (Bulk file uploads
 // don't go through this parser — they stream via the upload routes.)
-app.use(express.json({ limit: '1mb' }));
+// A PUT of a file body to the public API is bytes, whatever its Content-Type says: a
+// .json file uploaded as application/json must reach storage unparsed.
+const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/)/;
+app.use(express.json({ limit: '1mb', type: (req) => !(req.method === 'PUT' && API_FILE_BODY.test(req.path)) && /^application\/(.+\+)?json/i.test(String(req.headers['content-type'] || '')) }));
 
 const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter, thumbnailLimiter } = makeRateLimiters();
 const { isThumbnailPath } = require('./lib/rateLimiters');
@@ -214,6 +217,11 @@ app.use('/api/setup', require('./routes/setup'));
 app.use('/api/meetings', require('./routes/meetings'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/connectors', require('./routes/connectors'));
+app.use('/api/tokens', require('./routes/tokens'));
+// The public API (docs/api): a documented, versioned surface for scripts and integrations.
+app.get('/api/v1/openapi.json', (_req, res) => { res.set('Cache-Control', 'no-cache'); res.json(require('./lib/openapi').spec()); });
+app.use('/api/docs', require('./routes/docs'));
+app.use('/api/v1', require('./routes/v1'));
 app.use('/wopi', require('./routes/wopi'));
 
 // Liveness/readiness probe. Unlike the SPA catch-all (which returns 200 with

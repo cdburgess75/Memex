@@ -24,6 +24,6 @@ test('the section holds the access review, and Activity no longer does', () => {
   expect(fnText('accessSettingsHtml')).toContain('id="access-review"');
   expect(fnText('activitySettingsHtml')).not.toContain('access-review');
   const sw = fnText('switchSettingsTab');
-  expect(sw).toMatch(/tab === 'access' && admin\) \{ body\.innerHTML = accessSettingsHtml\(\); loadAccessReview\(\); \}/);
+  expect(sw).toMatch(/tab === 'access' && admin\) \{ body\.innerHTML = accessSettingsHtml\(\); loadAccessReview\(\); loadAdminTokens\(\); \}/);
   expect(sw).not.toMatch(/activitySettingsHtml\(\); loadActivity\(true\); loadAccessReview/);
 });

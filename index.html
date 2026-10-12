@@ -1604,6 +1604,13 @@ input.library-menu-search:focus { outline: 2px solid var(--accent); outline-offs
 .group-create, .group-add { display: flex; gap: 8px; margin: 12px 0 6px; }
 .group-create input, .group-add input { flex: 1 1 auto; min-width: 0; }
 .group-create .run-btn, .group-add .run-btn { flex: 0 0 auto; white-space: nowrap; }
+.token-create { display: flex; gap: 8px; margin: 12px 0 6px; flex-wrap: wrap; }
+.token-create input { flex: 1 1 220px; min-width: 0; }
+.token-create select { flex: 0 1 auto; }
+.token-create .run-btn { flex: 0 0 auto; white-space: nowrap; }
+.token-reveal { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface-2); }
+.token-reveal-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.token-reveal-row code { flex: 1 1 260px; min-width: 0; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; user-select: all; }
 .group-back { margin: 4px 0 12px; }
 .group-head { margin: 0 0 4px; }
 .group-title { font: 600 16px var(--ui); color: var(--ink); }
@@ -5789,6 +5796,7 @@ async function saveNetworkSettings() {
     link_upload_max_files: document.getElementById('cfg-link-upload-max-files')?.value || '5000',
     link_upload_total_gb: document.getElementById('cfg-link-upload-total-gb')?.value || '100',
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
+    api_token_rate_limit: document.getElementById('cfg-api-token-rate')?.value || '6000',
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
     blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
   };
@@ -6049,6 +6057,7 @@ function settingsTabsList() {
   // Grouped, down the side. Groups is for everyone, not admins: whoever creates a group
   // manages it. What was one long "System" tab is four, named for what people look for.
   const tabs = [{ group: 'You' }, { id: 'profile', label: 'Profile & appearance' }, { id: 'notifications', label: 'Notifications' }, { id: 'groups', label: 'Groups' }];
+  if (currentUser?.role === 'admin' || currentUser?.role === 'contributor') tabs.push({ id: 'tokens', label: 'API tokens' }); // viewers cannot make one
   if (currentUser?.role === 'admin') tabs.push(
     { group: 'Workspace' },
     { id: 'access', label: 'Users & access' },
@@ -6088,9 +6097,10 @@ function switchSettingsTab(tab) {
   else if (tab === 'email' && admin) body.innerHTML = emailSettingsHtml();
   else if (tab === 'ai') body.innerHTML = aiProvidersSettingsHtml(settingsSys);
   else if (tab === 'groups') { body.innerHTML = groupsSettingsHtml(); loadGroups(); }
+  else if (tab === 'tokens' && currentUser?.role !== 'viewer') { body.innerHTML = tokensSettingsHtml(); loadApiTokens(); }
   else if (tab === 'connections') { body.innerHTML = connectionsSettingsHtml(); loadConnections(); }
   else if (tab === 'activity' && admin) { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
-  else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); }
+  else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); loadAdminTokens(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
   else if (tab === 'signin') body.innerHTML = systemSections('Sign-in methods');
   else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
@@ -6175,6 +6185,114 @@ function groupOwnedByMe(g) {
 function groupOwnerText(g) {
   if (g.owner_email) return g.owner_email;
   return g.owner_id ? 'unknown' : 'no one (admins manage it)';
+}
+
+// ---- API tokens (Settings › You › API tokens; the admin's list under Users & access) ----
+// A personal access token lets a script act as the person through /api/v1, held to the
+// scope chosen here. The token is shown once, right after it is made; Depot keeps only a
+// hash of it and its first characters, for telling tokens apart.
+let apiTokensList = [], apiTokenJustMade = null, apiTokensBusy = false, apiTokensLoadSeq = 0;
+function tokensSettingsHtml() {
+  const admin = currentUser?.role === 'admin';
+  return `<div class="settings-sub">API tokens</div>
+    <p class="settings-notice">A token lets a script or another system use Depot as you, through the <a href="/api/docs" target="_blank" rel="noopener">API</a>. It can do no more than you can, and only what its scope allows: <strong>read only</strong> lists, searches and downloads; <strong>read and write</strong> also adds, changes, deletes and shares${admin ? '; <strong>admin</strong> also does what the Admin page does' : ''}. Everything a token changes shows in the activity log under your name, marked with the token's name. Revoke a token and it stops working at once.</p>
+    <div id="api-tokens-body"><p class="settings-notice">Loading…</p></div>`;
+}
+function apiTokenWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
+function apiTokenScopeText(scope) { return scope === 'admin' ? 'admin' : scope === 'write' ? 'read and write' : 'read only'; }
+function apiTokenRowHtml(t, { admin = false } = {}) {
+  const expired = !!t.expires_at && new Date(t.expires_at) < new Date();
+  const bits = [apiTokenScopeText(t.scope), `${esc(t.prefix)}…`, `made ${apiTokenWhen(t.created_at)}`,
+    t.last_used_at ? `last used ${apiTokenWhen(t.last_used_at)}` : 'never used',
+    expired ? '<strong>expired</strong>' : t.expires_at ? `expires ${apiTokenWhen(t.expires_at)}` : 'no expiry'];
+  return `<div class="conn-row">
+    <div class="conn-main">
+      <div class="conn-name">${esc(t.name)}${admin && t.user_email ? `<span class="conn-meta">${esc(t.user_email)}</span>` : ''}</div>
+      <div class="conn-meta">${bits.join(' · ')}</div>
+    </div>
+    <div class="conn-actions"><button class="ghost-btn" type="button" data-tid="${escAttr(t.id)}" onclick="${admin ? 'revokeAnyApiToken' : 'revokeApiToken'}(this.dataset.tid)">Revoke</button></div>
+  </div>`;
+}
+async function loadApiTokens() {
+  const seq = ++apiTokensLoadSeq;
+  let out;
+  try { out = await apiGet('/tokens'); }
+  catch (e) {
+    if (seq !== apiTokensLoadSeq) return;
+    const el = document.getElementById('api-tokens-body');
+    if (el) el.innerHTML = emptyState('Could not load your tokens', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
+      '<button class="ghost-btn" type="button" onclick="loadApiTokens()">Try again</button>');
+    return;
+  }
+  if (seq !== apiTokensLoadSeq) return;
+  apiTokensList = out.tokens || [];
+  renderApiTokens();
+}
+function renderApiTokens() {
+  const el = document.getElementById('api-tokens-body');
+  if (!el) return;
+  const admin = currentUser?.role === 'admin';
+  const reveal = apiTokenJustMade ? `<div class="token-reveal" role="status">
+      <div class="settings-sub" style="margin-top:0">Your new token, "${esc(apiTokenJustMade.name)}"</div>
+      <p class="settings-notice">Copy it now and keep it somewhere safe. Depot does not keep it and cannot show it again.</p>
+      <div class="token-reveal-row"><code id="token-reveal-value">${esc(apiTokenJustMade.token)}</code>
+        <button class="run-btn" type="button" onclick="copyText(document.getElementById('token-reveal-value').textContent)">Copy</button>
+        <button class="ghost-btn" type="button" onclick="apiTokenJustMade = null; renderApiTokens()">Done</button></div>
+    </div>` : '';
+  const create = `<div class="token-create">
+      <input type="text" id="token-new-name" maxlength="80" placeholder="What will use it — e.g. Nightly report script" autocomplete="off" aria-label="Token name" onkeydown="if(groupEnter(event))createApiToken()">
+      <select id="token-new-scope" aria-label="Scope"><option value="read">Read only</option><option value="write">Read and write</option>${admin ? '<option value="admin">Admin</option>' : ''}</select>
+      <select id="token-new-expiry" aria-label="Expiry"><option value="30">Expires in 30 days</option><option value="90">Expires in 90 days</option><option value="365" selected>Expires in 1 year</option><option value="">Never expires</option></select>
+      <button class="run-btn" type="button" onclick="createApiToken()">Create token</button>
+    </div>`;
+  el.innerHTML = reveal + create + (apiTokensList.length
+    ? `<div class="settings-sub">Your tokens</div>${apiTokensList.map(t => apiTokenRowHtml(t)).join('')}`
+    : '<p class="settings-notice">You have no tokens yet. Make one above, then read the <a href="/api/docs" target="_blank" rel="noopener">API reference</a> to see what it can do.</p>');
+}
+async function createApiToken() {
+  if (apiTokensBusy) return;
+  const input = document.getElementById('token-new-name');
+  const name = (input?.value || '').trim();
+  if (!name) { input?.focus(); return; }
+  const scope = document.getElementById('token-new-scope')?.value || 'read';
+  const days = document.getElementById('token-new-expiry')?.value;
+  apiTokensBusy = true;
+  try {
+    const made = await apiPost('/tokens', { name, scope, ...(days ? { expires_in_days: Number(days) } : {}) });
+    apiTokenJustMade = made;
+    await loadApiTokens();
+    document.getElementById('token-reveal-value')?.scrollIntoView({ block: 'nearest' });
+  } catch (e) { toast(e.message || "Couldn't make the token. Try again."); }
+  finally { apiTokensBusy = false; }
+}
+async function revokeApiToken(id) {
+  const t = apiTokensList.find(x => x.id === id);
+  if (!t || apiTokensBusy) return;
+  if (!await askConfirm(`Revoke "${t.name}"? Anything still using it stops working at once.`, { okLabel: 'Revoke', danger: true, title: 'Revoke this token' })) return;
+  apiTokensBusy = true;
+  try { await apiDelete(`/tokens/${encodeURIComponent(id)}`); toast(`Revoked "${t.name}"`); if (apiTokenJustMade?.id === id) apiTokenJustMade = null; await loadApiTokens(); }
+  catch (e) { toast(e.message || "Couldn't revoke the token. Try again."); }
+  finally { apiTokensBusy = false; }
+}
+let adminTokensList = [];
+async function loadAdminTokens() {
+  const el = document.getElementById('admin-tokens'); if (!el) return;
+  try {
+    adminTokensList = (await apiGet('/tokens/all')).tokens || [];
+    el.innerHTML = adminTokensList.length ? adminTokensList.map(t => apiTokenRowHtml(t, { admin: true })).join('') : '<p class="settings-notice">No one has made an API token yet.</p>';
+  } catch (e) {
+    el.innerHTML = emptyState('Could not load the tokens', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
+      '<button class="ghost-btn" type="button" onclick="loadAdminTokens()">Try again</button>');
+  }
+}
+async function revokeAnyApiToken(id) {
+  const t = adminTokensList.find(x => x.id === id);
+  if (!t || apiTokensBusy) return;
+  if (!await askConfirm(`Revoke "${t.name}" (${t.user_email || 'unknown owner'})? Anything still using it stops working at once.`, { okLabel: 'Revoke', danger: true, title: 'Revoke this token' })) return;
+  apiTokensBusy = true;
+  try { await apiDelete(`/tokens/all/${encodeURIComponent(id)}`); toast(`Revoked "${t.name}"`); await loadAdminTokens(); }
+  catch (e) { toast(e.message || "Couldn't revoke the token. Try again."); }
+  finally { apiTokensBusy = false; }
 }
 
 function groupsSettingsHtml() {
@@ -7154,6 +7272,8 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-link-upload-total-gb" value="${esc(s.link_upload_total_gb||'100')}" min="1" max="100000" step="1" title="Everything one link may receive, added up. The server also always keeps its free-disk reserve.">
         <label>Max files per upload</label>
         <input type="number" id="cfg-max-upload-files" value="${esc(s.max_upload_files||'4096')}" min="1" max="1000000" step="1">
+        <label for="cfg-api-token-rate">API requests per token (per 15 minutes)</label>
+        <input type="number" id="cfg-api-token-rate" value="${esc(s.api_token_rate_limit||'6000')}" min="60" max="1000000" step="1" title="How many requests one API token may make in 15 minutes. Over it, the token gets 429 answers until the window passes. Sign-ins from the app are not held to this.">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
         <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; leave empty for the default executable blocklist)</span></label>
@@ -7263,7 +7383,10 @@ function accessSettingsHtml() {
   return `<div class="settings-sub">Users &amp; access</div>
       <p class="settings-notice">Every user, their role, the libraries they own, the libraries, folders and groups that give them access, direct file shares, and last activity. Use it for periodic review and sign-off.</p>
       <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
-      <div id="access-review">${emptyState('Loading users', 'Working out who can open what.')}</div>`;
+      <div id="access-review">${emptyState('Loading users', 'Working out who can open what.')}</div>
+      <div class="settings-sub">API tokens</div>
+      <p class="settings-notice">Every live token anyone has made for the <a href="/api/docs" target="_blank" rel="noopener">API</a>, and whose it is. A token acts as that person with their rights. Revoke one here if it should not exist; the person sees it gone from their own list.</p>
+      <div id="admin-tokens"><p class="settings-notice">Loading…</p></div>`;
 }
 function exportSettingsXml() {
   const s = settingsSys || {};

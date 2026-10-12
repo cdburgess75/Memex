@@ -40,6 +40,9 @@ function serialize(fn) {
 }
 
 async function append({ documentId = null, eventType, actorId = null, actorEmail = null, detail = null }) {
+  // A write made through an API token says so, whichever route made it (lib/requestContext).
+  const viaToken = require('./requestContext').tokenSuffix();
+  if (viaToken) detail = (detail == null || detail === '' ? viaToken.replace(/^ · /, '') : detail + viaToken);
   const docId = normId(documentId);
   const ts_ms = Date.now();
   return serialize(() => db.withTransaction(async (client) => {

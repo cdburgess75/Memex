@@ -606,6 +606,13 @@ exports.routes = {
   'PUT /api/notifications/pref': ({ body }) => ({ enabled: body.enabled !== false }),
 
   // groups
+  // ─── API tokens (Settings › API tokens). The token a POST answers with is made up on the spot. ───
+  'GET /api/tokens': () => ({ tokens: [
+    { id: U(901), name: 'Nightly report script', prefix: 'depot_k3Jf9Qw2', scope: 'read', created_at: ago(40 * DAY), expires_at: ahead(325 * DAY), last_used_at: ago(9 * HOUR), revoked_at: null },
+    { id: U(902), name: 'Scanner upload', prefix: 'depot_Xp81mLa0', scope: 'write', created_at: ago(6 * DAY), expires_at: null, last_used_at: ago(2 * DAY), revoked_at: null },
+  ], scopes: ['read', 'write'] }),
+  'POST /api/tokens': ({ body }) => ({ __status: 201, body: { token: 'depot_' + 'demo'.repeat(10) + 'xyz', id: U(903), name: body.name || 'New token', prefix: 'depot_demodem', scope: body.scope || 'read', created_at: ago(0), expires_at: body.expires_in_days ? ahead(Number(body.expires_in_days) * DAY) : null, last_used_at: null, revoked_at: null } }),
+  'DELETE /api/tokens/:id': () => ({ success: true }),
   'GET /api/groups': () => GROUPS.filter(g => g.members.includes('jordan') || g.owner === 'jordan').map(g => ({ id: g.id, name: g.name, owner_id: PEOPLE[g.owner].id, owner_email: PEOPLE[g.owner].email, created_at: g.created_at, member_count: g.members.length, is_member: g.members.includes('jordan'), can_manage: g.owner === 'jordan' })),
   'GET /api/groups/:id': ({ params }) => {
     const g = GROUPS.find(x => x.id === params.id); if (!g) return notFound('Group not found');
