@@ -12623,7 +12623,7 @@ async function previewFile(fileId, opts = {}) {
   const canEditInBrowser = !!appConfig?.editingEnabled;
   let primaryBtn = '';
   if (canEdit) primaryBtn = `<button class="run-btn" onclick="saveFileText('${fileId}')">Save</button>`;
-  else if (isOfficeFile && (appConfig?.defaultOfficeOpen === 'desktop' || !canEditInBrowser)) primaryBtn = `<button class="run-btn" onclick="openInDesktopOffice('${fileId}')">${appName} (this computer)</button>`;
+  else if (isOfficeFile && (appConfig?.defaultOfficeOpen === 'desktop' || !canEditInBrowser)) primaryBtn = `<button class="run-btn" onclick="openInDesktopOffice('${fileId}')" title="Opens the file in ${appName} on this computer">Open in ${appName}</button>`;
   else if (isOfficeFile) primaryBtn = `<button class="run-btn" onclick="editInBrowser('${fileId}')">Edit</button>`;
   const openWith = (isOfficeFile && canEditInBrowser) ? `<div class="preview-openwith"><button class="ghost-btn" onclick="togglePreviewOpenMenu(event)">Open in ⌄</button><div class="file-upload-menu preview-openwith-menu" id="preview-open-menu"><button onclick="closePreviewOpenMenu();editInBrowser('${fileId}')">Edit in browser</button><button onclick="closePreviewOpenMenu();openInDesktopOffice('${fileId}')">${appName} (this computer)</button></div></div>` : '';
   const shareBtn = (currentUser?.role !== 'viewer') ? `<button class="ghost-btn" onclick="closeFilePreview();openShareFile('${fileId}')">Share</button>` : '';

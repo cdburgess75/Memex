@@ -9,7 +9,7 @@
     {
       "shot": "action-bar",
       "steps": [
-        "Click **Word (this computer)** to open a Word file in Word on your computer and make your changes there. Excel and PowerPoint files get a matching button.",
+        "Click **Open in Word** to open a Word file in Word on your computer and make your changes there. Excel and PowerPoint files get a matching button.",
         "Click **Share** to send the file to someone.",
         "Click **Download** to save a copy to your computer.",
         "Click **Details** to see who added it, when it changed and where it is kept."
