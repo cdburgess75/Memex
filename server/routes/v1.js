@@ -1,6 +1,9 @@
 'use strict';
 // The public API, version 1. Documented in lib/openapi.js and at /api/docs.
 //
+// Release 1 is files, folders, libraries, links, search, trash and activity; release 2
+// adds people, groups, sharing and administration (the second half of this file).
+//
 // Every route takes an ordinary sign-in or a personal access token (middleware/auth),
 // and names the scope it needs (middleware/requireScope). Listings are answered here with
 // the same queries the app uses; anything that changes a file is HANDED ON to the app's
@@ -26,6 +29,16 @@ const { makeRateLimiters } = require('../lib/rateLimiters');
 const filesRouter = require('./files');
 const foldersRouter = require('./files/folders');
 const librariesRouter = require('./libraries');
+const groupsRouter = require('./groups');
+const accessRouter = require('./access');
+const adminRouter = require('./admin');
+const settingsRouter = require('./settings');
+const editorRouter = require('./editor');
+const connectorsRouter = require('./connectors');
+const licenseRouter = require('./license');
+const securityRouter = require('./security');
+const tokensRouter = require('./tokens');
+const settingsLib = require('../lib/settings');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s) => UUID_RE.test(String(s || ''));
@@ -284,6 +297,166 @@ router.get('/activity', requireScope('read'), async (req, res) => {
     res.json({ since: since ? since.toISOString() : null, events: rows.map(r => ({ id: r.id, type: r.event_type, actor_email: r.actor_email, detail: r.detail, at: r.created_at, file_id: r.document_id, path: r.path || null, library_id: r.library_id || null })) });
   } catch (e) { serverError(res, e); }
 });
+
+
+// =====================================================================================
+// Release 2: people, groups, sharing and administration. The same rule as above: lists
+// are answered here, changes are handed on to the app's own route.
+// =====================================================================================
+
+// Hand on, and reshape a successful answer on its way back; errors pass as they are.
+function forwardShaped(req, res, next, target, opts, shape) {
+  const send = res.json.bind(res);
+  res.json = (body) => send(res.statusCode < 300 ? shape(body) : body);
+  return forward(req, res, next, target, opts);
+}
+// An id that is not a uuid is nothing the app's routes should be asked about.
+const needUuid = (param, what) => (req, res, next) => (isUuid(req.params[param]) ? next() : res.status(404).json({ error: `${what} not found` }));
+const enc = (v) => encodeURIComponent(String(v));
+const idPath = (req) => `/${enc(req.params.id)}`;
+const adminOnly = requireScope('admin');
+
+// ---- people (administrators) ----
+const USER_COLUMNS = 'user_id, email, role, assigned_at, disabled_at, disabled_reason';
+// /users/{id} takes the account id, or the person's address.
+async function accountIdFrom(req, res) {
+  const key = String(req.params.id || '').trim();
+  if (isUuid(key)) return key;
+  if (key.includes('@')) {
+    const rows = await db.query('SELECT user_id FROM user_roles WHERE lower(email) = $1 OR verified_email = $1', [key.toLowerCase()]);
+    if (rows.length === 1) return rows[0].user_id;
+    if (rows.length > 1) { res.status(409).json({ error: `More than one account uses ${key.toLowerCase()}; use the account id` }); return null; }
+  }
+  res.status(404).json({ error: 'No such account' });
+  return null;
+}
+router.get('/users', adminOnly, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 200);
+    const rows = await db.query(
+      `SELECT ${USER_COLUMNS} FROM user_roles WHERE $1 = '' OR email ILIKE $2 ORDER BY lower(email)`,
+      [q, '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%']);
+    res.json({ users: rows });
+  } catch (e) { serverError(res, e); }
+});
+router.get('/users/:id', adminOnly, async (req, res) => {
+  try {
+    const id = await accountIdFrom(req, res); if (!id) return;
+    const row = await db.queryOne(`SELECT ${USER_COLUMNS} FROM user_roles WHERE user_id = $1`, [id]);
+    if (!row) return res.status(404).json({ error: 'No such account' });
+    res.json(row);
+  } catch (e) { serverError(res, e); }
+});
+router.get('/users/:id/departure', adminOnly, async (req, res, next) => {
+  try { const id = await accountIdFrom(req, res); if (id) forward(req, res, next, adminRouter, { method: 'GET', url: `/users/${id}/departure` }); }
+  catch (e) { serverError(res, e); }
+});
+router.put('/users/:id/role', adminOnly, async (req, res, next) => {
+  try {
+    const id = await accountIdFrom(req, res); if (!id) return;
+    // The app's route makes a row for an id it has not seen (accounts arrive from the
+    // sign-in server); a script's mistyped id must not.
+    if (!(await db.queryOne('SELECT 1 FROM user_roles WHERE user_id = $1', [id]))) return res.status(404).json({ error: 'No such account' });
+    forward(req, res, next, adminRouter, { method: 'PUT', url: `/users/${id}/role`, body: { role: req.body?.role } });
+  } catch (e) { serverError(res, e); }
+});
+router.put('/users/:id/disabled', adminOnly, async (req, res, next) => {
+  try {
+    const id = await accountIdFrom(req, res); if (!id) return;
+    forward(req, res, next, adminRouter, { method: 'PUT', url: `/users/${id}/disabled`, body: { disabled: req.body?.disabled === true, reason: req.body?.reason } });
+  } catch (e) { serverError(res, e); }
+});
+
+// ---- groups ----
+// Whoever makes a group owns it; members see it; an administrator sees every group.
+router.get('/groups', requireScope('read'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'GET', url: '/' }));
+router.post('/groups', requireScope('write'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'POST', url: '/', body: { name: req.body?.name } }));
+router.get('/groups/:id', requireScope('read'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'GET', url: idPath(req) }));
+router.patch('/groups/:id', requireScope('write'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'PUT', url: idPath(req), body: { name: req.body?.name } }));
+router.delete('/groups/:id', requireScope('write'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'DELETE', url: idPath(req) }));
+router.get('/groups/:id/members', requireScope('read'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'GET', url: `${idPath(req)}/members` }));
+router.post('/groups/:id/members', requireScope('write'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'POST', url: `${idPath(req)}/members`, body: { email: req.body?.email } }));
+router.delete('/groups/:id/members/:memberId', requireScope('write'), needUuid('id', 'Group'), needUuid('memberId', 'Member'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'DELETE', url: `${idPath(req)}/members/${enc(req.params.memberId)}` }));
+router.put('/groups/:id/owner', requireScope('write'), needUuid('id', 'Group'), (req, res, next) => forward(req, res, next, groupsRouter, { method: 'PUT', url: `${idPath(req)}/owner`, body: { email: req.body?.email } }));
+
+// ---- sharing: libraries and folders with people and groups; single files with people ----
+router.get('/shared-with-me', requireScope('read'), (req, res, next) => forward(req, res, next, accessRouter, { method: 'GET', url: '/shared-with-me' }));
+router.get('/libraries/:id/shares', requireScope('read'), needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'GET', url: `${idPath(req)}/shares`, query: req.query.folder ? { path: String(req.query.folder) } : {} }));
+router.post('/libraries/:id/shares', requireScope('write'), needUuid('id', 'Library'), (req, res, next) => {
+  const b = req.body || {};
+  return forward(req, res, next, librariesRouter, { method: 'POST', url: `${idPath(req)}/shares`, body: { email: b.email, group_id: b.group_id, permission: b.permission, folder_path: b.folder } });
+});
+router.patch('/libraries/:id/shares/:shareId', requireScope('write'), needUuid('id', 'Library'), needUuid('shareId', 'Share'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'PUT', url: `${idPath(req)}/shares/${enc(req.params.shareId)}`, body: { permission: req.body?.permission } }));
+router.delete('/libraries/:id/shares/:shareId', requireScope('write'), needUuid('id', 'Library'), needUuid('shareId', 'Share'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'DELETE', url: `${idPath(req)}/shares/${enc(req.params.shareId)}` }));
+router.post('/libraries/:id/shares/:shareId/resend', requireScope('write'), needUuid('id', 'Library'), needUuid('shareId', 'Share'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'POST', url: `${idPath(req)}/shares/${enc(req.params.shareId)}/resend`, body: {} }));
+router.get('/libraries/:id/access', requireScope('read'), needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, accessRouter, { method: 'GET', url: `/libraries${idPath(req)}`, query: req.query.folder !== undefined ? { folder: String(req.query.folder) } : {} }));
+router.get('/files/:id/access', requireScope('read'), needUuid('id', 'File'), (req, res, next) => forward(req, res, next, accessRouter, { method: 'GET', url: `/files${idPath(req)}` }));
+router.get('/files/:id/grants', requireScope('read'), needUuid('id', 'File'), (req, res, next) => forward(req, res, next, filesRouter, { method: 'GET', url: `${idPath(req)}/access` }));
+router.put('/files/:id/grants', requireScope('write'), needUuid('id', 'File'), (req, res, next) =>
+  forward(req, res, next, filesRouter, { method: 'PUT', url: `${idPath(req)}/access`, body: { email: req.body?.email, permission: req.body?.permission } }));
+router.delete('/files/:id/grants/:grantId', requireScope('write'), needUuid('id', 'File'), needUuid('grantId', 'Grant'), (req, res, next) =>
+  forward(req, res, next, filesRouter, { method: 'DELETE', url: `${idPath(req)}/access/${enc(req.params.grantId)}` }));
+router.post('/files/:id/grants/resend', requireScope('write'), needUuid('id', 'File'), (req, res, next) =>
+  forward(req, res, next, filesRouter, { method: 'POST', url: `${idPath(req)}/access/resend`, body: { email: req.body?.email } }));
+
+// ---- libraries: putting one away, giving it an owner, taking over a leaver's ----
+router.put('/libraries/:id/archived', adminOnly, needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'PUT', url: `${idPath(req)}/archived`, body: { archived: req.body?.archived === true } }));
+router.post('/libraries/:id/owner', adminOnly, needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'POST', url: `${idPath(req)}/owner`, body: { owner_email: req.body?.owner_email } }));
+router.post('/libraries/:id/reassign', adminOnly, needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'POST', url: `${idPath(req)}/reassign`, body: { owner_email: req.body?.owner_email } }));
+router.post('/libraries/:id/adopt', requireScope('write'), needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, librariesRouter, { method: 'POST', url: `${idPath(req)}/adopt`, body: { path: req.body?.folder } }));
+
+// ---- administration ----
+// Four things are changed in Depot itself and never here: the storage encryption key,
+// the sign-in methods, backup destinations and the updater.
+const APP_ONLY_SETTING = (k) => k === 'storage_encryption_key' || k === 'confirm_key_change' || /^login_/.test(k) || /^backup_/.test(k);
+router.get('/admin/settings', adminOnly, (req, res, next) =>
+  forwardShaped(req, res, next, settingsRouter, { method: 'GET', url: '/' }, (body) => Object.fromEntries(Object.entries(body).filter(([k]) => !APP_ONLY_SETTING(k)))));
+router.patch('/admin/settings', adminOnly, (req, res, next) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const keys = Object.keys(body);
+  if (!keys.length) return res.status(400).json({ error: 'Send an object of the settings to change' });
+  const held = keys.filter(APP_ONLY_SETTING);
+  if (held.length) return res.status(400).json({ error: `Changed in Depot itself, not through the API: ${held.join(', ')}` });
+  const unknown = keys.filter((k) => !(k in settingsLib.ENV_MAP));
+  if (unknown.length) return res.status(400).json({ error: `Not a setting: ${unknown.join(', ')}` });
+  return forward(req, res, next, settingsRouter, { method: 'PUT', url: '/', body });
+});
+router.get('/admin/editor', adminOnly, (req, res, next) => forward(req, res, next, editorRouter, { method: 'GET', url: '/' }));
+router.put('/admin/editor', adminOnly, (req, res, next) => forward(req, res, next, editorRouter, { method: 'PUT', url: '/', body: { enabled: req.body?.enabled } }));
+router.get('/admin/files', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/files', query: req.query }));
+router.get('/admin/stats', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/stats' }));
+router.get('/admin/usage', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/usage' }));
+router.get('/admin/activity', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/activity', query: req.query }));
+router.get('/admin/activity.csv', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/activity.csv', query: req.query }));
+router.get('/admin/compliance', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance' }));
+router.patch('/admin/compliance', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'PUT', url: '/compliance', body: { enabled: req.body?.enabled } }));
+router.post('/admin/compliance/probe', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'POST', url: '/compliance/probe', body: {} }));
+router.put('/admin/compliance/attest', adminOnly, (req, res, next) =>
+  forward(req, res, next, adminRouter, { method: 'PUT', url: '/compliance/attest', body: { control_id: req.body?.control_id, met: req.body?.met, note: req.body?.note } }));
+router.get('/admin/compliance/audit-verify', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/audit-verify' }));
+router.get('/admin/compliance/evidence', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/evidence' }));
+router.get('/admin/compliance/evidence.md', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/evidence.md' }));
+router.get('/admin/access-review', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/access-review' }));
+router.get('/admin/access-review.csv', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/access-review.csv' }));
+router.get('/admin/tokens', adminOnly, (req, res, next) => forward(req, res, next, tokensRouter, { method: 'GET', url: '/all' }));
+router.delete('/admin/tokens/:id', adminOnly, needUuid('id', 'Token'), (req, res, next) => forward(req, res, next, tokensRouter, { method: 'DELETE', url: `/all${idPath(req)}` }));
+router.get('/admin/connectors', adminOnly, (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'GET', url: '/' }));
+router.get('/admin/connectors/kinds', adminOnly, (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'GET', url: '/kinds' }));
+router.post('/admin/connectors', adminOnly, (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'POST', url: '/', body: req.body || {} }));
+router.patch('/admin/connectors/:id', adminOnly, needUuid('id', 'Connection'), (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'PUT', url: idPath(req), body: req.body || {} }));
+router.delete('/admin/connectors/:id', adminOnly, needUuid('id', 'Connection'), (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'DELETE', url: idPath(req) }));
+router.post('/admin/connectors/:id/test', adminOnly, needUuid('id', 'Connection'), (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'POST', url: `${idPath(req)}/test`, body: {} }));
+router.get('/admin/license', adminOnly, (req, res, next) => forward(req, res, next, licenseRouter, { method: 'GET', url: '/' }));
+router.get('/admin/security', adminOnly, (req, res, next) => forward(req, res, next, securityRouter, { method: 'GET', url: '/status' }));
 
 router.use((_req, res) => res.status(404).json({ error: 'No such endpoint. The reference is at /api/docs' }));
 // eslint-disable-next-line no-unused-vars

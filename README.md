@@ -216,9 +216,21 @@ curl -s "https://depot.example.com/api/v1/files/$FILE/content" -H "Authorization
 
 # What happened since the last poll
 curl -s "https://depot.example.com/api/v1/activity?since=2026-10-12T00:00:00Z" -H "Authorization: Bearer $TOKEN"
+
+# Share a library with a person, read-only; put someone in a group
+curl -s -X POST "https://depot.example.com/api/v1/libraries/$LIB/shares" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"email":"pat@example.com","permission":"read"}'
+curl -s -X POST "https://depot.example.com/api/v1/groups/$GROUP/members" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d '{"email":"pat@example.com"}'
+
+# Admin token: list accounts, switch a leaver off, export the access review
+curl -s https://depot.example.com/api/v1/users -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s -X PUT "https://depot.example.com/api/v1/users/pat@example.com/disabled" -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" -d '{"disabled":true,"reason":"left the company"}'
+curl -s https://depot.example.com/api/v1/admin/access-review.csv -H "Authorization: Bearer $ADMIN_TOKEN" -o access-review.csv
 ```
 
-Everything a token changes is logged as the person who made it, marked with the token's name. Each token is held to its own request limit (6,000 per 15 minutes unless an admin changes it).
+Everything a token changes is logged as the person who made it, marked with the token's name. Each token is held to its own request limit (6,000 per 15 minutes unless an admin changes it). An admin-scope token can do what the Admin page does (people, settings, connections, compliance, the audit feed) except four things that are changed in the app only: the storage encryption key, sign-in methods, backup destinations and updates.
 
 The app itself bootstraps from a public config endpoint, then authenticates via Keycloak (PKCE); its own routes under `/api/*` take sign-in tokens only. A couple of representative calls:
 
