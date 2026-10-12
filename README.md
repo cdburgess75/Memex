@@ -175,6 +175,9 @@ COLLABORA_SSL_TERMINATION=true     # true behind HTTPS, false for plain-http loc
 # Public HTTPS
 APP_URL=https://memex.example.com
 TRUST_PROXY=1
+
+# API tokens: requests one token may make per 15 minutes (also in-app, Network, limits & calls)
+API_TOKEN_RATE_LIMIT=6000
 ```
 
 ---
@@ -199,7 +202,25 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ### Public API surface
 
-The frontend bootstraps from a public config endpoint, then authenticates via Keycloak (PKCE). A couple of representative calls:
+Scripts and other systems use the versioned API at `/api/v1` with a personal access token, made in-app under Settings › API tokens (contributors and admins; scope read, write or admin; revocable, optional expiry). The reference is served by every Depot at `/api/docs`, and the OpenAPI description at `/api/v1/openapi.json`. Version 1 only grows; a breaking change would ship as `/api/v2`.
+
+```bash
+# Who the token acts as
+curl -s https://depot.example.com/api/v1/me -H "Authorization: Bearer depot_..."
+
+# List a folder, upload a file in one request, download it
+curl -s "https://depot.example.com/api/v1/libraries/$LIB/files?folder=Reports" -H "Authorization: Bearer $TOKEN"
+curl -s -X PUT "https://depot.example.com/api/v1/libraries/$LIB/files/Reports/q1.pdf" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/pdf" --data-binary @q1.pdf
+curl -s "https://depot.example.com/api/v1/files/$FILE/content" -H "Authorization: Bearer $TOKEN" -o q1.pdf
+
+# What happened since the last poll
+curl -s "https://depot.example.com/api/v1/activity?since=2026-10-12T00:00:00Z" -H "Authorization: Bearer $TOKEN"
+```
+
+Everything a token changes is logged as the person who made it, marked with the token's name. Each token is held to its own request limit (6,000 per 15 minutes unless an admin changes it).
+
+The app itself bootstraps from a public config endpoint, then authenticates via Keycloak (PKCE); its own routes under `/api/*` take sign-in tokens only. A couple of representative calls:
 
 ```bash
 # Public bootstrap config (no auth): version, auth settings, branding, editing flag

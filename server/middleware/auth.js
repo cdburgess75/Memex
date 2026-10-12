@@ -2,6 +2,8 @@
 const jwt = require('jsonwebtoken');
 const { JwksClient } = require('jwks-rsa');
 const db = require('../lib/db');
+const apiTokens = require('../lib/apiTokens');
+const requestContext = require('../lib/requestContext');
 
 let _jwksClient;
 function jwks() {
@@ -56,9 +58,43 @@ function noteUnverified(userId, email, claim) {
   }
 }
 
+// A personal access token (lib/apiTokens) in place of a sign-in. It acts as the person
+// who made it and is accepted by the public API only: the app's own routes keep the
+// sign-in, except when the public API hands a request on to one of them (routes/v1.js
+// forward), which it marks.
+async function authWithApiToken(token, req, res, next) {
+  const t = await apiTokens.authenticate(token);
+  if (!t) return res.status(401).json({ error: 'Invalid or expired token' });
+  if (!req._v1Forward && !String(req.originalUrl || '').startsWith('/api/v1')) {
+    return res.status(403).json({ error: 'API tokens work with the /api/v1 endpoints only' });
+  }
+  const roleRow = await db.queryOne('SELECT email, role, verified_email, disabled_at FROM user_roles WHERE user_id = $1', [t.user_id]);
+  if (!roleRow) return res.status(401).json({ error: 'Invalid or expired token' });
+  if (roleRow.disabled_at) {
+    return res.status(403).json({ code: 'ACCOUNT_DISABLED', error: 'This account has been switched off. Ask an administrator if you think that is wrong.' });
+  }
+  apiTokens.touch(t.id);
+  req.apiToken = { id: t.id, name: t.name, scope: t.scope, expires_at: t.expires_at || null };
+  req.user = {
+    id: t.user_id,
+    email: String(roleRow.email || '').toLowerCase(),
+    emailVerified: !!roleRow.verified_email,
+    verifiedEmail: roleRow.verified_email || null,
+    role: roleRow.role,
+    user_metadata: {},
+    idp_avatar: null,
+  };
+  // Everything this request does runs inside this context, so audit entries say which
+  // token acted (lib/requestContext).
+  return requestContext.run({ apiToken: req.apiToken }, () => next());
+}
+
 module.exports = async function auth(req, res, next) {
+  // Already authenticated by the public API and handed on to one of the app's routes.
+  if (req.user && req._v1Forward) return next();
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (apiTokens.looksLikeToken(token)) return authWithApiToken(token, req, res, next);
 
   let payload;
   try {

@@ -37,6 +37,8 @@ const ENV_MAP = {
   link_upload_max_files:          'LINK_UPLOAD_MAX_FILES',
   link_upload_total_gb:           'LINK_UPLOAD_TOTAL_GB',
   max_upload_files:               'MAX_UPLOAD_FILES',
+  // Requests one API token may make per rate-limit window (lib/rateLimiters tokenLimiter).
+  api_token_rate_limit:           'API_TOKEN_RATE_LIMIT',
   // Comma/space-separated extensions to refuse on upload. Empty/unset = the built-in
   // executable blocklist (see routes/files.js DEFAULT_BLOCKED_EXTS).
   blocked_file_exts:              'BLOCKED_FILE_EXTS',
