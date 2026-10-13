@@ -61,7 +61,7 @@ suite('the public API, release 1', () => {
     const express = require('express');
     app = express();
     // the same body rule the server uses: a PUT of a file body is never parsed as JSON
-    const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/)/;
+    const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/|files\/[^/]+\/content$)/;
     app.use(express.json({ limit: '1mb', type: (req) => !(req.method === 'PUT' && API_FILE_BODY.test(req.path)) && /^application\/(.+\+)?json/i.test(String(req.headers['content-type'] || '')) }));
     app.use('/api/files', require('../../routes/files'));
     app.use('/api/libraries', require('../../routes/libraries'));
@@ -117,7 +117,7 @@ suite('the public API, release 1', () => {
     const body = Buffer.from('hello from the api, line one\nline two\n');
     const up = await api(tokens.write).put(`/libraries/${LIB}/files/Reports/2026/q1.txt`, body);
     expect(up.status).toBe(200);
-    expect(up.body.doc).toMatchObject({ name: 'Reports/2026/q1.txt', library_id: LIB });
+    expect(up.body.doc).toMatchObject({ name: 'q1.txt', path: 'Reports/2026/q1.txt', folder: 'Reports/2026', library_id: LIB });
     fileId = up.body.doc.id;
     const again = await api(tokens.write).put(`/libraries/${LIB}/files/Reports/2026/q1.txt`, body);
     expect(again.status).toBe(409); expect(again.body.existing_id).toBe(fileId);
@@ -190,7 +190,8 @@ suite('the public API, release 1', () => {
       await api(tokens.write).put(`/uploads/${sess.id}/chunks/${i}`, data.subarray(i * size, (i + 1) * size)).expect(200);
     }
     const done = await api(tokens.write).post(`/uploads/${sess.id}/complete`, {}).expect(200);
-    expect(done.body.doc).toMatchObject({ name: 'Big/video.bin', size: String(data.length) });
+    expect(done.body.doc).toMatchObject({ name: 'video.bin', path: 'Big/video.bin', size: data.length });
+    expect(done.body.doc.content_hash).toBe(crypto.createHash('sha256').update(data).digest('hex'));
   });
   test('libraries: list, one, create, rename', async () => {
     const list = await api(tokens.read).get('/libraries').expect(200);

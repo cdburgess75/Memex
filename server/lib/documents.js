@@ -5,6 +5,7 @@
 // sub-routers share one insert/dedupe/index/notify pipeline. Also home to the
 // canonical document column list and the traversal-safe name helper.
 const crypto = require('crypto');
+const { Transform } = require('stream');
 const db = require('./db');
 const storage = require('./storage');
 const libraries = require('./libraries');
@@ -20,7 +21,8 @@ const folderOps = () => require('./folderOps');
 const DOCUMENT_COLUMNS = `
   id, name, size, mime_type, storage_path, uploaded_by,
   uploaded_by_email, created_at, deleted_at, deleted_by, deleted_by_email,
-  restored_at, restored_by, restored_by_email, library_id, library_scoped
+  restored_at, restored_by, restored_by_email, library_id, library_scoped,
+  content_hash, modified_at
 `;
 
 // Text extraction downloads the whole file into memory, so its size gate is capped
@@ -248,7 +250,27 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
 const prefixRange = (alias, prefixParam) =>
   `${alias}.name ~>=~ (${prefixParam} || '/') AND ${alias}.name ~<~ (${prefixParam} || '0')`;
 
+
+// The content hash of a file's bytes, as documents.content_hash holds it: sha256, hex.
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+// The same for bytes passing through as a stream: hand `stream` on in place of `source`
+// (it carries the bytes through unchanged), then read digest() once they have all passed.
+// A source that fails or is cut off takes the stream down with it, so nothing downstream
+// waits for an end that never comes.
+function hashing(source) {
+  const h = crypto.createHash('sha256');
+  let digest = null; // once read, the hash is fixed: later bytes (a drain nobody waited for) are let through unhashed
+  const stream = new Transform({ transform(chunk, _enc, cb) { if (digest === null) h.update(chunk); cb(null, chunk); } });
+  if (source) {
+    source.on('error', (e) => stream.destroy(e));
+    source.on('aborted', () => stream.destroy(new Error('Upload aborted')));
+    source.pipe(stream);
+  }
+  return { stream, digest: () => (digest ??= h.digest('hex')) };
+}
+
 module.exports = {
+  sha256, hashing,
   prefixRange,
   DOCUMENT_COLUMNS,
   TEXT_EXTRACTION_MAX_BYTES,

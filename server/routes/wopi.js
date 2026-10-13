@@ -1,5 +1,8 @@
 'use strict';
 const { serverError } = require('../lib/httpError');
+// The content hash as documents.content_hash holds it (sha256, hex); computed here rather than
+// through lib/documents so this router keeps its own small set of dependencies.
+const sha256 = (buf) => require('crypto').createHash('sha256').update(buf).digest('hex');
 const express = require('express');
 const router = express.Router();
 const db = require('../lib/db');
@@ -146,9 +149,9 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
       console.error('Text extraction after WOPI save failed (non-fatal):', e.message);
     }
     if (textExtracted) {
-      await db.query('UPDATE documents SET size = $1, document_text = $2 WHERE id = $3', [buffer.length, documentText, doc.id]);
+      await db.query('UPDATE documents SET size = $1, document_text = $2, content_hash = $4, modified_at = NOW() WHERE id = $3', [buffer.length, documentText, doc.id, sha256(buffer)]);
     } else {
-      await db.query('UPDATE documents SET size = $1 WHERE id = $2', [buffer.length, doc.id]);
+      await db.query('UPDATE documents SET size = $1, content_hash = $3, modified_at = NOW() WHERE id = $2', [buffer.length, doc.id, sha256(buffer)]);
     }
     await auditLog.append({ documentId: doc.id, eventType: 'updated', actorId: entry.userId, actorEmail: entry.userEmail, detail: `Office save · ${buffer.length} bytes` });
     // Notify the owner that a collaborator edited their file. Office editors
