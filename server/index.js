@@ -62,7 +62,7 @@ app.use(securityHeaders);
 // don't go through this parser — they stream via the upload routes.)
 // A PUT of a file body to the public API is bytes, whatever its Content-Type says: a
 // .json file uploaded as application/json must reach storage unparsed.
-const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/)/;
+const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/|files\/[^/]+\/content$)/;
 app.use(express.json({ limit: '1mb', type: (req) => !(req.method === 'PUT' && API_FILE_BODY.test(req.path)) && /^application\/(.+\+)?json/i.test(String(req.headers['content-type'] || '')) }));
 
 const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter, thumbnailLimiter } = makeRateLimiters();

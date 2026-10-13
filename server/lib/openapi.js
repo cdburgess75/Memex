@@ -16,6 +16,8 @@ const FILE = {
     library_content: { type: 'boolean', description: 'True when the file belongs to the library (shared with the library), false when it is the uploader\'s own' },
     uploaded_by: { type: 'string', format: 'uuid', nullable: true },
     uploaded_by_email: { type: 'string', nullable: true },
+    content_hash: { type: 'string', nullable: true, description: 'sha256 of the bytes, in hex; null for a file whose hash was never computed (a large file added before release 3)' },
+    modified_at: { type: 'string', format: 'date-time', description: 'When the bytes last changed; the same as created_at until they do' },
     created_at: { type: 'string', format: 'date-time' },
     deleted_at: { type: 'string', format: 'date-time', nullable: true },
   },
@@ -47,10 +49,10 @@ const paths = {
         responses: { 200: ok('The listing', { type: 'object', properties: { library_id: { type: 'string' }, folder: { type: 'string' }, recursive: { type: 'boolean' }, folders: { type: 'array', items: FOLDER }, files: { type: 'array', items: FILE }, total: { type: 'integer' }, limit: { type: 'integer' }, offset: { type: 'integer' } } }) } }),
   },
   '/libraries/{id}/files/{path}': {
-    put: op('Files', 'write', 'Upload a file in one request', 'The request body is the file. Send Content-Type: application/octet-stream (or the file\'s own type) and Content-Length. Folders in the path are made as needed. A live file already at that path is a 409 carrying its id: rename or delete it first, or choose another path. Files over the server\'s upload limit are refused; for very large files use the resumable upload.',
-      { parameters: [idParam('id', 'Library id'), { name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'Folder path and file name, URL-encoded per segment, such as Reports%2F2026%2Fq1.pdf or Reports/2026/q1.pdf' }],
+    put: op('Files', 'write', 'Upload a file in one request', 'The request body is the file. Send Content-Type: application/octet-stream (or the file\'s own type) and Content-Length. Folders in the path are made as needed. A live file already at that path is a 409 carrying its id: rename or delete it first, choose another path, or send replace=true to put these bytes into that file (it keeps its id and place, what it held is kept as a version, and identical bytes change nothing). Files over the server\'s upload limit are refused; for very large files use the resumable upload.',
+      { parameters: [idParam('id', 'Library id'), { name: 'path', in: 'path', required: true, schema: { type: 'string' }, description: 'Folder path and file name, URL-encoded per segment, such as Reports%2F2026%2Fq1.pdf or Reports/2026/q1.pdf' }, { name: 'replace', in: 'query', schema: { type: 'boolean', default: false }, description: 'true: a file already at this path takes these bytes' }],
         requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
-        responses: { 200: ok('The stored file', { type: 'object', properties: { doc: FILE } }), 409: ok('A file is already at that path', { type: 'object', properties: { error: { type: 'string' }, existing_id: { type: 'string' } } }), 413: err('Over the upload limit'), 415: err('A file type the workspace refuses') } }),
+        responses: { 200: ok('The stored file', { type: 'object', properties: { doc: FILE, replaced: { type: 'boolean', description: 'true when an existing file took these bytes' }, unchanged: { type: 'boolean', description: 'true when the file already held exactly these bytes' } } }), 409: ok('A file is already at that path (and replace was not asked for)', { type: 'object', properties: { error: { type: 'string' }, existing_id: { type: 'string' } } }), 413: err('Over the upload limit'), 415: err('A file type the workspace refuses') } }),
   },
   '/files/{id}': {
     get: op('Files', 'read', 'A file\'s details', 'Name, path, size and who added it.', { parameters: [idParam('id', 'File id')], responses: { 200: ok('The file', FILE), 404: err('Not found, or not yours to see') } }),
@@ -59,6 +61,7 @@ const paths = {
   },
   '/files/{id}/content': {
     get: op('Files', 'read', 'Download a file', 'The bytes, as an attachment. Range requests are honoured, so a download can resume.', { parameters: [idParam('id', 'File id'), { name: 'Range', in: 'header', schema: { type: 'string' }, description: 'Optional, such as bytes=0-1023' }], responses: { 200: { description: 'The file', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } }, 206: { description: 'The requested range' }, 404: err('Not found') } }),
+    put: op('Files', 'write', 'Replace a file\'s content', 'The request body is the new bytes. The file keeps its id, name and place; what it held is kept as a version; identical bytes change nothing. The type stays unless Content-Type names a real one.', { parameters: [idParam('id', 'File id')], requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } }, responses: { 200: ok('The file now', { type: 'object', properties: { doc: FILE, replaced: { type: 'boolean' }, unchanged: { type: 'boolean' } } }), 404: err('Not found, or not yours to change'), 413: err('Over the upload limit') } }),
   },
   '/files/{id}/restore': {
     post: op('Files', 'write', 'Restore a file from the trash', 'Puts it back where it was.', { parameters: [idParam('id', 'File id')], responses: { 200: ok('Done', { type: 'object', properties: { success: { type: 'boolean' } } }), 404: err('Not in the trash') } }),
@@ -84,7 +87,13 @@ const paths = {
     post: op('Folders', 'write', 'Rename a folder', 'Everything in it moves with it; shares of the folder follow it.', { parameters: [idParam('id', 'Library id')], requestBody: json({ type: 'object', properties: { path: { type: 'string' }, name: { type: 'string', description: 'The new name of the folder itself' } } }, ['path', 'name']), responses: { 200: ok('Done', { type: 'object' }), 404: err('No such folder') } }),
   },
   '/libraries/{id}/folders/move': {
-    post: op('Folders', 'write', 'Move a folder to another library', 'The folder keeps its path in the destination library.', { parameters: [idParam('id', 'Source library id')], requestBody: json({ type: 'object', properties: { path: { type: 'string' }, to_library_id: { type: 'string', format: 'uuid' } } }, ['path', 'to_library_id']), responses: { 200: ok('Done', { type: 'object' }), 404: err('No such folder') } }),
+    post: op('Folders', 'write', 'Move a folder', 'With to_library_id: to another library, keeping its path there. With to_folder: under another folder of this library (an empty string for the root). One or the other.', { parameters: [idParam('id', 'Source library id')], requestBody: json({ type: 'object', properties: { path: { type: 'string' }, to_library_id: { type: 'string', format: 'uuid' }, to_folder: { type: 'string', description: 'A folder path in this library; empty for the root' } } }, ['path']), responses: { 200: ok('Done', { type: 'object' }), 400: err('Both given, or a move into itself'), 404: err('No such folder') } }),
+  },
+  '/libraries/{id}/folders/copy': {
+    post: op('Folders', 'write', 'Copy a folder to another library', 'Copies every file under it, keeping their paths, as new files in the other library. The caller needs the right to add files there.', { parameters: [idParam('id', 'Source library id')], requestBody: json({ type: 'object', properties: { path: { type: 'string' }, to_library_id: { type: 'string', format: 'uuid' } } }, ['path', 'to_library_id']), responses: { 200: ok('Done', { type: 'object', properties: { ok: { type: 'boolean' }, count: { type: 'integer', description: 'Files copied' } } }), 404: err('No such folder, or nothing in it'), 413: err('Too many files to copy at once') } }),
+  },
+  '/libraries/{id}/folders/zip': {
+    get: op('Folders', 'read', 'Download a folder as a ZIP', 'Every file under the folder that the caller can read, streamed as one ZIP. Folders over the server\'s ZIP limit are refused.', { parameters: [idParam('id', 'Library id'), { name: 'path', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'The ZIP', content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } } }, 404: err('No such folder, or nothing in it'), 413: err('Too large for one ZIP'), 503: err('Too many ZIPs being made right now; try again shortly') } }),
   },
   '/uploads': {
     post: op('Resumable uploads', 'write', 'Start a resumable upload', 'For big files or weak links. Say the path, library, size and type; the answer gives the session id, chunk size and how many chunks to send. Then PUT each chunk and POST complete.', { requestBody: json({ type: 'object', properties: { path: { type: 'string' }, library_id: { type: 'string', format: 'uuid' }, size: { type: 'integer' }, mime_type: { type: 'string' }, chunk_size: { type: 'integer', description: 'Optional; the server clamps it' } } }, ['path', 'library_id', 'size']), responses: { 200: ok('The session', { type: 'object', properties: { session: { type: 'object' } } }), 413: err('Over the upload limit') } }),
@@ -279,6 +288,15 @@ Object.assign(paths, {
 });
 
 
+Object.assign(paths, {
+  '/files/{id}/move': {
+    post: op('Files', 'write', 'Move a file to another library', 'The file keeps its path and its id in the other library. Library content may be carried off only by whoever manages its library; a file that stays put is reported as kept.', { parameters: [idParam('id', 'File id')], requestBody: json({ type: 'object', properties: { library_id: { type: 'string', format: 'uuid' } } }, ['library_id']), responses: { 200: ok('The outcome', { type: 'object', properties: { ok: { type: 'boolean' }, moved: { type: 'boolean' }, kept: { type: 'boolean', description: 'Still where it was: not the caller\'s to carry off' }, skipped: { type: 'boolean', description: 'Not found, or not the caller\'s to change' } } }), 400: err('No library_id') } }),
+  },
+  '/files/{id}/copy': {
+    post: op('Files', 'write', 'Copy a file to another library', 'A new file at the same path in the other library, owned by the caller. Reading the file is enough to copy it; the caller needs the right to add files where it lands.', { parameters: [idParam('id', 'File id')], requestBody: json({ type: 'object', properties: { library_id: { type: 'string', format: 'uuid' } } }, ['library_id']), responses: { 200: ok('The outcome', { type: 'object', properties: { ok: { type: 'boolean' }, copied: { type: 'boolean' }, copy: { allOf: [FILE], nullable: true, description: 'The new file' } } }), 400: err('No library_id') } }),
+  },
+});
+
 const INTRO = `Depot's API lets a script or another system do what a person does in Depot: list, add, fetch, move and share files; run groups and decide who can open what; follow what happened; and, with an admin token, run the workspace itself: people, settings, connections, compliance and the audit feed.
 
 **Base path:** \`/api/v1\` on your Depot server, over HTTPS.
@@ -296,6 +314,8 @@ A token acts as the person who made it, with their normal rights, held to the **
 **Audit.** Everything a token changes appears in Depot's activity log as the person, marked with the token's name.
 
 **Changed in Depot itself, never here:** the storage encryption key, the sign-in methods, backup destinations, and updates.
+
+**Changes.** Release 3 (12 October 2026) added replacing a file in place (\`replace=true\` on the upload, and \`PUT /files/{id}/content\`), \`content_hash\` and \`modified_at\` on every file, moving and copying a file to another library, copying a folder, moving a folder within its library, and downloading a folder as a ZIP. Release 2 added people, groups, sharing and administration.
 
 **Stability.** Version 1 only grows. Fields and endpoints may be added; nothing that exists changes shape. A breaking change would ship as /api/v2 beside this one.
 

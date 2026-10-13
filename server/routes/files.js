@@ -53,7 +53,7 @@ const {
   tokenHash, passwordParts, verifySharePassword, shareLinkClientShape,
   issueShareTicket, verifyShareTicket, publicAppBase,
 } = require('../lib/shareLinks');
-const {
+const { sha256, hashing, 
   DOCUMENT_COLUMNS, TEXT_EXTRACTION_MAX_BYTES, fileSizeLabelForEvent,
   safeDocName, destinationFolder, recordUploadNotify, createDocumentRecord, prefixRange,
 } = require('../lib/documents');
@@ -1432,9 +1432,9 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
       const right = await libraries.writeRight(req.user, uploadLibraryId, parentOf(at), q);
       if (right.status) throw new FolderOpError(null, right.status, right.error);
       const row = await q.queryOne(
-        `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
-        [at, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, right.scoped]
+        `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped, content_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${DOCUMENT_COLUMNS}`,
+        [at, size, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, right.scoped, sha256(buffer)]
       );
       await documentAccess.grantOwnerAdmin(row.id, req.user, q);
       return { doc: row, name: at };
@@ -1453,6 +1453,57 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     serverError(res, e);
   }
 });
+
+// Replace an existing file's bytes with the request body (upload-stream with x-replace-id;
+// the public API's "replace in place"). The file keeps its id, its name and its place, and
+// whoever may write it may replace it. The bytes go to a new storage path first, so a
+// failed or cut-off upload leaves the current file untouched; what the file held is kept
+// as a version before the row moves to the new bytes, and the old blob goes once it has.
+// Identical bytes (same hash) are a no-op: no version, no entry, nothing rewritten.
+async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
+  const path = require('path');
+  if (!isUuid(docId)) return res.status(404).json({ error: 'Document not found' });
+  const doc = await documentAccess.getAccessibleDocument({ id: docId, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
+  if (!doc) return res.status(404).json({ error: 'Document not found' });
+  const storagePath = `documents/${Date.now()}-${path.basename(doc.name).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const hash = hashing(req);
+  let storedSize = 0;
+  try {
+    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
+    storedSize = result && Number.isFinite(result.size) && result.size >= 0 ? result.size : 0;
+  } catch (e) {
+    await storage.del(storagePath).catch(() => {});
+    if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
+    return serverError(res, e);
+  }
+  const contentHash = hash.digest();
+  try {
+    if (doc.content_hash && doc.content_hash === contentHash) {
+      await storage.del(storagePath).catch(() => {});
+      return res.json({ doc, unchanged: true, streamed: true });
+    }
+    let documentText = null;
+    if (storedSize > 0 && storedSize <= TEXT_EXTRACTION_MAX_BYTES) {
+      try { documentText = await extractText(await storage.download(storagePath), doc.name); }
+      catch (e) { console.error('Text extraction failed (non-fatal):', e.message); }
+    }
+    await saveDocumentVersion(doc, req.user, 'replace');
+    // The type stays unless the request names a real one: curl sends octet-stream by default.
+    const mime = mimetype && mimetype !== 'application/octet-stream' ? mimetype : (doc.mime_type || mimetype);
+    const updated = await db.queryOne(
+      `UPDATE documents SET storage_path = $2, size = $3, mime_type = $4, document_text = $5, content_hash = $6, modified_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL RETURNING ${DOCUMENT_COLUMNS}`,
+      [doc.id, storagePath, storedSize, mime, documentText, contentHash]);
+    if (!updated) { await storage.del(storagePath).catch(() => {}); return res.status(409).json({ error: 'The file went to the trash meanwhile' }); }
+    await storage.del(doc.storage_path).catch(() => {}); // the version kept above holds these bytes
+    await logDocumentEvent(doc.id, 'replaced', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize)} · replaced`);
+    await logEvent(`replace · ${doc.name}`, req.user.id, req.user.email);
+    res.json({ doc: updated, replaced: true, streamed: true });
+  } catch (e) {
+    await storage.del(storagePath).catch(() => {});
+    serverError(res, e);
+  }
+}
 
 // POST /api/files/upload-stream — stream request body directly into storage.
 // The legacy multipart route above remains for compatibility, but the file-home
@@ -1479,6 +1530,12 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     return res.status(507).json({ error: 'Not enough free disk space on the server for this upload.' });
   }
 
+  // x-replace-id: the bytes replace an existing file's content (the public API's
+  // PUT .../files/{path}?replace=true and PUT /files/{id}/content). The file keeps its id,
+  // name and place; what it held is kept as a version; identical bytes change nothing.
+  const replaceId = String(req.headers['x-replace-id'] || '');
+  if (replaceId) return replaceContent(req, res, replaceId, { mimetype, maxBytes, mb });
+
   let uploadLibraryId, dest;
   try {
     uploadLibraryId = await targetLibrary(req, res);
@@ -1492,10 +1549,11 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   } catch (e) { return serverError(res, e); }
 
   let storedSize = declaredSize;
+  const hash = hashing(req); // content_hash, computed as the bytes pass
   try {
     // The cap is enforced inside uploadStream's own pipeline (see storage.capStream),
     // so an over-cap abort rejects here cleanly instead of crashing on a stream race.
-    const result = await storage.uploadStream(storagePath, req, mimetype, { maxBytes });
+    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
     if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
@@ -1525,9 +1583,9 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
       const right = await libraries.writeRight(req.user, uploadLibraryId, parentOf(at), q);
       if (right.status) throw new FolderOpError(null, right.status, right.error);
       const row = await q.queryOne(
-        `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${DOCUMENT_COLUMNS}`,
-        [at, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, right.scoped]
+        `INSERT INTO documents (name, size, mime_type, storage_path, uploaded_by, uploaded_by_email, document_text, library_id, library_scoped, content_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${DOCUMENT_COLUMNS}`,
+        [at, storedSize || 0, mimetype, storagePath, req.user.id, req.user.email, documentText, uploadLibraryId, right.scoped, hash.digest()]
       );
       await documentAccess.grantOwnerAdmin(row.id, req.user, q);
       return { doc: row, name: at };
@@ -1706,7 +1764,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
     if (!dest) return;
 
     const stream = await chunkedFileStream(session);
-    const result = await storage.uploadStream(session.storage_path, stream, session.mime_type);
+    const hash = hashing(stream); // content_hash, computed as the chunks are joined
+    const result = await storage.uploadStream(session.storage_path, hash.stream, session.mime_type);
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
     const { doc, canIngest } = await createDocumentRecord({
       displayName: session.name,
@@ -1715,6 +1774,7 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
       storedSize,
       user: req.user,
       sourceDetail: 'resumable upload',
+      contentHash: hash.digest(),
       libraryId: completeLibraryId,
       libraryScoped: dest.scoped,
       notifyUpload: true,
@@ -2337,6 +2397,9 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     // restoring that would be a move nobody asked for, past every destination check.
     await saveDocumentVersion(doc, req.user, 'before_version_restore');
     await storage.copy(version.storage_path, doc.storage_path, version.mime_type);
+    // The restored bytes are the file's content now: hash them (as any upload does, while small enough to read back).
+    let restoredHash = null;
+    if ((Number(version.size) || 0) <= TEXT_EXTRACTION_MAX_BYTES) { try { restoredHash = sha256(await storage.download(doc.storage_path)); } catch { /* unknown, as before */ } }
     // This writes documents.name, so it goes in under the library's lock (SHARED: it is
     // a placement, not a folder operation). "Where it is now" is read on that client --
     // a folder operation can have renamed the folder around this file while the version
@@ -2350,10 +2413,11 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
         `UPDATE documents
          SET name = $1, size = $2, mime_type = $3, document_text = $4,
              deleted_at = NULL, deleted_by = NULL, deleted_by_email = NULL,
-             restored_at = NOW(), restored_by = $5, restored_by_email = $6
+             restored_at = NOW(), restored_by = $5, restored_by_email = $6,
+             content_hash = $8, modified_at = NOW()
          WHERE id = $7
          RETURNING ${DOCUMENT_COLUMNS}`,
-        [restoredName, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id]
+        [restoredName, version.size || 0, version.mime_type, version.document_text || null, req.user.id, req.user.email, doc.id, restoredHash]
       );
     });
 
@@ -2620,7 +2684,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     await storage.upload(doc.storage_path, buffer, doc.mime_type || 'text/plain');
     let documentText = null;
     try { documentText = await extractText(buffer, doc.name); } catch { /* non-fatal */ }
-    await db.query('UPDATE documents SET size = $2, document_text = $3 WHERE id = $1', [doc.id, buffer.length, documentText]);
+    await db.query('UPDATE documents SET size = $2, document_text = $3, content_hash = $4, modified_at = NOW() WHERE id = $1', [doc.id, buffer.length, documentText, sha256(buffer)]);
     if (sitting) {
       await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
       tellAboutTextEdit(doc, req.user);

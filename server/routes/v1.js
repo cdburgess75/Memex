@@ -54,9 +54,12 @@ function shapeFile(d) {
     size: Number(d.size) || 0, mime_type: d.mime_type || null,
     library_id: d.library_id || null, library_content: !!d.library_scoped,
     uploaded_by: d.uploaded_by || null, uploaded_by_email: d.uploaded_by_email || null,
+    content_hash: d.content_hash || null, modified_at: d.modified_at || d.created_at,
     created_at: d.created_at, deleted_at: d.deleted_at || null,
   };
 }
+// Answers from the app's upload routes carry the row as stored; the API's File shape goes out.
+function shapedDoc(body) { return body && body.doc ? { ...body, doc: shapeFile(body.doc) } : body; }
 
 // Hand a request on to one of the app's own routes. The target router sees it as its own
 // request, already authenticated (auth's fast path), with the url, body, query and headers
@@ -179,7 +182,9 @@ router.get('/files/:id/content', requireScope('read'), async (req, res) => {
 });
 
 // PUT /libraries/:id/files/<path> — one request, the body is the file. A live file at that
-// exact path already is a 409 with its id: delete or rename it first, or PUT another path.
+// exact path already is a 409 with its id: delete or rename it first, PUT another path, or
+// add ?replace=true to put these bytes into that file (it keeps its id and place; what it
+// held is kept as a version; identical bytes change nothing).
 router.put('/libraries/:id/files/*', requireScope('write'), async (req, res, next) => {
   try {
     if (!isUuid(req.params.id)) return res.status(404).json({ error: 'Library not found' });
@@ -188,11 +193,12 @@ router.put('/libraries/:id/files/*', requireScope('write'), async (req, res, nex
     const taken = await db.queryOne(
       `SELECT d.id FROM documents d WHERE d.deleted_at IS NULL AND d.library_id = $1 AND d.name = $2 AND ${documentAccess.condition('d', 3)} LIMIT 1`,
       [req.params.id, path, ...documentAccess.userParams(req.user, 'read')]);
-    if (taken) return res.status(409).json({ error: 'A file is already at that path', existing_id: taken.id });
-    return forward(req, res, next, filesRouter, {
+    const replace = ['1', 'true', 'yes'].includes(String(req.query.replace || '').toLowerCase());
+    if (taken && !replace) return res.status(409).json({ error: 'A file is already at that path', existing_id: taken.id });
+    return forwardShaped(req, res, next, filesRouter, {
       method: 'POST', url: `/upload-stream?displayName=${encodeURIComponent(path)}`,
-      query: { displayName: path }, headers: { 'x-library-id': req.params.id, 'x-file-name': path },
-    });
+      query: { displayName: path }, headers: { 'x-library-id': req.params.id, 'x-file-name': path, 'x-replace-id': taken ? taken.id : null },
+    }, shapedDoc);
   } catch (e) { serverError(res, e); }
 });
 
@@ -255,8 +261,16 @@ router.post('/libraries/:id/folders', requireScope('write'), (req, res, next) =>
   forward(req, res, next, foldersRouter, { method: 'POST', url: '/', body: { library_id: req.params.id, path: req.body?.path } }));
 router.post('/libraries/:id/folders/rename', requireScope('write'), (req, res, next) =>
   forward(req, res, next, foldersRouter, { method: 'POST', url: '/rename', body: { path: req.body?.path, name: req.body?.name }, headers: { 'x-library-id': req.params.id } }));
-router.post('/libraries/:id/folders/move', requireScope('write'), (req, res, next) =>
-  forward(req, res, next, foldersRouter, { method: 'POST', url: '/move', body: { path: req.body?.path, library_id: req.body?.to_library_id || req.params.id }, headers: { 'x-library-id': req.params.id } }));
+// Move a folder: with to_library_id, to another library (same path there); with to_folder,
+// under another folder of this library ('' for the root).
+router.post('/libraries/:id/folders/move', requireScope('write'), (req, res, next) => {
+  const b = req.body || {};
+  const within = b.to_folder !== undefined && b.to_folder !== null;
+  const elsewhere = b.to_library_id && String(b.to_library_id) !== String(req.params.id);
+  if (within && elsewhere) return res.status(400).json({ error: 'Give to_folder (within this library) or to_library_id (another library), not both' });
+  if (within) return forward(req, res, next, foldersRouter, { method: 'POST', url: '/reparent', body: { path: b.path, target: String(b.to_folder) }, headers: { 'x-library-id': req.params.id } });
+  return forward(req, res, next, foldersRouter, { method: 'POST', url: '/move', body: { path: b.path, library_id: b.to_library_id || req.params.id }, headers: { 'x-library-id': req.params.id } });
+});
 router.delete('/libraries/:id/folders', requireScope('write'), (req, res, next) =>
   forward(req, res, next, foldersRouter, { method: 'POST', url: '/delete', body: { path: req.body?.path ?? req.query.path }, headers: { 'x-library-id': req.params.id } }));
 
@@ -274,7 +288,7 @@ router.get('/uploads/:id', requireScope('write'), (req, res, next) =>
 router.put('/uploads/:id/chunks/:index', requireScope('write'), (req, res, next) =>
   forward(req, res, next, filesRouter, { method: 'PUT', url: `/uploads/${encodeURIComponent(req.params.id)}/chunks/${encodeURIComponent(req.params.index)}` }));
 router.post('/uploads/:id/complete', requireScope('write'), (req, res, next) =>
-  forward(req, res, next, filesRouter, { method: 'POST', url: `/uploads/${encodeURIComponent(req.params.id)}/complete`, body: req.body || {} }));
+  forwardShaped(req, res, next, filesRouter, { method: 'POST', url: `/uploads/${encodeURIComponent(req.params.id)}/complete`, body: req.body || {} }, shapedDoc));
 router.delete('/uploads/:id', requireScope('write'), (req, res, next) =>
   forward(req, res, next, filesRouter, { method: 'DELETE', url: `/uploads/${encodeURIComponent(req.params.id)}` }));
 
@@ -307,7 +321,11 @@ router.get('/activity', requireScope('read'), async (req, res) => {
 // Hand on, and reshape a successful answer on its way back; errors pass as they are.
 function forwardShaped(req, res, next, target, opts, shape) {
   const send = res.json.bind(res);
-  res.json = (body) => send(res.statusCode < 300 ? shape(body) : body);
+  res.json = (body) => {
+    if (res.statusCode >= 300) return send(body);
+    Promise.resolve().then(() => shape(body)).then(send, (e) => { console.error('v1: could not shape an answer:', e.message); send(body); });
+    return res;
+  };
   return forward(req, res, next, target, opts);
 }
 // An id that is not a uuid is nothing the app's routes should be asked about.
@@ -457,6 +475,35 @@ router.delete('/admin/connectors/:id', adminOnly, needUuid('id', 'Connection'), 
 router.post('/admin/connectors/:id/test', adminOnly, needUuid('id', 'Connection'), (req, res, next) => forward(req, res, next, connectorsRouter, { method: 'POST', url: `${idPath(req)}/test`, body: {} }));
 router.get('/admin/license', adminOnly, (req, res, next) => forward(req, res, next, licenseRouter, { method: 'GET', url: '/' }));
 router.get('/admin/security', adminOnly, (req, res, next) => forward(req, res, next, securityRouter, { method: 'GET', url: '/status' }));
+
+// =====================================================================================
+// Release 3: replacing a file in place, moving and copying a file to another library,
+// copying a folder, and a folder as a ZIP. content_hash and modified_at ride on every File.
+// =====================================================================================
+router.put('/files/:id/content', requireScope('write'), needUuid('id', 'File'), (req, res, next) =>
+  forwardShaped(req, res, next, filesRouter, { method: 'POST', url: '/upload-stream', query: {}, headers: { 'x-replace-id': req.params.id } }, shapedDoc));
+router.post('/files/:id/move', requireScope('write'), needUuid('id', 'File'), (req, res, next) => {
+  if (!isUuid(req.body?.library_id)) return res.status(400).json({ error: 'library_id is required' });
+  return forwardShaped(req, res, next, filesRouter, { method: 'POST', url: '/library-transfer', body: { ids: [req.params.id], libraryId: req.body.library_id, mode: 'move' } },
+    (b) => ({ ok: true, moved: b.count === 1, kept: (b.kept || 0) > 0, skipped: (b.skipped || 0) > 0 }));
+});
+router.post('/files/:id/copy', requireScope('write'), needUuid('id', 'File'), (req, res, next) => {
+  const id = req.params.id, target = req.body?.library_id; // kept here: the app's route owns req.params once handed on
+  if (!isUuid(target)) return res.status(400).json({ error: 'library_id is required' });
+  return forwardShaped(req, res, next, filesRouter, { method: 'POST', url: '/library-transfer', body: { ids: [id], libraryId: target, mode: 'copy' } }, async (b) => {
+    if (b.count !== 1) return { ok: true, copied: false, skipped: true };
+    // The copy lands at the same path in the other library; the app's route does not name it.
+    const src = await db.queryOne('SELECT name FROM documents WHERE id = $1', [id]);
+    const copy = src ? await db.queryOne(`SELECT ${DOCUMENT_COLUMNS} FROM documents d WHERE d.library_id = $1 AND d.name = $2 AND d.deleted_at IS NULL AND d.id <> $3 ORDER BY d.created_at DESC LIMIT 1`, [target, src.name, id]) : null;
+    return { ok: true, copied: true, copy: copy ? shapeFile(copy) : null };
+  });
+});
+router.post('/libraries/:id/folders/copy', requireScope('write'), needUuid('id', 'Library'), (req, res, next) => {
+  if (!isUuid(req.body?.to_library_id)) return res.status(400).json({ error: 'to_library_id is required' });
+  return forward(req, res, next, foldersRouter, { method: 'POST', url: '/copy', body: { path: req.body?.path, library_id: req.body.to_library_id }, headers: { 'x-library-id': req.params.id } });
+});
+router.get('/libraries/:id/folders/zip', requireScope('read'), needUuid('id', 'Library'), (req, res, next) =>
+  forward(req, res, next, foldersRouter, { method: 'GET', url: '/zip', query: { path: String(req.query.path || '') }, headers: { 'x-library-id': req.params.id } }));
 
 router.use((_req, res) => res.status(404).json({ error: 'No such endpoint. The reference is at /api/docs' }));
 // eslint-disable-next-line no-unused-vars
