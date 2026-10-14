@@ -243,7 +243,8 @@ router.get('/search', requireScope('read'), async (req, res) => {
           AND ${documentAccess.condition('d', 2)}
         ORDER BY ts_rank(d.document_fts, websearch_to_tsquery('english', $1)) DESC NULLS LAST, d.created_at DESC
         LIMIT 100`, [q, ...documentAccess.userParams(req.user, 'read')]);
-    res.json({ q, files: rows.map(d => ({ ...shapeFile(d), headline: d.headline || null })) });
+    const folders = await require('../lib/folderSearch').searchFolders(req.user, q, { limit: 50 });
+    res.json({ q, folders, files: rows.map(d => ({ ...shapeFile(d), headline: d.headline || null })) });
   } catch (e) { serverError(res, e); }
 });
 

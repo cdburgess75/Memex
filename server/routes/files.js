@@ -64,10 +64,10 @@ const { sha256, hashing,
 // restore this default). Downloads are always served as attachments, so stored
 // content still can't execute in our origin. Text extraction (for AI indexing)
 // is best-effort and a no-op for unknown types.
-const DEFAULT_BLOCKED_EXTS = [
-  '.exe', '.dll', '.com', '.scr', '.msi', '.bat', '.cmd', '.ps1', '.vbs', '.js',
-  '.jar', '.jse', '.wsf', '.wsh', '.hta', '.cpl', '.msc', '.pif', '.reg', '.sh',
-];
+// Nothing is refused unless an administrator lists types (Settings → Network, limits &
+// calls → blocked upload types). Until 2026-10-14 an executable blocklist applied by default;
+// a workspace that wants it back lists the types. The word "none" also means nothing.
+const DEFAULT_BLOCKED_EXTS = [];
 // Normalize a raw "exe, .bat  vbs" list into ['.exe', '.bat', '.vbs'].
 function normalizeExtList(raw) {
   return String(raw || '')
@@ -76,8 +76,14 @@ function normalizeExtList(raw) {
 }
 // The effective blocklist: the admin override if set, else the built-in default.
 async function blockedExts() {
-  const raw = await settings.getOrEnv('blocked_file_exts');
-  return raw ? normalizeExtList(raw) : DEFAULT_BLOCKED_EXTS;
+  const raw = String((await settings.getOrEnv('blocked_file_exts')) || '').trim();
+  if (!raw || raw.toLowerCase() === 'none') return DEFAULT_BLOCKED_EXTS;
+  return normalizeExtList(raw);
+}
+// A refusal says which type, and where it can be allowed (an administrator's setting).
+function refuseFileType(res, name) {
+  const ext = fileExt(name);
+  return res.status(415).json({ code: 'FILE_TYPE_BLOCKED', error: `Depot does not accept ${ext ? ext + ' files' : 'files of this type'} here. An administrator can allow it under Settings, Network, limits and calls (blocked upload types).` });
 }
 async function isFileTypeAllowed(name) {
   return !(await blockedExts()).includes(fileExt(name));
@@ -1180,7 +1186,7 @@ router.get('/search', auth, async (req, res) => {
       `SELECT
          d.id, d.name, d.size, d.mime_type, d.storage_path,
          d.uploaded_by, d.uploaded_by_email, d.created_at, d.deleted_at, d.deleted_by,
-         d.library_id, d.library_scoped,
+         d.library_id, d.library_scoped, d.modified_at, d.content_hash,
          ts_headline(
            'english',
            coalesce(d.document_text, ''),
@@ -1204,6 +1210,14 @@ router.get('/search', auth, async (req, res) => {
   } catch (e) {
     serverError(res, e);
   }
+});
+
+// GET /api/files/search-folders?q=text — folders found by name across every library the
+// caller can read (lib/folderSearch): the "Folders" entry of the type menu, and the folder
+// rows a search lists first.
+router.get('/search-folders', auth, async (req, res) => {
+  try { res.json(await require('../lib/folderSearch').searchFolders(req.user, req.query.q, { limit: 50 })); }
+  catch (e) { serverError(res, e); }
 });
 
 // Is the current user the owner of this library? (Owner is notified by default.)
@@ -1511,7 +1525,7 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
 router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const path = require('path');
   const rawName = req.query.displayName || req.headers['x-file-name'];
-  if (!(await isFileTypeAllowed(cleanDisplayName(rawName) || 'upload'))) return res.status(415).json({ error: 'File type not allowed' });
+  if (!(await isFileTypeAllowed(cleanDisplayName(rawName) || 'upload'))) return refuseFileType(res, cleanDisplayName(rawName) || 'upload');
   let displayName, storagePath; // resolved against the library below (landingName)
   const mimetype = String(req.headers['content-type'] || 'application/octet-stream').split(';')[0] || 'application/octet-stream';
   const declaredSize = Number.parseInt(req.headers['content-length'] || '0', 10);
@@ -1605,7 +1619,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
 router.post('/uploads', auth, requireRole('admin', 'contributor'), async (req, res) => {
   const rawName = req.body.displayName || req.body.name;
   let displayName = cleanDisplayName(rawName) || 'upload';
-  if (!(await isFileTypeAllowed(displayName))) return res.status(415).json({ error: 'File type not allowed' });
+  if (!(await isFileTypeAllowed(displayName))) return refuseFileType(res, displayName);
 
   const size = Number.parseInt(req.body.size || '0', 10);
   // Require a real (>0) size: it caps total_chunks and keeps the per-chunk size check
