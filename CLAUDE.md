@@ -21,7 +21,7 @@ There **is** a test suite — `server/__tests__/` (lib / middleware / routes / i
 - **No build step.** `index.html` is a single ~9,500-line static file served directly by Express — one `<style>` and one ~6,700-line `<script>`, plain globals + functions, no framework, no bundler. This is a deliberate, locked decision. After editing the script, parse-check it: extract the largest `<script>` block and run `new Function(block)`.
 - **Releasing bumps `VERSION`.** Cut releases with `./release.sh` (writes `VERSION`, commits, tags `vYYYY.MM.DD.NNN`, pushes → GitHub Actions publishes a pinned GHCR image). The deploy path (`upgrade.sh` / the box's `ring-update.sh`) is version-gated, so the tag and `VERSION` must match.
 - **Escaping.** User-controlled strings go through `esc()` (text/attribute) in `index.html`. `esc()`/`escAttr()` are correct for HTML text and attribute contexts, but **do NOT** protect a value interpolated into an inline `onclick="fn('...')"` JS-string — use `data-*` attributes read via `this.dataset.*` for dynamic handler args.
-- **Secrets never enter the public repo.** `.env`, `secrets/`, `keys/` (except the public license key), and the license signing key stay out of git.
+- **Secrets never enter the public repo.** `.env`, `secrets/`, `keys/` (except the public license verify keys), and the license signing key stay out of git.
 
 ## Architecture
 

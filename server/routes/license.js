@@ -7,13 +7,28 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const license = require('../lib/license');
+const db = require('../lib/db');
+
+// A seat is an account with a role row that is not switched off. Outside people
+// on share links have no row and never count. null when the count is unavailable.
+async function seatsUsed() {
+  try {
+    const row = await db.queryOne('SELECT COUNT(*)::int AS n FROM user_roles WHERE disabled_at IS NULL');
+    return row && Number.isInteger(row.n) ? row.n : null;
+  } catch { return null; }
+}
 
 // GET /api/license — entitlement status for the signed-in user. Safe fields only
 // (never the signature). Any authenticated user may read it; only the client's
 // admin UI acts on it.
 router.get('/', auth, async (req, res) => {
   try {
-    res.json(await license.status());
+    const st = await license.status();
+    if (st.seats) {
+      st.seats.used = await seatsUsed();
+      st.seats.overCap = st.seats.licensed != null && st.seats.used != null && st.seats.used > st.seats.licensed;
+    }
+    res.json(st);
   } catch (e) {
     serverError(res, e);
   }
