@@ -1487,7 +1487,10 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
       try { documentText = await extractText(await storage.download(storagePath), doc.name); }
       catch (e) { console.error('Text extraction failed (non-fatal):', e.message); }
     }
-    await saveDocumentVersion(doc, req.user, 'replace');
+    // An empty file holds nothing worth a version: Finder and Explorer make a file with no
+    // bytes and then put its content, and keeping that first nothing would give every
+    // file saved from a computer a blank version 1.
+    if (Number(doc.size) > 0) await saveDocumentVersion(doc, req.user, 'replace');
     // The type stays unless the request names a real one: curl sends octet-stream by default.
     const mime = mimetype && mimetype !== 'application/octet-stream' ? mimetype : (doc.mime_type || mimetype);
     const updated = await db.queryOne(
@@ -2848,3 +2851,5 @@ module.exports.writeChunk = writeChunk;
 module.exports.chunkedFileStream = chunkedFileStream;
 module.exports.issueShareTicket = issueShareTicket;
 module.exports.verifyShareTicket = verifyShareTicket;
+module.exports.saveDocumentVersion = saveDocumentVersion;
+module.exports.cleanDisplayName = cleanDisplayName;
