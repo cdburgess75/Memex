@@ -275,7 +275,7 @@ check "local healthz db up, version $MEMEX_TAG" hz "http://127.0.0.1:3000/health
 check "public HTTPS healthz (valid cert)" curl -fsS -m10 --resolve "$APP_DOMAIN:443:127.0.0.1" "https://$APP_DOMAIN/healthz"
 check "OIDC discovery via Caddy (login path)" curl -fsS -m10 --resolve "$APP_DOMAIN:443:127.0.0.1" "https://$APP_DOMAIN/realms/memex/.well-known/openid-configuration"
 check "/api/config sane" hz "http://127.0.0.1:3000/api/config" '.keycloakRealm=="memex"'
-check "license valid" bash -c "docker compose $COMPOSE exec -T app node -e 'require(\"./server/lib/license\").status().then(s=>process.exit(s.valid?0:1))'"
+check "license accepted" bash -c "docker compose $COMPOSE exec -T app node -e 'require(\"./server/lib/license\").status().then(s=>process.exit(s.accepted?0:1))'"
 # sshd on 22 stays as the console fallback — ufw already denies it from the WAN.
 check "only 80/443 (+ssh) listening publicly" bash -c "! ss -tlnp | awk '{print \$4}' | grep -E '^(0\\.0\\.0\\.0|\\[::\\]|\\*):' | grep -vE ':(22|80|443)$'"
 check "tailscale online" bash -c "tailscale status --json | jq -e '.Self.Online==true'"

@@ -1,0 +1,85 @@
+# Licensing
+
+How a Depot server knows what it is entitled to, and what an operator can check or change. The commercial terms are in `LICENSE`; this page is the mechanism.
+
+## The file
+
+Every server carries one `license.json`: a JSON payload signed with Ed25519 by ParaTech. The server holds only public keys, so it can verify a license but never make one. Anything wrong with the file, the signature or the key fails closed: the server reports an `unlicensed` state rather than guessing.
+
+| Where | What |
+|-------|------|
+| `/secrets/license.json` in the container (`LICENSE_FILE`) | the signed file, dropped by provisioning |
+| `keys/*.pem` in the image (`LICENSE_PUBLIC_KEYS_DIR`, default `/app/keys`) | every public key the server trusts |
+| `LICENSE_PUBLIC_KEY`, `LICENSE_PUBLIC_KEY_PATH` | one more key, inline or by path |
+
+These are read from the container environment only. They are deliberately not settings, so a workspace admin cannot repoint the trust anchor or the file.
+
+## The payload
+
+A file without `v` is a version 1 license: unbound to any address, never expires, entitles updates through `updates_until`. Version 2 adds the fields the server can enforce.
+
+| Field | Meaning |
+|-------|---------|
+| `v` | `2` |
+| `id` | the serial, `<slug>-<number>`. Once a server has accepted a serial it refuses a lower one, which is how a re-issued license supersedes an old one |
+| `kid` | which trusted public key signed it: the first 16 hex characters of SHA-256 over the key's DER. The signer fills it in |
+| `customer`, `slug` | who it is for |
+| `domain` | must equal the host of the server's `app_url` setting. `"*"` means unbound |
+| `type` | `standard` or `trial` |
+| `plan` | shown to admins, not enforced |
+| `issued`, `expires` | the software term; `expires: null` means perpetual |
+| `updates_until` | the maintenance term; updates stop after it |
+| `grace_days` | how long after `expires` the server stays usable before read-only. Default 30 |
+| `seats`, `seat_policy` | how many accounts, and whether the cap is `soft` (allow and flag) or `hard` (refuse). `null` seats means unlimited |
+| `storage_gb` | the most the workspace quota may be set to. `null` means unlimited |
+| `features` | named features such as `updates`, `editor`, `api`. Absent means everything |
+
+Dates are `YYYY-MM-DD` and last through the end of that day, UTC.
+
+## States
+
+| State | When | What it means |
+|-------|------|---------------|
+| `ok` | accepted, more than 30 days of term left, or perpetual | nothing to do |
+| `expiring` | 30 days or fewer of term left | renew |
+| `lapsed` | term ended, inside the grace period | no new accounts, no updates |
+| `readonly` | term ended and the grace period is over | the server is read-only until renewed |
+| `unlicensed` | no file, bad signature, unknown key, wrong domain, lower serial | as `lapsed`, and as `readonly` 30 days after it was first seen |
+
+A read-only server still signs people in and lets them browse, download, and use share links. Nobody is ever locked away from their files.
+
+This release records and reports the state (Software update, `GET /api/license`, `GET /api/v1/admin/license`). Warnings and enforcement follow in later releases.
+
+## Checking a server
+
+```bash
+cd /opt/memex && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T app \
+  node -e 'require("./server/lib/license").status().then(s => console.log(JSON.stringify(s, null, 2)))'
+```
+
+`accepted` is the one to look at: the file verified, the domain matched and the serial was not lower than one already seen. `state` and `stateReason` say why when it did not.
+
+## What the server remembers
+
+Two rows in `system_settings`, written by the server and invisible to the settings API:
+
+- `license_serial_seen`: the highest serial accepted so far.
+- `license_unlicensed_since`: when an `unlicensed` state was first recorded; cleared when a license is accepted again.
+
+To reinstall an older license on purpose, or after a customer's slug changes:
+
+```sql
+DELETE FROM system_settings WHERE key IN ('license_serial_seen', 'license_unlicensed_since');
+```
+
+## Keys
+
+`scripts/license-keygen.sh` makes a pair and prints its key id. The private key lives outside every repository and must be backed up. To rotate, make a second pair, ship its public key in `keys/` in a release, then start signing with it; old licenses keep verifying while the old public key stays in `keys/`.
+
+## Minting a license
+
+```bash
+node scripts/sign-license.js payload.json ~/depot-license-keys/ptech-license-private.pem > license.json
+```
+
+The signer validates a version 2 payload field by field and fills in `kid`. The fleet tooling in the private `depot-fleet` repository wraps this per customer.

@@ -4895,6 +4895,41 @@ async function openUpdateModal() {
   renderUpdateModal(ver, lic);
 }
 function closeUpdateModal() { closeModal('update-scrim'); }
+// One sentence about the license, for the update modal. A version 2 license carries
+// a term, a state and seats; a version 1 license only an updates window.
+function licenseSummary(lic) {
+  if (!lic || !lic.configured) return 'No license is configured on this server.';
+  if (!lic.present) return 'No license file found on this server.';
+  const why = {
+    bad_signature: 'The license signature is not valid.',
+    unknown_kid: 'The license was signed with a key this server does not trust.',
+    domain_mismatch: 'The license was issued for a different address than this server\'s.',
+    serial_regressed: 'The license is older than one this server has already seen.',
+    serial_mismatch: 'The license belongs to a different installation.',
+    bad_payload: 'The license file is not well formed.',
+  };
+  if (!lic.valid || lic.accepted === false) return why[lic.stateReason] || 'The license signature is not valid.';
+  const who = esc(lic.customer || 'this customer');
+  const until = lic.updatesUntil ? esc(lic.updatesUntil) : null;
+  if (lic.version !== 2) {
+    return lic.updatesEntitled
+      ? `Licensed to ${who}${lic.plan ? ' · ' + esc(lic.plan) : ''}${until ? ' · updates through ' + until : ''}.`
+      : `License found${until ? `, updates expired ${until}` : ''} — updates are not currently entitled.`;
+  }
+  const ended = lic.state === 'lapsed' || lic.state === 'readonly';
+  const parts = [`Licensed to ${who}`];
+  if (lic.type === 'trial') parts.push('trial'); else if (lic.plan) parts.push(esc(lic.plan));
+  if (lic.expires) parts.push(`${ended ? 'term ended' : 'term through'} ${esc(lic.expires)}`);
+  if (until) parts.push(`updates through ${until}`);
+  if (lic.seats?.licensed != null) parts.push(`${lic.seats.used ?? '?'} of ${lic.seats.licensed} seats`);
+  const graceDay = esc(String(lic.graceEnds || '').slice(0, 10));
+  let note = '';
+  if (lic.state === 'expiring') note = lic.daysLeft === 0 ? ' The term ends today.' : ` The term ends in ${lic.daysLeft} day${lic.daysLeft === 1 ? '' : 's'}.`;
+  else if (lic.state === 'lapsed') note = ` Grace period through ${graceDay}; renew the license.`;
+  else if (lic.state === 'readonly') note = ` Grace period ended ${graceDay}; renew the license.`;
+  else if (!lic.updatesEntitled) note = ' Updates are not currently entitled.';
+  return parts.join(' · ') + '.' + note;
+}
 function renderUpdateModal(ver, lic) {
   const m = document.querySelector('#update-scrim .modal');
   if (!m) return;
@@ -4902,13 +4937,7 @@ function renderUpdateModal(ver, lic) {
   const latest = esc(ver?.latest || 'unknown');
   const behind = ver?.behind;
   const entitled = !!lic?.updatesEntitled;
-  const until = lic?.updatesUntil ? esc(lic.updatesUntil) : null;
-  const licLine = !lic || !lic.configured
-    ? 'No license is configured on this server.'
-    : !lic.present ? 'No license file found on this server.'
-    : !lic.valid ? 'The license signature is not valid.'
-    : entitled ? `Licensed to ${esc(lic.customer || 'this customer')}${lic.plan ? ' · ' + esc(lic.plan) : ''}${until ? ' · updates through ' + until : ''}.`
-    : `License found${until ? `, updates expired ${until}` : ''} — updates are not currently entitled.`;
+  const licLine = licenseSummary(lic);
   const upToDate = behind === 0;
   const steps = 'git -C /opt/memex pull --ff-only &amp;&amp; docker compose up -d --build app';
   const canRun = entitled && !upToDate;
