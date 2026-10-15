@@ -242,9 +242,12 @@ html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--
   padding: 0 28px;
   min-height: var(--masthead-h);
   box-sizing: border-box;
-  display: flex;
+  /* Three columns, the outer two at least as wide as what they hold: the search sits in the
+     middle of the window on a wide screen and gives way to the brand and the action cluster
+     on a narrow one. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, 640px) minmax(max-content, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   max-width: 1240px;
   margin: 0 auto;
@@ -272,17 +275,17 @@ html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--
   letter-spacing: -0.01em;
   line-height: 1;
 }
-.masthead-actions { display: flex; gap: 4px; align-items: center; }
+.masthead-actions { display: flex; gap: 4px; align-items: center; justify-self: end; }
 .masthead-search {
   position: relative;
-  flex: 1 1 auto;
+  width: 100%;
   max-width: 640px;
-  margin: 0 auto;
+  justify-self: center;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   height: 38px;
-  padding: 0 6px 0 14px;
+  padding: 0 4px;
   background: var(--surface-2);
   border: 1px solid transparent;
   border-radius: 19px;
@@ -292,10 +295,10 @@ html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--
 .masthead-search:focus-within { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-wash); }
 .masthead-search input:focus { box-shadow: none; } /* the pill carries the ring, not the bare field inside it */
 .masthead-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: 14px var(--ui); color: var(--ink); }
-.search-spark { display: inline-flex; align-items: center; color: var(--ink-faint); flex: 0 0 auto; }
+/* Browsers draw placeholders in their own grey; the faint-ink token reads on every scheme. */
+.masthead-search input::placeholder { color: var(--ink-faint); opacity: 1; }
 .search-go { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-faint); cursor: pointer; flex: 0 0 auto; }
-.search-go:hover { background: var(--surface-2); color: var(--ink); }
-.masthead-search:focus-within .search-go:hover { background: var(--surface-2); }
+.search-go:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .masthead-upload-wrap { position: relative; }
 .masthead-upload {
   display: inline-flex;
@@ -795,7 +798,7 @@ select { cursor: pointer; }
 /* The masthead search is a bare input inside a pill; the generic input[type=search]
    rule above ties with .masthead-search input on specificity and wins on source
    order, which painted a bordered white field inside the pill. Re-assert it here. */
-.masthead-search input[type=search] { border: 0; background: transparent; padding: 0; border-radius: 0; font-size: 14px; }
+.masthead-search input[type=search] { border: 0; border-inline-start: 1px solid var(--rule); background: transparent; padding: 0; padding-inline-start: 10px; border-radius: 0; font-size: 14px; }
 
 .run-btn {
   font-family: var(--body);
@@ -1457,12 +1460,21 @@ html.file-home-mode .masthead-actions { display: flex; }
    folders, scrolling the rail used to scroll the whole page, files and all, so a folder
    picked near the bottom opened its files far above, out of sight. */
 .file-home-nav-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 18px 14px 28px; box-sizing: border-box; }
-input.file-rail-find { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
-input.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+/* "Find a folder" is one more row of the rail: its magnifier sits where the nav icons do and
+   its text starts where theirs does, so it lines up with Files above and the tree beneath.
+   Quiet at rest, a field once it has focus. */
+.rail-find { display: flex; align-items: center; gap: 8px; min-height: 38px; margin: 2px 0; padding: 0 11px; border: 1px solid transparent; border-radius: 8px; color: var(--ink-faint); }
+.rail-find[hidden] { display: none; }
+.rail-find:hover { background: color-mix(in srgb, var(--surface) 65%, transparent); }
+.rail-find:focus-within { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.rail-find-ic { flex: 0 0 auto; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+.rail-find-ic svg { width: 18px; height: 18px; display: block; }
+input.file-rail-find { flex: 1 1 auto; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: 500 14px var(--ui); }
+input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-rail-tree .fc-path { display: block; color: var(--ink-faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-rail-tree .fc-name-wrap { min-width: 0; overflow: hidden; }
 .file-rail-tree .fc-name-wrap .fc-name { display: block; }
-.file-rail-note { padding: 6px 10px; color: var(--ink-faint); font: 500 13px var(--ui); }
+.file-rail-note { padding: 6px 12px 6px 38px; color: var(--ink-faint); font: 500 13px var(--ui); }
 .rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
 .rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
 .rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
@@ -1504,7 +1516,7 @@ input.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -
 .scheme-card-note { grid-column: 1 / -1; font: 400 12px var(--ui); color: var(--ink-faint); padding: 1px 11px 0; }
 @media (prefers-reduced-motion: reduce) { .scheme-card { transition: none; } }
 .file-library-nav { display: grid; gap: 8px; }
-.file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 10px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
+.file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 11px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
 .file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
 .file-library-heading-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1527,7 +1539,7 @@ input.file-rail-find:focus { outline: 2px solid var(--accent); outline-offset: -
 .ai-model-item { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 7px; font: 500 13px var(--ui); cursor: pointer; }
 .ai-model-item:hover { background: var(--surface-2); }
 .ai-model-item.active { color: var(--ink); font-weight: 600; background: var(--surface-2); }
-.ai-model-empty { padding: 10px; font-size: 13px; color: var(--ink-faint); }
+.ai-model-empty { padding: 10px; font-size: 13px; line-height: 1.45; color: var(--ink-faint); }
 /* settings hub — fixed-size popout; only the tab body scrolls */
 .settings-modal {
   /* Wide enough that a connection's name, status and four actions share a row without the
@@ -1572,23 +1584,28 @@ html.dark .settings-tab.active { color: var(--accent); }
 .user-chip-avatar.has-img { background: transparent; }
 .user-chip-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 /* search scope dropdown (Outlook-style) */
-.search-scope-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 0; border-right: 1px solid var(--rule); background: transparent; color: var(--ink-soft); font: 500 13px var(--ui); cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
-.search-scope-btn:hover { color: var(--ink); }
+.search-scope-btn { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px 0 11px; border: 0; border-radius: 15px; background: transparent; color: var(--ink-soft); font: 500 13px var(--ui); cursor: pointer; white-space: nowrap; flex: 0 0 auto; }
+.search-scope-btn:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .search-scope-btn .chev { font-size: 10px; color: var(--ink-faint); }
-.search-scope-menu { display: none; position: absolute; z-index: 31; top: calc(100% + 6px); left: 0; min-width: 250px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.search-scope-menu { display: none; position: absolute; z-index: 31; top: calc(100% + 6px); left: 0; right: 0; max-width: 420px; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
 .search-scope-menu.open { display: grid; gap: 2px; }
-.search-scope-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 10px; border-radius: 7px; cursor: pointer; color: var(--ink); font: 500 13px var(--ui); }
+.search-scope-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; border: 0; background: transparent; text-align: left; padding: 7px 10px; border-radius: 7px; cursor: pointer; color: var(--ink); font: 500 13px var(--ui); }
 .search-scope-item:hover { background: var(--surface-2); }
+/* The chosen scope carries a tick as well as its colour, and says so to assistive technology (aria-current). */
 .search-scope-item.active { color: var(--accent); }
-.search-scope-hint { font-size: 12px; color: var(--ink-faint); font-weight: 400; }
-.library-menu-label { font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 6px 8px 4px; }
+.search-scope-check { font-size: 12px; color: var(--accent); }
+.search-scope-hint { grid-column: 1 / -1; font-size: 12px; color: var(--ink-faint); font-weight: 400; }
+.library-menu-label { font: 600 11px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 6px 10px 4px; }
 .library-menu-item { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 4px; font: 500 13px var(--ui); cursor: pointer; }
 .library-menu-item:hover { background: var(--surface-2); }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
-input.library-menu-search { width: 100%; box-sizing: border-box; margin: 2px 0 4px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 14px var(--ui); }
-input.library-menu-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+/* "Find a library": the masthead's inset pill, inside the menu, with the rail's magnifier. */
+.menu-find { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-2); color: var(--ink-faint); }
+.menu-find:focus-within { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+input.library-menu-search { flex: 1 1 auto; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: 500 14px var(--ui); }
+input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 /* One column that can shrink: a long library name must truncate, never widen every row past the menu. */
 .library-menu-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; }
 .library-menu-fold { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; border: 0; background: transparent; text-align: left; cursor: pointer; border-radius: 4px; }
@@ -1625,15 +1642,15 @@ input.library-menu-search:focus { outline: 2px solid var(--accent); outline-offs
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
-.file-nav-section { margin: 8px 8px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.file-nav-section { margin: 8px 12px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
-.file-quick-pill { width: 100%; min-width: 0; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--ink-soft); font: 500 14px var(--ui); cursor: pointer; }
+.file-quick-pill { width: 100%; min-width: 0; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 8px; color: var(--ink-soft); font: 500 14px var(--ui); cursor: pointer; }
 .file-quick-pill:hover { background: var(--surface-2); color: var(--ink); }
 .file-quick-pill.file-quick-empty { cursor: default; }
 .file-quick-pill.file-quick-empty:hover { background: transparent; color: var(--ink-soft); }
 .file-quick-pill .file-icon { width: 26px; height: 26px; border-radius: 6px; font-size: 8px; flex: 0 0 auto; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-quick-group { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 11px 8px 3px; }
+.file-quick-group { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 11px 12px 3px; }
 .file-quick-group:first-child { padding-top: 2px; }
 .file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -2362,7 +2379,7 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 /* Pinned libraries section */
 .file-pinned-section { display: grid; gap: 2px; }
 .file-pinned-section[hidden] { display: none; }
-.file-pinned-header { width: 100%; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 2px; font: 800 12px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; }
+.file-pinned-header { width: 100%; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 2px; font: 800 12px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; }
 .file-pinned-header .chev { font-size: 11px; transition: transform 0.15s ease; }
 .file-pinned-section.collapsed .file-pinned-header .chev { transform: rotate(-90deg); }
 .file-pinned-section.collapsed .file-pinned-body { display: none; }
@@ -2377,8 +2394,10 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Library dropdown rows: switch button + pin button as siblings */
 .library-menu-item-wrap { display: flex; align-items: center; }
-.library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
-.library-menu-item-wrap .library-menu-item .pill { margin-left: 0; flex: 0 0 auto; }
+/* Name on one line, how you hold it on the next: a tag beside the name squeezed "Marketing" to "Mark…". */
+.library-menu-item-wrap .library-menu-item { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
+.library-menu-item-wrap .library-menu-item .pill { margin: 0; align-self: flex-start; }
+.library-menu-item-sub { font: 400 12px var(--ui); color: var(--ink-faint); }
 .library-menu-item-name { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-pin-star { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 24px; border: 0; background: transparent; color: var(--ink-soft); padding: 2px 6px; border-radius: 4px; cursor: pointer; }
 .library-pin-star .library-pin-ic { display: inline-flex; }
@@ -2395,7 +2414,7 @@ html.dark .file-rail-foot { background: var(--surface); }
 /* 112px: the block's own height plus the masthead's, since at the top of the page the rail's scroll box begins beneath the masthead. */
 .file-library-nav-body:has(.file-rail-foot) { padding-bottom: 112px; }
 /* The tree keeps to its own scroll region so Favorites, Trash and the rest of the rail stay within reach however many folders there are. */
-.file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px 2px; max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
+.file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px; max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
 .file-rail-tree:empty { display: none; }
 .file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
 /* Breadcrumb — its own row directly under the Create/Upload toolbar, left-aligned */
@@ -2679,7 +2698,7 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main, .file-rail-foot, .file-rail-foot > .file-nav-main { display: contents; }
   .file-rail-foot { position: static; width: auto; }
   .file-library-nav-body:has(.file-rail-foot) { padding-bottom: 10px; }
-  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .file-rail-find { display: none; }
+  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .rail-find { display: none; }
   .file-home-nav-inner { position: static; max-height: none; overflow: visible; padding: 0; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; gap: 6px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
   .file-nav-link.active { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; }
@@ -2946,7 +2965,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   }
   .masthead-left { grid-area: brand; min-width: 0; }
   .brand { flex-wrap: nowrap; max-width: 100%; }
-  .masthead-search { grid-area: search; width: auto; max-width: none; margin: 0; }
+  .masthead-search { grid-area: search; width: 100%; max-width: none; justify-self: stretch; margin: 0; }
   .masthead-actions, html.file-home-mode .masthead-actions { grid-area: actions; width: auto; max-width: none; overflow: visible; padding: 0; justify-content: flex-end; flex-wrap: nowrap; }
   .user-chip { max-width: 180px; }
 }
@@ -2983,7 +3002,7 @@ button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action
   .search-scope-btn { padding: 0 8px; }
   /* Header popovers become sheets pinned under the header row. */
   .status-popover, .notif-panel, .app-menu-popover, .meet-panel { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 10px; right: 10px; width: auto; max-width: none; min-width: 0; }
-  .search-scope-menu { position: fixed; top: calc(100px + env(safe-area-inset-top)); left: 10px; right: 10px; min-width: 0; }
+  .search-scope-menu { position: fixed; top: calc(100px + env(safe-area-inset-top)); left: 10px; right: 10px; max-width: none; }
 
   /* Files */
   .file-home-main { padding: 14px 12px 40px; }
@@ -3181,10 +3200,9 @@ html.auth-locked .skip-link { display: none; }
     </div>
   </div>
   <div class="masthead-search">
-    <span class="search-spark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8l4.4-1.4z"/></svg></span>
-    <button class="search-scope-btn" id="search-control-btn" type="button" onclick="toggleSearchControlMenu(event)" title="Search scope & AI model" aria-haspopup="true"><span id="search-control-label">Auto</span><span class="chev">⌄</span></button>
+    <button class="search-scope-btn" id="search-control-btn" type="button" onclick="toggleSearchControlMenu(event)" title="Choose what to search" aria-haspopup="true" aria-expanded="false" aria-controls="search-control-menu"><span class="sr-only">Search scope: </span><span id="search-control-label">Contents</span><span class="chev" aria-hidden="true">⌄</span></button>
     <div class="search-scope-menu" id="search-control-menu"></div>
-    <input id="global-search" type="search" placeholder="Search or ask Depot…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search or ask Depot">
+    <input id="global-search" type="search" placeholder="Search files and folders…" oninput="globalSearch(this.value)" onkeydown="if(event.key==='Enter')runSearch()" autocomplete="off" aria-label="Search">
     <button class="search-go" type="button" onclick="runSearch()" title="Search" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></button>
   </div>
   <div class="masthead-actions">
@@ -3407,7 +3425,7 @@ function refreshFileRailTree() {
   }
   // The tree scrolls on its own now: keep the folder being viewed in sight.
   if (!railFindQuery) tree.querySelector('.file-commander-folder.active')?.scrollIntoView({ block: 'nearest' });
-  const find = document.getElementById('file-rail-find');
+  const find = document.getElementById('file-rail-find-wrap');
   if (find) find.hidden = !railFindWanted();
 }
 // "Find a folder" above the rail tree: once a library has more than a screenful of
@@ -3427,7 +3445,7 @@ function railFind(value) {
   const tree = document.getElementById('file-rail-tree');
   if (tree) tree.innerHTML = fileRailTreeHtml();
   const inner = document.getElementById('file-home-nav-inner');
-  const find = document.getElementById('file-rail-find');
+  const find = document.getElementById('file-rail-find-wrap');
   if (inner && find && railFindQuery) inner.scrollTop = Math.max(0, find.offsetTop - 12);
 }
 function railFindKey(e) {
@@ -8229,6 +8247,7 @@ const NAV_ICON_PATHS = {
   attention: 'M12 9.2v4.2M12 16.6h.02M10.4 4.6 3.1 17.2a1.9 1.9 0 0 0 1.6 2.8h14.6a1.9 1.9 0 0 0 1.6-2.8L13.6 4.6a1.9 1.9 0 0 0-3.2 0z',
   notifications: 'M17.8 8.9a5.8 5.8 0 1 0-11.6 0c0 5.8-2.4 7.2-2.4 7.2h16.4s-2.4-1.4-2.4-7.2M13.6 19.3a1.9 1.9 0 0 1-3.2 0',
   recent: 'M12 20.4a8.4 8.4 0 1 0 0-16.8 8.4 8.4 0 0 0 0 16.8M12 7.4V12l3.1 1.9',
+  search: 'M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM20.4 20.4l-4.5-4.5',
 };
 function navIcon(name, cls = 'file-nav-icon') {
   const d = NAV_ICON_PATHS[name];
@@ -8336,16 +8355,18 @@ function renderUserChip() {
 // Masthead global search → ensure the Files view and apply the query through the
 // existing document-library filter path.
 // ---- Outlook-style scoped search ----
-let searchScope = localStorage.getItem('memex_search_scope_v2') || 'auto';
+// What the box does with the words: file names and contents (the default), file names in this
+// library, a question to the AI, or Auto (ask when the words read like a question). The old
+// key, whose default was Auto, is left behind on purpose: searching is the default now.
+let searchScope = localStorage.getItem('memex_search_scope_v3') || 'contents';
 let globalSearchTimer = null;
 function searchScopes() {
-  // Data-driven. "Auto" picks search-vs-ask from the query; "ask" only when AI is on.
-  const list = [
-    { id: 'auto', label: 'Auto', hint: aiOff() ? 'Smart search' : 'Search or ask — detected' },
-    { id: 'contents', label: 'Contents', hint: 'Names + contents' },
-    { id: 'names', label: 'File names', hint: 'Filename match in this library' },
-  ];
-  if (!aiOff()) list.push({ id: 'ask', label: 'Ask AI', hint: 'Answer from your files' });
+  // Data-driven. "Auto" picks search-vs-ask from the query; it and "ask" only exist when AI is on.
+  const list = [];
+  if (!aiOff()) list.push({ id: 'auto', label: 'Auto', hint: 'Search, or ask when it reads like a question' });
+  list.push({ id: 'contents', label: 'Contents', hint: 'File names and contents, in every library' });
+  list.push({ id: 'names', label: 'File names', hint: 'File names only, in this library' });
+  if (!aiOff()) list.push({ id: 'ask', label: 'Ask AI', hint: 'An answer drawn from your files' });
   return list;
 }
 // Auto mode: a natural-language question routes to AI; otherwise to content search.
@@ -8369,25 +8390,20 @@ function renderSearchScope() {
   const scopes = searchScopes();
   if (!scopes.some(s => s.id === searchScope)) searchScope = 'contents'; // e.g. AI turned off while on "ask"
   const lbl = document.getElementById('search-control-label');
-  if (lbl) {
-    const scopeLabel = currentScope().label;
-    // Show the active model alongside the scope (e.g. "Auto · sonnet 5"); collapse
-    // to just the scope when no model is configured, but keep "· AI off" visible
-    // when the user has explicitly turned AI off.
-    const showModel = aiActive === 'off' || (aiActive && aiModels.length);
-    lbl.textContent = showModel ? `${scopeLabel} · ${aiModelShortLabel(aiActive)}` : scopeLabel;
-  }
+  if (lbl) lbl.textContent = currentScope().label;   // the model in use is named inside the menu, not here
   const input = document.getElementById('global-search');
   if (input) input.placeholder = searchScope === 'ask' ? 'Ask AI about your files…'
-    : searchScope === 'auto' ? (aiOff() ? 'Search files…' : 'Search or ask anything…')
-    : 'Search files…';
+    : searchScope === 'auto' ? 'Search, or ask a question…'
+    : searchScope === 'names' ? 'Find by name in this library…'
+    : 'Search files and folders…';
 }
 function closeSearchScopeMenu() { document.getElementById('search-scope-menu')?.classList.remove('open'); }
 // Combined control: one popover with a Search (scope) section and an AI model section.
 function searchControlMenuInnerHtml() {
-  const scopeItems = searchScopes().map(s =>
-    `<button class="search-scope-item${s.id === searchScope ? ' active' : ''}" onclick="pickSearchScope('${s.id}')"><span>${esc(s.label)}</span><span class="search-scope-hint">${esc(s.hint)}</span></button>`
-  ).join('');
+  const scopeItems = searchScopes().map(s => {
+    const on = s.id === searchScope;
+    return `<button class="search-scope-item${on ? ' active' : ''}"${on ? ' aria-current="true"' : ''} onclick="pickSearchScope('${s.id}')"><span>${esc(s.label)}</span>${on ? '<span class="search-scope-check" aria-hidden="true">✓</span>' : ''}<span class="search-scope-hint">${esc(s.hint)}</span></button>`;
+  }).join('');
   return `<div class="ai-model-group">Search</div>${scopeItems}<div class="library-menu-sep"></div><div class="ai-model-group">AI model</div>${aiModelMenuInnerHtml()}`;
 }
 function toggleSearchControlMenu(event) {
@@ -8397,11 +8413,20 @@ function toggleSearchControlMenu(event) {
   const willOpen = !menu.classList.contains('open');
   closeAllMenus();
   if (willOpen) { menu.innerHTML = searchControlMenuInnerHtml(); menu.classList.add('open'); }
+  document.getElementById('search-control-btn')?.setAttribute('aria-expanded', String(willOpen));
 }
-function closeSearchControlMenu() { document.getElementById('search-control-menu')?.classList.remove('open'); }
+function closeSearchControlMenu() {
+  const menu = document.getElementById('search-control-menu');
+  if (!menu || !menu.classList.contains('open')) return;
+  menu.classList.remove('open');
+  const btn = document.getElementById('search-control-btn');
+  btn?.setAttribute('aria-expanded', 'false');
+  // Focus that was inside the menu goes back to the button that opened it (Escape).
+  if (btn && menu.contains(document.activeElement)) btn.focus();
+}
 function pickSearchScope(id) {
   searchScope = id;
-  localStorage.setItem('memex_search_scope_v2', id);
+  localStorage.setItem('memex_search_scope_v3', id);
   closeSearchControlMenu();
   renderSearchScope();
   const input = document.getElementById('global-search');
@@ -8584,7 +8609,9 @@ function aiModelShortLabel(value) {
   if (value === 'off') return 'AI off';
   if (!value) return 'AI';
   const id = value.includes(':') ? value.slice(value.indexOf(':') + 1) : value;
-  return id.replace(/^claude-/, '').replace(/-/g, ' ');
+  // claude-haiku-4-5 reads "Haiku 4.5"; any other id is written the way its provider writes it.
+  const m = id.match(/^claude-([a-z]+)-(\d+)-(\d+)$/);
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id;
 }
 function renderAiModelLabel() {
   // The active model now renders inside the combined search control. AI on/off
@@ -8596,7 +8623,8 @@ function aiModelMenuInnerHtml() {
   // so everyone else is told which one is in use and who chooses it.
   if (currentUser?.role !== 'admin') {
     const cur = aiModels.find(m => `${m.provider}:${m.id}` === aiActive);
-    const now = !aiModels.length ? 'No models configured.' : aiActive === 'off' ? 'AI is off.' : `In use: ${esc(cur?.label || aiModelShortLabel(aiActive))}.`;
+    const name = cur && cur.label && cur.label !== cur.id ? cur.label : aiModelShortLabel(aiActive);
+    const now = !aiModels.length ? 'No models configured.' : aiActive === 'off' ? 'AI is off.' : `In use: ${esc(name)}.`;
     return `<div class="ai-model-empty">${now} An administrator chooses the model for everyone.</div>`;
   }
   let html = `<div class="ai-model-empty">Your choice applies to everyone in the workspace.</div>`
@@ -8784,7 +8812,7 @@ function libraryMenuRow(l) {
   const pinned = pinnedLibraryIds.has(String(l.id));
   const pill = l.archived_at
     ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
-    : (LIBRARY_PILL[l.my_access] ? `<span class="pill">${LIBRARY_PILL[l.my_access]}</span>` : '');
+    : (LIBRARY_PILL[l.my_access] ? `<span class="library-menu-item-sub">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
   return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
 }
@@ -8856,7 +8884,7 @@ function libraryMenuInnerHtml() {
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
   if (!libraryMenuIsLong()) libraryMenuQuery = '';
   const search = libraryMenuIsLong()
-    ? `<input type="search" class="library-menu-search" id="library-menu-search" placeholder="Find a library…" aria-label="Find a library" autocomplete="off" value="${escAttr(libraryMenuQuery)}" onclick="event.stopPropagation()" oninput="libraryMenuSearch(this.value)" onkeydown="libraryMenuSearchKey(event)">`
+    ? `<div class="menu-find" onclick="event.stopPropagation()">${navIcon('search', 'rail-find-ic')}<input type="search" class="library-menu-search" id="library-menu-search" placeholder="Find a library…" aria-label="Find a library" autocomplete="off" value="${escAttr(libraryMenuQuery)}" oninput="libraryMenuSearch(this.value)" onkeydown="libraryMenuSearchKey(event)"></div>`
     : '';
   return search + `<div class="library-menu-list" id="library-menu-list">${libraryMenuListHtml()}</div>`
     + `<div class="library-menu-sep"></div>`
@@ -9664,7 +9692,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Home', 'home', `setFileView('home')`, activeWorkspace === 'files' && activeFile === 'home')}
         ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
-        ${activeFile === 'files' ? `<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"${railFindWanted() ? '' : ' hidden'}><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
+        ${activeFile === 'files' ? `<div class="rail-find" id="file-rail-find-wrap"${railFindWanted() ? '' : ' hidden'}>${navIcon('search', 'rail-find-ic')}<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"></div><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}

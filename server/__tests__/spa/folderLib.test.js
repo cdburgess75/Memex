@@ -197,7 +197,7 @@ describe('library relationships and where you can add files', () => {
     expect(menu).toContain("setFileView('shared')\">See everything shared with you");
     expect((menu.match(/data-share-lib="L1"/g) || []).length).toBe(2); // the row, and "Share “Mine”…"
     expect(menu).not.toMatch(/data-share-lib="L2"/);
-    expect(menu).toMatch(/Theirs<\/span><span class="pill">Read-Write<\/span>/);
+    expect(menu).toMatch(/Theirs<\/span><span class="library-menu-item-sub">Read-Write<\/span>/);
     expect(menu).not.toMatch(/Manage members/);
   });
 

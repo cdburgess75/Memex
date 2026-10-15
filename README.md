@@ -34,7 +34,7 @@ It stands out because it is genuinely self-contained: a Docker Compose stack you
 | **Documents** | Permissioned libraries, folder trees, drag-and-drop upload, folder upload, versions, trash / restore / purge, per-document history. |
 | **In-browser Office editing** | Word / Excel / PowerPoint editing via self-hosted Collabora (WOPI), proxied same-origin. Read-only preview when editing is off. |
 | **AI** | AI Q&A grounded in your indexed files. Configurable provider and model. |
-| **Search** | Scoped search (auto, file contents, file names, or Ask AI) with an inline model picker. |
+| **Search** | Scoped search (file names and contents by default, file names in one library, Auto, or Ask AI) with an inline model picker. |
 | **Sharing and access** | Public share links (expiry, optional password), granular per-document ACLs (read / write / admin), and library membership. |
 | **Files back through a link** | Send someone a file or a folder and let them add their own files to it, with no account. What arrives lands beside what you sent, and you are told. |
 | **Notifications** | In-app bell plus email. Email via Microsoft Graph (app-only sendMail) or SMTP, with per-event admin toggles. |
