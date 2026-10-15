@@ -539,6 +539,18 @@ exports.routes = {
   ].map(([f, t]) => ({ id: f.id, name: f.name, size: f.size, mime_type: f.mime_type, created_at: f.created_at, uploaded_by: f.uploaded_by, uploaded_by_email: f.uploaded_by_email, library_id: f.library_id, opened_at: ago(t) })),
   'GET /api/files/trash': async () => { await wait(LIST_LATENCY); return TRASH; },
   'GET /api/files/search': ({ query }) => search(query.q),
+  // Folders found by name across every library Jordan can read, as the server derives them.
+  'GET /api/files/search-folders': ({ query }) => {
+    const q = String(query.q || '').toLowerCase().trim(); if (!q) return [];
+    const counts = new Map();
+    for (const f of visibleFiles(null)) {
+      const parts = f.name.split('/').filter(Boolean); const base = parts.pop();
+      let acc = '';
+      for (const x of parts) { acc = acc ? acc + '/' + x : x; const k = f.library_id + '|' + acc; counts.set(k, (counts.get(k) || 0) + (base === '.keep' ? 0 : 1)); }
+    }
+    return [...counts].map(([k, count]) => { const [library_id, path] = k.split('|'); return { library_id, library_name: (libById(library_id) || {}).name || '', path, name: path.split('/').pop(), folder: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '', count }; })
+      .filter(r => r.name.toLowerCase().includes(q)).sort((x, y) => x.name.localeCompare(y.name) || x.path.localeCompare(y.path)).slice(0, 50);
+  },
   'GET /api/files/follows': { ids: [F['Northfield Clinic proposal'].id, F['FY2026 budget'].id, F['Brand guidelines'].id] },
   'GET /api/files/watch/state': ({ query }) => {
     const l = libById(query.library_id);

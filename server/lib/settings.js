@@ -39,8 +39,9 @@ const ENV_MAP = {
   max_upload_files:               'MAX_UPLOAD_FILES',
   // Requests one API token may make per rate-limit window (lib/rateLimiters tokenLimiter).
   api_token_rate_limit:           'API_TOKEN_RATE_LIMIT',
-  // Comma/space-separated extensions to refuse on upload. Empty/unset = the built-in
-  // executable blocklist (see routes/files.js DEFAULT_BLOCKED_EXTS).
+  // Comma/space-separated extensions to refuse on upload. Empty, unset, or the word
+  // "none" = nothing is refused (routes/files.js blockedExts; the built-in executable
+  // blocklist stopped being the default on 2026-10-14).
   blocked_file_exts:              'BLOCKED_FILE_EXTS',
   min_free_disk_mb:               'MIN_FREE_DISK_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',

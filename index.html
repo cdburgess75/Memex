@@ -3461,7 +3461,7 @@ const FILE_COLUMN_DEFS = [
   { id: 'name', label: 'Name', always: true, sort: (a, b) => fileDisplayName(a).localeCompare(fileDisplayName(b)) },
   { id: 'type', label: 'Type', width: '120px', sort: (a, b) => fileKind(fileExt(a.name)).localeCompare(fileKind(fileExt(b.name))) },
   { id: 'size', label: 'Size', width: '110px', align: 'right', sort: (a, b) => (a.size || 0) - (b.size || 0) },
-  { id: 'modified', label: 'Modified', width: '160px', sort: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0) },
+  { id: 'modified', label: 'Modified', width: '160px', sort: (a, b) => new Date(a.modified_at || a.created_at || 0) - new Date(b.modified_at || b.created_at || 0) },
   { id: 'owner', label: 'Added by', width: '210px', sort: (a, b) => fileOwner(a).localeCompare(fileOwner(b)) },
   { id: 'library', label: 'Library', width: '150px', sort: (a, b) => fileLibraryName(a).localeCompare(fileLibraryName(b)) },
 ];
@@ -3501,7 +3501,7 @@ function fileCellHtml(f, colId) {
   const ext = fileExt(f.name);
   if (colId === 'type') return esc(fileKind(ext));
   if (colId === 'size') return fileSizeLabel(f.size || 0);
-  if (colId === 'modified') return fileDate(f.created_at);
+  if (colId === 'modified') return fileDate(f.modified_at || f.created_at);
   if (colId === 'owner') return ownerCellHtml(fileOwner(f));
   if (colId === 'library') return esc(fileLibraryName(f) || '—');
   return '';
@@ -7299,8 +7299,8 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-api-token-rate" value="${esc(s.api_token_rate_limit||'6000')}" min="60" max="1000000" step="1" title="How many requests one API token may make in 15 minutes. Over it, the token gets 429 answers until the window passes. Sign-ins from the app are not held to this.">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
-        <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; leave empty for the default executable blocklist)</span></label>
-        <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder=".exe .dll .com .scr .msi .bat .cmd .ps1 .vbs .js .jar … (default)">
+        <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; empty means nothing is refused)</span></label>
+        <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder="Nothing is refused. To refuse types, list them: .exe .bat .msi">
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
 
@@ -7808,7 +7808,7 @@ function folderLibraryRow(folder) {
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
     `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}</div><div class="file-row-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}</div><div class="file-row-sub">${folder.where ? esc(folder.where) + ' · ' : ''}${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
@@ -8141,6 +8141,7 @@ function quickAccessHtml() {
 }
 const FILE_TYPE_TABS = [
   { id: 'all', label: 'All', exts: null },
+  { id: 'folders', label: 'Folders', exts: [] }, // folders only: files never match it (fileMatchesType)
   { id: 'docs', label: 'Documents', exts: ['docx', 'doc', 'odt', 'rtf'] },
   { id: 'sheets', label: 'Spreadsheets', exts: ['xlsx', 'xls', 'csv', 'ods'] },
   { id: 'slides', label: 'Presentations', exts: ['pptx', 'ppt', 'odp'] },
@@ -8150,6 +8151,7 @@ const FILE_TYPE_TABS = [
 ];
 function fileMatchesType(f, id) {
   if (id === 'all') return true;
+  if (id === 'folders') return false;
   const t = FILE_TYPE_TABS.find(x => x.id === id);
   return t && t.exts ? t.exts.includes(fileExt(f.name)) : true;
 }
@@ -8396,8 +8398,8 @@ async function runSearch(opts = {}) {
     const el = document.getElementById('file-list');
     if (el) el.innerHTML = emptyState('Searching…', 'Looking through file names and contents.');
     try {
-      const results = await apiGet('/files/search?q=' + encodeURIComponent(q));
-      renderContentSearchResults(Array.isArray(results) ? results : [], q);
+      const [results, folders] = await Promise.all([apiGet('/files/search?q=' + encodeURIComponent(q)), apiGet('/files/search-folders?q=' + encodeURIComponent(q)).catch(() => [])]);
+      renderContentSearchResults(Array.isArray(results) ? results : [], q, Array.isArray(folders) ? folders : []);
     } catch (e) {
       if (el) el.innerHTML = emptyState('Search failed', e.message || 'Try again.');
     }
@@ -8408,14 +8410,53 @@ async function runSearch(opts = {}) {
   if (cmd) cmd.value = q;
   scheduleFileSearch();
 }
-function renderContentSearchResults(rows, q) {
+// The last contents search on screen: { rows, folders, q }, redrawn when the sort or the
+// type menu changes. Cleared when the library list takes the pane back.
+let _contentSearch = null;
+// How search results are ordered: null = best match first (the server's order); a column
+// and direction once a header is clicked, remembered for later searches. Clicking the same
+// header goes up, then down, then back to best match.
+let searchSort = (() => { try { const v = JSON.parse(localStorage.getItem('memex_search_sort')); return v && v.col ? v : null; } catch { return null; } })();
+function setSearchSort(col) {
+  if (!searchSort || searchSort.col !== col) searchSort = { col, dir: 1 };
+  else if (searchSort.dir > 0) searchSort = { col, dir: -1 };
+  else searchSort = null;
+  try { if (searchSort) localStorage.setItem('memex_search_sort', JSON.stringify(searchSort)); else localStorage.removeItem('memex_search_sort'); } catch { /* this visit only */ }
+  if (_contentSearch) renderContentSearchResults(_contentSearch.rows, _contentSearch.q, _contentSearch.folders);
+}
+function searchSortedRows(rows) {
+  if (!searchSort) return rows;
+  const def = FILE_COLUMN_DEFS.find(c => c.id === searchSort.col);
+  return def ? [...rows].sort((a, b) => def.sort(a, b) * searchSort.dir) : rows;
+}
+function searchTableHeadHtml() {
+  const cols = visibleFileColumns().map(c => {
+    const active = !!searchSort && searchSort.col === c.id;
+    const arrow = active ? (searchSort.dir > 0 ? ' ▲' : ' ▼') : '';
+    const title = active ? (searchSort.dir > 0 ? 'Sort the other way' : 'Back to best match first') : 'Sort by ' + c.label.toLowerCase();
+    return `<th class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><button class="file-col-sort${active ? ' active' : ''}" title="${escAttr(title)}" onclick="setSearchSort('${c.id}')">${esc(c.label)}${arrow}</button></th>`;
+  }).join('');
+  return `<thead><tr><th class="file-col-select"></th>${cols}<th class="file-col-actions" style="text-align:right">Actions</th></tr></thead>`;
+}
+// A folder found by name, anywhere the caller can read. It opens where it lives, in its own library.
+function searchFolderRow(f) {
+  const where = [f.library_name, ...String(f.folder || '').split('/').filter(Boolean)].filter(Boolean).join(' › ');
+  const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c => `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
+  return `<tr class="file-folder-row" data-lib="${escAttr(String(f.library_id || ''))}" data-folder="${escAttr(f.path)}" onclick="openLibraryAt(this.dataset.lib, this.dataset.folder)"><td class="file-col-select"></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(f.name)}</div><div class="file-row-sub">${esc(where)}${where ? ' · ' : ''}${f.count} item${f.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"></td></tr>`;
+}
+function renderContentSearchResults(rows, q, folders = []) {
   const el = document.getElementById('file-list');
   if (!el) return;
-  if (!rows.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents.`); return; }
+  _contentSearch = { rows, q, folders };
+  // The type menu applies here as when browsing: Folders keeps only folders, a file type
+  // keeps only those files. Matching folders come first.
+  const files = fileFilter === 'folders' ? [] : rows.filter(f => fileMatchesType(f, fileFilter));
+  const dirs = fileFilter === 'all' || fileFilter === 'folders' ? folders : [];
+  if (!files.length && !dirs.length) { el.innerHTML = emptyState('No matches', `Nothing matched “${esc(q)}” in names or contents${fileFilter !== 'all' ? ' for this type' : ''}.`); return; }
   rememberFiles(rows);   // so opening one knows what it is and whether it can be edited
-  lastRenderedFileIds = rows.map(f => String(f.id));
-  const body = rows.map(fileLibraryRow).join('');
-  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table"><thead><tr><th class="file-col-select"></th>${visibleFileColumns().map(c => `<th class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}>${esc(c.label)}</th>`).join('')}<th class="file-col-actions" style="text-align:right">Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  const sorted = searchSortedRows(files);
+  lastRenderedFileIds = sorted.map(f => String(f.id));
+  el.innerHTML = `<div class="file-library-table-wrap"><table class="file-library-table">${searchTableHeadHtml()}<tbody>${dirs.map(searchFolderRow).join('')}${sorted.map(fileLibraryRow).join('')}</tbody></table></div>`;
   updateFileLibraryChrome();
 }
 
@@ -9919,7 +9960,9 @@ async function renderFiles(sub) {
 function setFileFilter(filter) {
   fileFilter = filter;
   document.querySelectorAll('.file-filter-chip, .file-library-pill[data-filter]').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === filter));
-  if (document.getElementById('file-library-view')) renderDocumentLibraryList();
+  // Contents-search results stay on screen and are narrowed; the list is redrawn otherwise.
+  if (_contentSearch && document.getElementById('file-library-view') && (document.getElementById('global-search')?.value || '').trim() === _contentSearch.q) renderContentSearchResults(_contentSearch.rows, _contentSearch.q, _contentSearch.folders);
+  else if (document.getElementById('file-library-view')) renderDocumentLibraryList();
   else renderFileList();
   navPush();
 }
@@ -10201,7 +10244,7 @@ function fileCardHtml(f) {
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
     + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
-    + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.created_at)}</div></div></div>`;
+    + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.modified_at || f.created_at)}</div></div></div>`;
 }
 function folderCardHtml(folder) {
   const on = folderBellOn(folder.path);
@@ -10276,6 +10319,7 @@ function homeDelta(series) {
 
 function renderDocumentLibraryList(opts = {}) {
   document.documentElement.setAttribute('data-density', fileViewSize === 0 ? 'compact' : 'comfortable');
+  _contentSearch = null; // the list is taking the pane back from any contents-search results
   const el = document.getElementById('file-list');
   const quick = document.getElementById('file-quick-list');
   if (!opts.rowsOnly && quick) quick.innerHTML = quickAccessHtml();
@@ -10301,7 +10345,10 @@ function renderDocumentLibraryList(opts = {}) {
   selectedFileIds = new Set([...selectedFileIds].filter(id => shownIds.has(id)));
   const searched = filterFilesForHome(fileFilter, source, false).filter(f => !q || serverSearch || f.name.toLowerCase().includes(q) || fileOwner(f).toLowerCase().includes(q));
   const rows = (q || flatView ? searched : searched.filter(fileMatchesCurrentFolder)).filter(f => !isFolderMarker(f));
-  const folders = (q || flatView) ? [] : childFoldersFromIndex();
+  // A name search lists the library's folders whose name matches, first, each saying where
+  // it lives; browsing lists the folder's own subfolders. "Folders" in the type menu keeps
+  // only those (fileMatchesType never matches a file to it).
+  const folders = flatView ? [] : q ? folderIndex.filter(f => f.name.toLowerCase().includes(q)).map(f => ({ ...f, where: f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')).split('/').join(' › ') : '' })) : childFoldersFromIndex();
   lastRenderedFolderPaths = folders.map(f => f.path);
   selectedFolderPaths = new Set([...selectedFolderPaths].filter(p => lastRenderedFolderPaths.includes(p)));
   const sortedRows = sortFiles(rows);
@@ -10327,8 +10374,10 @@ function renderDocumentLibraryList(opts = {}) {
   const first = items.slice(0, shown).map(itemHtml).join('');
   const inner = !items.length
     ? (q
-        ? emptyState('No matching files', 'Try a broader search or clear the current filter.')
-        : emptyState(currentFolderPath ? 'This folder is empty' : 'No files in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
+        ? emptyState(fileFilter === 'folders' ? 'No matching folders' : 'No matching files', 'Try a broader search or clear the current filter.')
+        : fileFilter === 'folders'
+          ? emptyState('No folders here', 'Clear the type filter to see the files in this folder.')
+          : emptyState(currentFolderPath ? 'This folder is empty' : 'No files in this view', 'Drop files anywhere on this page, or use Upload above, to add the first one.', uploadEmptyAction()))
     : card
       ? (() => { const m = FILE_CARD_MIN[fileViewSize] || 184; return `<div class="file-card-grid" id="file-list-items" style="grid-template-columns:repeat(auto-fill,minmax(${m}px,1fr));gap:${m < 160 ? 12 : 16}px">${first}</div>`; })()
       : `<div class="file-library-table-wrap"><table class="file-library-table">${fileTableHeadHtml(selectAllClass)}<tbody id="file-list-items">${first}</tbody></table></div>`;
@@ -12600,7 +12649,7 @@ function previewInfoHtml(f, name, ext) {
   const rows = [
     ['Type', esc(fileKind(ext))],
     ['Size', fileSizeLabel(f.size || 0)],
-    ['Modified', fileDate(f.created_at)],
+    ['Modified', fileDate(f.modified_at || f.created_at)],
     ['Added by', esc(fileOwner(f))],
     ['Location', esc(loc)],
   ];
