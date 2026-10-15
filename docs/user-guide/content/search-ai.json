@@ -9,7 +9,7 @@
     {
       "heading": "Search for a file",
       "text": [
-        "Click the search box and type a word or a file name. Depot lists matches as you type, even when the word is only inside a file."
+        "Click the search box, type a word or a file name, and press Enter. Depot looks through every library you can open, and finds a word even when it is only inside a file."
       ]
     },
     {
@@ -21,6 +21,31 @@
         "Choose **Contents** to search file names and what is inside files.",
         "Choose **File names** to match file names only.",
         "Choose **Ask AI** to treat everything you type as a question."
+      ]
+    },
+    {
+      "heading": "What the results show",
+      "shot": "search-folders",
+      "steps": [
+        "Folders whose name matches come first. Under each one is the library and folder it lives in. Click it to open the folder.",
+        "Files come next, each with its folder under the name. Click one to open it."
+      ]
+    },
+    {
+      "heading": "Narrow the results by type",
+      "shot": "search-types",
+      "steps": [
+        "Click **All types** above the list.",
+        "Choose **Folders** to see only the folders that matched, or a kind of file such as **Documents** or **PDF**. Choose **All** to see everything again."
+      ],
+      "note": "The same menu works while you are browsing a folder: **Folders** shows only its subfolders, **Documents** only the Word files, and so on."
+    },
+    {
+      "heading": "Sort the results",
+      "shot": "search-sort",
+      "steps": [
+        "Results start with the best match first.",
+        "Click **Name**, **Size** or **Modified** to sort by it. Click again to sort the other way, and a third time to go back to best match first. Depot remembers your choice for your next search."
       ]
     },
     {
