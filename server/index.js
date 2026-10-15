@@ -62,8 +62,10 @@ app.use(securityHeaders);
 // don't go through this parser — they stream via the upload routes.)
 // A PUT of a file body to the public API is bytes, whatever its Content-Type says: a
 // .json file uploaded as application/json must reach storage unparsed.
+// The same on the drive (/dav), where every PUT is a file.
 const API_FILE_BODY = /^\/api\/v1\/(libraries\/[^/]+\/files\/|uploads\/[^/]+\/chunks\/|files\/[^/]+\/content$)/;
-app.use(express.json({ limit: '1mb', type: (req) => !(req.method === 'PUT' && API_FILE_BODY.test(req.path)) && /^application\/(.+\+)?json/i.test(String(req.headers['content-type'] || '')) }));
+const DRIVE_PATH = /^\/dav(\/|$)/;
+app.use(express.json({ limit: '1mb', type: (req) => !(req.method === 'PUT' && API_FILE_BODY.test(req.path)) && !DRIVE_PATH.test(req.path) && /^application\/(.+\+)?json/i.test(String(req.headers['content-type'] || '')) }));
 
 const { apiLimiter, authLimiter, shareLimiter, uploadLimiter, exchangeUploadLimiter, folderBrowseLimiter, thumbnailLimiter } = makeRateLimiters();
 const { isThumbnailPath } = require('./lib/rateLimiters');
@@ -222,6 +224,8 @@ app.use('/api/tokens', require('./routes/tokens'));
 app.get('/api/v1/openapi.json', (_req, res) => { res.set('Cache-Control', 'no-cache'); res.json(require('./lib/openapi').spec()); });
 app.use('/api/docs', require('./routes/docs'));
 app.use('/api/v1', require('./routes/v1'));
+// Depot as a drive on a computer (WebDAV): routes/dav.js. Before the SPA catch-all.
+app.use('/dav', require('./routes/dav'));
 app.use('/wopi', require('./routes/wopi'));
 
 // Liveness/readiness probe. Unlike the SPA catch-all (which returns 200 with

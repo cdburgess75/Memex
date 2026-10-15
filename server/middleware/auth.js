@@ -58,15 +58,19 @@ function noteUnverified(userId, email, claim) {
   }
 }
 
+// The drive (routes/dav.js): reached by programs that can only send a username and a
+// password, so there the password is an API token and the username is not used.
+const onDrive = (req) => /^\/dav(\/|$|\?)/.test(String(req.originalUrl || ''));
+
 // A personal access token (lib/apiTokens) in place of a sign-in. It acts as the person
-// who made it and is accepted by the public API only: the app's own routes keep the
-// sign-in, except when the public API hands a request on to one of them (routes/v1.js
-// forward), which it marks.
+// who made it and is accepted by the public API and the drive only: the app's own routes
+// keep the sign-in, except when one of those hands a request on to them (routes/v1.js
+// forward, routes/dav.js ask), which they mark.
 async function authWithApiToken(token, req, res, next) {
   const t = await apiTokens.authenticate(token);
   if (!t) return res.status(401).json({ error: 'Invalid or expired token' });
-  if (!req._v1Forward && !String(req.originalUrl || '').startsWith('/api/v1')) {
-    return res.status(403).json({ error: 'API tokens work with the /api/v1 endpoints only' });
+  if (!req._v1Forward && !String(req.originalUrl || '').startsWith('/api/v1') && !onDrive(req)) {
+    return res.status(403).json({ error: 'API tokens work with the /api/v1 endpoints and the drive (/dav) only' });
   }
   const roleRow = await db.queryOne('SELECT email, role, verified_email, disabled_at FROM user_roles WHERE user_id = $1', [t.user_id]);
   if (!roleRow) return res.status(401).json({ error: 'Invalid or expired token' });
@@ -92,7 +96,12 @@ async function authWithApiToken(token, req, res, next) {
 module.exports = async function auth(req, res, next) {
   // Already authenticated by the public API and handed on to one of the app's routes.
   if (req.user && req._v1Forward) return next();
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  const header = String(req.headers.authorization || '');
+  let token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+  if (!token && /^Basic /i.test(header) && onDrive(req)) {
+    const pair = Buffer.from(header.slice('Basic '.length).trim(), 'base64').toString('utf8');
+    token = pair.slice(pair.indexOf(':') + 1);
+  }
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   if (apiTokens.looksLikeToken(token)) return authWithApiToken(token, req, res, next);
 

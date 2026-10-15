@@ -26,13 +26,27 @@ const schemaText = (s) => {
   return [s.type, s.format, s.enum ? `one of ${s.enum.join(', ')}` : '', s.nullable ? 'or null' : ''].filter(Boolean).join(' ');
 };
 
-function page() {
+// Depot as a drive (routes/dav.js): how to connect from each kind of computer.
+function driveSection(origin) {
+  const url = `${origin}/dav/`;
+  return `<section id="drive"><h2>Connect as a drive</h2>
+<p>Depot can be opened as a drive on a computer, through WebDAV at <code>${esc(url)}</code>. Each library you can open is a folder at the top; inside are its folders and files, as on the website. Sign in with an API token as the <strong>password</strong> (the username is not used; give your email). A read-only token gives a read-only drive. With a read-and-write token, saving over a file keeps what it held as a version, and deleting a file sends it to the Trash, as on the website.</p>
+<p><strong>rclone</strong> (Windows, Mac and Linux; free) keeps a copy of what you open on your computer, so files open quickly and work while offline. Install it from rclone.org (Windows needs WinFsp and Mac needs macFUSE too, as rclone's mount page says), then make the connection once and mount it:</p>
+<pre><code>rclone config create depot webdav url=${esc(url)} vendor=other user=you@example.com pass=depot_YOUR_TOKEN --obscure
+rclone mount depot: ~/Depot --vfs-cache-mode full</code></pre>
+<p>On Windows, mount to a drive letter instead: <code>rclone mount depot: D: --vfs-cache-mode full</code>. The folder appears while the command runs; rclone's documentation covers starting it at sign-in.</p>
+<p>Without installing anything, and without a local copy, the built-in clients also work: on a Mac, Finder › Go › Connect to Server › <code>${esc(url)}</code>; on Windows, Explorer › Map network drive › <code>${esc(url)}</code> (Windows refuses files over 50 MB there and is slow); on Linux, a file manager's <code>davs://${esc(url.replace(/^https?:\/\//, ''))}</code>.</p>
+<p>Not on the drive: the Trash, versions, links and sharing, which stay on the website. A computer's own housekeeping files (.DS_Store, Thumbs.db, Office's ~$ files) are accepted and discarded. A name Depot would change (one with &amp;, parentheses or accents, say) is refused rather than stored under another name.</p>
+</section>`;
+}
+
+function page(origin) {
   const s = spec();
   const byTag = new Map(s.tags.map(t => [t.name, []]));
   for (const [path, ops] of Object.entries(s.paths)) {
     for (const [method, o] of Object.entries(ops)) byTag.get(o.tags[0])?.push({ path, method, o });
   }
-  const nav = [...byTag.keys()].map(t => `<a href="#${esc(t.toLowerCase().replace(/\s+/g, '-'))}">${esc(t)}</a>`).join('');
+  const nav = [...byTag.keys()].map(t => `<a href="#${esc(t.toLowerCase().replace(/\s+/g, '-'))}">${esc(t)}</a>`).join('') + '<a href="#drive">Connect as a drive</a>';
   const sections = [...byTag].map(([tag, ops]) => `<section id="${esc(tag.toLowerCase().replace(/\s+/g, '-'))}"><h2>${esc(tag)}</h2>${ops.map(({ path, method, o }) => {
     const params = (o.parameters || []).map(p => `<tr><td><code>${esc(p.name)}</code></td><td>${esc(p.in)}</td><td>${p.required ? 'yes' : ''}</td><td>${esc(schemaText(p.schema))}${p.description ? ` — ${esc(p.description)}` : ''}</td></tr>`).join('');
     const body = o.requestBody ? Object.entries(o.requestBody.content).map(([ct, c]) => `<p class="k">Body</p><p><code>${esc(ct)}</code>${c.schema && c.schema.properties ? `: ${esc(schemaText(c.schema))}` : ''}${c.schema && c.schema.required?.length ? ` (required: ${esc(c.schema.required.join(', '))})` : ''}</p>`).join('') : '';
@@ -57,8 +71,12 @@ article{padding-bottom:6px}
 ${md(s.info.description)}
 <nav>${nav}</nav>
 ${sections}
+${driveSection(origin)}
 </div></body></html>`;
 }
 
-router.get('/', (_req, res) => { res.set('Cache-Control', 'no-cache'); res.type('html').send(page()); });
+router.get('/', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(page(`${req.protocol}://${req.get('host') || 'depot.example.com'}`));
+});
 module.exports = router;
