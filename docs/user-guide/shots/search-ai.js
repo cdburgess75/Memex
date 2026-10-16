@@ -110,8 +110,81 @@ module.exports = [
     ],
     caption: 'The scope button open: Auto, Contents, File names and Ask AI',
   },
-  // 3. A plain-word question, typed in the search box and submitted with Enter:
-  // Auto recognises it as a question and opens "Ask the collection" itself.
+  // 2b. What a search answers: "onboarding" finds the Operations library's Onboarding folder
+  // (listed first, saying where it lives) and the files in it. A narrower viewport so the
+  // results table prints at a readable size.
+  {
+    id: 'search-folders',
+    theme: 'dark',
+    route: '#/files',
+    localStorage: MY,
+    width: 1100, height: 720,
+    setup: async (page) => {
+      await settle(page);
+      await page.eval(() => { const s = document.getElementById('global-search'); s.value = 'onboarding'; searchScope = 'contents'; runSearch({}); return true; });
+      await sleep(900);
+    },
+    clip: { selector: '.file-library-table-wrap', pad: 16 },
+    callouts: [
+      { n: 1, selector: '#file-list tr.file-folder-row .file-row-title', place: 'r' },
+      { n: 2, selector: '#file-list tbody tr:not(.file-folder-row) .file-row-title', place: 'r' },
+    ],
+    caption: 'A search for "onboarding": the folder first, then the files in it',
+  },
+  // 2c. The type menu open over the results, with Folders second in the list.
+  {
+    id: 'search-types',
+    theme: 'dark',
+    route: '#/files',
+    localStorage: MY,
+    width: 1100, height: 720,
+    setup: async (page) => {
+      await settle(page);
+      await page.eval(() => { const s = document.getElementById('global-search'); s.value = 'onboarding'; searchScope = 'contents'; runSearch({}); return true; });
+      await sleep(900);
+      await page.eval(() => { toggleFileFilterMenu(); return true; });
+      await sleep(300);
+      // Crop to the button, its open menu and the first rows underneath, not the whole page.
+      await page.eval((btnSel, menuSel, rowSel, pad) => {
+        const rects = [btnSel, menuSel, rowSel].map(q => document.querySelector(q)?.getBoundingClientRect()).filter(Boolean);
+        const left = Math.min(...rects.map(r => r.left)) - pad, top = Math.min(...rects.map(r => r.top)) - pad;
+        const right = Math.max(...rects.map(r => r.right)) + pad * 6, bottom = Math.max(...rects.map(r => r.bottom)) + pad;
+        let m = document.getElementById('__clip_marker');
+        if (!m) { m = document.createElement('div'); m.id = '__clip_marker'; m.style.cssText = 'position:fixed;pointer-events:none;z-index:-1'; document.body.appendChild(m); }
+        m.style.left = Math.max(0, left) + 'px'; m.style.top = Math.max(0, top) + 'px';
+        m.style.width = (right - Math.max(0, left)) + 'px'; m.style.height = (bottom - Math.max(0, top)) + 'px';
+      }, '#file-filter-btn', '#file-filter-menu', '#file-list tbody tr:nth-of-type(2)', 16);
+    },
+    clip: MARKER,
+    callouts: [
+      { n: 1, selector: '#file-filter-btn', place: 'l' },
+      { n: 2, selector: '#file-filter-menu .file-filter-item:nth-of-type(2)', place: 'r' },
+    ],
+    caption: 'The type menu above search results, with Folders',
+  },
+  // 2d. Sorted by Modified: the header carries the arrow.
+  {
+    id: 'search-sort',
+    theme: 'dark',
+    route: '#/files',
+    localStorage: MY,
+    width: 1100, height: 720,
+    setup: async (page) => {
+      await settle(page);
+      await page.eval(() => { const s = document.getElementById('global-search'); s.value = 'onboarding'; searchScope = 'contents'; runSearch({}); return true; });
+      await sleep(900);
+      await page.eval(() => { setSearchSort('modified'); return true; });
+      await sleep(300);
+    },
+    clip: { selector: '.file-library-table-wrap', pad: 16 },
+    callouts: [
+      { n: 1, selector: '#file-list thead th.file-col-name .file-col-sort', place: 'b' },
+      { n: 2, selector: '#file-list thead th.file-col-modified .file-col-sort', place: 'b' },
+    ],
+    caption: 'Results sorted by Modified, oldest first',
+  },
+  // 3. A plain-word question, typed in the search box and submitted with Enter, with
+  // the scope on Ask AI (the box searches by default now): "Ask the collection" opens.
   {
     id: 'ask-window',
     theme: 'dark',
@@ -119,6 +192,7 @@ module.exports = [
     localStorage: MY,
     setup: async (page) => {
       await settle(page);
+      await page.eval(() => { searchScope = 'ask'; renderSearchScope(); return true; });
       await page.click('#global-search');
       await page.type('What does the Northfield Clinic proposal cost?');
       await page.key('Enter');

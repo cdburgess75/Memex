@@ -48,7 +48,7 @@
     {
       "heading": "Filter, sort and change the view",
       "bullets": [
-        "Click **All types** and choose a type, such as **Images**, to show only those files.",
+        "Click **All types** and choose a type, such as **Images**, to show only those files, or **Folders** to show only the folders here.",
         "Click **Name**, **Size** or **Modified** at the top of the list to sort by it. Click again to reverse it.",
         "Drag the slider next to **Details** to the right for tiles, or to the left for a list."
       ]
