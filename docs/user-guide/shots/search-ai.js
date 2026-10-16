@@ -183,8 +183,8 @@ module.exports = [
     ],
     caption: 'Results sorted by Modified, oldest first',
   },
-  // 3. A plain-word question, typed in the search box and submitted with Enter:
-  // Auto recognises it as a question and opens "Ask the collection" itself.
+  // 3. A plain-word question, typed in the search box and submitted with Enter, with
+  // the scope on Ask AI (the box searches by default now): "Ask the collection" opens.
   {
     id: 'ask-window',
     theme: 'dark',
@@ -192,6 +192,7 @@ module.exports = [
     localStorage: MY,
     setup: async (page) => {
       await settle(page);
+      await page.eval(() => { searchScope = 'ask'; renderSearchScope(); return true; });
       await page.click('#global-search');
       await page.type('What does the Northfield Clinic proposal cost?');
       await page.key('Enter');

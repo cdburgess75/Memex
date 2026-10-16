@@ -16,10 +16,10 @@
       "heading": "Choose what you search",
       "shot": "search-scope",
       "steps": [
-        "Click the button next to the search box. It starts with **Auto**.",
-        "Choose **Auto** to search names and contents, or answer a question.",
-        "Choose **Contents** to search file names and what is inside files.",
-        "Choose **File names** to match file names only.",
+        "Click the button next to the search box. It starts with **Contents**.",
+        "Choose **Auto** to search, or to get an answer whenever what you type reads like a question.",
+        "Choose **Contents** to search file names and what is inside files, in every library you can open.",
+        "Choose **File names** to match file names only, in the library you are in.",
         "Choose **Ask AI** to treat everything you type as a question."
       ]
     },
@@ -51,7 +51,7 @@
     {
       "heading": "Ask a question",
       "text": [
-        "Type a full question in the search box and press Enter. For example: What does the Northfield Clinic proposal cost? A window called **Ask the collection** opens."
+        "Click the button next to the search box and choose **Ask AI**. Type a full question and press Enter. For example: What does the Northfield Clinic proposal cost? A window called **Ask the collection** opens."
       ],
       "shot": "ask-window",
       "steps": [
