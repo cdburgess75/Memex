@@ -159,6 +159,88 @@ async function removeMicrosoftIdp() {
   if (!r.ok && r.status !== 404) throw new Error(`Keycloak identity-provider delete failed (${r.status}).`);
 }
 
+/* ---------- The drive's sign-in client ---------- */
+
+// Depot opened as a drive on a computer (routes/dav.js, tools/depot-drive) signs people in
+// the way the website does -- the browser, Microsoft and all -- through the OAuth device
+// flow: the helper on the computer asks Keycloak for a code, opens the sign-in page, and
+// collects a token once the person has signed in there. That needs a public client of its
+// own with the device grant switched on; it has no redirect URIs, since nothing comes back
+// through a browser. The access tokens it issues verify like the website's (middleware/auth
+// checks the realm's keys, not the client), and carry the same email and name claims.
+// Made at startup (server/index.js), and kept as described here: idempotent.
+const DRIVE_CLIENT_ID = 'depot-drive';
+function driveClientRepresentation() {
+  return {
+    clientId: DRIVE_CLIENT_ID,
+    name: 'Depot Drive',
+    description: 'Depot opened as a drive on a computer. Signs people in through the browser, as the website does.',
+    protocol: 'openid-connect',
+    enabled: true,
+    publicClient: true,
+    consentRequired: false, // the device flow still asks "grant access to Depot Drive?" once per computer; nothing more
+    standardFlowEnabled: false,
+    implicitFlowEnabled: false,
+    directAccessGrantsEnabled: false,
+    serviceAccountsEnabled: false,
+    redirectUris: [],
+    webOrigins: [],
+    attributes: { 'oauth2.device.authorization.grant.enabled': 'true', 'oauth2.device.polling.interval': '5' },
+    protocolMappers: [
+      { name: 'email', protocol: 'openid-connect', protocolMapper: 'oidc-usermodel-attribute-mapper',
+        config: { 'userinfo.token.claim': 'true', 'user.attribute': 'email', 'id.token.claim': 'true', 'access.token.claim': 'true', 'claim.name': 'email', 'jsonType.label': 'String' } },
+      { name: 'full name', protocol: 'openid-connect', protocolMapper: 'oidc-full-name-mapper',
+        config: { 'id.token.claim': 'true', 'access.token.claim': 'true', 'userinfo.token.claim': 'true' } },
+    ],
+  };
+}
+async function ensureDriveClient() {
+  const token = await adminToken();
+  const cur = await kc(token, 'GET', `/clients?clientId=${encodeURIComponent(DRIVE_CLIENT_ID)}`);
+  if (!cur.ok) throw new Error(`Keycloak client lookup failed (${cur.status}).`);
+  const existing = (await cur.json())[0];
+  const rep = driveClientRepresentation();
+  let created = false;
+  if (existing) {
+    // The mappers were made with the client and carry ids now; sending them again
+    // without those ids would add a second copy of each.
+    const { protocolMappers, ...rest } = rep;
+    const r = await kc(token, 'PUT', `/clients/${existing.id}`, { ...rest, id: existing.id });
+    if (!r.ok) throw new Error(`Keycloak client update failed (${r.status}).`);
+  } else {
+    const r = await kc(token, 'POST', '/clients', rep);
+    if (!r.ok && r.status !== 409) throw new Error(`Keycloak client create failed (${r.status}).`);
+    created = r.status !== 409;
+  }
+  await ensureOfflineAccessDefault(token);
+  return { created };
+}
+
+// The drive asks for a sign-in that lasts (an "offline" token: it ends after 30 days unused,
+// or when the person is switched off, not when their browser session does). Keycloak gives
+// one only to a person holding the realm's offline_access role, which a realm imported
+// from a file does not put in its default role. Added to the default role, so everyone,
+// present and future, holds it. Idempotent: re-adding a composite is a no-op.
+async function ensureOfflineAccessDefault(token) {
+  const roleRes = await kc(token, 'GET', '/roles/offline_access');
+  if (!roleRes.ok) throw new Error(`Keycloak offline_access role lookup failed (${roleRes.status}).`);
+  const role = await roleRes.json();
+  const defRes = await kc(token, 'GET', `/roles/default-roles-${realmName()}`);
+  if (!defRes.ok) throw new Error(`Keycloak default-roles lookup failed (${defRes.status}).`);
+  const defRole = await defRes.json();
+  const addRes = await kc(token, 'POST', `/roles-by-id/${defRole.id}/composites`, [{ id: role.id, name: role.name }]);
+  if (!addRes.ok && addRes.status !== 409) throw new Error(`Keycloak offline_access grant failed (${addRes.status}).`);
+  // People who sign in through Microsoft or a directory are given the default role as they
+  // arrive. The install's seeded admin account came from the realm file instead, and
+  // Keycloak's import gives it no roles at all; so it is given the default role here.
+  const seeded = await kc(token, 'GET', '/users?username=admin&exact=true');
+  const adminUser = seeded.ok ? (await seeded.json())[0] : null;
+  if (adminUser?.id) {
+    const r = await kc(token, 'POST', `/users/${adminUser.id}/role-mappings/realm`, [{ id: defRole.id, name: defRole.name }]);
+    if (!r.ok && r.status !== 409) throw new Error(`Keycloak default-role grant to the seeded admin failed (${r.status}).`);
+  }
+}
+
 // Retrieve the signed-in user's stored Microsoft/Graph token from Keycloak's broker
 // endpoint, so a connector can call Graph AS that user (delegated). `userAuthHeader`
 // is the user's own Depot Authorization header (their Keycloak access token) — the
@@ -473,6 +555,9 @@ module.exports = {
   ensureLdapFederation,
   removeLdapFederation,
   testLdap,
+  ensureDriveClient,
+  driveClientRepresentation,
+  DRIVE_CLIENT_ID,
   MS_ALIAS,
   LDAP_NAME,
   SECRET_MASK,

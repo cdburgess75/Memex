@@ -162,6 +162,7 @@ app.get('/api/config', async (req, res) => {
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
+    driveClientId: require('./lib/keycloakAdmin').DRIVE_CLIENT_ID, // what tools/depot-drive signs in as
     version: VERSION,
     editingEnabled,
     defaultOfficeOpen,
@@ -324,6 +325,21 @@ async function start() {
       .then(() => guide.tidy({ log: guideLog }))
       .then((r) => { if (r.wordRemoved || r.pdfUpdated || r.changedKept || r.failed) console.log(`[startup] getting-started guide: removed ${r.wordRemoved} Word copies, updated ${r.pdfUpdated} PDFs to the current edition, left ${r.changedKept} changed copies alone${r.failed ? `, ${r.failed} failed` : ''}`); })
       .catch((e) => console.error('[startup] getting-started guide tidy failed:', e.message));
+    // The drive's sign-in client in Keycloak (lib/keycloakAdmin ensureDriveClient). Keycloak
+    // is often still starting when the app is up, so this keeps trying for ten minutes
+    // before giving up until the next start. Nothing waits on it.
+    if (process.env.KEYCLOAK_ADMIN_PASSWORD) {
+      (function ensureDriveClient(attempt) {
+        require('./lib/keycloakAdmin').ensureDriveClient()
+          .then((r) => { if (r.created) console.log('[startup] drive sign-in client made in Keycloak'); })
+          .catch((e) => {
+            if (attempt < 20) setTimeout(() => ensureDriveClient(attempt + 1), 30000).unref();
+            else console.error('[startup] the drive sign-in client could not be made in Keycloak:', e.message);
+          });
+      })(1);
+    } else {
+      console.log('[startup] no Keycloak admin password in the environment, so the drive sign-in client is not managed here');
+    }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
