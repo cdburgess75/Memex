@@ -26,7 +26,7 @@ function menu({ libraries, current = null, pinned = [], recent = [], role = 'adm
     librariesList: libraries, currentLibraryId: current, pinnedLibraryIds: new Set(pinned.map(String)),
     currentUser: { id: 'me', role },
     localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
-    canShareLibrary: () => false, currentLibrary: () => libraries.find(l => String(l.id) === String(current)) || null,
+    canShareLibrary: () => false, navIcon: () => '', currentLibrary: () => libraries.find(l => String(l.id) === String(current)) || null,
     LIBRARY_PILL: { rw: 'Read-Write', r: 'Read-only', folders: 'Folders' },
     libraryMenuRow: (l) => `<button class="library-menu-item" data-row="${l.id}">${l.name}</button>`,
     store,
