@@ -48,7 +48,23 @@ Dates are `YYYY-MM-DD` and last through the end of that day, UTC.
 
 A read-only server still signs people in and lets them browse, download, and use share links. Nobody is ever locked away from their files.
 
-This release records and reports the state (Software update, `GET /api/license`, `GET /api/v1/admin/license`). Warnings and enforcement follow in later releases.
+Today the state is recorded, reported (Software update, `GET /api/license`, `GET /api/v1/admin/license`) and warned about. Enforcement follows in a later release.
+
+## Warnings
+
+A minute after boot and once a day after that, the server evaluates its license and tells every administrator who is not switched off when something needs doing, once per step:
+
+| When | Notice |
+|------|--------|
+| 30, 14, 7 and 1 days before `expires`, and on the day | term ends in N days |
+| the day after `expires` | term ended; read-only from the grace end |
+| the day after the grace period | read-only until renewed |
+| any `unlicensed` state | no valid license, with the reason |
+| good standing after any of the above | renewed, nothing to do |
+
+Each notice is an in-app notification and an email to the administrator's address. ParaTech ops is an administrator on every managed box, so it receives the same notices. Administrators also see a banner in the app while the license needs attention; Details opens Software update. State changes and notices are written to the audit log as `license_state_changed` and `license_notice`.
+
+`scripts/depot-check.sh` reports `license=ok`, `license=expiring:12d`, `license=lapsed`, `license=readonly` or `license=invalid:<reason>`. Expiring inside 14 days is WARN; lapsed, read-only or not accepted is CRIT.
 
 ## Checking a server
 

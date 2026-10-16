@@ -332,6 +332,9 @@ async function start() {
     // Periodically hard-delete trashed documents past the retention window.
     try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
     catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
+    // Once a day: tell the administrators when the license needs attention.
+    try { require('./lib/licenseWatch').start(); console.log('[startup] license watch armed'); }
+    catch (e) { console.error('[startup] license watch failed:', e.message); }
     // Decide CSP enforcement once, now that settings are reachable. Enforce the strict
     // policy only on a self-contained deployment — local storage (previews stream
     // same-origin), Collabora proxied through the app (no collabora_url), and no
