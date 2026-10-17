@@ -3,6 +3,7 @@
 // scripts, no outside styles, so it renders under the same-origin content policy and can
 // be read by anyone who wants to write against the API.
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const { spec } = require('../lib/openapi');
 
@@ -26,18 +27,36 @@ const schemaText = (s) => {
   return [s.type, s.format, s.enum ? `one of ${s.enum.join(', ')}` : '', s.nullable ? 'or null' : ''].filter(Boolean).join(' ');
 };
 
-// Depot as a drive (routes/dav.js): how to connect from each kind of computer.
+// Depot as a drive (routes/dav.js, tools/depot-drive): how to connect from each kind of computer.
 function driveSection(origin) {
-  const url = `${origin}/dav/`;
+  const o = esc(origin);
   return `<section id="drive"><h2>Connect as a drive</h2>
-<p>Depot can be opened as a drive on a computer, through WebDAV at <code>${esc(url)}</code>. Each library you can open is a folder at the top; inside are its folders and files, as on the website. Sign in with an API token as the <strong>password</strong> (the username is not used; give your email). A read-only token gives a read-only drive. With a read-and-write token, saving over a file keeps what it held as a version, and deleting a file sends it to the Trash, as on the website.</p>
-<p><strong>rclone</strong> (Windows, Mac and Linux; free) keeps a copy of what you open on your computer, so files open quickly and work while offline. Install it from rclone.org (Windows needs WinFsp and Mac needs macFUSE too, as rclone's mount page says), then make the connection once and mount it:</p>
-<pre><code>rclone config create depot webdav url=${esc(url)} vendor=other user=you@example.com pass=depot_YOUR_TOKEN --obscure
-rclone mount depot: ~/Depot --vfs-cache-mode full</code></pre>
-<p>On Windows, mount to a drive letter instead: <code>rclone mount depot: D: --vfs-cache-mode full</code>. The folder appears while the command runs; rclone's documentation covers starting it at sign-in.</p>
-<p>Without installing anything, and without a local copy, the built-in clients also work: on a Mac, Finder › Go › Connect to Server › <code>${esc(url)}</code>; on Windows, Explorer › Map network drive › <code>${esc(url)}</code> (Windows refuses files over 50 MB there and is slow); on Linux, a file manager's <code>davs://${esc(url.replace(/^https?:\/\//, ''))}</code>.</p>
-<p>Not on the drive: the Trash, versions, links and sharing, which stay on the website. A computer's own housekeeping files (.DS_Store, Thumbs.db, Office's ~$ files) are accepted and discarded. A name Depot would change (one with &amp;, parentheses or accents, say) is refused rather than stored under another name.</p>
+<p>Depot can be opened as a drive on a computer. Each library you can open is a folder at the top; inside are its folders and files, as on the website. You sign in the way you do on the website, Microsoft included; nothing is typed into a password box. What you do on the drive is done as you, with your rights there: saving over a file keeps what it held as a version, and deleting a file sends it to the Trash.</p>
+<p>The drive is <strong>rclone</strong> (free, from <a href="https://rclone.org/install/">rclone.org</a>), which keeps a copy of what you open on your computer so files open quickly and work while offline, plus a small helper, <code>depot-drive</code>, that handles the sign-in for it.</p>
+<p class="k">Mac</p>
+<p>Install rclone (from rclone.org, or <code>brew install rclone</code>), then in Terminal:</p>
+<pre><code>mkdir -p ~/.local/bin &amp;&amp; curl -fsSL ${o}/api/docs/depot-drive.sh -o ~/.local/bin/depot-drive &amp;&amp; chmod +x ~/.local/bin/depot-drive
+~/.local/bin/depot-drive setup ${o}
+~/.local/bin/depot-drive mount</code></pre>
+<p>A browser window opens: sign in as you do on the website, then answer <strong>Yes</strong> to "Grant access to Depot Drive". Depot then appears in Finder at <code>~/Depot</code> for as long as the last command runs (Ctrl-C closes the drive).</p>
+<p class="k">Windows</p>
+<p>Install rclone (from rclone.org) and <a href="https://winfsp.dev">WinFsp</a>, then in PowerShell:</p>
+<pre><code>irm ${o}/api/docs/depot-drive.ps1 -OutFile "$env:USERPROFILE\\depot-drive.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\\depot-drive.ps1" setup ${o}
+powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\\depot-drive.ps1" mount</code></pre>
+<p>Depot appears as the next free drive letter while the last command runs.</p>
+<p class="k">Linux</p>
+<p>As on a Mac, with rclone and <code>fuse3</code> from your distribution.</p>
+<p>The helper keeps your sign-in (in the Keychain on a Mac; encrypted to your Windows account) and renews it on its own. It ends after 30 days unused, or when an administrator switches you off; <code>depot-drive signout</code> forgets it. To open the drive at every sign-in, rclone's documentation covers running a mount at login. A computer's own housekeeping files (.DS_Store, Thumbs.db, Office's ~$ files) are accepted and discarded. A name Depot would change (one with &amp;, parentheses or accents, say) is refused rather than stored under another name. Not on the drive: the Trash, versions, links and sharing, which stay on the website.</p>
 </section>`;
+}
+
+// The helper itself, for the instructions above.
+const TOOLS = path.join(__dirname, '..', '..', 'tools', 'depot-drive');
+for (const name of ['depot-drive.sh', 'depot-drive.ps1']) {
+  router.get(`/${name}`, (_req, res) => {
+    res.sendFile(path.join(TOOLS, name), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-cache' } });
+  });
 }
 
 function page(origin) {
