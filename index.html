@@ -6301,7 +6301,7 @@ let apiTokensList = [], apiTokenJustMade = null, apiTokensBusy = false, apiToken
 function tokensSettingsHtml() {
   const admin = currentUser?.role === 'admin';
   return `<div class="settings-sub">API tokens</div>
-    <p class="settings-notice">A token lets a script or another system use Depot as you, through the <a href="/api/docs" target="_blank" rel="noopener">API</a>. It can do no more than you can, and only what its scope allows: <strong>read only</strong> lists, searches and downloads; <strong>read and write</strong> also adds, changes, deletes and shares${admin ? '; <strong>admin</strong> also does what the Admin page does' : ''}. Everything a token changes shows in the activity log under your name, marked with the token's name. Revoke a token and it stops working at once.</p>
+    <p class="settings-notice">A token lets a script or another system use Depot as you, through the <a href="/api/docs" target="_blank" rel="noopener">API</a>. It can do no more than you can, and only what its scope allows: <strong>read only</strong> lists, searches and downloads; <strong>read and write</strong> also adds, changes, deletes and shares${admin ? '; <strong>admin</strong> also does what the Admin page does' : ''}. Everything a token changes shows in the activity log under your name, marked with the token's name. Revoke a token and it stops working at once. New to the API? <a href="/api/docs/guide" target="_blank" rel="noopener">Using the Depot API</a> walks through the first steps, with samples to copy.</p>
     <div id="api-tokens-body"><p class="settings-notice">Loading…</p></div>`;
 }
 function apiTokenWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
@@ -6353,7 +6353,7 @@ function renderApiTokens() {
     </div>`;
   el.innerHTML = reveal + create + (apiTokensList.length
     ? `<div class="settings-sub">Your tokens</div>${apiTokensList.map(t => apiTokenRowHtml(t)).join('')}`
-    : '<p class="settings-notice">You have no tokens yet. Make one above, then read the <a href="/api/docs" target="_blank" rel="noopener">API reference</a> to see what it can do.</p>');
+    : '<p class="settings-notice">You have no tokens yet. Make one above, then read <a href="/api/docs/guide" target="_blank" rel="noopener">Using the Depot API</a> for the first steps, or the <a href="/api/docs" target="_blank" rel="noopener">reference</a> for everything it can do.</p>');
 }
 async function createApiToken() {
   if (apiTokensBusy) return;
