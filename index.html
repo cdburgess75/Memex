@@ -939,6 +939,8 @@ html.dark .chip { color: var(--accent-soft); }
   box-shadow: var(--shadow), 0 12px 32px rgba(0,0,0,0.18);
 }
 .reload-banner .run-btn { padding: 6px 14px; font-size: 13px; }
+.reload-banner.license-notice { border-left: 4px solid var(--warning); max-width: min(92vw, 760px); }
+.reload-banner.license-notice.danger { border-left-color: var(--danger); }
 .reload-x { border: 0; background: transparent; color: var(--ink-soft); font-size: 15px; cursor: pointer; padding: 4px; border-radius: 6px; }
 .reload-x:hover { background: var(--accent-wash); color: var(--ink); }
 .activity-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
@@ -4887,9 +4889,51 @@ function refreshUpdateAction() {
 
 // ---- Licensed update (admins only) ----
 async function loadLicenseStatus() {
-  if (currentUser?.role !== 'admin') { licenseStatus = null; return; }
+  if (currentUser?.role !== 'admin') { licenseStatus = null; licenseNoticeRefresh(); return; }
   try { licenseStatus = await apiGet('/license'); } catch { licenseStatus = null; }
   updateCtaRefresh(latestUpdateInfo);
+  licenseNoticeRefresh();
+}
+// What is wrong with a license that was not accepted, in a sentence.
+function licenseProblem(lic) {
+  const why = {
+    no_public_key: 'This server trusts no license key.',
+    no_license: 'No license file is installed on this server.',
+    bad_signature: 'The license signature is not valid.',
+    unknown_kid: 'The license was signed with a key this server does not trust.',
+    domain_mismatch: 'The license was issued for a different address than this server\'s.',
+    serial_regressed: 'The license is older than one this server has already seen.',
+    serial_mismatch: 'The license belongs to a different installation.',
+    bad_payload: 'The license file is not well formed.',
+  };
+  return why[lic?.stateReason] || 'The license signature is not valid.';
+}
+// The banner administrators see while the license needs attention. One line, a
+// Details button that opens Software update, and a dismiss that lasts the session.
+function licenseNoticeText(lic) {
+  const graceDay = esc(String(lic.graceEnds || '').slice(0, 10));
+  if (lic.state === 'expiring') return `Depot's license term ends ${lic.daysLeft === 0 ? 'today' : `in ${lic.daysLeft} day${lic.daysLeft === 1 ? '' : 's'}`} (${esc(lic.expires || '')}). Renew to keep updates and new accounts.`;
+  if (lic.state === 'lapsed') return `Depot's license term ended ${esc(lic.expires || '')}. Renew before ${graceDay}.`;
+  if (lic.state === 'readonly') return `Depot's license grace period ended ${graceDay}. Renew the license.`;
+  if (lic.state === 'unlicensed') return `Depot has no valid license on this server. ${licenseProblem(lic)}`;
+  return '';
+}
+function licenseNoticeKey(lic) { return lic ? `${lic.state}:${lic.stateReason || ''}:${lic.daysLeft ?? ''}` : ''; }
+function licenseNoticeRefresh() {
+  document.getElementById('license-notice')?.remove();
+  const lic = licenseStatus;
+  if (currentUser?.role !== 'admin' || !lic || !['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state)) return;
+  let dismissed = null;
+  try { dismissed = sessionStorage.getItem('memex_license_notice_dismissed'); } catch { /* storage off */ }
+  if (dismissed === licenseNoticeKey(lic)) return;
+  const text = licenseNoticeText(lic);
+  if (!text) return;
+  const danger = lic.state === 'readonly' || lic.state === 'unlicensed';
+  document.body.insertAdjacentHTML('beforeend', `<div id="license-notice" class="reload-banner license-notice${danger ? ' danger' : ''}" role="status">${text}<button class="run-btn" type="button" onclick="openUpdateModal()">Details</button><button class="reload-x" type="button" aria-label="Dismiss" onclick="dismissLicenseNotice()">✕</button></div>`);
+}
+function dismissLicenseNotice() {
+  try { sessionStorage.setItem('memex_license_notice_dismissed', licenseNoticeKey(licenseStatus)); } catch { /* storage off */ }
+  document.getElementById('license-notice')?.remove();
 }
 // Show the header "Update" call-to-action only when an admin is on an out-of-date
 // build AND the deployment's license entitles updates. Everyone else, and any
@@ -4909,7 +4953,7 @@ async function openUpdateModal() {
   let ver = latestUpdateInfo, lic = licenseStatus;
   try { ver = await apiGet('/version/check'); } catch { /* keep cached */ }
   try { lic = await apiGet('/license'); } catch { /* keep cached */ }
-  latestUpdateInfo = ver; licenseStatus = lic; updateCtaRefresh(ver);
+  latestUpdateInfo = ver; licenseStatus = lic; updateCtaRefresh(ver); licenseNoticeRefresh();
   renderUpdateModal(ver, lic);
 }
 function closeUpdateModal() { closeModal('update-scrim'); }
@@ -4918,15 +4962,7 @@ function closeUpdateModal() { closeModal('update-scrim'); }
 function licenseSummary(lic) {
   if (!lic || !lic.configured) return 'No license is configured on this server.';
   if (!lic.present) return 'No license file found on this server.';
-  const why = {
-    bad_signature: 'The license signature is not valid.',
-    unknown_kid: 'The license was signed with a key this server does not trust.',
-    domain_mismatch: 'The license was issued for a different address than this server\'s.',
-    serial_regressed: 'The license is older than one this server has already seen.',
-    serial_mismatch: 'The license belongs to a different installation.',
-    bad_payload: 'The license file is not well formed.',
-  };
-  if (!lic.valid || lic.accepted === false) return why[lic.stateReason] || 'The license signature is not valid.';
+  if (!lic.valid || lic.accepted === false) return licenseProblem(lic);
   const who = esc(lic.customer || 'this customer');
   const until = lic.updatesUntil ? esc(lic.updatesUntil) : null;
   if (lic.version !== 2) {

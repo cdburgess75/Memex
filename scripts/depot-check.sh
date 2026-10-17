@@ -4,7 +4,7 @@
 #
 #   Exit 0 = OK, 1 = WARN, 2 = CRIT (worst finding wins) — Nagios-compatible.
 #   Output is exactly one status line:
-#     DEPOT OK healthz=ok backup_age_h=11 backup=ok disk_root=41% disk_docs=37% \
+#     DEPOT OK healthz=ok backup_age_h=11 backup=ok license=ok disk_root=41% disk_docs=37% \
 #       cert_days=62 version=v2026.08.20.001 expected=match wan_ip=match ts=online
 #   When not OK, a reasons=… field names every failing check.
 #
@@ -79,6 +79,25 @@ else
   elif [ "$AGE_H" -ge "$CRIT_H" ]; then flag 2 backup_stale "backup=stale"
   elif [ "$AGE_H" -ge "$WARN_H" ]; then flag 1 backup_late "backup=late"
   else field "backup=ok"; fi
+fi
+
+# ---- 2b. license: accepted, and where in its term (docs/LICENSING.md) ---------
+# The app evaluates its own license; this reads the answer. Four words: accepted
+# yes/no, state, days left (- when perpetual), reason. expiring inside 14 days
+# is WARN; lapsed, read-only or not accepted is CRIT.
+LIC_RAW="$(cd "$MEMEX_ROOT" 2>/dev/null && timeout 15 docker compose $COMPOSE exec -T app \
+  node -e 'require("./server/lib/license").status().then(s=>console.log([s.accepted?"yes":"no",s.state||"",s.daysLeft==null?"-":s.daysLeft,s.stateReason||""].join(" "))).catch(()=>process.exit(1))' 2>/dev/null | tail -1 || true)"
+read -r LIC_OK LIC_STATE LIC_DAYS LIC_WHY <<<"$LIC_RAW"
+if [ -z "$LIC_RAW" ]; then flag 1 license_unknown "license=unknown"
+elif [ "$LIC_OK" != "yes" ]; then flag 2 license_invalid "license=invalid:${LIC_WHY:-?}"
+else
+  case "$LIC_STATE" in
+    ok) field "license=ok" ;;
+    expiring) if [ "${LIC_DAYS:-99}" -lt 14 ]; then flag 1 license_expiring "license=expiring:${LIC_DAYS}d"; else field "license=expiring:${LIC_DAYS}d"; fi ;;
+    lapsed) flag 2 license_lapsed "license=lapsed" ;;
+    readonly) flag 2 license_readonly "license=readonly" ;;
+    *) flag 1 license_unknown "license=${LIC_STATE:-unknown}" ;;
+  esac
 fi
 
 # ---- 3. disk: root filesystem + document store --------------------------------
