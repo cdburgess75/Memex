@@ -64,6 +64,29 @@ async function setRealmDisplayName(name) {
   return { displayName: display };
 }
 
+/* ---------- How long a sign-in lasts ---------- */
+
+// Keycloak's SSO session is what keeps a person signed in: the SPA renews its access
+// token with the refresh token for as long as the session lives, then shows the sign-in
+// card. Idle and maximum are set to the same length, so the rule stays one sentence,
+// "everyone signs in again after N hours". Keycloak holds the value (set here, or by
+// kcadm on the box), so it is read back from the realm rather than kept in Depot.
+async function getSessionLength() {
+  const token = await adminToken();
+  const r = await kc(token, 'GET', '');
+  if (!r.ok) throw new Error(`Keycloak realm read failed (${r.status}).`);
+  const realm = await r.json();
+  return { idleSeconds: Number(realm.ssoSessionIdleTimeout) || 0, maxSeconds: Number(realm.ssoSessionMaxLifespan) || 0 };
+}
+async function setSessionLength(seconds) {
+  const s = Math.round(Number(seconds));
+  if (!Number.isFinite(s) || s < 600) throw new Error('A sign-in must last at least ten minutes.');
+  const token = await adminToken();
+  const r = await kc(token, 'PUT', '', { realm: realmName(), ssoSessionIdleTimeout: s, ssoSessionMaxLifespan: s });
+  if (!r.ok) throw new Error(`Keycloak session-length update failed (${r.status}).`);
+  return { idleSeconds: s, maxSeconds: s };
+}
+
 /* ---------- Microsoft 365 sign-in (OIDC identity provider) ---------- */
 
 // Delegated Microsoft Graph scopes requested at brokered login when graph
@@ -543,6 +566,8 @@ async function testLdap({ connectionUrl, bindDn, bindCredential }) {
 module.exports = {
   adminToken,
   setRealmDisplayName,
+  getSessionLength,
+  setSessionLength,
   setLocalTotpRequirement,
   ensureMicrosoftIdp,
   validateMsClientSecret,

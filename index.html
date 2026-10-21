@@ -5843,6 +5843,35 @@ async function saveMs365Login(enable) {
     } else _signinResult('cfg-ms365-result', false, (r.error || 'Failed') + (r.hint ? ' — ' + r.hint : ''));
   } catch (e) { _signinResult('cfg-ms365-result', false, e.message); }
 }
+/* How long a sign-in lasts (Keycloak's SSO session, idle = maximum). The list is the one
+   /setup/session-length accepts; a length set another way (kcadm) is shown as it is. */
+const SESSION_HOUR_CHOICES = [[10, '10 hours'], [24, '1 day'], [168, '1 week'], [336, '2 weeks'], [720, '30 days']];
+function sessionHoursLabel(h) { return SESSION_HOUR_CHOICES.find(([v]) => v === h)?.[1] || (h % 24 === 0 ? `${h / 24} days` : `${h} hours`); }
+async function loadSessionLength() {
+  const sel = document.getElementById('cfg-session-hours');
+  if (!sel) return;
+  try {
+    const r = await apiGet('/setup/session-length');
+    if (!r.ok) throw new Error(r.error || 'Could not read it from Keycloak');
+    const choices = SESSION_HOUR_CHOICES.some(([v]) => v === r.hours) ? SESSION_HOUR_CHOICES : [[r.hours, sessionHoursLabel(r.hours) + ' (set in Keycloak)'], ...SESSION_HOUR_CHOICES];
+    sel.innerHTML = choices.map(([v, label]) => `<option value="${v}"${v === r.hours ? ' selected' : ''}>${esc(label)}</option>`).join('');
+    sel.disabled = false;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Not available</option>';
+    _signinResult('cfg-session-result', false, e.message);
+  }
+}
+async function saveSessionLength() {
+  const sel = document.getElementById('cfg-session-hours');
+  const hours = Number(sel?.value);
+  if (!hours) return;
+  _signinResult('cfg-session-result', true, '…');
+  try {
+    const r = await apiPost('/setup/session-length', { hours });
+    if (r.ok) _signinResult('cfg-session-result', true, `Saved. Everyone signs in again after ${sessionHoursLabel(r.hours)}, from their next sign-in.`);
+    else _signinResult('cfg-session-result', false, r.error || 'Failed');
+  } catch (e) { _signinResult('cfg-session-result', false, e.message); }
+}
 function _ldapBody(action) {
   return {
     action,
@@ -6208,7 +6237,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'activity' && admin) { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
   else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); loadAdminTokens(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
-  else if (tab === 'signin') body.innerHTML = systemSections('Sign-in methods');
+  else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'How long a sign-in lasts'); loadSessionLength(); }
   else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
   body.scrollTop = 0;
@@ -7333,6 +7362,17 @@ function systemSettingsHtml() {
         <button class="ghost-btn" onclick="saveLdapLogin('enable')">Enable / update</button>
         <button class="ghost-btn" onclick="saveLdapLogin('disable')">Disable</button>
         <span class="setup-result" id="cfg-ldap-result"></span>
+      </div>
+
+      <div class="settings-sub" style="margin-top:20px">How long a sign-in lasts</div>
+      <p class="settings-notice">Everyone is asked to sign in again after this long, on every computer and phone, however they sign in. A change applies from the next sign-in; people already signed in keep their current session until it ends. If someone told Microsoft to keep them signed in, Microsoft 365 may sign them straight back in without asking for a password.</p>
+      <div class="settings-grid">
+        <label for="cfg-session-hours">Sign in again after</label>
+        <select id="cfg-session-hours" disabled><option value="">Loading…</option></select>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <button class="ghost-btn" type="button" onclick="saveSessionLength()">Save</button>
+        <span class="setup-result" id="cfg-session-result"></span>
       </div>
 
       <div class="settings-sub" style="margin-top:20px">Calls (video / audio)</div>
