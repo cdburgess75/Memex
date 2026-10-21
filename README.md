@@ -202,7 +202,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ### Public API surface
 
-Scripts and other systems use the versioned API at `/api/v1` with a personal access token, made in-app under Settings › API tokens (contributors and admins; scope read, write or admin; revocable, optional expiry). The reference is served by every Depot at `/api/docs`, and the OpenAPI description at `/api/v1/openapi.json`. Version 1 only grows; a breaking change would ship as `/api/v2`.
+Scripts and other systems use the versioned API at `/api/v1` with a personal access token, made in-app under Settings › API tokens (contributors and admins; scope read, write or admin; revocable, optional expiry). A plain-language guide with curl and PowerShell samples is served by every Depot at `/api/docs/guide`, the reference at `/api/docs`, and the OpenAPI description at `/api/v1/openapi.json`. Version 1 only grows; a breaking change would ship as `/api/v2`.
 
 ```bash
 # Who the token acts as
