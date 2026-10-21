@@ -452,6 +452,8 @@ exports.routes = {
   'GET /api/webrtc/ice': { iceServers: [{ urls: ['stun:turn.acme.example:3478'] }], screenconnectUrl: '' },
   // Fictional model names on purpose: the guide's screenshots must never show a real AI
   // vendor's product name (the scope button in the top bar renders this as "Auto · <model>").
+  'GET /api/setup/session-length': { ok: true, hours: 10, idleHours: 10, choices: [10, 24, 168, 336, 720] },
+  'POST /api/setup/session-length': ({ body }) => ({ ok: true, hours: Number(body.hours) || 10 }),
   'GET /api/ai/models': { active: 'depot:assistant', models: ['assistant-large', 'assistant', 'assistant-mini'].map(id => ({ provider: 'depot', id, label: id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' '), group: 'Depot AI' })) },
   'PUT /api/ai/active': ({ body }) => ({ active: body.model || 'depot:assistant' }),
   'POST /api/ai/query': ({ res, body }) => streamAnswer(res, `Here is what I found in your files about "${String(body.question || '').slice(0, 80)}".\n\nThe Northfield Clinic proposal sets out a 16-week project: online intake forms first (weeks 3 to 6), then booking connected to the clinic's scheduling system, then a searchable records archive and staff training. The total is $52,000, paid in four milestones.\n\nSources: Northfield Clinic proposal.docx, Northfield Clinic service agreement.pdf`),

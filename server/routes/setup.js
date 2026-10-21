@@ -292,6 +292,28 @@ router.post('/login-ms365', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
+// How long a sign-in lasts. GET reads it from Keycloak; POST sets it, in hours, from the
+// short list the Settings screen offers (idle and maximum the same, see
+// lib/keycloakAdmin.setSessionLength). Kept out of the public API like the other sign-in
+// settings. The chosen value is also noted as a setting, so the audit trail shows who
+// changed it and when; Keycloak stays the source of truth.
+const SESSION_HOURS = [10, 24, 168, 336, 720];
+router.get('/session-length', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const { idleSeconds, maxSeconds } = await kcAdmin.getSessionLength();
+    res.json({ ok: true, hours: Math.round(maxSeconds / 3600), idleHours: Math.round(idleSeconds / 3600), choices: SESSION_HOURS });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+router.post('/session-length', auth, requireRole('admin'), async (req, res) => {
+  const hours = Number(req.body.hours);
+  if (!SESSION_HOURS.includes(hours)) return res.json({ ok: false, error: `Choose one of: ${SESSION_HOURS.join(', ')} hours.` });
+  try {
+    await kcAdmin.setSessionLength(hours * 3600);
+    await settings.set('login_session_hours', String(hours), req.user.id);
+    res.json({ ok: true, hours });
+  } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
 // POST /api/setup/login-ldap — enable/update/disable/test Active Directory sign-in
 // (Keycloak LDAP user federation, AD vendor defaults, read-only binds). The bind
 // credential also lives only in Keycloak.

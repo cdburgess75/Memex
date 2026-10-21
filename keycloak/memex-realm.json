@@ -5,6 +5,8 @@
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "sslRequired": "external",
+  "ssoSessionIdleTimeout": 36000,
+  "ssoSessionMaxLifespan": 36000,
   "bruteForceProtected": true,
   "permanentLockout": false,
   "failureFactor": 30,
