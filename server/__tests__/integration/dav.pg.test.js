@@ -171,6 +171,14 @@ suite('Depot as a drive (WebDAV at /dav)', () => {
     expect((await dav(tokens.write).propfind('/Projects/Reports/.DS_Store', '0')).status).toBe(404);
     expect((await dav(tokens.write).delete('/Projects/Reports/.DS_Store')).status).toBe(204);
     expect((await dav(tokens.write).put('/Projects/Reports/.keep', Buffer.from(''))).status).toBe(403);
+    // at the top of the drive too, where there is no library to hold them (Finder does this)
+    expect((await dav(tokens.write).put('/.DS_Store', Buffer.from('junk'))).status).toBe(201);
+    expect((await dav(tokens.write).put('/._.DS_Store', Buffer.from('junk'))).status).toBe(201);
+    expect((await dav(tokens.write).mkcol('/.Trashes')).status).toBe(201);
+    expect((await dav(tokens.write).propfind('/.DS_Store', '0')).status).toBe(404);
+    expect((await dav(tokens.write).delete('/.DS_Store')).status).toBe(204);
+    expect((await dav(tokens.write).put('/Nowhere/file.txt', Buffer.from('x'))).status).toBe(404); // a real name that is no library stays a 404
+    expect(await db.queryOne(`SELECT count(*)::int AS n FROM documents WHERE name LIKE '%DS_Store%'`)).toEqual({ n: 0 });
   });
 
   test('a name Depot would change is refused, not stored under another name', async () => {

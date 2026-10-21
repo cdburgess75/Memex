@@ -492,7 +492,18 @@ router.use(async (req, res) => {
     }
     const libs = await driveLibraries(req.user);
     const t = await resolve(req.user, req.path, libs);
-    if (!t) { await drain(req); return res.status(404).json({ error: 'No such library on this drive' }); }
+    if (!t) {
+      await drain(req);
+      // Finder and Windows write their housekeeping files at the top of the drive too, where
+      // no library can hold them: accepted and discarded there as everywhere else, or rclone
+      // would retry the write for ever.
+      let name = ''; try { name = decodeURIComponent(req.path); } catch { /* not a path */ }
+      if (isJunk(name)) {
+        if (req.method === 'PUT' || req.method === 'MKCOL') return res.status(201).end();
+        if (req.method === 'DELETE') return res.status(204).end();
+      }
+      return res.status(404).json({ error: 'No such library on this drive' });
+    }
     switch (req.method) {
       case 'PROPFIND':
         if (t.kind === 'missing') { await drain(req); return res.status(404).json({ error: 'Not found' }); }
