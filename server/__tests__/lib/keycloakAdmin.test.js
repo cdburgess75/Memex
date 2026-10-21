@@ -189,6 +189,66 @@ describe('setLocalTotpRequirement — TOTP for local accounts only', () => {
   });
 });
 
+describe('ensureDriveClient — the drive signs in through the device flow', () => {
+  // After the client: the offline_access role, the realm's default role, the composite
+  // added, the seeded admin looked up and given the default role.
+  const offlineGrant = [{ status: 200, json: { id: 'r-off', name: 'offline_access' } }, { status: 200, json: { id: 'r-def', name: 'default-roles-memex' } }, { status: 204 },
+    { status: 200, json: [{ id: 'u-admin', username: 'admin' }] }, { status: 204 }];
+
+  test('makes a public client with the device grant on, no redirect URIs, no consent page, and the website\'s claims', async () => {
+    mockFetch([tokenResponse, { status: 200, json: [] }, { status: 201 }, ...offlineGrant]);
+    const r = await kcAdmin.ensureDriveClient();
+    expect(r).toEqual({ created: true });
+    expect(calls[1].url).toBe('http://keycloak:8080/admin/realms/memex/clients?clientId=depot-drive');
+    expect(calls[2].method).toBe('POST');
+    expect(calls[2].url).toBe('http://keycloak:8080/admin/realms/memex/clients');
+    const rep = jsonBody(calls[2]);
+    expect(rep).toMatchObject({ clientId: 'depot-drive', publicClient: true, consentRequired: false, standardFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: false, redirectUris: [] });
+    expect(rep.attributes['oauth2.device.authorization.grant.enabled']).toBe('true');
+    expect(rep.protocolMappers.map(m => m.name).sort()).toEqual(['email', 'full name']);
+    expect(kcAdmin.DRIVE_CLIENT_ID).toBe('depot-drive');
+  });
+
+  test('gives everyone the offline_access role through the realm\'s default role, so sign-ins last', async () => {
+    mockFetch([tokenResponse, { status: 200, json: [] }, { status: 201 }, ...offlineGrant]);
+    await kcAdmin.ensureDriveClient();
+    expect(calls[3].url).toBe('http://keycloak:8080/admin/realms/memex/roles/offline_access');
+    expect(calls[4].url).toBe('http://keycloak:8080/admin/realms/memex/roles/default-roles-memex');
+    expect(calls[5].method).toBe('POST');
+    expect(calls[5].url).toBe('http://keycloak:8080/admin/realms/memex/roles-by-id/r-def/composites');
+    expect(jsonBody(calls[5])).toEqual([{ id: 'r-off', name: 'offline_access' }]);
+    // the seeded admin, which the realm import left without the default role
+    expect(calls[6].url).toBe('http://keycloak:8080/admin/realms/memex/users?username=admin&exact=true');
+    expect(calls[7].method).toBe('POST');
+    expect(calls[7].url).toBe('http://keycloak:8080/admin/realms/memex/users/u-admin/role-mappings/realm');
+    expect(jsonBody(calls[7])).toEqual([{ id: 'r-def', name: 'default-roles-memex' }]);
+    // already there, or no seeded admin: not an error
+    calls = [];
+    mockFetch([tokenResponse, { status: 200, json: [] }, { status: 201 }, offlineGrant[0], offlineGrant[1], { status: 409 }, { status: 200, json: [] }]);
+    expect(await kcAdmin.ensureDriveClient()).toEqual({ created: true });
+    expect(calls.length).toBe(7);
+  });
+
+  test('brings an existing client up to date without duplicating its mappers', async () => {
+    mockFetch([tokenResponse, { status: 200, json: [{ id: 'c-1', clientId: 'depot-drive', attributes: {} }] }, { status: 204 }, ...offlineGrant]);
+    const r = await kcAdmin.ensureDriveClient();
+    expect(r).toEqual({ created: false });
+    expect(calls[2].method).toBe('PUT');
+    expect(calls[2].url).toBe('http://keycloak:8080/admin/realms/memex/clients/c-1');
+    const rep = jsonBody(calls[2]);
+    expect(rep.id).toBe('c-1');
+    expect(rep.attributes['oauth2.device.authorization.grant.enabled']).toBe('true');
+    expect(rep.protocolMappers).toBeUndefined();
+  });
+
+  test('a client made meanwhile (409) is not an error; a refused update is', async () => {
+    mockFetch([tokenResponse, { status: 200, json: [] }, { status: 409 }, ...offlineGrant]);
+    expect(await kcAdmin.ensureDriveClient()).toEqual({ created: false });
+    mockFetch([tokenResponse, { status: 200, json: [{ id: 'c-1' }] }, { status: 403 }]);
+    await expect(kcAdmin.ensureDriveClient()).rejects.toThrow(/update failed \(403\)/);
+  });
+});
+
 describe('removeMicrosoftIdp', () => {
   test('tolerates an already-absent provider', async () => {
     mockFetch([tokenResponse, { status: 404 }]);

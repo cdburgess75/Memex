@@ -62,6 +62,7 @@
       "emailVerified": true,
       "firstName": "Memex",
       "lastName": "Admin",
+      "realmRoles": ["default-roles-memex"],
       "credentials": [
         { "type": "password", "value": "memex-admin", "temporary": true }
       ]
