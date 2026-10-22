@@ -453,6 +453,7 @@ router.get('/admin/editor', adminOnly, (req, res, next) => forward(req, res, nex
 router.put('/admin/editor', adminOnly, (req, res, next) => forward(req, res, next, editorRouter, { method: 'PUT', url: '/', body: { enabled: req.body?.enabled } }));
 router.get('/admin/files', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/files', query: req.query }));
 router.get('/admin/stats', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/stats' }));
+router.get('/admin/health', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/health', query: req.query }));
 router.get('/admin/usage', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/usage' }));
 router.get('/admin/activity', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/activity', query: req.query }));
 router.get('/admin/activity.csv', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/activity.csv', query: req.query }));

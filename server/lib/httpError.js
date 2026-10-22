@@ -11,6 +11,9 @@ function serverError(res, err) {
     const req = res && res.req;
     const where = req ? `${req.method} ${req.originalUrl || req.url}` : '';
     console.error(`[500]${where ? ' ' + where : ''}`, err);
+    // Admin › Health reads these (lib/health.js); the catch-all in index.js skips what was noted here.
+    require('./health').note({ kind: 'error', status: 500, method: req && req.method, path: req && (req.originalUrl || req.url), message: err && err.message, actorEmail: req && req.user && req.user.email });
+    if (res && res.locals) res.locals.healthNoted = true;
   } catch {
     // Logging must never mask the original failure.
   }

@@ -83,6 +83,17 @@ app.use('/api/files/share', (req, res, next) =>
 // downloading files present a ticket or nothing, cannot guess anything, and get the generous
 // one -- or "download the files one at a time", which the page recommends for a folder too
 // big to ZIP, would 429 after a few dozen files.
+// The health journal (lib/health.js): the refusals people hit (413 too big, 415 a refused file
+// type, 429 too many at once) and any 5xx no route reported itself, noted as the answer goes out.
+app.use('/api', (req, res, next) => {
+  res.on('finish', () => {
+    const s = res.statusCode;
+    const base = { method: req.method, path: req.originalUrl, actorEmail: req.user && req.user.email };
+    if (s >= 500 && !(res.locals && res.locals.healthNoted)) require('./lib/health').note({ ...base, kind: 'error', status: s, message: res.statusMessage || 'Internal error' });
+    else if (s === 413 || s === 415 || s === 429) require('./lib/health').note({ ...base, kind: 'refusal', status: s, message: s === 413 ? 'Too big' : s === 415 ? 'File type refused' : 'Too many requests' });
+  });
+  next();
+});
 app.use('/api/files/folder/share', (req, res, next) =>
   (/^\/[^/]+\/upload\/?$/.test(req.path) ? exchangeUploadLimiter : presentsPassword(req) ? shareLimiter : folderBrowseLimiter)(req, res, next));
 // Bulk/resumable uploads (one request per file + per chunk) get a high limiter and
@@ -280,6 +291,10 @@ app.get('*', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
+// Anything a route threw and did not answer itself: a JSON 500 (the page and scripts expect
+// JSON), logged and journaled like the explicit ones (lib/httpError, Admin › Health).
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => { require('./lib/httpError').serverError(res, err); });
 
 const PORT = process.env.PORT || 3000;
 const BIND = process.env.BIND_ADDRESS || '0.0.0.0';
@@ -339,6 +354,18 @@ async function start() {
       })(1);
     } else {
       console.log('[startup] no Keycloak admin password in the environment, so the drive sign-in client is not managed here');
+    }
+    // Sign-in records in Keycloak (lib/keycloakAdmin ensureLoginEvents), so Admin › Health can
+    // count failed sign-ins. Same patience as the drive client above.
+    if (process.env.KEYCLOAK_ADMIN_PASSWORD) {
+      (function ensureLoginEvents(attempt) {
+        require('./lib/keycloakAdmin').ensureLoginEvents()
+          .then((r) => { if (r.changed) console.log('[startup] Keycloak now keeps sign-in records for Admin › Health'); })
+          .catch((e) => {
+            if (attempt < 20) setTimeout(() => ensureLoginEvents(attempt + 1), 30000).unref();
+            else console.error('[startup] Keycloak sign-in records could not be turned on:', e.message);
+          });
+      })(1);
     }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }

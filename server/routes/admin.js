@@ -9,6 +9,7 @@ const settings = require('../lib/settings');
 const compliance = require('../lib/compliance');
 const documentAccess = require('../lib/documentAccess');
 const storage = require('../lib/storage');
+const health = require('../lib/health');
 
 // GET /api/admin/files?q=&limit= — Admin's Files tab: the newest files (200 by default),
 // or those whose name or uploader matches q, plus the workspace totals. The tab used to
@@ -49,6 +50,17 @@ router.get('/stats', auth, requireRole('admin'), async (req, res) => {
       .map(([email, count]) => ({ email, count }));
 
     res.json({ recentActivity, topContributors });
+  } catch (e) {
+    serverError(res, e);
+  }
+});
+
+// GET /api/admin/health?days=1|7 — Admin › Health: what the server could not do for people
+// lately, failed sign-ins, what people did, disk and database, the license, and a verdict in
+// plain words (lib/health.js). Also /api/v1/admin/health, for a daily watch.
+router.get('/health', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await health.summary({ days: String(req.query.days) === '7' ? 7 : 1 }));
   } catch (e) {
     serverError(res, e);
   }
