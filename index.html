@@ -1935,6 +1935,12 @@ html.file-home-mode #panel > .panel.admin-view { padding: 8px 4px 40px; }
 .admin-tab:hover { color: var(--ink); }
 .admin-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
 .admin-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px; }
+/* Admin › Health: the verdict carries a word as well as a colour. */
+.health-status { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); padding: 12px 14px; margin-bottom: 14px; }
+.health-status strong { font-size: 16px; }
+.health-ok strong { color: var(--success); } .health-attention strong { color: var(--warning); } .health-problem strong { color: var(--danger); }
+.health-status p, .health-reasons { margin: 6px 0 0; } .health-reasons { padding-left: 20px; } .health-reasons li { margin: 2px 0; }
+.health-range { display: flex; gap: 8px; margin-bottom: 12px; }
 .admin-pane { display: flex; flex-direction: column; gap: 20px; }
 .admin-pane[hidden] { display: none; }
 .admin-pane > .usage-section { margin: 0; } .admin-pane > .usage-section > h3:first-child { display: none; } /* the tab already says it */
@@ -5469,6 +5475,52 @@ async function openSettingsAt(tab) { await openSettings(); switchSettingsTab(tab
 const CALL_SVG = (d) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const CALL_LAYOUT_IC = { float: CALL_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><rect x="11" y="11" width="8" height="7" rx="1" fill="currentColor" stroke="none"/>'), right: CALL_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>'), bottom: CALL_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 14h18"/>'), full: CALL_SVG('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'), unfull: CALL_SVG('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'), grid: CALL_SVG('<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>') };
 const CALL_IC = { mic: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>', micOff: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M9 9v2a3 3 0 0 0 4.7 2.5M15 10.5V6a3 3 0 0 0-5.7-1.3M5 11a7 7 0 0 0 11 5.7M19 11a7 7 0 0 1-.5 2.6M12 18v3"/></svg>', cam: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>', camOff: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M16 16v0a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1M10 6h4a2 2 0 0 1 2 2v2l5-3v10"/></svg>', screen: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>', clip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.9-7.8"/></svg>', remote: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 7v4"/></svg>', hang: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 15c5-5 13-5 18 0l-2.5 2.5-3-1.5v-2.6a9 9 0 0 0-7 0V16l-3 1.5z"/></svg>' };
+/* Admin › Health: what the server could not do for people, and what it is carrying
+   (GET /api/admin/health, lib/health.js). The verdict is a word as well as a colour. */
+function fmtUptime(s) {
+  s = Number(s) || 0;
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d} day${d === 1 ? '' : 's'} ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+async function loadAdminHealth(days = 1) {
+  const el = document.getElementById('admin-health');
+  if (!el) return;
+  el.innerHTML = '<p class="wdash-empty">Checking…</p>';
+  let h;
+  try { h = await apiGet('/admin/health?days=' + days); }
+  catch (e) { el.innerHTML = `<p class="wdash-empty">Could not check: ${esc(e.message)}</p>`; return; }
+  const when = (ts) => new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const big = (n) => (Number(n) >= 2 ** 30 ? (Number(n) / 2 ** 30).toFixed(Number(n) >= 10 * 2 ** 30 ? 0 : 1) + ' GB' : fmtBytes(n));
+  const word = { ok: 'Fine', attention: 'Worth a look', problem: 'Needs attention' }[h.status] || esc(String(h.status));
+  const sign = h.signins && !h.signins.unavailable ? h.signins : null;
+  const none = (n) => `<tr><td colspan="${n}" style="color:var(--ink-faint);font-style:italic">None.</td></tr>`;
+  const cell = (v) => `<td title="${esc(v || '')}">${esc(v || '')}</td>`;
+  const errRows = (h.errors.recent || []).length ? h.errors.recent.map(e => `<tr><td>${esc(when(e.at))}</td>${cell(`${e.method || ''} ${e.path || ''}`.trim())}${cell(e.message)}${cell(e.actor_email)}</tr>`).join('') : none(4);
+  const refRows = (h.refusals.recent || []).length ? h.refusals.recent.map(e => `<tr><td>${esc(when(e.at))}</td>${cell(e.message)}${cell(e.path)}${cell(e.actor_email)}</tr>`).join('') : none(4);
+  const signRows = sign
+    ? ((sign.recent_failed || []).length ? sign.recent_failed.map(e => `<tr><td>${esc(when(e.at))}</td>${cell(e.username)}${cell(e.ip)}${cell(String(e.error || '').replace(/_/g, ' '))}</tr>`).join('') : none(4))
+    : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">${esc(h.signins && h.signins.unavailable ? 'Not available: ' + h.signins.unavailable : 'Not available on this server.')}</td></tr>`;
+  const didRows = (h.activity.by_type || []).length ? h.activity.by_type.map(t => `<tr><td>${esc(String(t.type || '').replace(/_/g, ' '))}</td><td>${Number(t.n).toLocaleString()}</td></tr>`).join('') : none(2);
+  const range = (d, label) => `<button class="dash-act" type="button"${d === days ? ' aria-pressed="true" disabled' : ''} onclick="loadAdminHealth(${d})">${label}</button>`;
+  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}</div>
+    <div class="health-range">${range(1, 'Last 24 hours')}${range(7, 'Last 7 days')}</div>
+    <div class="dash-stats admin-stats-3">
+      ${adminStat('Could not finish', Number(h.errors.count).toLocaleString(), 'requests the server failed on')}
+      ${adminStat('Refused', Number(h.refusals.count).toLocaleString(), 'too big, a refused type, or too many at once')}
+      ${adminStat('Failed sign-ins', sign ? Number(sign.failed).toLocaleString() : '—', sign ? `${Number(sign.signins).toLocaleString()} signed in` : 'not available')}
+      ${adminStat('People active', Number(h.activity.active_people).toLocaleString(), `${Number(h.activity.actions).toLocaleString()} actions on files`)}
+      ${adminStat('Disk free', h.disk ? big(h.disk.free_bytes) : '—', h.disk ? `of ${big(h.disk.total_bytes)} on the file store` : 'files are not on this server\'s disk')}
+      ${adminStat('Stored', big(h.stored.bytes), `${Number(h.stored.files).toLocaleString()} files · database ${big(h.stored.database_bytes)}`)}
+    </div>
+    <div class="admin-two">
+      ${adminCard('Requests the server could not finish', `<div class="table-scroll"><table class="data-table"><thead><tr><th>When</th><th>Request</th><th>What went wrong</th><th>Who</th></tr></thead><tbody>${errRows}</tbody></table></div>`)}
+      ${adminCard('Failed sign-ins', `<div class="table-scroll"><table class="data-table"><thead><tr><th>When</th><th>Who</th><th>From</th><th>Why</th></tr></thead><tbody>${signRows}</tbody></table></div>`)}
+    </div>
+    <div class="admin-two">
+      ${adminCard('Refused', `<div class="table-scroll"><table class="data-table"><thead><tr><th>When</th><th>Why</th><th>Request</th><th>Who</th></tr></thead><tbody>${refRows}</tbody></table></div>`)}
+      ${adminCard('What people did', `<div class="table-scroll"><table class="data-table"><thead><tr><th>Action</th><th>Times</th></tr></thead><tbody>${didRows}</tbody></table></div>`)}
+    </div>`;
+}
 async function renderAdmin() {
   const panel = document.getElementById('panel');
   setWorkspacePanel(`<div class="panel"><p class="note placeholder" style="margin-top:10px">Loading stats…</p></div>`, 'admin');
@@ -5604,13 +5656,14 @@ async function renderAdmin() {
         <button class="dash-act" onclick="openSettingsAt('activity')">Activity log</button>
         <button class="dash-act" onclick="openSettingsAt('ai')">AI providers</button>
       </div>`)}`;
-    const TABS = [['overview', 'Overview', overviewHtml], ['people', 'People', teamHtml], ['files', 'Files', storageHtml], ['usage', 'AI usage', usageHtml || '<p class="wdash-empty">No usage recorded.</p>'], ['compliance', 'Compliance', complianceHtml(compliance)]];
+    const TABS = [['overview', 'Overview', overviewHtml], ['health', 'Health', '<div id="admin-health"><p class="wdash-empty">Checking…</p></div>'], ['people', 'People', teamHtml], ['files', 'Files', storageHtml], ['usage', 'AI usage', usageHtml || '<p class="wdash-empty">No usage recorded.</p>'], ['compliance', 'Compliance', complianceHtml(compliance)]];
     if (!TABS.some(t => t[0] === adminTab)) adminTab = 'overview';
     setWorkspacePanel(`<div class="panel admin-view">
       <header class="dash-head"><h1 class="home-h1">Admin</h1><p class="home-lede">${esc(brandDefaults.name || 'This workspace')}: who is here, what they have stored, and what it costs.</p></header>
       <nav class="admin-tabs" aria-label="Admin sections">${TABS.map(([id, label]) => `<button type="button" class="admin-tab${id === adminTab ? ' active' : ''}" data-tab="${id}" ${id === adminTab ? 'aria-current="page" ' : ''}onclick="setAdminTab(this.dataset.tab)">${label}</button>`).join('')}</nav>
       ${TABS.map(([id, label, html]) => `<section class="admin-pane" id="admin-pane-${id}" aria-label="${label}"${id === adminTab ? '' : ' hidden'}>${html}</section>`).join('')}
     </div>`, 'admin');
+    loadAdminHealth(1);
   } catch (e) {
     setWorkspacePanel(`<div class="panel"><p class="note" style="color:var(--accent)">Could not load admin data: ${esc(e.message)}</p></div>`, 'admin');
   }

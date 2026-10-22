@@ -87,6 +87,46 @@ async function setSessionLength(seconds) {
   return { idleSeconds: s, maxSeconds: s };
 }
 
+/* ---------- Sign-in records (realm events) ---------- */
+
+// Keycloak keeps a record of sign-ins and failed sign-ins only when told to. Depot turns that
+// on, LOGIN and LOGIN_ERROR kept 30 days, so Admin › Health can count failed sign-ins and say
+// where they came from (lib/health.js). A realm whose list of types is empty records every
+// type, so that is left alone; only the two needed are added to a narrower list.
+const LOGIN_EVENT_TYPES = ['LOGIN', 'LOGIN_ERROR'];
+const EVENTS_KEEP_SECONDS = 30 * 86400;
+async function ensureLoginEvents() {
+  const token = await adminToken();
+  const cur = await kc(token, 'GET', '/events/config');
+  if (!cur.ok) throw new Error(`Keycloak events config read failed (${cur.status}).`);
+  const cfg = await cur.json();
+  const types = Array.isArray(cfg.enabledEventTypes) ? cfg.enabledEventTypes : [];
+  const covers = cfg.eventsEnabled && (!types.length || LOGIN_EVENT_TYPES.every(t => types.includes(t)));
+  const keepsLongEnough = (Number(cfg.eventsExpiration) || 0) >= EVENTS_KEEP_SECONDS;
+  if (covers && keepsLongEnough) return { changed: false };
+  const want = { ...cfg, eventsEnabled: true, eventsExpiration: Math.max(Number(cfg.eventsExpiration) || 0, EVENTS_KEEP_SECONDS) };
+  if (types.length) want.enabledEventTypes = [...new Set([...types, ...LOGIN_EVENT_TYPES])];
+  const r = await kc(token, 'PUT', '/events/config', want);
+  if (!r.ok) throw new Error(`Keycloak events config update failed (${r.status}).`);
+  return { changed: true };
+}
+// Sign-ins and failed sign-ins since a time, newest first: who (the username typed or the
+// account), from which address, through which provider, and why it failed.
+async function loginEvents({ since, max = 200 } = {}) {
+  const token = await adminToken();
+  const out = [];
+  for (const type of LOGIN_EVENT_TYPES) {
+    const q = new URLSearchParams({ type, max: String(max), first: '0' });
+    if (since) q.set('dateFrom', new Date(since).toISOString().slice(0, 10));
+    const r = await kc(token, 'GET', `/events?${q}`);
+    if (!r.ok) throw new Error(`Keycloak events read failed (${r.status}).`);
+    for (const e of await r.json()) {
+      out.push({ at: new Date(Number(e.time)).toISOString(), type: e.type, username: e.details?.username || null, ip: e.ipAddress || null, provider: e.details?.identity_provider || null, error: e.error || null });
+    }
+  }
+  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
 /* ---------- Microsoft 365 sign-in (OIDC identity provider) ---------- */
 
 // Delegated Microsoft Graph scopes requested at brokered login when graph
@@ -568,6 +608,8 @@ module.exports = {
   setRealmDisplayName,
   getSessionLength,
   setSessionLength,
+  ensureLoginEvents,
+  loginEvents,
   setLocalTotpRequirement,
   ensureMicrosoftIdp,
   validateMsClientSecret,

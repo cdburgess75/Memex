@@ -236,7 +236,7 @@ curl -s -X PUT "https://depot.example.com/api/v1/users/pat@example.com/disabled"
 curl -s https://depot.example.com/api/v1/admin/access-review.csv -H "Authorization: Bearer $ADMIN_TOKEN" -o access-review.csv
 ```
 
-Every file in an answer carries `content_hash` (sha256) and `modified_at`, so a sync can skip what has not changed. Everything a token changes is logged as the person who made it, marked with the token's name. Each token is held to its own request limit (6,000 per 15 minutes unless an admin changes it). An admin-scope token can do what the Admin page does (people, settings, connections, compliance, the audit feed) except four things that are changed in the app only: the storage encryption key, sign-in methods, backup destinations and updates.
+Every file in an answer carries `content_hash` (sha256) and `modified_at`, so a sync can skip what has not changed. Everything a token changes is logged as the person who made it, marked with the token's name. Each token is held to its own request limit (6,000 per 15 minutes unless an admin changes it). An admin-scope token can do what the Admin page does (people, settings, connections, compliance, the audit feed, and `/admin/health`, a plain-words verdict on what the server could not do lately, made for a daily watch) except four things that are changed in the app only: the storage encryption key, sign-in methods, backup destinations and updates.
 
 The app itself bootstraps from a public config endpoint, then authenticates via Keycloak (PKCE); its own routes under `/api/*` take sign-in tokens only. A couple of representative calls:
 
