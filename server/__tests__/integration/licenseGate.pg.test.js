@@ -78,7 +78,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
 
   test('a license in its term: a folder is made, and the server remembers the serial', async () => {
     install({ expires: dateIn(200) });
-    const r = await as(request(app).post('/api/files/folder')).send({ name: 'Intake', library_id: LIB });
+    const r = await as(request(app).post('/api/files/folder')).send({ path: 'Intake', library_id: LIB });
     expect(r.status).toBeLessThan(400);
     expect((await db.queryOne("SELECT value FROM system_settings WHERE key = 'license_serial_seen'")).value).toBe('corp-0001');
   });
@@ -86,7 +86,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
   test('past the grace period the same change is refused, reads and the open mark go through', async () => {
     install({ serial: '0002', expires: dateIn(-45) });   // ended 45 days ago, 30 of grace: read-only
     expect(await enforce.readOnly()).toBe(true);
-    const make = await as(request(app).post('/api/files/folder')).send({ name: 'Later', library_id: LIB });
+    const make = await as(request(app).post('/api/files/folder')).send({ path: 'Later', library_id: LIB });
     expect(make.status).toBe(403);
     expect(make.body).toEqual({ code: 'LICENSE_READONLY', error: expect.stringContaining('read-only') });
     expect((await as(request(app).get('/api/files'))).status).toBe(200);
@@ -98,7 +98,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
     install({ serial: '0001', expires: dateIn(200) });
     const st = await license.status();
     expect(st).toMatchObject({ accepted: false, stateReason: 'serial_regressed', readOnly: false });
-    expect((await as(request(app).post('/api/files/folder')).send({ name: 'Again', library_id: LIB })).status).toBeLessThan(400);
+    expect((await as(request(app).post('/api/files/folder')).send({ path: 'Again', library_id: LIB })).status).toBeLessThan(400);
   });
 
   test('a renewed license lifts read-only at once', async () => {
@@ -106,6 +106,6 @@ suite('the read-only gate, the real file router, a real license and a real datab
     expect(await enforce.readOnly()).toBe(true);
     install({ serial: '0004', expires: dateIn(365) });
     expect(await enforce.readOnly()).toBe(false);
-    expect((await as(request(app).post('/api/files/folder')).send({ name: 'Renewed', library_id: LIB })).status).toBeLessThan(400);
+    expect((await as(request(app).post('/api/files/folder')).send({ path: 'Renewed', library_id: LIB })).status).toBeLessThan(400);
   });
 });
