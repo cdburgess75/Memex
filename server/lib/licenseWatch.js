@@ -8,11 +8,11 @@
 //
 // Nothing here changes what the server allows; lib/license.js decides that.
 const license = require('./license');
-const db = require('./db');
 const settings = require('./settings');
 const notifications = require('./notifications');
 const email = require('./email');
 const auditLog = require('./auditLog');
+const enforce = require('./licenseEnforce');
 
 const INTERVAL_MS = 24 * 3600 * 1000;
 const FIRST_RUN_MS = 60 * 1000;
@@ -72,17 +72,7 @@ function notice(st, key) {
   return { subject: 'Depot license renewed', text: `The license${who} is in good standing${st.expires ? ` through ${st.expires}` : ''}. Nothing to do.` };
 }
 
-// Every administrator who is not switched off, by their best address.
-async function admins() {
-  try {
-    const rows = await db.query(
-      `SELECT user_id, COALESCE(verified_email, email) AS email
-         FROM user_roles
-        WHERE role = 'admin' AND disabled_at IS NULL AND COALESCE(verified_email, email) IS NOT NULL`
-    );
-    return rows.filter((r) => r.email);
-  } catch { return []; }
-}
+const admins = () => enforce.admins();
 
 async function send(key, n) {
   let sent = 0;
@@ -104,6 +94,7 @@ function audit(eventType, detail) {
 // One pass: evaluate, record a state change, say what is new. Never throws.
 async function check(now = new Date()) {
   const st = await license.status(now);
+  enforce.prime(st); // the gate learns the answer now, not a minute from now
   const stateNow = st.accepted ? st.state : `unlicensed:${st.stateReason || 'unknown'}`;
   const stateSeen = await settings.get(MEM_STATE);
   if (stateSeen !== stateNow) {

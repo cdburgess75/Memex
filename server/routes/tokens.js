@@ -21,6 +21,8 @@ router.get('/', auth, async (req, res) => {
 // answer this once and nowhere else.
 router.post('/', auth, async (req, res) => {
   try {
+    const enforce = require('../lib/licenseEnforce');
+    if (!(await enforce.feature('api'))) return enforce.refuseFeature(res, 'The API');
     const days = req.body?.expires_in_days;
     let expiresAt = null;
     if (days != null && days !== '' && days !== 0 && days !== '0') {

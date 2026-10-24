@@ -77,6 +77,9 @@ async function authWithApiToken(token, req, res, next) {
   if (roleRow.disabled_at) {
     return res.status(403).json({ code: 'ACCOUNT_DISABLED', error: 'This account has been switched off. Ask an administrator if you think that is wrong.' });
   }
+  // Tokens reach the public API and the drive; both are the license's `api` feature.
+  const enforce = require('../lib/licenseEnforce');
+  if (!(await enforce.feature('api'))) return enforce.refuseFeature(res, 'The API');
   apiTokens.touch(t.id);
   req.apiToken = { id: t.id, name: t.name, scope: t.scope, expires_at: t.expires_at || null };
   req.user = {
@@ -153,6 +156,10 @@ module.exports = async function auth(req, res, next) {
   if (listedAdmin && !verifiedEmail) noteUnverified(userId, userEmail, 'admin');
 
   if (!roleRow) {
+    // One more account? The license may say no: a lapsed term, a bad file, a hard seat
+    // cap (lib/licenseEnforce). Refused before anything is written.
+    const admit = await require('../lib/licenseEnforce').admitNewAccount();
+    if (!admit.ok) return res.status(403).json({ code: admit.code, error: admit.error });
     const assignedRole = verifiedEmail && listedAdmin ? 'admin' : 'contributor';
     roleRow = await db.queryOne(
       `INSERT INTO user_roles (user_id, email, role, verified_email, email_verified_at)

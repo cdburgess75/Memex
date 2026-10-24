@@ -13,7 +13,7 @@ const fnText = (name) => {
 };
 const load = (names, over = {}) => { const ctx = { String, Number, Object, ...over }; vm.runInNewContext(['esc', 'escAttr', ...names].map(fnText).join('\n'), ctx); return ctx; };
 
-const c = load(['licenseProblem', 'licenseNoticeText', 'licenseNoticeKey', 'licenseSummary']);
+const c = load(['licenseProblem', 'licenseNoticeText', 'licenseNoticeKey', 'licenseSummary', 'showAccountRefused'], { DEPOT_MARK: '<svg></svg>', signOut: () => {}, document: { documentElement: { classList: { remove() {} } }, getElementById: () => null, body: { insertAdjacentHTML() {} } } });
 const v2 = (over = {}) => ({ configured: true, present: true, valid: true, accepted: true, version: 2, state: 'ok', stateReason: 'ok', customer: 'Acme Corp', plan: 'care', type: 'standard', expires: '2027-01-01', updatesUntil: '2027-01-01', graceEnds: '2027-01-31T23:59:59.999Z', daysLeft: 200, updatesEntitled: true, seats: { licensed: 25, used: 12 }, ...over });
 
 describe('the banner text', () => {
@@ -24,7 +24,7 @@ describe('the banner text', () => {
   });
   test('names the dates for a lapsed term and an ended grace period', () => {
     expect(c.licenseNoticeText(v2({ state: 'lapsed' }))).toBe("Depot's license term ended 2027-01-01. Renew before 2027-01-31.");
-    expect(c.licenseNoticeText(v2({ state: 'readonly' }))).toBe("Depot's license grace period ended 2027-01-31. Renew the license.");
+    expect(c.licenseNoticeText(v2({ state: 'readonly' }))).toBe('Depot is read-only: the license grace period ended 2027-01-31. Renew the license.');
   });
   test('says what is wrong with an unaccepted license', () => {
     expect(c.licenseNoticeText({ state: 'unlicensed', stateReason: 'domain_mismatch' })).toBe("Depot has no valid license on this server. The license was issued for a different address than this server's.");
@@ -50,8 +50,8 @@ describe('the update modal line', () => {
   });
   test('adds what needs doing', () => {
     expect(c.licenseSummary(v2({ state: 'expiring', daysLeft: 12 }))).toMatch(/ The term ends in 12 days\.$/);
-    expect(c.licenseSummary(v2({ state: 'lapsed', updatesEntitled: false }))).toMatch(/term ended 2027-01-01 .* Grace period through 2027-01-31; renew the license\.$/);
-    expect(c.licenseSummary(v2({ state: 'readonly', updatesEntitled: false }))).toMatch(/Grace period ended 2027-01-31; renew the license\.$/);
+    expect(c.licenseSummary(v2({ state: 'lapsed', updatesEntitled: false }))).toMatch(/term ended 2027-01-01 .* New accounts and updates are off; read-only from 2027-01-31 unless renewed\.$/);
+    expect(c.licenseSummary(v2({ state: 'readonly', updatesEntitled: false }))).toMatch(/ This server is read-only until the license is renewed\.$/);
     expect(c.licenseSummary(v2({ type: 'trial' }))).toContain(' · trial · ');
   });
   test('explains an unaccepted license and keeps the version 1 wording', () => {
@@ -62,14 +62,30 @@ describe('the update modal line', () => {
 });
 
 describe('wiring', () => {
-  test('loading the status draws the banner, for administrators only, with Details and Dismiss', () => {
-    expect(fnText('loadLicenseStatus')).toContain('licenseNoticeRefresh();');
+  test('loading the status draws the banner: everything for administrators, read-only for everyone else', () => {
+    const load = fnText('loadLicenseStatus');
+    expect(load).toContain('licenseNoticeRefresh();');
+    expect(load).not.toContain("role !== 'admin'");                       // fetched for everyone now
     const refresh = fnText('licenseNoticeRefresh');
-    expect(refresh).toContain("currentUser?.role !== 'admin'");
-    expect(refresh).toContain("['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state)");
-    expect(refresh).toContain('onclick="openUpdateModal()"');
+    expect(refresh).toContain("isAdmin ? !['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state) : !lic.readOnly");
+    expect(refresh).toContain('isAdmin ? licenseNoticeText(lic) : LICENSE_READONLY_NOTICE');
+    expect(refresh).toContain("const details = isAdmin ? '<button class=\"run-btn\" type=\"button\" onclick=\"openUpdateModal()\">Details</button>' : ''");
     expect(refresh).toContain('onclick="dismissLicenseNotice()"');
     expect(refresh).toContain('role="status"');
+    expect(html).toContain("const LICENSE_READONLY_NOTICE = 'Depot is read-only until its license is renewed. You can still view and download files.';");
     expect(fnText('openUpdateModal')).toContain('licenseNoticeRefresh();');
+  });
+  test('a refused sign-in is explained on the sign-in card, and only for the codes that mean it', () => {
+    const refused = (status, code, message) => c.showAccountRefused({ status, body: { code }, message });
+    expect(refused(403, 'ACCOUNT_DISABLED', 'off')).toBe(true);
+    expect(refused(403, 'LICENSE_SEAT_FREEZE', 'no seat')).toBe(true);
+    expect(refused(403, 'SEAT_LIMIT', 'full')).toBe(true);
+    expect(refused(403, 'SOMETHING_ELSE', 'x')).toBe(false);
+    expect(refused(500, 'SEAT_LIMIT', 'x')).toBe(false);
+    expect(c.showAccountRefused(null)).toBe(false);
+    expect(fnText('_afterLogin')).toContain("catch (e) { if (showAccountRefused(e)) return; throw e; }");
+    const fn = fnText('showAccountRefused');
+    expect(fn).toContain('${esc(e.message || \'\')}');
+    expect(fn).toContain('onclick="signOut()"');
   });
 });
