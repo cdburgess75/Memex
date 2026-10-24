@@ -19,6 +19,7 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
 router.put('/', auth, requireRole('admin'), async (req, res) => {
   try {
     if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+    if (req.body.enabled && !(await editorStatus.licensed())) return require('../lib/licenseEnforce').refuseFeature(res, 'In-browser editing');
     const before = await editorStatus.switchedOn();
     await editorStatus.setSwitch(req.body.enabled, req.user.id);
     if (before !== req.body.enabled) {

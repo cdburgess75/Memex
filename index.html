@@ -3702,7 +3702,8 @@ async function _afterLogin() {
   if (docWindowId) { currentUser = await apiGet('/auth/me').catch(() => null); await openDocumentWindow(docWindowId); return; }
   ensureMediaTicket(); // warm the thumbnail ticket up front so every view has it (non-blocking)
   await loadFromServer();
-  currentUser = await apiGet('/auth/me');
+  try { currentUser = await apiGet('/auth/me'); }
+  catch (e) { if (showAccountRefused(e)) return; throw e; }
   // First-boot gate: on a not-yet-configured instance, route the admin into the Setup
   // Wizard (and non-admins to a "setup in progress" screen) instead of the app.
   if (appConfig?.setupRequired) {
@@ -3750,6 +3751,19 @@ async function _afterLogin() {
 // ─── First-boot Setup Wizard (Deployment Blueprint) ─────────────────────────
 const SETUP_STEPS = ['Security', 'Tenant', 'Integrations', 'Performance'];
 let setupState = { step: 0, status: null, busy: false };
+
+// The server would not let this account in: switched off, or the license allows no
+// more accounts. Say so on the sign-in card instead of leaving a blank app.
+function showAccountRefused(e) {
+  const code = e?.body?.code;
+  if (e?.status !== 403 || !['ACCOUNT_DISABLED', 'LICENSE_SEAT_FREEZE', 'SEAT_LIMIT'].includes(code)) return false;
+  document.documentElement.classList.remove('auth-locked');
+  document.getElementById('login-scrim')?.classList.remove('open');
+  document.getElementById('refused-scrim')?.remove();
+  const title = code === 'ACCOUNT_DISABLED' ? 'This account is switched off' : 'No seat available';
+  document.body.insertAdjacentHTML('beforeend', `<div class="scrim open" id="refused-scrim"><div class="modal login-modal"><div class="login-mark" aria-hidden="true">${DEPOT_MARK}</div><h2>${title}</h2><p class="sub">${esc(e.message || '')}</p><div class="btn-row" style="margin-top:16px"><button class="ghost-btn" type="button" onclick="signOut()">Sign out</button></div></div></div>`);
+  return true;
+}
 
 function showSetupLocked() {
   document.documentElement.classList.remove('auth-locked');
@@ -4895,7 +4909,6 @@ function refreshUpdateAction() {
 
 // ---- Licensed update (admins only) ----
 async function loadLicenseStatus() {
-  if (currentUser?.role !== 'admin') { licenseStatus = null; licenseNoticeRefresh(); return; }
   try { licenseStatus = await apiGet('/license'); } catch { licenseStatus = null; }
   updateCtaRefresh(latestUpdateInfo);
   licenseNoticeRefresh();
@@ -4916,11 +4929,12 @@ function licenseProblem(lic) {
 }
 // The banner administrators see while the license needs attention. One line, a
 // Details button that opens Software update, and a dismiss that lasts the session.
+const LICENSE_READONLY_NOTICE = 'Depot is read-only until its license is renewed. You can still view and download files.';
 function licenseNoticeText(lic) {
   const graceDay = esc(String(lic.graceEnds || '').slice(0, 10));
   if (lic.state === 'expiring') return `Depot's license term ends ${lic.daysLeft === 0 ? 'today' : `in ${lic.daysLeft} day${lic.daysLeft === 1 ? '' : 's'}`} (${esc(lic.expires || '')}). Renew to keep updates and new accounts.`;
   if (lic.state === 'lapsed') return `Depot's license term ended ${esc(lic.expires || '')}. Renew before ${graceDay}.`;
-  if (lic.state === 'readonly') return `Depot's license grace period ended ${graceDay}. Renew the license.`;
+  if (lic.state === 'readonly') return `Depot is read-only: the license grace period ended ${graceDay}. Renew the license.`;
   if (lic.state === 'unlicensed') return `Depot has no valid license on this server. ${licenseProblem(lic)}`;
   return '';
 }
@@ -4928,14 +4942,19 @@ function licenseNoticeKey(lic) { return lic ? `${lic.state}:${lic.stateReason ||
 function licenseNoticeRefresh() {
   document.getElementById('license-notice')?.remove();
   const lic = licenseStatus;
-  if (currentUser?.role !== 'admin' || !lic || !['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state)) return;
+  if (!lic) return;
+  // Administrators hear about anything that needs doing; everyone else only that the
+  // server has gone read-only, because their uploads and edits will be refused.
+  const isAdmin = currentUser?.role === 'admin';
+  if (isAdmin ? !['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state) : !lic.readOnly) return;
   let dismissed = null;
   try { dismissed = sessionStorage.getItem('memex_license_notice_dismissed'); } catch { /* storage off */ }
   if (dismissed === licenseNoticeKey(lic)) return;
-  const text = licenseNoticeText(lic);
+  const text = isAdmin ? licenseNoticeText(lic) : LICENSE_READONLY_NOTICE;
   if (!text) return;
-  const danger = lic.state === 'readonly' || lic.state === 'unlicensed';
-  document.body.insertAdjacentHTML('beforeend', `<div id="license-notice" class="reload-banner license-notice${danger ? ' danger' : ''}" role="status">${text}<button class="run-btn" type="button" onclick="openUpdateModal()">Details</button><button class="reload-x" type="button" aria-label="Dismiss" onclick="dismissLicenseNotice()">✕</button></div>`);
+  const danger = !!lic.readOnly || lic.state === 'unlicensed';
+  const details = isAdmin ? '<button class="run-btn" type="button" onclick="openUpdateModal()">Details</button>' : '';
+  document.body.insertAdjacentHTML('beforeend', `<div id="license-notice" class="reload-banner license-notice${danger ? ' danger' : ''}" role="status">${text}${details}<button class="reload-x" type="button" aria-label="Dismiss" onclick="dismissLicenseNotice()">✕</button></div>`);
 }
 function dismissLicenseNotice() {
   try { sessionStorage.setItem('memex_license_notice_dismissed', licenseNoticeKey(licenseStatus)); } catch { /* storage off */ }
@@ -4985,8 +5004,8 @@ function licenseSummary(lic) {
   const graceDay = esc(String(lic.graceEnds || '').slice(0, 10));
   let note = '';
   if (lic.state === 'expiring') note = lic.daysLeft === 0 ? ' The term ends today.' : ` The term ends in ${lic.daysLeft} day${lic.daysLeft === 1 ? '' : 's'}.`;
-  else if (lic.state === 'lapsed') note = ` Grace period through ${graceDay}; renew the license.`;
-  else if (lic.state === 'readonly') note = ` Grace period ended ${graceDay}; renew the license.`;
+  else if (lic.state === 'lapsed') note = ` New accounts and updates are off; read-only from ${graceDay} unless renewed.`;
+  else if (lic.state === 'readonly') note = ' This server is read-only until the license is renewed.';
   else if (!lic.updatesEntitled) note = ' Updates are not currently entitled.';
   return parts.join(' · ') + '.' + note;
 }

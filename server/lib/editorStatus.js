@@ -58,7 +58,11 @@ async function running({ maxAgeMs = PROBE_TTL_MS } = {}) {
 // What every signed-in client is told (editingEnabled in /api/config): offer editing
 // only when it will actually open. The switch decides; collabora_url only says where
 // a directly-exposed editor lives once it is on.
+// Whether the license includes in-browser editing at all (lib/licenseEnforce).
+async function licensed() { return require('./licenseEnforce').feature('editor'); }
+
 async function available() {
+  if (!(await licensed())) return false;
   if (!(await switchedOn())) return false;
   return running();
 }
@@ -84,7 +88,7 @@ async function status() {
   // 'failed' is advice, not a verdict: if the editor answers later (a slow first
   // download, or the admin ran the script), the next read says 'on'.
   else state = !up ? 'off' : (age < STOPPING_GRACE_MS ? 'stopping' : 'lingering');
-  return { enabled, running: up, state };
+  return { enabled, running: up, state, licensed: await licensed() };
 }
 
 async function setSwitch(on, userId) {
@@ -94,5 +98,5 @@ async function setSwitch(on, userId) {
 
 function _resetForTests() { probe = { at: 0, base: '', ok: false, pending: null }; }
 
-module.exports = { switchedOn, running, available, status, setSwitch, _resetForTests,
+module.exports = { switchedOn, running, available, status, setSwitch, licensed, _resetForTests,
   STARTING_GRACE_MS, STOPPING_GRACE_MS };

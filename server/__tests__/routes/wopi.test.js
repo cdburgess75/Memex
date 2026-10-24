@@ -24,6 +24,7 @@ jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({})
 jest.mock('../../lib/notifications', () => ({ create: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/emailEvents', () => ({ send: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/documentVersions', () => ({ pruneOldVersions: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../lib/licenseEnforce', () => ({ readOnly: jest.fn(async () => false), refuse: jest.fn((res) => res.status(403).json({ code: 'LICENSE_READONLY', error: 'read-only' })) }));
 
 // Access, as the live check sees it. Each test says what the account can do right now.
 const mockAccess = { actor: null, read: true, write: true, deleted: false };
@@ -238,5 +239,31 @@ describe('notices after a save', () => {
     documentAccess.readersAmong.mockResolvedValueOnce(new Map([['owner@test.com', new Set()]]));
     await put(token);
     expect(notifications.create).not.toHaveBeenCalledWith(expect.objectContaining({ userEmail: 'owner@test.com' }));
+  });
+});
+
+describe('a read-only license', () => {
+  const enforce = require('../../lib/licenseEnforce');
+  beforeEach(() => enforce.readOnly.mockResolvedValue(true));
+  afterEach(() => enforce.readOnly.mockResolvedValue(false));
+
+  test('the editor opens the document read-only even for an editing token with live write access', async () => {
+    const writeToken = generateToken('doc-1', 'user-1', 'editor@test.com', true);
+    const info = await request(makeApp()).get(`/wopi/files/doc-1?access_token=${writeToken}`);
+    expect(info.status).toBe(200);
+    expect(info.body.UserCanWrite).toBe(false);
+  });
+
+  test('a save is refused in front of the body parser with LICENSE_READONLY', async () => {
+    const writeToken = generateToken('doc-1', 'user-1', 'editor@test.com', true);
+    const r = await put(writeToken);
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('LICENSE_READONLY');
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  test('reading the contents still works', async () => {
+    const readToken = generateToken('doc-1', 'user-1', 'viewer@test.com', false);
+    expect((await request(makeApp()).get(`/wopi/files/doc-1/contents?access_token=${readToken}`)).status).toBe(200);
   });
 });

@@ -15,6 +15,7 @@ const { actingAs } = require('../lib/email');
 const auditLog = require('../lib/auditLog');
 const docFollows = require('../lib/docFollows');
 const documentAccess = require('../lib/documentAccess');
+const licenseEnforce = require('../lib/licenseEnforce');
 const { pruneOldVersions } = require('../lib/documentVersions');
 
 function tokenEntry(req) {
@@ -44,6 +45,8 @@ async function authorizeWopi(req, res, required) {
       id: entry.fileId, user: actor, required: 'write', columns: 'd.id', deleted: 'active',
     }));
   }
+  // A read-only license: the editor still opens the document, saving is off.
+  if (canWrite && await licenseEnforce.readOnly()) canWrite = false;
   if (required === 'write' && !canWrite) { res.status(403).json({ error: 'No write permission for this document' }); return null; }
   return { entry, actor, doc, canWrite };
 }
@@ -52,10 +55,11 @@ async function authorizeWopi(req, res, required) {
 // token -- or one never minted for editing -- before that happens, so no caller can
 // make the server hold 50 MB for a save that will be refused. The full, live check
 // still runs in the handler.
-function tokenBeforeBody(req, res, next) {
+async function tokenBeforeBody(req, res, next) {
   const entry = tokenEntry(req);
   if (!entry) return res.status(401).json({ error: 'Invalid or expired access token' });
   if (!entry.canWrite) return res.status(403).json({ error: 'No write permission for this document' });
+  if (await licenseEnforce.readOnly()) return licenseEnforce.refuse(res);
   next();
 }
 

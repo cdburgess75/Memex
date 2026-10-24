@@ -48,7 +48,21 @@ Dates are `YYYY-MM-DD` and last through the end of that day, UTC.
 
 A read-only server still signs people in and lets them browse, download, and use share links. Nobody is ever locked away from their files.
 
-Today the state is recorded, reported (Software update, `GET /api/license`, `GET /api/v1/admin/license`) and warned about. Enforcement follows in a later release.
+The state is recorded, reported (Software update, `GET /api/license`, `GET /api/v1/admin/license`), warned about, and enforced as below.
+
+## Enforcement
+
+| State | What changes |
+|-------|--------------|
+| `lapsed`, or a file that is present but not accepted | no new accounts (a first sign-in is refused with `LICENSE_SEAT_FREEZE`); no updates |
+| `readonly` | changes to content are refused with `403 LICENSE_READONLY`: uploads, new folders, renames, moves, deletes, shares, library and group changes, editor saves, link uploads, the public API's writes, the drive's writes. The editor opens documents read-only. Reads, downloads, share links, sign-in and everything an administrator needs to repair the license keep working |
+| no file at all | new accounts are still admitted during the 30-day grace, so a fresh install can let its first administrator in; read-only after it |
+
+Seats: with a `seats` cap, a first sign-in past the cap is admitted under `soft` policy and the administrators are told once a day (`license_seats_exceeded` in the audit log); under `hard` policy it is refused with `SEAT_LIMIT`. Outside people on share links never count.
+
+Features: `editor` absent means in-browser editing cannot be switched on and is not offered; `api` absent means no personal access tokens can be made and existing ones are refused, which also stops the drive. A license without a feature list includes everything; so does a license that was not accepted, whose grace period and read-only state do the work instead.
+
+`LICENSE_ENFORCE=off` in the container environment turns enforcement off for development and evaluation installs. Reporting and warnings are unaffected. Provisioned servers never set it.
 
 ## Warnings
 

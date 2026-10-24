@@ -5,7 +5,7 @@ const express = require('express');
 let mockRole = 'admin';
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: 'u1', email: 'a@test.com', role: mockRole }; next(); });
 jest.mock('../../lib/editorStatus', () => ({
-  status: jest.fn(), switchedOn: jest.fn(), setSwitch: jest.fn().mockResolvedValue(),
+  status: jest.fn(), switchedOn: jest.fn(), setSwitch: jest.fn().mockResolvedValue(), licensed: jest.fn(async () => true),
 }));
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue() }));
 
@@ -55,5 +55,18 @@ describe('the in-browser editing switch', () => {
     const res = await request(app).put('/api/admin/editor').send(body);
     expect(res.status).toBe(400);
     expect(editorStatus.setSwitch).not.toHaveBeenCalled();
+  });
+});
+
+describe('the license', () => {
+  test('switching editing on without the editor feature is refused; switching off is not', async () => {
+    editorStatus.licensed.mockResolvedValue(false);
+    try {
+      const on = await request(app).put('/api/admin/editor').send({ enabled: true });
+      expect(on.status).toBe(403);
+      expect(on.body).toEqual({ code: 'LICENSE_FEATURE', error: "In-browser editing is not included in this server's license." });
+      expect(editorStatus.setSwitch).not.toHaveBeenCalled();
+      expect((await request(app).put('/api/admin/editor').send({ enabled: false })).status).toBe(200);
+    } finally { editorStatus.licensed.mockResolvedValue(true); }
   });
 });

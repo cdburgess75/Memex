@@ -4,6 +4,7 @@
 jest.mock('../../lib/db', () => ({ query: jest.fn(async () => []), queryOne: jest.fn() }));
 jest.mock('jsonwebtoken');
 jest.mock('jwks-rsa', () => ({ JwksClient: jest.fn() }));
+jest.mock('../../lib/licenseEnforce', () => ({ admitNewAccount: jest.fn(async () => ({ ok: true })), feature: jest.fn(async () => true), refuseFeature: jest.fn((res, what) => res.status(403).json({ code: 'LICENSE_FEATURE', error: `${what} is not included in this server's license.` })) }));
 const db = require('../../lib/db');
 const apiTokens = require('../../lib/apiTokens');
 const auth = require('../../middleware/auth');
@@ -59,4 +60,15 @@ test('"last used" is written, and a JWT-looking token still takes the sign-in pa
   const jwt = require('jsonwebtoken'); jwt.decode.mockReturnValue(null);
   const s = res(); await auth({ headers: { authorization: 'Bearer eyJ.not.a-token' }, originalUrl: '/api/v1/me' }, s, () => {});
   expect(s.statusCode).toBe(401);                            // the JWT path refused it, not the token path
+});
+
+test('a token is refused when the license leaves out the api feature', async () => {
+  const enforce = require('../../lib/licenseEnforce');
+  enforce.feature.mockResolvedValueOnce(false);
+  const r = req(); const s = res(); const next = jest.fn();
+  await auth(r, s, next);
+  expect(s.statusCode).toBe(403);
+  expect(s.body).toEqual({ code: 'LICENSE_FEATURE', error: "The API is not included in this server's license." });
+  expect(enforce.feature).toHaveBeenCalledWith('api');
+  expect(next).not.toHaveBeenCalled();
 });

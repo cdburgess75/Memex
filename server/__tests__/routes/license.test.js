@@ -8,6 +8,7 @@ const express = require('express');
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: 'u1', role: req.headers['x-role'] || 'admin' }; next(); });
 jest.mock('../../lib/db', () => ({ query: jest.fn(), queryOne: jest.fn() }));
 jest.mock('../../lib/license', () => ({ status: jest.fn() }));
+jest.mock('../../lib/licenseEnforce', () => ({ prime: jest.fn(), enforcing: () => true, seatsUsed: async () => { try { const row = await require('../../lib/db').queryOne('SELECT COUNT(*)::int AS n FROM user_roles WHERE disabled_at IS NULL'); return row && Number.isInteger(row.n) ? row.n : null; } catch { return null; } } }));
 const db = require('../../lib/db');
 const license = require('../../lib/license');
 const router = require('../../routes/license');
@@ -52,7 +53,7 @@ describe('GET /api/license', () => {
     license.status.mockResolvedValue({ configured: false, accepted: false, state: 'unlicensed', reason: 'error:boom' });
     const r = await request(app).get('/api/license');
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ configured: false, accepted: false, state: 'unlicensed', reason: 'error:boom' });
+    expect(r.body).toEqual({ configured: false, accepted: false, state: 'unlicensed', reason: 'error:boom', enforcing: true });
     expect(db.queryOne).not.toHaveBeenCalled();
   });
 
