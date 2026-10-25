@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../lib/db');
+const pinDefaults = require('../lib/pinDefaults');
 
 // Defensive caps so a client can't store an unbounded blob under a user's row.
 const MAX_PINNED = 500;
@@ -24,6 +25,9 @@ function idList(v, cap) {
 
 // GET /api/preferences — the caller's saved preferences (empty defaults if none/unavailable).
 router.get('/', auth, async (req, res) => {
+  // Libraries a group's share pins for its members, given once (lib/pinDefaults.js).
+  // Best effort: a failure here must not cost the person the pins they already have.
+  try { await pinDefaults.apply(req.user.id); } catch (e) { console.error('pin defaults failed:', e.message); }
   try {
     const row = await db.queryOne(
       'SELECT pinned_libraries, favorite_files, start_library FROM user_preferences WHERE user_id = $1',

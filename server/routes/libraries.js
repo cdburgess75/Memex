@@ -8,6 +8,7 @@ const requireRole = require('../middleware/requireRole');
 const libraries = require('../lib/libraries');
 const folderUndo = require('../lib/folderUndo');
 const shares = require('../lib/libraryShares');
+const pinDefaults = require('../lib/pinDefaults');
 const db = require('../lib/db');
 const groups = require('../lib/groups');
 const notifications = require('../lib/notifications');
@@ -436,6 +437,27 @@ router.put('/:id/shares/:shareId', auth, requireRole('admin', 'contributor'), as
     }
     await audit(req, 'library_share_changed', `${where(lib, share.folder_path)} -> ${who(share)} ${share.permission} -> ${permission} by ${req.user.id}`);
     res.json({ share: updated });
+  } catch (e) { serverError(res, e); }
+});
+
+// PUT /api/libraries/:id/shares/:shareId/pin — { pinned } — "Pin for everyone in this
+// group": the library is added once to each member's pinned list (lib/pinDefaults.js).
+// Only a group's share of the whole library. Turning it off gives nobody new the pin and
+// takes no pin away -- once given, a pin is the person's.
+router.put('/:id/shares/:shareId/pin', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const lib = await loadManaged(req, res);
+    if (!lib) return;
+    const share = groups.isUuid(req.params.shareId) ? await shares.getShare(lib.id, req.params.shareId) : null;
+    if (!share) return res.status(404).json({ error: 'Share not found' });
+    if (typeof req.body?.pinned !== 'boolean') return res.status(400).json({ error: 'Say whether to pin it: pinned true or false' });
+    if (share.subject_type !== 'group' || share.folder_path !== '') {
+      return res.status(400).json({ error: 'Only a whole library shared with a group can be pinned for its members.' });
+    }
+    if (share.pin_by_default === req.body.pinned) return res.json({ share });
+    if (!(await pinDefaults.setForShare(lib.id, share.id, req.body.pinned))) return res.status(404).json({ error: 'Share not found' });
+    await audit(req, 'library_share_changed', `${where(lib, '')} -> ${who(share)} pin for members ${req.body.pinned ? 'on' : 'off'} by ${req.user.id}`);
+    res.json({ share: await shares.getShare(lib.id, share.id) });
   } catch (e) { serverError(res, e); }
 });
 
