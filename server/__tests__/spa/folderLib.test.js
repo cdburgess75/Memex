@@ -261,13 +261,15 @@ describe('the library opened at sign-in, in the library menu', () => {
       + `\nthis.menu = libraryMenuInnerHtml;`, ctx);
     return ctx.menu();
   };
-  test('offers to open the current library at sign-in', () => {
-    expect(menuFor(null)).toContain('Open “Clients” when you sign in');
+  test('offers to open the current library at sign-in, under its name', () => {
+    const m = menuFor(null);
+    expect(m).toContain('<div class="library-menu-for" id="library-menu-for" title="Clients">Clients</div>');
+    expect(m).toMatch(/aria-pressed="false" data-lib="L1" onclick="setStartLibrary\(this\.dataset\.lib\)"[^>]*><span>Open at sign-in<\/span><\/button>/);
   });
-  test('says when it already does, and that click turns it off', () => {
+  test('says when it already does, and that selecting it turns it off', () => {
     const m = menuFor('L1');
-    expect(m).toContain('“Clients” opens when you sign in');
-    expect(m).toContain('setStartLibrary(null)');
+    expect(m).toMatch(/aria-pressed="true" onclick="setStartLibrary\(null\)"/);
+    expect(m).toContain('<span class="library-menu-check" aria-hidden="true">✓</span>');
   });
   test('every row has a pin star', () => {
     expect(menuFor(null)).toMatch(/class="library-pin-star"/);

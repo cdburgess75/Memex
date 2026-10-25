@@ -81,7 +81,7 @@ describe('the library menu', () => {
     expect(css).toMatch(/\.library-menu-fold \{[^}]*min-height: 24px;/);
   });
   test('the sign-in choice keeps one voice', () => {
-    expect(html).toContain('Open “${esc(cur.name)}” when you sign in');
+    expect(fnText('libraryMenuActionsHtml')).toContain('<span>Open at sign-in</span>');
     expect(html).not.toContain('when I sign in</button>');
   });
 });

@@ -283,6 +283,6 @@ describe('the call sites', () => {
   test('menus and the switcher offer the list', () => {
     expect(body('openFileMenu')).toContain('openFileAccess(');
     expect(body('openFolderMenu')).toContain('openLibraryAccess(');
-    expect(body('libraryMenuInnerHtml')).toContain('data-access-lib=');
+    expect(body('libraryMenuActionsHtml')).toContain('data-access-lib=');
   });
 });
