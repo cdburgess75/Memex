@@ -339,3 +339,100 @@ describe('status (config is env-only; memory is in system_settings)', () => {
     } finally { Object.assign(settings, real); }
   });
 });
+
+describe('install: a renewed license from Settings', () => {
+  let tmp, licFile;
+  const ENV = { LICENSE_PUBLIC_KEY: PUB, LICENSE_PUBLIC_KEY_PATH: '', LICENSE_PUBLIC_KEYS_DIR: '', APP_URL: 'https://docs.acme.com' };
+  const env = (fn, extra = {}) => withEnv({ ...ENV, LICENSE_FILE: licFile, ...extra }, fn);
+  const write = (lic) => fs.writeFileSync(licFile, JSON.stringify(lic));
+  const RENEWED = { ...V2, id: 'acme-0004', issued: '2026-12-01', expires: '2028-01-01', updates_until: '2028-01-01' };
+  beforeEach(() => {
+    mockStore.clear();
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'memex-license-'));
+    licFile = path.join(tmp, 'license.json');
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  test('a higher serial for this server is kept, and from then on it is the license that counts', async () => {
+    write(mkLicense(V2));
+    expect(await env(() => license.status(NOW))).toMatchObject({ serial: 'acme-0003', source: 'file' });
+    const r = await env(() => license.install(JSON.stringify(mkLicense(RENEWED)), 'admin-1', NOW));
+    expect(r.ok).toBe(true);
+    expect(r.status).toMatchObject({ accepted: true, state: 'ok', serial: 'acme-0004', expires: '2028-01-01', source: 'upload' });
+    expect(JSON.parse(mockStore.get(license.MEM_UPLOADED)).payload.id).toBe('acme-0004');
+    expect(await env(() => license.status(NOW))).toMatchObject({ serial: 'acme-0004', source: 'upload' });
+    expect(mockStore.get(license.MEM_SERIAL)).toBe('acme-0004');
+  });
+
+  test('takes the parsed object and the base64 form an email carries', async () => {
+    write(mkLicense(V2));
+    expect((await env(() => license.install(mkLicense(RENEWED), null, NOW))).ok).toBe(true);
+    mockStore.clear();
+    const b64 = Buffer.from(JSON.stringify(mkLicense(RENEWED))).toString('base64').replace(/(.{60})/g, '$1\n');
+    expect((await env(() => license.install(b64, null, NOW))).ok).toBe(true);
+  });
+
+  test.each([
+    ['signed by a key this server does not trust', () => mkLicense({ ...RENEWED, kid: OTHER_KID }, OTHER.privateKey), 'unknown_kid'],
+    ['a signature that does not match the payload', () => ({ ...mkLicense(RENEWED), payload: { ...RENEWED, seats: null } }), 'bad_signature'],
+    ['issued for another address', () => mkLicense({ ...RENEWED, domain: 'docs.other.com' }), 'domain_mismatch'],
+    ['older than the one in use', () => mkLicense({ ...V2, id: 'acme-0002' }), 'serial_regressed'],
+    ['another installation\'s serial', () => mkLicense({ ...RENEWED, id: 'other-0009' }), 'serial_mismatch'],
+    ['a version 1 license', () => mkLicense(GOOD), 'not_v2'],
+  ])('refuses one %s, and keeps nothing', async (_name, make, reason) => {
+    write(mkLicense(V2));
+    await env(() => license.status(NOW)); // the server has seen acme-0003
+    const r = await env(() => license.install(make(), 'admin-1', NOW));
+    expect(r).toMatchObject({ ok: false, reason });
+    expect(mockStore.has(license.MEM_UPLOADED)).toBe(false);
+    expect(await env(() => license.status(NOW))).toMatchObject({ accepted: true, serial: 'acme-0003', source: 'file' });
+  });
+
+  test.each([['empty', ''], ['not JSON', 'hello there'], ['JSON that is not a license', '{"a":1}'], ['too long', '{' + 'x'.repeat(70 * 1024)], ['nothing', undefined]])(
+    'refuses %s as not a license', async (_name, input) => {
+      expect(await env(() => license.install(input, null, NOW))).toEqual({ ok: false, reason: 'not_a_license' });
+    });
+
+  test('with no trusted key nothing can be installed: the trust anchor stays in the environment', async () => {
+    const r = await env(() => license.install(mkLicense(RENEWED), null, NOW), { LICENSE_PUBLIC_KEY: '' });
+    expect(r).toEqual({ ok: false, reason: 'no_public_key' });
+    expect(mockStore.has(license.MEM_UPLOADED)).toBe(false);
+  });
+
+  test('installs where no file was ever mounted, and ends the unlicensed clock', async () => {
+    expect(await env(() => license.status(NOW))).toMatchObject({ stateReason: 'no_license', source: null });
+    expect(mockStore.has(license.MEM_UNLICENSED_SINCE)).toBe(true);
+    const r = await env(() => license.install(mkLicense(RENEWED), null, at(40)));
+    expect(r.status).toMatchObject({ accepted: true, readOnly: false, source: 'upload' });
+    expect(mockStore.has(license.MEM_UNLICENSED_SINCE)).toBe(false);
+  });
+
+  test('a renewal lifts read-only at once', async () => {
+    write(mkLicense({ ...V2, expires: dateIn(-60), updates_until: dateIn(-60) }));
+    expect(await env(() => license.status(NOW))).toMatchObject({ state: 'readonly', readOnly: true });
+    const r = await env(() => license.install(mkLicense({ ...RENEWED, expires: dateIn(365), updates_until: dateIn(365) }), null, NOW));
+    expect(r.status).toMatchObject({ state: 'ok', readOnly: false, seatFreeze: false });
+  });
+
+  test('a newer file mounted later wins over the installed copy', async () => {
+    write(mkLicense(V2));
+    await env(() => license.install(mkLicense(RENEWED), null, NOW));
+    write(mkLicense({ ...RENEWED, id: 'acme-0005' }));
+    expect(await env(() => license.status(NOW))).toMatchObject({ serial: 'acme-0005', source: 'file' });
+  });
+
+  test('an installed copy altered in the database is ignored in favour of the file', async () => {
+    write(mkLicense(V2));
+    await env(() => license.install(mkLicense(RENEWED), null, NOW));
+    const stored = JSON.parse(mockStore.get(license.MEM_UPLOADED));
+    stored.payload.seats = null; // edited by hand: the signature no longer matches
+    mockStore.set(license.MEM_UPLOADED, JSON.stringify(stored));
+    mockStore.set(license.MEM_SERIAL, 'acme-0003');
+    expect(await env(() => license.status(NOW))).toMatchObject({ accepted: true, serial: 'acme-0003', source: 'file' });
+  });
+
+  test('installing the license already in use again is harmless', async () => {
+    write(mkLicense(V2));
+    expect((await env(() => license.install(mkLicense(V2), null, NOW))).status).toMatchObject({ accepted: true, serial: 'acme-0003' });
+  });
+});

@@ -1273,6 +1273,13 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
   box-sizing: border-box;
 }
 .settings-grid textarea { resize: vertical; min-height: 60px; }
+.license-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 20px; font-size: 14px; }
+.license-facts dt { color: var(--ink-soft); }
+.license-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.license-paste { grid-template-columns: 1fr; }
+.security-status-card.danger { border-left: 3px solid var(--danger); }
+.license-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.license-paste textarea { font-family: var(--mono); font-size: 12px; }
 /* Human-readable identity fields (names, workspace title) read as plain text —
    mono is reserved for paths, keys, URLs, and other machine values. */
 .settings-grid input.sans { font-family: var(--ui); font-size: 14px; }
@@ -5039,7 +5046,7 @@ function licenseNoticeRefresh() {
   const text = isAdmin ? licenseNoticeText(lic) : LICENSE_READONLY_NOTICE;
   if (!text) return;
   const danger = !!lic.readOnly || lic.state === 'unlicensed';
-  const details = isAdmin ? '<button class="run-btn" type="button" onclick="openUpdateModal()">Details</button>' : '';
+  const details = isAdmin ? '<button class="run-btn" type="button" onclick="openSettingsAt(\'license\')">Details</button>' : '';
   document.body.insertAdjacentHTML('beforeend', `<div id="license-notice" class="reload-banner license-notice${danger ? ' danger' : ''}" role="status">${text}${details}<button class="reload-x" type="button" aria-label="Dismiss" onclick="dismissLicenseNotice()">✕</button></div>`);
 }
 function dismissLicenseNotice() {
@@ -5095,6 +5102,88 @@ function licenseSummary(lic) {
   else if (!lic.updatesEntitled) note = ' Updates are not currently entitled.';
   return parts.join(' · ') + '.' + note;
 }
+// Settings > License: what this server is licensed for, and where an administrator
+// installs a renewed license (POST /api/license). Works while the server is read-only.
+const LICENSE_REFUSALS = {
+  not_a_license: 'That is not a license file. Pick the license.json you were sent, or paste all of it.',
+  not_v2: 'That is an older kind of license this version of Depot no longer installs. Ask for a current one.',
+  no_public_key: 'This server trusts no license key, so it cannot check a license. The server needs its license key set up first.',
+};
+function licenseRefusal(reason) {
+  return LICENSE_REFUSALS[reason] || licenseProblem({ stateReason: reason }).replace(/^The license/, 'This license');
+}
+function licenseFactsHtml(lic) {
+  if (!lic || !lic.present || lic.version !== 2) return '';
+  const day = (v) => esc(String(v || '').slice(0, 10));
+  const rows = [
+    ['Licensed to', esc(lic.customer || '')],
+    ['Serial', esc(lic.serial || '')],
+    ['Issued for', esc(lic.domain === '*' ? 'any address' : (lic.domain || ''))],
+    ['Term', !lic.expires ? 'no end date'
+      : lic.state === 'lapsed' ? `ended ${day(lic.expires)}; read-only from ${day(lic.graceEnds)}`
+      : lic.state === 'readonly' ? `ended ${day(lic.expires)}; read-only since ${day(lic.graceEnds)}`
+      : `through ${day(lic.expires)}`],
+    ['Updates', lic.updatesUntil ? `through ${day(lic.updatesUntil)}` : ''],
+    ['Seats', lic.seats?.licensed != null ? `${lic.seats.used ?? '?'} of ${lic.seats.licensed} in use` : `${lic.seats?.used != null ? `${lic.seats.used} in use, ` : ''}no limit`],
+    ['Includes', (lic.features || []).map(f => ({ updates: 'updates', editor: 'in-browser editing', api: 'the API' }[f] || f)).map(esc).join(', ') || 'everything'],
+    ['Installed', lic.source === 'upload' ? 'here, in Settings' : 'with the server'],
+  ].filter(([, v]) => v);
+  return `<dl class="license-facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+}
+function licenseSettingsHtml(lic) {
+  const danger = !!lic && (lic.readOnly || lic.state === 'unlicensed' || lic.state === 'lapsed');
+  return `<div class="settings-sub">License</div>
+    <div class="security-status-card${danger ? ' danger' : ''}" id="license-summary"><span>${lic ? licenseSummary(lic) : 'Checking…'}</span></div>
+    <div id="license-facts">${licenseFactsHtml(lic)}</div>
+    <div class="settings-sub">Install a renewed license</div>
+    <p class="settings-notice">When the license is renewed you are sent a new <code>license.json</code>. Choose that file, or paste what is in it. Depot only accepts a license signed for this server's address that is newer than the one in use, and it takes effect straight away, including lifting read-only.</p>
+    <input type="file" id="license-file" accept=".json,application/json,text/plain" style="display:none" onchange="onLicenseFilePicked(event)">
+    <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="document.getElementById('license-file').click()">Choose file…</button></div>
+    <div class="settings-grid license-paste">
+      <label for="license-paste">Or paste it</label>
+      <textarea id="license-paste" rows="5" spellcheck="false" autocomplete="off" placeholder='{"payload": { … }, "alg": "ed25519", "signature": "…"}'></textarea>
+    </div>
+    <div class="btn-row" style="margin-top:12px"><button class="run-btn" type="button" id="license-install-btn" onclick="installLicense()">Install license</button></div>
+    <p class="settings-notice" id="license-install-result" role="status" aria-live="polite"></p>`;
+}
+async function loadLicenseSettings() {
+  try { licenseStatus = await apiGet('/license'); } catch { /* keep what we had */ }
+  const sum = document.getElementById('license-summary');
+  if (!sum) return;
+  sum.querySelector('span').innerHTML = licenseStatus ? licenseSummary(licenseStatus) : 'The license status could not be loaded.';
+  sum.classList.toggle('danger', !!licenseStatus && (licenseStatus.readOnly || licenseStatus.state === 'unlicensed' || licenseStatus.state === 'lapsed'));
+  document.getElementById('license-facts').innerHTML = licenseFactsHtml(licenseStatus);
+}
+async function onLicenseFilePicked(ev) {
+  const f = ev.target.files?.[0];
+  ev.target.value = '';
+  if (!f) return;
+  const out = document.getElementById('license-install-result');
+  if (f.size > 64 * 1024) { if (out) out.textContent = licenseRefusal('not_a_license'); return; }
+  const ta = document.getElementById('license-paste');
+  if (ta) ta.value = await f.text();
+  installLicense();
+}
+async function installLicense() {
+  const ta = document.getElementById('license-paste');
+  const out = document.getElementById('license-install-result');
+  const btn = document.getElementById('license-install-btn');
+  const text = (ta?.value || '').trim();
+  if (!text) { if (out) out.textContent = 'Choose the license file, or paste what is in it.'; ta?.focus(); return; }
+  if (btn) btn.disabled = true;
+  if (out) out.textContent = 'Checking the license…';
+  try {
+    licenseStatus = await apiPost('/license', { license: text });
+    if (ta) ta.value = '';
+    if (out) out.textContent = `Installed. ${licenseStatus.serial ? `${licenseStatus.serial} is` : 'The new license is'} now in use${licenseStatus.expires ? `, term through ${String(licenseStatus.expires).slice(0, 10)}` : ''}.`;
+    try { sessionStorage.removeItem('memex_license_notice_dismissed'); } catch { /* storage off */ }
+    licenseNoticeRefresh(); updateCtaRefresh(latestUpdateInfo);
+    loadLicenseSettings();
+    toast('License installed');
+  } catch (e) {
+    if (out) out.textContent = e.body?.reason ? licenseRefusal(e.body.reason) : (e.message || 'The license could not be installed.');
+  } finally { if (btn) btn.disabled = false; }
+}
 function renderUpdateModal(ver, lic) {
   const m = document.querySelector('#update-scrim .modal');
   if (!m) return;
@@ -5108,7 +5197,7 @@ function renderUpdateModal(ver, lic) {
   const canRun = entitled && !upToDate;
   m.innerHTML = `<h2>Software update</h2>
     <p class="sub">${upToDate ? `You're on the latest release (${cur}).` : `Running ${cur}${behind != null ? ` · ${behind} release${behind === 1 ? '' : 's'} behind` : ''} · latest ${latest}.`}</p>
-    <div class="security-status-card" style="margin:6px 0 14px"><strong>License</strong><span>${licLine}</span></div>
+    <div class="security-status-card" style="margin:6px 0 14px"><strong>License</strong><span>${licLine} <button class="license-link" type="button" onclick="closeUpdateModal(); openSettingsAt('license')">Manage license</button></span></div>
     <p class="settings-notice">${canRun ? 'Run the update now (if this server has an automatic updater wired up), or apply it manually on the host:' : 'To update manually on the server:'}</p>
     <pre class="update-steps">${steps}</pre>
     <div id="update-run-output" class="update-output" style="display:none"></div>
@@ -6362,6 +6451,7 @@ function settingsTabsList() {
     { group: 'Server' },
     { id: 'storage', label: 'Storage & backups' },
     { id: 'server', label: 'Network, limits & calls' },
+    { id: 'license', label: 'License' },
     { id: 'activity', label: 'Activity' }
   );
   return tabs;
@@ -6398,6 +6488,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'How long a sign-in lasts'); loadSessionLength(); }
   else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
+  else if (tab === 'license' && admin) { body.innerHTML = licenseSettingsHtml(licenseStatus); loadLicenseSettings(); }
   body.scrollTop = 0;
   bindLabels(body);
   if (tab === 'workspace') loadEditorSwitch(); // fills in the in-browser editing switch

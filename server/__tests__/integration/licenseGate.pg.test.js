@@ -29,6 +29,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
   let db, request, app, jwt, license, enforce, tmp;
   const U = (n) => `00000000-0000-4000-8000-0000000000${String(n).padStart(2, '0')}`;
   const OWNER = { id: U(1), email: 'owner@corp.test' };
+  const ADMIN = { id: U(2), email: 'admin@corp.test' };
   const LIB = U(50);
   const DAY = 86_400_000;
   const dateIn = (days) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10);
@@ -60,6 +61,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
     await db.query(fs.readFileSync(path.join(__dirname, '../../../postgres/init/01_schema.sql'), 'utf8'));
     await require('../../lib/migrations').run();
     await db.query('INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, $3, $2)', [OWNER.id, OWNER.email, 'contributor']);
+    await db.query('INSERT INTO user_roles (user_id, email, role, verified_email) VALUES ($1, $2, $3, $2)', [ADMIN.id, ADMIN.email, 'admin']);
     await db.query('INSERT INTO libraries (id, name, owner_id, owner_email) VALUES ($1, $2, $3, $4)', [LIB, 'Projects', OWNER.id, OWNER.email]);
     jwt = require('jsonwebtoken'); jwt.decode.mockReturnValue({ header: { kid: 'k' } });
     jwt.verify.mockReturnValue({ sub: OWNER.id, email: OWNER.email, email_verified: true });
@@ -68,6 +70,7 @@ suite('the read-only gate, the real file router, a real license and a real datab
     app = express(); app.use(express.json());
     app.use(require('../../middleware/licenseGate'));             // as index.js mounts it: before every router
     app.use('/api/files', require('../../routes/files'));         // the WHOLE router
+    app.use('/api/license', require('../../routes/license'));     // where an administrator installs a renewal
   });
   afterAll(async () => {
     try { await reset(); } catch { /* best effort */ }
@@ -107,5 +110,32 @@ suite('the read-only gate, the real file router, a real license and a real datab
     install({ serial: '0004', expires: dateIn(365) });
     expect(await enforce.readOnly()).toBe(false);
     expect((await as(request(app).post('/api/files/folder')).send({ path: 'Renewed', library_id: LIB })).status).toBeLessThan(400);
+  });
+
+  test('read-only ends when an administrator installs a renewal in Settings, through the real license router', async () => {
+    install({ serial: '0005', expires: dateIn(-45) });
+    expect(await enforce.readOnly()).toBe(true);
+    const asAdmin = (r) => { jwt.verify.mockReturnValue({ sub: ADMIN.id, email: ADMIN.email, email_verified: true }); return r.set('Authorization', 'Bearer t'); };
+    try {
+      const other = sign({ v: 2, id: 'corp-0006', kid: license.keyId(publicKey), customer: 'Corp', slug: 'corp', domain: 'docs.elsewhere.test', type: 'standard', plan: 'care', issued: '2026-01-01', expires: dateIn(365), updates_until: dateIn(365), grace_days: 30, seats: null, seat_policy: 'soft', storage_gb: null, features: ['updates', 'editor', 'api'] });
+      const refused = await asAdmin(request(app).post('/api/license')).send({ license: JSON.stringify(other) });
+      expect(refused.status).toBe(400);
+      expect(refused.body).toMatchObject({ code: 'LICENSE_REFUSED', reason: 'domain_mismatch' });
+      expect(await db.queryOne("SELECT 1 FROM system_settings WHERE key = 'license_uploaded'")).toBeNull();
+      expect(await enforce.readOnly()).toBe(true);
+
+      const renewal = sign({ ...other.payload, domain: 'docs.corp.test' });
+      const ok = await asAdmin(request(app).post('/api/license')).send({ license: Buffer.from(JSON.stringify(renewal)).toString('base64') });
+      expect(ok.status).toBe(200);
+      expect(ok.body).toMatchObject({ accepted: true, state: 'ok', readOnly: false, serial: 'corp-0006', source: 'upload' });
+      const row = await db.queryOne("SELECT value, updated_by FROM system_settings WHERE key = 'license_uploaded'");
+      expect(JSON.parse(row.value).payload.id).toBe('corp-0006');
+      expect(row.updated_by).toBe(ADMIN.id);
+      expect((await db.queryOne("SELECT value FROM system_settings WHERE key = 'license_serial_seen'")).value).toBe('corp-0006');
+    } finally {
+      jwt.verify.mockReturnValue({ sub: OWNER.id, email: OWNER.email, email_verified: true });
+    }
+    expect(await enforce.readOnly()).toBe(false);
+    expect((await as(request(app).post('/api/files/folder')).send({ path: 'After the renewal', library_id: LIB })).status).toBeLessThan(400);
   });
 });
