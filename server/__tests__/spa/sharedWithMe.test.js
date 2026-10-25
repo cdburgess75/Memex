@@ -19,16 +19,29 @@ const section = (() => {
   return html.slice(start, end);
 })();
 
-function page(answer) {
+// `rows` stand in for the rendered .swm-row elements (what a click reaches is their
+// dataset); `listed` is what the fresh library list holds when a row is opened.
+function page(answer, { rows = [], listed = [] } = {}) {
   const nodes = {};
   const calls = [];
+  const acts = [];
   const ctx = {
-    document: { getElementById: (id) => (nodes[id] ||= { innerHTML: '', querySelectorAll: () => [] }), querySelectorAll: () => [] },
+    document: { getElementById: (id) => (nodes[id] ||= { innerHTML: '', querySelectorAll: (sel) => (id === 'swm-body' && sel === '.swm-row' ? rows : []) }), querySelectorAll: () => [] },
     apiGet: async (p) => { calls.push(p); if (answer instanceof Error) throw answer; return answer; },
     fileHomeShell: (main) => main,
     fileSizeLabel: (n) => `${n} B`,
     fileDate: (d) => `on ${d}`,
-    nodes, calls,
+    // what opening a row touches: the fresh library list, then (openSharedPlace is part of
+    // the section, so it runs for real) the library view and its folder, the preview, the toast
+    librariesList: listed.map(id => ({ id })),
+    loadLibraries: async () => { acts.push('loadLibraries'); },
+    renderDocumentLibrary: async (view) => { acts.push(`render ${view}`); },
+    openFolder: (folder) => { acts.push(`folder ${JSON.stringify(folder)}`); },
+    previewFile: (id) => { acts.push(`preview ${id}`); },
+    toast: (msg) => { acts.push(`toast ${msg}`); },
+    closeLibraryMenu: () => {}, clearFileSelection: () => {}, localStorage: { setItem: () => {}, removeItem: () => {} },
+    state: {}, currentLibraryId: null, currentFolderPath: '',
+    nodes, calls, acts,
   };
   vm.runInNewContext(`${fnLine('esc')}\n${fnLine('escAttr')}\n${html.match(/^function emptyState\([\s\S]*?\n}\n/m)[0]}\n${section}
     this.renderSharedWithMe = renderSharedWithMe; this.swmShareLine = swmShareLine; this.swmLevel = swmLevel;`, ctx);
@@ -86,6 +99,18 @@ describe('the rows', () => {
     expect(body).toContain('You can open these files, not the rest of their library.');
     // a capped level shows what the account can use, and says why
     expect(body).toContain('title="Your account can only view files">Can view');
+    expect(body).not.toContain('Archived');
+  });
+  test('a put-away library, which only an admin is still sent, is marked on its row', async () => {
+    const gone = { ...LIB, archived_at: '2026-10-09T02:14:33Z' };
+    const { body } = await render({
+      ...base, is_admin: true,
+      libraries: [{ library: gone, level: 'write', effective: 'write', view_only: false, shares: [share()], files: 0, bytes: 0, updated_at: null }],
+      folders: [{ library: gone, path: 'Clients/Meadow', name: 'Meadow', level: 'read', effective: 'read', view_only: false, shares: [share()], also_whole_library: true, files: 0, bytes: 0, updated_at: null }],
+    });
+    expect(body.match(/<span class="pill warn" title="Put away: [^"]*">Archived<\/span>/g)).toHaveLength(2);
+    expect(body).toContain('Accounting <span class="pill warn"');
+    expect(body).toContain('Meadow <span class="pill warn"');
   });
   test('extra routes to the same library follow the first', () => {
     const p = page(base);
@@ -100,6 +125,57 @@ describe('the rows', () => {
     });
     expect(body).not.toContain('<img');
     expect(body).not.toContain('"><b>');
+  });
+});
+
+// Opening a row: the library list is read afresh first, because it is what the library
+// view can show. A library or folder that is not in it any more (its share ended, or the
+// library was put away since the page was drawn) is refused and the page redrawn; a file
+// given to you one by one is still yours, so it opens from here instead.
+describe('opening a row', () => {
+  const rowOf = (dataset) => {
+    const on = {};
+    return { dataset, addEventListener: (type, fn) => { on[type] = fn; }, click: () => on.click(), press: (key) => on.keydown({ key, preventDefault() {} }) };
+  };
+  const data = { ...base, libraries: [{ library: LIB, level: 'read', effective: 'read', shares: [share()] }] };
+  const settle = () => new Promise(r => setImmediate(r));
+  test('a library you are still listed opens, after the fresh list', async () => {
+    const r = rowOf({ swmLib: 'lib-1' });
+    const p = page(data, { rows: [r], listed: ['lib-1'] });
+    await p.renderSharedWithMe();
+    r.click(); await settle();
+    expect(p.acts).toEqual(['loadLibraries', 'render active', 'folder ""']);
+    expect(p.currentLibraryId).toBe('lib-1');
+  });
+  test('a folder in it opens in its folder, from the keyboard too', async () => {
+    const r = rowOf({ swmLib: 'lib-1', swmFolder: 'Clients/Meadow' });
+    const p = page(data, { rows: [r], listed: ['lib-1'] });
+    await p.renderSharedWithMe();
+    r.press('Enter'); await settle();
+    expect(p.acts).toEqual(['loadLibraries', 'render active', 'folder "Clients/Meadow"']);
+  });
+  test('a library you are no longer listed is refused, and the page redrawn', async () => {
+    const r = rowOf({ swmLib: 'lib-1' });
+    const p = page(data, { rows: [r], listed: ['lib-9'] });
+    await p.renderSharedWithMe();
+    r.click(); await settle();
+    expect(p.acts).toEqual(['loadLibraries', "toast You can't open that any more. The list has been refreshed."]);
+    expect(p.calls).toEqual(['/access/shared-with-me', '/access/shared-with-me']);
+  });
+  test('a file given to you opens from here when its library is no longer listed to you', async () => {
+    const r = rowOf({ swmFile: 'd1', swmLib: 'lib-1', swmFolder: 'Tax & Co' });
+    const p = page(data, { rows: [r], listed: [] });
+    await p.renderSharedWithMe();
+    r.click(); await settle();
+    expect(p.acts).toEqual(['loadLibraries', 'preview d1']);
+    expect(p.calls).toEqual(['/access/shared-with-me']);
+  });
+  test('a file in a library you are listed opens in its folder', async () => {
+    const r = rowOf({ swmFile: 'd1', swmLib: 'lib-1', swmFolder: 'Tax & Co' });
+    const p = page(data, { rows: [r], listed: ['lib-1'] });
+    await p.renderSharedWithMe();
+    r.click(); await settle();
+    expect(p.acts).toEqual(['loadLibraries', 'render active', 'folder "Tax & Co"', 'preview d1']);
   });
 });
 

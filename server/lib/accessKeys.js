@@ -67,6 +67,12 @@ const probe = (libraryExpr, pathExpr) => `(SELECT NULL::uuid AS id, NULL::uuid A
 // "shared with" them. Shares match only a verified address, so an account without one
 // is told so and shown nothing (it must not learn what was shared with an address it
 // merely claims).
+//
+// A library that has been put away (libraries.archived_at) is listed to administrators
+// only, exactly as lib/libraries LISTING has it, so a share of it, or of a folder in it,
+// is left out for everyone else: the page could show the row but nobody could open it.
+// A file given to someone one by one stays theirs to open wherever its library went, so
+// the file list is not filtered.
 async function sharedWithMe(user) {
   const out = {
     // the address the rule matches for this caller ('' = none verified)
@@ -81,7 +87,7 @@ async function sharedWithMe(user) {
   return withSnapshot(async (q) => {
     const shares = await q.query(
       `SELECT g.id AS share_id, g.library_id, g.folder_path, g.group_id, g.permission, g.granted_by_email, g.created_at,
-              l.name AS library_name, l.owner_email, ${nameOf('l.owner_email')} AS owner_name,
+              l.name AS library_name, l.owner_email, l.archived_at, ${nameOf('l.owner_email')} AS owner_name,
               grp.name AS group_name, ${nameOf('g.granted_by_email')} AS granted_by_name,
               ${callerLevel('p')} AS level,
               st.files, st.bytes, st.updated_at
@@ -97,6 +103,7 @@ async function sharedWithMe(user) {
               AND d.name <> '.keep' AND d.name NOT LIKE '%/.keep'
               AND (g.folder_path = '' OR starts_with(d.name, g.folder_path || '/'))) st
         WHERE ${documentAccess.shareSubject('g', R)} AND l.owner_id IS DISTINCT FROM $2
+          AND (l.archived_at IS NULL OR $1 = 'admin')
         ORDER BY lower(l.name), l.id, g.folder_path, (g.group_id IS NOT NULL), g.created_at, g.id`,
       params
     );
@@ -105,7 +112,7 @@ async function sharedWithMe(user) {
       const key = `${r.library_id}|${r.folder_path}`;
       if (!byDoor.has(key)) {
         byDoor.set(key, {
-          library: { id: r.library_id, name: r.library_name, owner: person(r.owner_email, r.owner_name) },
+          library: { id: r.library_id, name: r.library_name, owner: person(r.owner_email, r.owner_name), archived_at: r.archived_at || null },
           path: r.folder_path, level: null, shares: [],
           files: r.files, bytes: Number(r.bytes) || 0, updated_at: r.updated_at,
         });
