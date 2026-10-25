@@ -1,7 +1,9 @@
 'use strict';
-// Schema — libraries, library_members, documents.library_id — plus the default
-// "Ptech Workspace" seed and the backfill of pre-library documents all come from
-// migrations/0004_runtime_ensure_tables.sql, applied before the server listens.
+// Schema -- libraries, library_members, documents.library_id -- comes from
+// migrations/0004_runtime_ensure_tables.sql, applied before the server listens. Nothing
+// seeds a library: a fresh install has none until its first admin signs in and gets their
+// own (ensurePersonalLibrary, from middleware/auth.js). 0004 used to seed an ownerless one
+// named for the company Depot was first built for; it stopped on 2026-10-25.
 const db = require('./db');
 const { isUuid } = require('./groups');
 const documentAccess = require('./documentAccess');
@@ -101,30 +103,31 @@ async function removeMember(libraryId, memberId) {
   return db.queryOne('DELETE FROM library_members WHERE id = $1 AND library_id = $2 RETURNING id', [memberId, libraryId]);
 }
 
-/* Where something lands when nobody said where: the person's OWN library.
+/* Where something lands when nobody said where: the person's OWN library, and nowhere
+ * else. Null when they have none, and the caller refuses the request (NO_OWN_LIBRARY).
  *
  * It used to be "the oldest library in the install", which was an accident of history --
- * on every box that is the one Depot seeds at setup, so an unaddressed upload went to a
- * shared place by default. Landing in your own library instead means nothing is ever
- * shared with anybody by forgetting to choose.
+ * on every box that was the one Depot seeded at setup, so an unaddressed upload went to a
+ * shared place by default; and when the person had no library of their own, it went there
+ * too. Both are gone: the seed (migration 0004) and the fallback. Nothing is shared with
+ * anybody by forgetting to choose, and nothing lands in a library nobody chose.
  *
- * The fallback is that same oldest library, for the cases that have no person at all
- * (and for a viewer, who has none of their own).
+ * Who has no library of their own: a viewer (they cannot add files, so they never reach a
+ * write with it); an admin or contributor whose library is put away (archived) by an
+ * administrator; and, for the length of one request, somebody whose library could not be
+ * made at sign-in -- auth.js tries again on their next request. There is no caller with no
+ * person at all: every write is behind a sign-in, an API token acting as a person, or a
+ * link acting as its creator.
  */
 async function defaultLibraryFor(user) {
-  if (user?.id) {
-    const mine = await db.queryOne(
-      'SELECT id FROM libraries WHERE owner_id = $1 AND personal AND archived_at IS NULL LIMIT 1', [user.id]);
-    if (mine) return mine.id;
-  }
-  return defaultLibraryId();
+  if (!user?.id) return null;
+  const mine = await db.queryOne(
+    'SELECT id FROM libraries WHERE owner_id = $1 AND personal AND archived_at IS NULL LIMIT 1', [user.id]);
+  return mine ? mine.id : null;
 }
 
-// The install's first library. Only a fallback now -- prefer defaultLibraryFor(user).
-async function defaultLibraryId() {
-  const row = await db.queryOne('SELECT id FROM libraries ORDER BY created_at ASC LIMIT 1');
-  return row ? row.id : null;
-}
+// What a request that named no library is told when the person has none of their own.
+const NO_OWN_LIBRARY = "Choose a library for this: you don't have one of your own yet.";
 
 // Somebody's own library, made the first time they sign in. Conditional on the partial
 // unique index (migration 0011), so two requests arriving together make one library, not
@@ -277,7 +280,8 @@ async function createLibrary({ name, user }) {
   );
 }
 
-// Resolve the library a request targets (header / query / body), default if absent.
+// Resolve the library a request targets (header / query / body); the caller's own
+// library if absent, and null if they have none (see defaultLibraryFor).
 // A value that is present but not a uuid is refused (400) rather than passed on to
 // Postgres, where the cast would fail as a 500.
 async function resolveLibraryId(req) {
@@ -293,4 +297,4 @@ async function info(libraryId) {
   catch { return null; }
 }
 
-module.exports = { defaultLibraryId, defaultLibraryFor, ensurePersonalLibrary, ensurePersonalLibraryFor, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };
+module.exports = { NO_OWN_LIBRARY, defaultLibraryFor, ensurePersonalLibrary, ensurePersonalLibraryFor, listLibraries, visibleLibrary, visibleLibraryRow, shapeLibrary, createLibrary, resolveLibraryId, writeRight, managesLibrary, sharedFolderAt, listMembers, addMember, removeMember, info };

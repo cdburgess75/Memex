@@ -104,20 +104,29 @@ suite('a library of your own', () => {
     const daves = (await db.query('SELECT id FROM libraries WHERE owner_id = $1 AND personal', [DAVE.id]))[0].id;
     expect(await libraries.defaultLibraryFor(DAVE)).toBe(daves);
     expect(await libraries.defaultLibraryFor(JACK)).not.toBe(daves);
-    // no person at all (a link with no creator, a background job) falls back to the oldest
-    expect(await libraries.defaultLibraryFor(null)).toBe(shared);
-    // and so does somebody with none of their own
-    expect(await libraries.defaultLibraryFor(LOOKER)).toBe(shared);
+    // Nobody falls back to the oldest library any more: not "no person at all", and not
+    // somebody with none of their own. They get nowhere, and the request is refused
+    // (integration/freshInstall.pg has the refusals through the real routes).
+    expect(await libraries.defaultLibraryFor(null)).toBeNull();
+    expect(await libraries.defaultLibraryFor(LOOKER)).toBeNull();
+    // and a person's own library counts only while it is theirs to use
+    await db.query('UPDATE libraries SET archived_at = NOW() WHERE id = $1', [daves]);
+    expect(await libraries.defaultLibraryFor(DAVE)).toBeNull();
+    await db.query('UPDATE libraries SET archived_at = NULL WHERE id = $1', [daves]);
+    expect(await libraries.defaultLibraryFor(DAVE)).toBe(daves);
+    // the oldest-library lookup is gone from the module, not merely unused
+    expect(libraries.defaultLibraryId).toBeUndefined();
+    expect(fs.readFileSync(path.join(__dirname, '../../lib/libraries.js'), 'utf8')).not.toMatch(/ORDER BY created_at ASC LIMIT 1/);
   });
 
   // The destination of a move or a copy counts too. Left at "the install's oldest
-  // library" it is the seeded one -- which is the SHARED one on every box -- so a request
-  // that forgot to name a destination would quietly publish a folder company-wide.
-  test('a move or copy with no destination named goes to the person\'s own library', async () => {
+  // library" it was the seeded one -- the SHARED one on every box -- so a request that
+  // forgot to name a destination would quietly have published a folder company-wide.
+  test('a move or copy with no destination named goes to the person\'s own library, or is refused', async () => {
     const src = fs.readFileSync(path.join(__dirname, '../../routes/files/folders.js'), 'utf8');
-    expect(src).not.toMatch(/defaultLibraryId\(\)/);
-    const moveAndCopy = [...src.matchAll(/req\.body\?\.library_id \|\| \(await libraries\.(\w+)\(([^)]*)\)\)/g)];
-    expect(moveAndCopy.length).toBeGreaterThanOrEqual(2);
+    expect(src).not.toMatch(/defaultLibraryId/);
+    const moveAndCopy = [...src.matchAll(/req\.body\?\.library_id \|\| \(await libraries\.(\w+)\(([^)]*)\)\);\n\s*if \(!libraryId\) return res\.status\(400\)\.json\(\{ error: libraries\.NO_OWN_LIBRARY \}\);/g)];
+    expect(moveAndCopy.length).toBe(3); // create, move, copy
     for (const m of moveAndCopy) expect([m[1], m[2]]).toEqual(['defaultLibraryFor', 'req.user']);
   });
 

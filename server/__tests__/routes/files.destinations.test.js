@@ -83,7 +83,6 @@ jest.mock('../../lib/libraries', () => ({
   ...jest.requireActual('../../lib/libraries'),
   writeRight: jest.fn(async (_u, _lib, path) => (typeof mockRight.value === 'function' ? mockRight.value(String(path ?? '')) : mockRight.value)),
   sharedFolderAt: jest.fn(async () => false),
-  defaultLibraryId: jest.fn(async () => 'aaaaaaaa-0000-4000-8000-000000000001'),
 }));
 jest.mock('../../lib/documentAccess', () => ({
   ...jest.requireActual('../../lib/documentAccess'),
