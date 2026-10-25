@@ -65,7 +65,10 @@ function buildEvent(opts) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Ptech//Memex//EN',
+    // Who made the file, as RFC 5545 asks (vendor, product, language). The product's own
+    // name, not the company Depot was first built for, and never the package name: this
+    // line travels in every invite a customer's people send.
+    'PRODID:-//Depot//Meetings//EN',
     'CALSCALE:GREGORIAN',
     `METHOD:${method}`,
     'BEGIN:VEVENT',
