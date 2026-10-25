@@ -295,6 +295,7 @@ const nothingToDo = (path) => ({ ok: true, path, op_id: null, count: 0, shares_k
 router.post('/', auth, requireRole('admin', 'contributor'), async (req, res) => {
   try {
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
+    if (!libraryId) return res.status(400).json({ error: libraries.NO_OWN_LIBRARY });
     // A new folder inside an existing (or shared) one keeps that folder's name exactly;
     // only the new part is named the way new folders are.
     const folderPath = await destinationFolder(req.body?.path, libraryId, req.user);
@@ -590,10 +591,10 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
   try {
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
-    // Nobody said where to move it: their OWN library, never the install's oldest --
-    // which on every box is the one Depot seeds, i.e. the shared one. Nothing is shared
-    // with anybody by forgetting to choose.
+    // Nobody said where to move it: their OWN library, and nowhere else (a shared one was
+    // never chosen, and nothing is shared with anybody by forgetting to choose).
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
+    if (!libraryId) return res.status(400).json({ error: libraries.NO_OWN_LIBRARY });
     // The destination must be a library the caller can add files to, at this path
     // (writeRight: 400 for a malformed id, 404 for an unknown one, 403 without a right).
     // documents.library_id has no foreign key, so without this a document could be
@@ -1337,8 +1338,9 @@ router.post('/copy', auth, requireRole('admin', 'contributor'), async (req, res)
   try {
     const folderPath = existingFolder(req.body?.path);
     if (!folderPath) return res.status(400).json({ error: 'path required' });
-    // As with a move: unsaid means their own library, not the shared one.
+    // As with a move: unsaid means their own library, or nowhere.
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
+    if (!libraryId) return res.status(400).json({ error: libraries.NO_OWN_LIBRARY });
     // The copies are new files in the target: the caller needs the right to add them there.
     const dest = await destinationRight(res, req.user, libraryId, folderPath);
     if (!dest) return;

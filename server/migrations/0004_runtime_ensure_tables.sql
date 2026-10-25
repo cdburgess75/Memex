@@ -60,14 +60,26 @@ CREATE TABLE IF NOT EXISTS library_members (
   UNIQUE(library_id, subject_email)
 );
 CREATE INDEX IF NOT EXISTS library_members_library_idx ON library_members(library_id);
--- Seed the default library and adopt any documents that predate libraries —
--- previously done per-boot by lib/libraries.js ensureLibraries().
-INSERT INTO libraries (name)
-SELECT 'Ptech Workspace'
-WHERE NOT EXISTS (SELECT 1 FROM libraries);
+-- Documents that predate libraries join the install's oldest one -- previously done
+-- per-boot by lib/libraries.js ensureLibraries(), which also made that first library.
+--
+-- This file no longer makes a library. Until 2026-10-25 it seeded one, ownerless and
+-- named after the company Depot was first built for, on every install that had none:
+-- a new customer's first screen carried another company's name, and uploads that named
+-- no library landed in a place nobody owned. A library is somebody's: each person gets
+-- their own at first sign-in (middleware/auth.js, 0011), and shared ones are made on
+-- purpose, by someone, on the website.
+--
+-- Changing a migration that has shipped is normally wrong (see README.md). It is right
+-- here because the runner records each file BY NAME and never runs one twice: a database
+-- that already ran this file keeps whatever it made, and a database that has not -- a
+-- fresh install -- gets no seed. The adoption below still runs on an upgrade, where the
+-- old per-boot helper left a library behind; on a fresh install there is nothing to
+-- adopt and no library to adopt into, so it is a no-op by construction.
 UPDATE documents
 SET library_id = (SELECT id FROM libraries ORDER BY created_at ASC LIMIT 1)
-WHERE library_id IS NULL;
+WHERE library_id IS NULL
+  AND EXISTS (SELECT 1 FROM libraries);
 
 -- ── Document access grants (queryable permission checks) ──
 CREATE TABLE IF NOT EXISTS document_acl (

@@ -74,8 +74,9 @@ ALTER TABLE documents
 
 CREATE INDEX IF NOT EXISTS documents_fts_idx ON documents USING GIN(document_fts);
 
--- Libraries (shared rooms). Documents belong to one library; the app seeds a
--- default "Ptech Workspace" and backfills existing docs at runtime (lib/libraries.js).
+-- Libraries. Documents belong to one library. Nothing seeds one: each person gets a
+-- library of their own at first sign-in (server/middleware/auth.js, migration 0011), and
+-- shared libraries are made on purpose on the website.
 CREATE TABLE IF NOT EXISTS libraries (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name             TEXT        NOT NULL,

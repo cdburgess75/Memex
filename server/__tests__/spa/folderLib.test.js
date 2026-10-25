@@ -218,8 +218,8 @@ describe('library relationships and where you can add files', () => {
     expect(b).toMatch(/apiDelete\('\/files\/folder\/members', inFolderLib\(\{ path, email \}, lib\)\)/);
   });
 
-  test("an ownerless library (the one seeded at install) offers no Share", () => {
-    const api = run(base({ currentUser: { role: 'admin' }, librariesList: [{ id: 'L1', name: 'Ptech Workspace', my_access: 'admin', can_manage: true, owner_id: null }] }));
+  test("an ownerless library (one an older install was seeded with) offers no Share", () => {
+    const api = run(base({ currentUser: { role: 'admin' }, librariesList: [{ id: 'L1', name: 'Company files', my_access: 'admin', can_manage: true, owner_id: null }] }));
     expect(api.libraryMenuInnerHtml()).not.toMatch(/data-share-lib/);
   });
 

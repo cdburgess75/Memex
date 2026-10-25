@@ -21,6 +21,19 @@ Create a file named with a zero-padded number and a short description:
   migration is safe even against a database that already had the change applied by the
   older scattered startup DDL.
 
+## Changing a migration that has already shipped
+
+Normally: don't. The runner records each file **by name** in `schema_migrations` and never
+runs a recorded file again, so an edit reaches only databases that have not run it yet.
+A schema change an existing box needs therefore always goes in a **new** file.
+
+The one case where editing is right is the opposite: something a migration did that must
+**stop happening** on new databases and **cannot be undone** on old ones without deleting
+data. `0004` seeding an ownerless library named for one company is that case (removed
+2026-10-25): a new file could not stop 0004 from running first on a fresh install, and
+nothing may delete a library that an existing box has been using. When you do edit one,
+say so in the file itself and make the surviving statements safe on both kinds of database.
+
 ## Drilling
 
 Migrations run against the live database at startup and can't be fully exercised without

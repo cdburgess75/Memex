@@ -168,10 +168,17 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
       console.error('Text extraction failed (non-fatal):', e.message);
     }
   }
-  // Nobody said where: it lands in the uploader's own library, never in a shared one.
-  // Settled BEFORE the transaction, because it is the lock's key: which library this
-  // lands in cannot be something the transaction discovers halfway through.
+  // Nobody said where: it lands in the uploader's own library, never in a shared one --
+  // and nowhere at all if they have none (refused, as a placement failure, so a caller
+  // that stored the bytes first drops them). Settled BEFORE the transaction, because it
+  // is the lock's key: which library this lands in cannot be something the transaction
+  // discovers halfway through.
   const lib = libraryId || (await libraries.defaultLibraryFor(user));
+  if (!lib) {
+    const e = new (folderOps().FolderOpError)(null, 400, libraries.NO_OWN_LIBRARY);
+    e.notPlaced = true;
+    throw e;
+  }
 
   /* Placing a document BY NAME is the other half of piece 4's invariant: nothing may
    * place a document by name while a folder operation is rewriting this library's

@@ -16,7 +16,7 @@ jest.mock('../../lib/db', () => {
 });
 jest.mock('../../lib/storage', () => ({ download: jest.fn().mockResolvedValue(Buffer.from('same bytes')), del: jest.fn().mockResolvedValue() }));
 jest.mock('../../lib/textExtraction', () => ({ extractText: jest.fn().mockResolvedValue('same bytes') }));
-jest.mock('../../lib/libraries', () => ({ defaultLibraryId: jest.fn().mockResolvedValue('lib-1') }));
+jest.mock('../../lib/libraries', () => ({ defaultLibraryFor: jest.fn().mockResolvedValue('lib-1') }));
 jest.mock('../../lib/fileEvents', () => ({ logEvent: jest.fn().mockResolvedValue(), logDocumentEvent: jest.fn().mockResolvedValue() }));
 const db = require('../../lib/db');
 const { createDocumentRecord } = require('../../lib/documents');
