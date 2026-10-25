@@ -1524,6 +1524,8 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 /* The active item is a raised surface on the sunken rail, not an accent bar: the
    accent marks actions and selection, and a nav location is neither. */
 .file-nav-link.active { color: var(--ink); background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px var(--rule); }
+/* Inside a folder the folder's own row is the raised one (markRailLocation); Files keeps its weight. */
+.file-nav-link.current { color: var(--ink); font-weight: 600; }
 .file-nav-icon { flex: 0 0 auto; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; color: currentColor; }
 .file-nav-icon svg { width: 18px; height: 18px; display: block; }
 /* Scheme picker: each card previews the scheme's light and dark faces from the real
@@ -1540,7 +1542,7 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .scheme-card-name { grid-column: 1 / -1; font: 600 13px var(--ui); padding: 8px 11px 0; }
 .scheme-card-note { grid-column: 1 / -1; font: 400 12px var(--ui); color: var(--ink-faint); padding: 1px 11px 0; }
 @media (prefers-reduced-motion: reduce) { .scheme-card { transition: none; } }
-.file-library-nav { display: grid; gap: 8px; }
+.file-library-nav { display: grid; gap: 16px; } /* the library block, then the views: a clear break between the two kinds of thing */
 .file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 11px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
 .file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
@@ -1549,6 +1551,21 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-library-heading-sub { font-size: 12px; color: var(--ink-faint); }
 .file-library-heading .chev { flex: 0 0 auto; color: var(--ink-faint); font-size: 13px; }
 .library-switch-wrap { position: relative; }
+/* The library block: the library you are in on top, then the other libraries you pinned
+   as quiet rows, one bordered object. A library is a different shape from a view (views
+   are raised rows), so the eye tells them apart without reading. The menu still hangs
+   off the wrap, so it opens under the whole block. */
+.file-library-block { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.file-library-block .file-library-heading { border: 0; border-radius: 9px; background: transparent; }
+.file-library-block .file-library-heading:hover { background: var(--surface-2); }
+.file-library-block:has(.file-library-pins:not([hidden])) .file-library-heading { border-radius: 9px 9px 0 0; }
+.file-library-pins { display: grid; gap: 1px; padding: 4px; border-top: 1px solid var(--rule-soft); }
+.file-library-pins[hidden] { display: none; }
+.file-library-pin { width: 100%; min-width: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); display: flex; align-items: center; gap: 10px; padding: 6px 7px 6px 10px; font: 500 13px var(--ui); text-align: left; cursor: pointer; }
+.file-library-pin:hover { background: var(--surface-2); color: var(--ink); }
+.file-library-pin:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.file-library-glyph-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+.file-library-pin-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-menu { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
 .library-menu.open { display: grid; gap: 2px; }
 /* masthead AI model picker */
@@ -1667,7 +1684,8 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
-.file-nav-section { margin: 8px 12px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+/* Rail labels sit a weight below the rows they label, in the faint ink, sentence case. */
+.file-nav-section { margin: 8px 12px 0; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
 .file-quick-pill { width: 100%; min-width: 0; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 8px; color: var(--ink-soft); font: 500 14px var(--ui); cursor: pointer; }
 .file-quick-pill:hover { background: var(--surface-2); color: var(--ink); }
@@ -1675,7 +1693,7 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .file-quick-pill.file-quick-empty:hover { background: transparent; color: var(--ink-soft); }
 .file-quick-pill .file-icon { width: 26px; height: 26px; border-radius: 6px; font-size: 8px; flex: 0 0 auto; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-quick-group { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 11px 12px 3px; }
+.file-quick-group { font-size: 12px; font-weight: 600; color: var(--ink-faint); padding: 11px 12px 3px; }
 .file-quick-group:first-child { padding-top: 2px; }
 .file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -2410,22 +2428,6 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-commander-folder .fc-dots:hover { opacity: 1; color: var(--accent); background: var(--accent-wash); }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 /* ---- Two-column file-home redesign: pinned rail, in-rail folder tree, breadcrumb ---- */
-/* Pinned libraries section */
-.file-pinned-section { display: grid; gap: 2px; }
-.file-pinned-section[hidden] { display: none; }
-.file-pinned-header { width: 100%; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 2px; font: 800 12px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; }
-.file-pinned-header .chev { font-size: 11px; transition: transform 0.15s ease; }
-.file-pinned-section.collapsed .file-pinned-header .chev { transform: rotate(-90deg); }
-.file-pinned-section.collapsed .file-pinned-body { display: none; }
-.file-pinned-body { display: grid; gap: 2px; }
-/* Pinned rail rows: the library-switch button and the unpin button are siblings
-   (never nested) so both are keyboard-operable. */
-.file-pinned-item-wrap { display: flex; align-items: center; }
-.file-pinned-item { flex: 1 1 auto; min-width: 0; }
-.file-pinned-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--accent); opacity: 0.75; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
-.file-pin-star:hover { opacity: 1; background: var(--surface-2); }
-.file-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Library dropdown rows: switch button + pin button as siblings */
 .library-menu-item-wrap { display: flex; align-items: center; }
 /* Name on one line, how you hold it on the next: a tag beside the name squeezed "Marketing" to "Mark…". */
@@ -2450,7 +2452,19 @@ html.dark .file-rail-foot { background: var(--surface); }
 /* The tree keeps to its own scroll region so Favorites, Trash and the rest of the rail stay within reach however many folders there are. */
 .file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px; max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
 .file-rail-tree:empty { display: none; }
-.file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+/* In the rail a folder's count waits for hover or focus, then sits over the end of the
+   name: names get the full width at rest and the row never shifts. */
+.file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr); position: relative; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+.file-rail-tree .file-commander-count { position: absolute; inset-inline-end: 9px; top: 50%; transform: translateY(-50%); padding-inline-start: 14px; opacity: 0; background: linear-gradient(to right, transparent, var(--surface-2) 45%); pointer-events: none; }
+.file-rail-tree .file-commander-folder:hover .file-commander-count, .file-rail-tree .file-commander-folder:focus-visible .file-commander-count { opacity: 1; }
+/* One "you are here": the folder being viewed is the raised row (the recipe an active view
+   uses), not an accent wash. The accent is for actions, selection, focus and links. */
+.file-rail-tree .fc-row.active { background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px var(--rule); }
+.file-rail-tree .file-commander-folder.active { background: transparent; color: var(--ink); font-weight: 600; }
+.file-rail-tree .file-commander-folder.active .file-commander-count { background: linear-gradient(to right, transparent, var(--surface) 45%); }
+/* While folders sit below the tree's fold its last rows fade, a cue that it scrolls
+   (overlay scrollbars hide at rest). railTreeCue() lifts the fade at the end of the list. */
+.file-rail-tree.has-more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
 /* Breadcrumb — its own row directly under the Create/Upload toolbar, left-aligned */
 .file-library-breadcrumb-row { margin: 8px 0 2px; }
 .file-library-breadcrumb .crumb-root { font-weight: 700; color: var(--ink); }
@@ -2600,6 +2614,9 @@ html.dark .file-home-shell { background: var(--paper); color: var(--ink); }
 html.dark .file-home-nav { background: var(--surface); border-color: var(--rule); }
 /* The rail is --surface in dark, so the active item steps up to --surface-raised. */
 html.dark .file-nav-link.active { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--line-strong); }
+html.dark .file-library-block { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+html.dark .file-rail-tree .fc-row.active { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--line-strong); }
+html.dark .file-rail-tree .file-commander-folder.active .file-commander-count { background: linear-gradient(to right, transparent, var(--surface-raised) 45%); }
 html.dark .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--focus); }
 html.dark .file-create-btn { background: var(--surface-raised); border-color: var(--rule); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
 html.dark .file-create-btn:hover { background: var(--surface-2); border-color: var(--line-strong); }
@@ -2619,8 +2636,6 @@ html.dark .file-search-menu button { color: var(--ink); }
 html.dark .file-upload-menu button:hover,
 html.dark .file-search-menu button:hover { background: var(--surface-raised); }
 html.dark .file-library-heading,
-html.dark .file-nav-section,
-html.dark .file-pinned-header,
 html.dark .file-home-title,
 html.dark .file-section-title,
 html.dark .file-home-card-value,
@@ -2723,6 +2738,9 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
      below it and leave pills poking out either side, which reads as broken. */
   .library-switch-wrap { justify-self: stretch; max-width: 100%; }
   .file-library-heading { width: max-content; max-width: 100%; padding: 4px 10px 4px 5px; border-radius: 999px; gap: 8px; }
+  /* The block flattens to the chip; the pinned rows go back to the menu, which lists them. */
+  .file-library-block { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .file-library-block .file-library-heading, .file-library-block:has(.file-library-pins:not([hidden])) .file-library-heading { border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
   .file-library-heading-sub { display: none; }
   .file-library-glyph { width: 24px; height: 24px; border-radius: 50%; font-size: 12px; }
   .library-menu { left: 0; right: 0; min-width: 0; max-width: none; }
@@ -2732,10 +2750,10 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main, .file-rail-foot, .file-rail-foot > .file-nav-main { display: contents; }
   .file-rail-foot { position: static; width: auto; }
   .file-library-nav-body:has(.file-rail-foot) { padding-bottom: 10px; }
-  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .rail-find { display: none; }
+  .file-nav-section, .file-quick-list, .file-library-pins, .file-rail-tree, .rail-find { display: none; }
   .file-home-nav-inner { position: static; max-height: none; overflow: visible; padding: 0; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; gap: 6px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
-  .file-nav-link.active { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; }
+  .file-nav-link.active, .file-nav-link.current { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; } /* no tree here, so Files stays the pill that is lit inside a folder too */
   .file-nav-link > span > span:last-child:not(:first-child) { display: none; } /* connection pills: name only */
   .file-home-main { padding: 22px 16px 34px; }
   .file-home-title-row { align-items: flex-start; flex-direction: column; }
@@ -3367,7 +3385,6 @@ let favoriteFileIds = _loadIdSet('memex_favorite_files');
 // the current library (owner default on / member default off).
 let followedFileIds = new Set();
 let folderNotifyState = { libraryId: null, isOwner: false, prefs: new Map() };
-let filePinnedCollapsed = localStorage.getItem('memex_pinned_collapsed') === 'true';
 let fileBreadcrumbHidden = localStorage.getItem('memex_breadcrumb_hidden') === 'true';
 function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); syncPreferencesToServer(); }
 function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON.stringify([...favoriteFileIds])); syncPreferencesToServer(); }
@@ -3423,11 +3440,6 @@ function toggleLibraryPin(event, id) {
   if (menu) menu.innerHTML = libraryMenuInnerHtml();
   refreshPinnedSection();
 }
-function togglePinnedSection() {
-  filePinnedCollapsed = !filePinnedCollapsed;
-  localStorage.setItem('memex_pinned_collapsed', filePinnedCollapsed ? 'true' : 'false');
-  document.getElementById('file-pinned-section')?.classList.toggle('collapsed', filePinnedCollapsed);
-}
 function refreshPinnedSection() {
   const sec = document.getElementById('file-pinned-section');
   if (sec) sec.outerHTML = filePinnedSectionHtml();
@@ -3461,6 +3473,26 @@ function refreshFileRailTree() {
   if (!railFindQuery) tree.querySelector('.file-commander-folder.active')?.scrollIntoView({ block: 'nearest' });
   const find = document.getElementById('file-rail-find-wrap');
   if (find) find.hidden = !railFindWanted();
+  railTreeCue();
+  markRailLocation();
+}
+// The tree fades at its foot while folders sit below the fold (.file-rail-tree.has-more);
+// the fade lifts once the last row is in view. Runs after every redraw, scroll and resize.
+function railTreeCue() {
+  const tree = document.getElementById('file-rail-tree');
+  if (!tree) return;
+  tree.classList.toggle('has-more', tree.scrollHeight - tree.scrollTop - tree.clientHeight > 6);
+}
+document.addEventListener('scroll', e => { if (e.target && e.target.id === 'file-rail-tree') railTreeCue(); }, true);
+window.addEventListener('resize', railTreeCue);
+// One "you are here" in the rail: at a library's root the Files row is the raised one;
+// inside a folder the folder's row is, and Files keeps only its weight.
+function markRailLocation() {
+  if (fileView !== 'active') return;
+  const files = document.querySelector('.file-nav-link[data-view="active"]');
+  if (!files) return;
+  files.classList.toggle('active', !currentFolderPath);
+  files.classList.toggle('current', !!currentFolderPath);
 }
 // "Find a folder" above the rail tree: once a library has more than a screenful of
 // folders, typing narrows the tree to the folders whose names match, at any depth.
@@ -3478,6 +3510,7 @@ function railFind(value) {
   railFindQuery = String(value || '');
   const tree = document.getElementById('file-rail-tree');
   if (tree) tree.innerHTML = fileRailTreeHtml();
+  railTreeCue();
   const inner = document.getElementById('file-home-nav-inner');
   const find = document.getElementById('file-rail-find-wrap');
   if (inner && find && railFindQuery) inner.scrollTop = Math.max(0, find.offsetTop - 12);
@@ -8417,21 +8450,22 @@ function wdashHead(label, icon) {
   return `<h2 class="wdash-h">${navIcon(icon, 'wdash-h-ic')}${label}</h2>`;
 }
 const NAV_VIEW = { home: 'home', files: 'active', shared: 'shared', links: 'links', favorites: 'favorites', trash: 'trash' };
-function fileNavButton(label, icon, action, active) {
+function fileNavButton(label, icon, action, active, extra = '') {
   const view = NAV_VIEW[icon];
-  return `<button class="file-nav-link ${active ? 'active' : ''}"${view ? ` data-view="${view}"` : ''} onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
+  return `<button class="file-nav-link ${active ? 'active' : ''}${extra ? ` ${extra}` : ''}"${view ? ` data-view="${view}"` : ''} onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
 }
 
-// Pinned libraries: a collapsible rail section of favorited libraries for quick
-// switching, each with a star to unpin. Renders nothing when no library is pinned.
+// Pinned libraries: the other libraries you pinned, as quiet rows under the one you are
+// in, inside the same block. One click switches; the star to unpin lives in the picker
+// menu, so the rail carries no stars. The holder stays (hidden) when nothing else is
+// pinned, so a pin made from the menu can fill it without redrawing the rail.
 function filePinnedSectionHtml() {
-  const pins = (librariesList || []).filter(l => pinnedLibraryIds.has(String(l.id)));
-  if (!pins.length) return `<div class="file-pinned-section" id="file-pinned-section" hidden></div>`;
-  const collapsed = filePinnedCollapsed ? ' collapsed' : '';
-  const items = pins.map(l =>
-    `<div class="file-pinned-item-wrap"><button class="file-nav-link file-pinned-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span>${esc(l.name)}</span></button><button class="file-pin-star" type="button" aria-label="Unpin ${esc(l.name)}" title="Unpin" onclick="toggleLibraryPin(event,'${l.id}')">★</button></div>`
+  const pins = (librariesList || []).filter(l => pinnedLibraryIds.has(String(l.id)) && String(l.id) !== String(currentLibraryId));
+  if (!pins.length) return `<div class="file-library-pins" id="file-pinned-section" hidden></div>`;
+  const rows = pins.map(l =>
+    `<button class="file-library-pin" type="button" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="file-library-glyph file-library-glyph-sm" aria-hidden="true">${esc(String(l.name).charAt(0))}</span><span class="file-library-pin-name">${esc(l.name)}</span></button>`
   ).join('');
-  return `<div class="file-pinned-section${collapsed}" id="file-pinned-section"><button class="file-pinned-header" type="button" onclick="togglePinnedSection()"><span>Pinned</span><span class="chev">⌄</span></button><div class="file-pinned-body">${items}</div></div>`;
+  return `<div class="file-library-pins" id="file-pinned-section" role="group" aria-label="Pinned libraries">${rows}</div>`;
 }
 
 // Finder-style folder tree shown in the rail under the Files item. Reuses the
@@ -9837,16 +9871,19 @@ document.addEventListener('keydown', e => {
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const libraryName = esc(currentLibraryName());
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
+  // Inside a folder the folder's own row is the raised one (markRailLocation), so Files
+  // keeps only its weight; at the library's root Files is the location.
+  const inFolder = activeFile === 'files' && !!currentFolderPath;
   return `<section class="file-library-nav${collapsed}" id="file-library-nav">
-    <div class="library-switch-wrap">
-      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true" aria-expanded="false" aria-controls="library-menu"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
+    <div class="library-switch-wrap file-library-block">
+      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true" aria-expanded="false" aria-controls="library-menu"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name" title="${escAttr(currentLibraryName())}">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
+      ${filePinnedSectionHtml()}
       <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
-    ${filePinnedSectionHtml()}
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Home', 'home', `setFileView('home')`, activeWorkspace === 'files' && activeFile === 'home')}
-        ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
+        ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files' && !inFolder, inFolder ? 'current' : '')}
         ${activeFile === 'files' ? `<div class="rail-find" id="file-rail-find-wrap"${railFindWanted() ? '' : ' hidden'}>${navIcon('search', 'rail-find-ic')}<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"></div><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
