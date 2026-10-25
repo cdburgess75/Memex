@@ -1921,6 +1921,9 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .ls-add .run-btn:disabled { opacity: .5; cursor: default; }
 .ls-list { margin-top: 16px; border-top: 1px solid var(--rule-soft); }
 .ls-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--rule-soft); }
+.ls-pin { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font: 400 13px var(--ui); color: var(--ink-soft); white-space: nowrap; cursor: pointer; }
+.ls-pin input { accent-color: var(--accent); margin: 0; }
+@media (max-width: 640px) { .ls-row:has(.ls-pin) { flex-wrap: wrap; } .ls-row:has(.ls-pin) .ls-who, .ls-row:has(.ls-pin) .ls-pin { flex-basis: 100%; } .ls-row:has(.ls-pin) select { margin-left: auto; } }
 .ls-row-btn { width: 100%; border: 0; border-bottom: 1px solid var(--rule-soft); background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .ls-row-btn:hover { background: var(--surface-2); }
 .ls-row-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -9363,6 +9366,8 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     if (e.target.matches('[data-ls-group]')) { updateAdd(); return; }
     const lvl = e.target.closest('[data-ls-level-for]');
     if (lvl) await changeLevel(lvl.dataset.lsLevelFor, lvl.value);
+    const pin = e.target.closest('[data-ls-pin-for]');
+    if (pin) await setPinForMembers(pin.dataset.lsPinFor, pin.checked);
   });
   emailInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); takeTyped(); }
@@ -9428,6 +9433,15 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     catch (err) { toast(groupErr(err, 'Could not change the level. Try again.')); }
     finally { st.busy = false; await load(); }
   }
+  async function setPinForMembers(shareId, pinned) {
+    if (st.busy) { toast('Still saving your last change…'); await load(); return; }
+    st.busy = true;
+    try {
+      await apiPut(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}/pin`, { pinned });
+      toast(pinned ? 'Pinned for members. Each of them gets it once and can unpin it.' : 'No longer pinned for new members. Pins already given stay.');
+    } catch (err) { toast(groupErr(err, 'Could not change that. Try again.')); }
+    finally { st.busy = false; await load(); }
+  }
   async function remove(shareId, who) {
     if (st.busy) return;
     const words = await removalWords(shareId);
@@ -9456,6 +9470,8 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     }[x.folder_state];
     if (stateWords) pills.push(`<span class="pill warn" title="${escAttr(stateWords[1])}">${stateWords[0]}</span>`);
     return `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)}</span>${pills.length ? `<span class="ls-who-sub">${pills.join('')}</span>` : ''}</div>`
+      // A group's share of the whole library can also pin it for each member, once.
+      + (x.subject_type === 'group' && x.folder_path === '' ? `<label class="ls-pin" title="Adds this library to the pinned list of everyone in ${escAttr(x.group?.name || 'the group')}, now and when they join. They can unpin it, and it won't come back."><input type="checkbox" data-ls-pin-for="${escAttr(String(x.id))}"${x.pin_by_default ? ' checked' : ''}> Pin for members</label>` : '')
       + `<select data-ls-level-for="${escAttr(String(x.id))}" aria-label="Level for ${escAttr(whoOf(x))}">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}"${x.permission === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
       + `<button class="file-library-tool" type="button" data-ls-remove="${escAttr(String(x.id))}" data-ls-who="${escAttr(whoOf(x))}" aria-label="Remove ${escAttr(whoOf(x))}">Remove</button></div>`;
   };
