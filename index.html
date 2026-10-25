@@ -1500,9 +1500,14 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-rail-tree .fc-name-wrap { min-width: 0; overflow: hidden; }
 .file-rail-tree .fc-name-wrap .fc-name { display: block; }
 .file-rail-note { padding: 6px 12px 6px 38px; color: var(--ink-faint); font: 500 13px var(--ui); }
-.rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
+/* The rail's edge: a 9px grab strip straddling the border. A short grip at rest says it can
+   be dragged (the strip itself is invisible); the whole edge lights on hover, while dragging
+   and on keyboard focus. The grip keeps to the middle of the window as the page scrolls. */
+.rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; outline: 0; }
 .rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
-.rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
+.rail-resizer::after { content: ''; display: block; position: sticky; top: calc(50vh - 16px); margin-left: 3px; width: 3px; height: 32px; border-radius: 2px; background: var(--ink-faint); opacity: 0.6; }
+.rail-resizer:hover::before, .rail-resizer.active::before, .rail-resizer:focus-visible::before { background: var(--accent); width: 2px; left: 3px; }
+.rail-resizer:hover::after, .rail-resizer.active::after, .rail-resizer:focus-visible::after { background: var(--accent); opacity: 1; }
 .file-home-shell.dragging { outline: 2px dashed var(--accent); outline-offset: -12px; background: var(--accent-wash); }
 .file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
@@ -9135,6 +9140,17 @@ document.addEventListener('click', (e) => {
   if (b) openLibraryShare({ libraryId: b.dataset.shareLib });
   else openLibraryAccess({ libraryId: a.dataset.accessLib });
 });
+// The rail's width, from a drag or the keyboard: kept between RAIL_MIN and RAIL_MAX,
+// shown on the edge's separator role, and remembered on this device.
+const RAIL_MIN = 190, RAIL_MAX = 460, RAIL_DEFAULT = 248;
+function setRailWidth(w, persist = true) {
+  const shell = document.getElementById('file-home-shell');
+  if (!shell) return;
+  railWidth = Math.round(Math.max(RAIL_MIN, Math.min(RAIL_MAX, Number(w) || RAIL_DEFAULT)));
+  shell.style.setProperty('--memex-rail-w', railWidth + 'px');
+  shell.querySelector('.rail-resizer')?.setAttribute('aria-valuenow', String(railWidth));
+  if (persist) { try { localStorage.setItem('memex_rail_w', String(railWidth)); } catch { /* private mode */ } }
+}
 function startRailResize(event) {
   event.preventDefault();
   const shell = document.getElementById('file-home-shell');
@@ -9142,20 +9158,32 @@ function startRailResize(event) {
   const resizer = shell.querySelector('.rail-resizer');
   resizer?.classList.add('active');
   document.body.style.userSelect = 'none';
-  const move = ev => {
-    const w = Math.max(190, Math.min(460, ev.clientX - shell.getBoundingClientRect().left));
-    railWidth = Math.round(w);
-    shell.style.setProperty('--memex-rail-w', railWidth + 'px');
-  };
+  const move = ev => setRailWidth(ev.clientX - shell.getBoundingClientRect().left, false);
   const up = () => {
     document.removeEventListener('mousemove', move);
     document.removeEventListener('mouseup', up);
     resizer?.classList.remove('active');
     document.body.style.userSelect = '';
-    if (railWidth) localStorage.setItem('memex_rail_w', String(railWidth));
+    if (railWidth) { try { localStorage.setItem('memex_rail_w', String(railWidth)); } catch { /* private mode */ } }
   };
   document.addEventListener('mousemove', move);
   document.addEventListener('mouseup', up);
+}
+// The edge is a separator a keyboard can move (the ARIA window-splitter pattern): the arrow
+// keys shift it 16px (48px with Shift), Home and End take it to its narrowest and widest,
+// and Enter or Space put it back to the default width.
+function railResizeKey(e) {
+  const now = railWidth || RAIL_DEFAULT;
+  const step = e.shiftKey ? 48 : 16;
+  let w = null;
+  if (e.key === 'ArrowLeft') w = now - step;
+  else if (e.key === 'ArrowRight') w = now + step;
+  else if (e.key === 'Home') w = RAIL_MIN;
+  else if (e.key === 'End') w = RAIL_MAX;
+  else if (e.key === 'Enter' || e.key === ' ') w = RAIL_DEFAULT;
+  if (w == null) return;
+  e.preventDefault();
+  setRailWidth(w);
 }
 function toggleLibraryMenu(event) {
   event?.stopPropagation();
@@ -9897,7 +9925,7 @@ function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
         ${activeFile === 'files' ? `<div class="rail-find" id="file-rail-find-wrap"${railFindWanted() ? '' : ' hidden'}>${navIcon('search', 'rail-find-ic')}<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"></div><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
-        ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
+        ${currentUser?.role === 'viewer' ? '' : fileNavButton('Links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
       ${currentUser?.role === 'admin' ? `<div class="file-rail-foot"><div class="file-nav-section">Workspace</div><div class="file-nav-main">${fileNavButton('Admin', 'admin', "setTab('admin')", activeWorkspace === 'admin')}</div></div>` : ''}
@@ -10199,7 +10227,7 @@ function previewMountEntry(i) {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav"><div class="file-home-nav-inner" id="file-home-nav-inner">${fileHomeNav(activeWorkspace, activeFile)}</div></aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav"><div class="file-home-nav-inner" id="file-home-nav-inner">${fileHomeNav(activeWorkspace, activeFile)}</div></aside><div class="rail-resizer" role="separator" aria-orientation="vertical" aria-label="Rail width" aria-valuemin="190" aria-valuemax="460" aria-valuenow="${railWidth || 248}" tabindex="0" onmousedown="startRailResize(event)" onkeydown="railResizeKey(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
@@ -11924,7 +11952,7 @@ async function renderShareLinks(scope = _linksScope) {
   const sub = _linksScope === 'all'
     ? "Every public link in Depot, whoever made it. You can see these because you're an admin."
     : "Public links you've made. Anyone who has one can open the file or folder without signing in, until it expires or you revoke it.";
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">${_linksScope === 'all' ? 'All links' : 'My links'}</h2><button class="file-library-tool" type="button" data-links-refresh>Refresh</button></div>`
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Links</h2><button class="file-library-tool" type="button" data-links-refresh>Refresh</button></div>`
     + `<p class="file-home-sub swm-sub">${esc(sub)}</p>${seg}<div class="file-links-list" id="file-links-list">${emptyState('Loading links', '')}</div>`, 'files', 'links');
   const panel = document.getElementById('panel');
   panel.onclick = async (e) => {

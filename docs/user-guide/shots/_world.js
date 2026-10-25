@@ -37,7 +37,7 @@ module.exports = [
   { id: 'meetings', theme: 'dark', route: '#/home', setup: async (page) => { await settle(page); await page.click('#meet-btn'); await sleep(600); }, caption: 'world: Meetings panel' },
   { id: 'settings', theme: 'light', route: '#/home', setup: async (page) => { await settle(page); await page.eval(() => openSettings()); await sleep(900); }, caption: 'world: Settings' },
   { id: 'shared', theme: 'dark', route: '#/shared', setup: settle, caption: 'world: Shared with me' },
-  { id: 'links', theme: 'light', route: '#/links', setup: settle, caption: 'world: My links' },
+  { id: 'links', theme: 'light', route: '#/links', setup: settle, caption: 'world: Links' },
   { id: 'trash', theme: 'dark', route: '#/trash', setup: settle, caption: 'world: Trash' },
   { id: 'share-dialog', theme: 'light', route: '#/files/Northfield%20Clinic', localStorage: { memex_library_id: LIB.client }, setup: async (page) => { await settle(page); await page.eval((id) => openShareFile(id), F['Kickoff agenda'].id); await sleep(1200); await page.eval(() => { const d = document.getElementById('file-access-details'); if (d) d.open = true; document.querySelector('.file-share-modal')?.scrollTo?.(0, 9999); }); await sleep(400); }, caption: 'world: file Share dialog, who has access' },
   { id: 'library-share', theme: 'dark', route: '#/files', localStorage: { memex_library_id: LIB.client }, setup: async (page) => { await settle(page); await page.eval((id) => openLibraryShare({ libraryId: id }), LIB.client); await sleep(1200); }, caption: 'world: Share "Client Projects"' },

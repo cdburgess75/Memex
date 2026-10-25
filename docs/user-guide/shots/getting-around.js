@@ -73,7 +73,7 @@ module.exports = [
     id: 'rail', theme: 'dark', route: '#/home', localStorage: MY, setup: settle,
     // .file-home-nav stretches to fill the viewport (overflow-y:auto), so a selector
     // clip on it would grab the whole 900px column. A fixed clip keeps just the
-    // switcher, pinned libraries and the nav links through Shared with me / My links / Trash.
+    // library block (with the pinned libraries under it) and the nav links through Shared with me / Links / Trash.
     clip: { x: 0, y: 40, width: 280, height: 450 },
     callouts: [
       { n: 1, selector: '.file-library-heading', place: 'r' },
@@ -132,8 +132,10 @@ module.exports = [
     // own box — a selector clip on the wrap would crop to just the closed heading.
     // A fixed clip over the rail's top-left corner keeps the heading, My libraries and
     // Shared with me through "See everything shared with you", stopping cleanly before
-    // the Share / Who has access / Rename / New library rows further down.
-    clip: { x: 0, y: 40, width: 280, height: 380 },
+    // the Share / Who has access / Rename / New library rows further down. The menu
+    // opens under the whole library block (the two pinned rows included), so the clip
+    // reaches 70px further down than it did when the rail listed them separately.
+    clip: { x: 0, y: 40, width: 280, height: 450 },
     callouts: [
       { n: 1, selector: '.file-library-heading', place: 'r' },
       { n: 2, selector: `.library-menu-item[onclick="switchLibrary('${LIB.marketing}')"]`, place: 'r' },

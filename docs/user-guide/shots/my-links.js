@@ -1,7 +1,7 @@
 // Shots for "Keeping track of what you've shared" (id my-links, part 1, chapter 8, theme dark).
 //   node capture/run.js my-links
 // Uses fixtures/my-links.js (loaded automatically: the runner sets demo_world=my-links
-// for this chapter), which reorders My links's cards so the Northfield Clinic proposal
+// for this chapter), which reorders the Links page's cards so the Northfield Clinic proposal
 // and Harbor Point Dental proposal are first and second, and adds a Paused and a Deleted
 // example so every status chip has a card. See that file for the full story.
 'use strict';
@@ -12,7 +12,7 @@ const { LIB } = world;
 const MY = { memex_library_id: LIB.jordan };
 
 module.exports = [
-  // The My links page: all five status chips (Active, Paused, Expired, Revoked, Deleted)
+  // The Links page: all five status chips (Active, Paused, Expired, Revoked, Deleted)
   // with real counts, and the first three cards underneath (Active + Paused is the default
   // view). Cropped just below the third card (Brand guidelines.pdf): the page keeps
   // scrolling past that in the real app, but the status chips and a couple of cards are
@@ -41,7 +41,7 @@ module.exports = [
       { n: 1, selector: '.file-nav-link[data-view="links"]', place: 'r' },
       { n: 2, selector: '.acc-chips', place: 'b' },
     ],
-    caption: 'My links: the status chips, and the links you have made',
+    caption: 'Links: the status chips, and the links you have made',
   },
   // Two cards moved into their own wrapper so the clip stays tight: the Northfield Clinic
   // proposal (sent to one person, can send files back) and the Harbor Point Dental

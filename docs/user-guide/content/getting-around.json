@@ -33,9 +33,10 @@
     {
       "heading": "The left rail",
       "bullets": [
-        "**Home**, **Files**, **Favorites**, **Shared with me**, **My links** and **Trash** open those pages.",
+        "**Home**, **Files**, **Favorites**, **Shared with me**, **Links** and **Trash** open those pages.",
         "**Files** shows the library you have open. A library is a set of files and folders, like a shared drive.",
-        "Click the library name at the top of the rail to switch libraries. Click the star next to one to pin it under **Pinned**.",
+        "Click the library name at the top of the rail to switch libraries. In that list, click the star next to a library to pin it: pinned libraries stay listed under the library name, one click away.",
+        "Drag the grip on the rail's right edge to make the rail wider or narrower.",
         "**Quick access**, further down, lists files you opened recently, newest first."
       ]
     },
