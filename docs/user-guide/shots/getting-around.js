@@ -130,12 +130,12 @@ module.exports = [
     setup: async (page) => { await settle(page); await page.click('.file-library-heading'); await sleep(500); },
     // The open menu is position:absolute, so it does not enlarge .library-switch-wrap's
     // own box — a selector clip on the wrap would crop to just the closed heading.
-    // A fixed clip over the rail's top-left corner keeps the heading, My libraries and
-    // Shared with me through "See everything shared with you", stopping cleanly before
-    // the Share / Who has access / Rename / New library rows further down. The menu
-    // opens under the whole library block (the two pinned rows included), so the clip
-    // reaches 70px further down than it did when the rail listed them separately.
-    clip: { x: 0, y: 40, width: 280, height: 450 },
+    // A fixed clip over the rail's top-left corner keeps the heading, Pinned, My libraries
+    // and Shared with me through "See everything shared with you" (its row ends at y=559),
+    // stopping before the "＋ New library" row that now follows the list and the current
+    // library's own rows under its name further down. The menu opens under the whole
+    // library block (the two pinned rows included), which is why it reaches this far.
+    clip: { x: 0, y: 40, width: 280, height: 522 },
     callouts: [
       { n: 1, selector: '.file-library-heading', place: 'r' },
       { n: 2, selector: `.library-menu-item[onclick="switchLibrary('${LIB.marketing}')"]`, place: 'r' },
