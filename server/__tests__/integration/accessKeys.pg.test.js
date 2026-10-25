@@ -9,6 +9,9 @@
 //     it's in; not on a library it owns) is in exactly one row, and every file given to
 //     its verified address appears once, except its own personal files;
 //   - an account without a verified address gets nothing;
+//   - agrees with the library list: every library or folder row is a library the account
+//     is listed (lib/libraries), since the page refuses to open a row whose library is not
+//     in that list -- a library that was put away comes off both at once;
 //   - the route returns exactly what the library function builds.
 //
 // It DROPS AND RECREATES THE WHOLE public SCHEMA, so it refuses to run unless the
@@ -35,7 +38,7 @@ jest.mock('../../lib/auditLog', () => ({ append: jest.fn(async () => ({})) }));
 const { scenario, load, levelsOn, asClient, doorLevels } = require('./helpers/accessScenario');
 
 suite('Shared with me against real Postgres (P5)', () => {
-  let db, documentAccess, accessKeys, request, app, jwt, tokenHash;
+  let db, documentAccess, accessKeys, libraries, request, app, jwt, tokenHash;
   const reset = () => db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
 
   beforeAll(async () => {
@@ -48,6 +51,7 @@ suite('Shared with me against real Postgres (P5)', () => {
     await require('../../lib/migrations').run();
     documentAccess = require('../../lib/documentAccess');
     accessKeys = require('../../lib/accessKeys');
+    libraries = require('../../lib/libraries');
     tokenHash = require('../../lib/shareLinks').tokenHash;
     jwt = require('jsonwebtoken');
     jwt.decode.mockReturnValue({ header: { kid: 'k' } });
@@ -106,6 +110,11 @@ suite('Shared with me against real Postgres (P5)', () => {
         expect(rows.flatMap(r => r.shares.map(x => x.share_id)).sort()).toEqual(expected.map(g => g.id).sort());
         expect(rows.every(r => r.library.id !== s.libraries.find(l => l.owner?.id === a.id)?.id)).toBe(true);
 
+        // ...and each is a library this account is listed: the page opens a row through
+        // the library list, so a row whose library is not in it could never open
+        const listed = new Set((await libraries.listLibraries(actor)).map(l => String(l.id)));
+        for (const r of rows) expect([r.library.name, r.path, listed.has(String(r.library.id))]).toEqual([r.library.name, r.path, true]);
+
         // sound: each door's level is the rule's, on a real file behind that door
         for (const r of rows) {
           const level = (await door(r.library.id, r.path)).get(a.id) || null;
@@ -139,5 +148,61 @@ suite('Shared with me against real Postgres (P5)', () => {
     }
     // the scenario really exercised the list: whole libraries, folders, groups, files, capping
     expect(Object.entries(seen).filter(([, v]) => v === 0).map(([k]) => k)).toEqual([]);
+  });
+
+  // A library that was put away (libraries.archived_at) is listed to administrators only,
+  // so its shares come off everyone else's Shared with me with it, instead of staying as
+  // rows that say "You can't open that any more" and come straight back on refresh (the
+  // twelve emptied libraries of the 2026-10-09 consolidation did exactly that for every
+  // member of the group they were shared with). A file given to someone one by one inside
+  // it is still theirs to open, and stays listed.
+  test('a library that was put away', async () => {
+    const s = scenario(SEEDS[0]);
+    await load(db, s, { tokenHash });
+    const lib = s.libraries[0]; // Accounting, owned by c0, holding libraryDoc
+    const owner = lib.owner;
+    const by = (email) => s.accounts.find(a => a.email === email);
+    const [c4, c5, v2, admin] = ['c4@acme.test', 'c5@acme.test', 'v2@acme.test', 'admin0@acme.test'].map(by);
+    await db.query(
+      `INSERT INTO library_grants (library_id, folder_path, subject_type, subject_email, permission, granted_by, granted_by_email)
+       SELECT $1, fp, 'user', em, 'read', $2, $3 FROM unnest($4::text[], $5::text[]) AS t(fp, em)
+       ON CONFLICT DO NOTHING`,
+      [lib.id, owner.id, owner.email, ['', 'Shared', ''], [c4.verified, c5.verified, admin.verified]]);
+    await db.query(
+      `INSERT INTO document_acl (document_id, subject_type, subject_id, subject_email, permission, granted_by, granted_by_email)
+       VALUES ($1, 'user', $2, $2, 'read', $3, $4) ON CONFLICT DO NOTHING`,
+      [s.libraryDoc.id, v2.verified, owner.id, owner.email]);
+    const actor = (a) => documentAccess.resolveActor(a.id);
+    const doors = async (a) => [...(await accessKeys.sharedWithMe(await actor(a))).libraries.map(r => ({ ...r, path: '' })),
+      ...(await accessKeys.sharedWithMe(await actor(a))).folders].filter(r => r.library.id === lib.id);
+    const givenFiles = async (a) => (await accessKeys.sharedWithMe(await actor(a))).files.map(f => f.document.id);
+    const listedTo = async (a) => (await libraries.listLibraries(await actor(a))).some(l => String(l.id) === lib.id);
+
+    // before: the library, the folder and the file reach them, and the library is listed
+    expect((await doors(c4)).some(r => r.path === '')).toBe(true);
+    expect((await doors(c5)).some(r => r.path === 'Shared')).toBe(true);
+    expect(await givenFiles(v2)).toContain(s.libraryDoc.id);
+    for (const a of [c4, c5, admin]) expect([a.email, await listedTo(a)]).toEqual([a.email, true]);
+
+    await db.query('UPDATE libraries SET archived_at = now() WHERE id = $1', [lib.id]);
+
+    // after: off the library list and off Shared with me alike, for everyone but an admin
+    for (const a of [c4, c5, v2]) {
+      expect([a.email, await doors(a)]).toEqual([a.email, []]);
+      expect([a.email, await listedTo(a)]).toEqual([a.email, false]);
+    }
+    const adminDoors = await doors(admin);
+    expect(adminDoors.some(r => r.path === '')).toBe(true);
+    expect(adminDoors.every(r => !!r.library.archived_at)).toBe(true);
+    expect(await listedTo(admin)).toBe(true);
+    // the file given to v2 one by one is still theirs: listed, and the rule still admits them
+    expect(await givenFiles(v2)).toContain(s.libraryDoc.id);
+    expect((await levelsOn(documentAccess, asClient(db), s.libraryDoc.id)).get(v2.id)).toBe('read');
+    // and the route answers as the function does
+    jwt.verify.mockReturnValue({ sub: c4.id, email: c4.email, email_verified: true });
+    const res = await request(app).get('/api/access/shared-with-me').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(JSON.parse(JSON.stringify(await accessKeys.sharedWithMe(await actor(c4)))));
+    expect(res.body.libraries.map(l => l.library.id)).not.toContain(lib.id);
   });
 });

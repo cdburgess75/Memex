@@ -11315,11 +11315,14 @@ async function renderSharedWithMe() {
   if (data.is_admin) notes.push(`<p class="settings-notice">You're an admin, so you can open everything. This page lists what people have shared with you specifically.</p>`);
   const cap = (x) => (x.view_only && x.level !== 'read' ? ` title="Your account can only view files"` : '');
   const row = (attrs, cells) => `<tr class="swm-row" tabindex="0" role="button" ${attrs}>${cells}</tr>`;
+  // A library that was put away is sent to an admin only (everyone else's list leaves it
+  // out, as the library list does); its row says so.
+  const away = (lib) => (lib?.archived_at ? ' <span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it">Archived</span>' : '');
   const libs = data.libraries.map(l => row(`data-swm-lib="${escAttr(String(l.library.id))}"`,
-    `<td><div class="swm-name">${esc(l.library.name)}</div><div class="swm-sub">${swmShareLine(l.shares, true)}</div></td>`
+    `<td><div class="swm-name">${esc(l.library.name)}${away(l.library)}</div><div class="swm-sub">${swmShareLine(l.shares, true)}</div></td>`
     + `<td${cap(l)}>${swmLevel(l.effective)}</td>${swmStats(l)}<td>${esc(swmWho(l.library.owner))}</td>`)).join('');
   const folders = data.folders.map(f => row(`data-swm-lib="${escAttr(String(f.library.id))}" data-swm-folder="${escAttr(f.path)}"`,
-    `<td><div class="swm-name">${esc(f.name)}</div><div class="swm-sub">in ${esc(f.library.name)} · ${swmShareLine(f.shares)}${f.also_whole_library ? ' (you also have the whole library)' : ''}${f.files ? '' : ' · No files here right now'}</div></td>`
+    `<td><div class="swm-name">${esc(f.name)}${away(f.library)}</div><div class="swm-sub">in ${esc(f.library.name)} · ${swmShareLine(f.shares)}${f.also_whole_library ? ' (you also have the whole library)' : ''}${f.files ? '' : ' · No files here right now'}</div></td>`
     + `<td${cap(f)}>${swmLevel(f.effective)}</td>${swmStats(f)}<td>${esc(swmWho(f.library.owner))}</td>`)).join('');
   const files = data.files.map(x => row(`data-swm-file="${escAttr(String(x.document.id))}" data-swm-lib="${escAttr(String(x.document.library?.id || ''))}" data-swm-folder="${escAttr(x.document.folder || '')}"`,
     `<td><div class="swm-name">${esc(x.document.name)}</div><div class="swm-sub">in ${esc(x.document.library?.name || 'a library')}${x.document.folder ? ` / ${esc(x.document.folder)}` : ''} · given to you by ${esc(swmWho(x.granted_by))}</div></td>`
@@ -11339,6 +11342,10 @@ async function renderSharedWithMe() {
     const lib = r.dataset.swmLib;
     await loadLibraries();
     if (lib && !librariesList.some(l => String(l.id) === lib)) {
+      // A file given to you one by one is still yours to open when its library is no
+      // longer listed to you (put away, say): open it from here. A library or folder you
+      // can't get into any more comes off the list.
+      if (r.dataset.swmFile) { previewFile(r.dataset.swmFile); return; }
       toast("You can't open that any more. The list has been refreshed.");
       renderSharedWithMe();
       return;

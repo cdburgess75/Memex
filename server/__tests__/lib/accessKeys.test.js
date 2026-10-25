@@ -63,6 +63,8 @@ describe('who gets a list', () => {
     const sql = statements()[2];
     expect(sql).toContain(documentAccess.shareSubject('g', documentAccess.refsAt(1)));
     expect(sql).toContain('l.owner_id IS DISTINCT FROM $2');
+    // a library that was put away is listed to administrators only (lib/libraries LISTING)
+    expect(sql).toContain("(l.archived_at IS NULL OR $1 = 'admin')");
   });
   test('files are kept only where the rule itself lets the caller in', async () => {
     await accessKeys.sharedWithMe(ME);
@@ -70,6 +72,14 @@ describe('who gets a list', () => {
     expect(sql).toContain(documentAccess.condition('m', 1));
     expect(sql).toMatch(/NOT \(NOT d\.library_scoped AND d\.uploaded_by IS NOT DISTINCT FROM \$2\)/);
     expect(sql).toMatch(/LIMIT 501/);
+    // a file given one by one stays the person's to open wherever its library went
+    expect(sql).not.toMatch(/archived_at/);
+  });
+  test('a put-away library, which only an admin is still sent, says so on its row', async () => {
+    answer({ shares: [shareRow({ archived_at: '2026-10-09T02:14:33Z' })] });
+    expect((await accessKeys.sharedWithMe({ ...ME, role: 'admin' })).libraries[0].library.archived_at).toBe('2026-10-09T02:14:33Z');
+    answer({ shares: [shareRow()] });
+    expect((await accessKeys.sharedWithMe(ME)).libraries[0].library.archived_at).toBeNull();
   });
 });
 
@@ -85,7 +95,7 @@ describe('the shapes', () => {
     expect(lib).not.toHaveProperty('path');
     expect(lib.level).toBe('write');
     expect(lib.effective).toBe('write');
-    expect(lib.library).toEqual({ id: LIB, name: 'Accounting', owner: { email: 'olive@acme.test', name: 'Olive' } });
+    expect(lib.library).toEqual({ id: LIB, name: 'Accounting', owner: { email: 'olive@acme.test', name: 'Olive' }, archived_at: null });
     expect(lib.shares.map(s => s.share_id)).toEqual(['s-group', 's-direct']);
     expect(lib.shares[0].via_group).toEqual({ id: 'grp', name: 'Bookkeepers' });
     expect(lib.bytes).toBe(400);
