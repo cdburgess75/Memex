@@ -3,6 +3,8 @@ const request = require('supertest');
 const express = require('express');
 
 jest.mock('../../lib/db', () => ({ queryOne: jest.fn(), query: jest.fn() }));
+// Group pin defaults have their own real-Postgres suite (integration/pinDefaults.pg).
+jest.mock('../../lib/pinDefaults', () => ({ apply: jest.fn(async () => []) }));
 jest.mock('../../middleware/auth', () => (req, _res, next) => { req.user = { id: 'user-1', email: 'u@test.com' }; next(); });
 
 const db = require('../../lib/db');
@@ -37,6 +39,16 @@ describe('GET /api/preferences', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ pinnedLibraries: [], favoriteFiles: [] });
   });
+});
+
+test('GET gives the caller any group pin defaults first, and a failure there costs nothing', async () => {
+  const pinDefaults = require('../../lib/pinDefaults');
+  pinDefaults.apply.mockRejectedValueOnce(new Error('boom'));
+  jest.spyOn(console, 'error').mockImplementationOnce(() => {});
+  db.queryOne.mockResolvedValue({ pinned_libraries: ['lib-1'], favorite_files: [] });
+  const res = await request(makeApp()).get('/api/preferences');
+  expect(pinDefaults.apply).toHaveBeenCalledWith('user-1');
+  expect(res.body.pinnedLibraries).toEqual(['lib-1']);
 });
 
 describe('PUT /api/preferences', () => {

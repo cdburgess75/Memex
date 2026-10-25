@@ -81,7 +81,7 @@ describe('the page', () => {
     await ctx.renderShareLinks();
     await settle();
     expect(ctx.calls).toEqual(['/files/shares?scope=mine']);
-    expect(ctx.nodes.panel.innerHTML).toContain('My links');
+    expect(ctx.nodes.panel.innerHTML).toContain('<h2 class="file-home-title">Links</h2>');
     expect(ctx.nodes.panel.innerHTML).not.toContain('All links (admin)');
     const list = ctx.nodes['file-links-list'].innerHTML;
     expect(list).toContain('Active (1)');
@@ -118,6 +118,6 @@ describe('the call sites', () => {
     expect(html).toMatch(/const liveShares = shares\.filter\(s => s\.state === 'active'\)/);
   });
   test('viewers, who cannot make links, get no Links item', () => {
-    expect(html).toContain("${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links'");
+    expect(html).toContain("${currentUser?.role === 'viewer' ? '' : fileNavButton('Links', 'links'");
   });
 });

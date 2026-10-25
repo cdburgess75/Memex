@@ -39,6 +39,8 @@
   --accent-soft: #0B587F;
   --accent-wash: #E8F2F9;      /* spec --signal-bg */
   --accent-ink: #FFFFFF;       /* spec --signal-fg: text on the accent, set per scheme */
+  --selection: #0E6FA8;        /* text selection: the signal, carrying the signal's ink */
+  --selection-ink: #FFFFFF;
   --accent-2: var(--accent);   /* one accent only — legacy gradient alias collapses to signal */
   --viz-cyan: var(--accent);   /* data uses the single signal, not a second hue */
   --viz-lime: var(--ink-soft);
@@ -80,6 +82,8 @@ html.dark, .scheme-swatch[data-scheme="ledger"].dark {
   --accent-soft: #2E86BC;
   --accent-wash: #132A3A;
   --accent-ink: #08131B;
+  --selection: #2E7AA6;        /* text selection in the dark: a dimmer band of the signal, white text */
+  --selection-ink: #FFFFFF;
   --line-strong: #39414D;
   --state-shared: #3FBF95;
   --state-expiring: #D9A441;
@@ -99,11 +103,12 @@ html.dark, .scheme-swatch[data-scheme="ledger"].dark {
   --shadow: 0 4px 12px rgba(0,0,0,0.40), 0 0 0 1px #262B33;
 }
 /* Graphite — monochrome. The accent is the ink itself: black on white by day,
-   white on black by night. Selection is a quiet grey. */
+   white on black by night. Selected text inverts the page by day and sits on a mid grey by night. */
 html[data-scheme="graphite"], .scheme-swatch[data-scheme="graphite"] {
   --paper: #F6F6F4; --surface: #FFFFFF; --surface-2: #EEEEEB; --surface-raised: #FFFFFF;
   --ink: #161616; --ink-soft: #5A5A57; --ink-faint: #6A6A67;
   --accent: #161616; --accent-soft: #000000; --accent-wash: #EAEAE6; --accent-ink: #FFFFFF; --focus: #161616;
+  --selection: #161616; --selection-ink: #FFFFFF;
   --line-strong: #C6C6C1; --rule: #E2E2DE; --rule-soft: #ECECE8;
   --shadow: 0 4px 12px rgba(10,10,10,.10), 0 0 0 1px #E2E2DE;
 }
@@ -111,6 +116,7 @@ html[data-scheme="graphite"].dark, .scheme-swatch[data-scheme="graphite"].dark {
   --paper: #0B0B0B; --surface: #151515; --surface-2: #060606; --surface-raised: #1C1C1C;
   --ink: #F0F0EE; --ink-soft: #9C9C98; --ink-faint: #858581;
   --accent: #F0F0EE; --accent-soft: #FFFFFF; --accent-wash: #202020; --accent-ink: #0B0B0B; --focus: #F0F0EE;
+  --selection: #71716F; --selection-ink: #FFFFFF;
   --line-strong: #3A3A3A; --rule: #262626; --rule-soft: #1F1F1F;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #262626;
 }
@@ -119,6 +125,7 @@ html[data-scheme="linen"], .scheme-swatch[data-scheme="linen"] {
   --paper: #F5F3EE; --surface: #FCFBF8; --surface-2: #ECE9E1; --surface-raised: #FFFFFF;
   --ink: #1E1B16; --ink-soft: #5F5A51; --ink-faint: #6C675E;
   --accent: #2C6A4C; --accent-soft: #235540; --accent-wash: #E4EDE6; --accent-ink: #FFFFFF; --focus: #2C6A4C;
+  --selection: #2C6A4C; --selection-ink: #FFFFFF;
   --line-strong: #C9C3B6; --rule: #E1DDD3; --rule-soft: #EAE6DD;
   --shadow: 0 4px 12px rgba(30,27,22,.10), 0 0 0 1px #E1DDD3;
 }
@@ -126,6 +133,7 @@ html[data-scheme="linen"].dark, .scheme-swatch[data-scheme="linen"].dark {
   --paper: #121110; --surface: #1A1917; --surface-2: #0C0B0A; --surface-raised: #22201D;
   --ink: #ECE8E0; --ink-soft: #A39D91; --ink-faint: #8E887E;
   --accent: #78B896; --accent-soft: #5E9F7C; --accent-wash: #172620; --accent-ink: #0B1A12; --focus: #78B896;
+  --selection: #3E7D5E; --selection-ink: #FFFFFF;
   --line-strong: #3E3B35; --rule: #2A2825; --rule-soft: #232120;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2A2825;
 }
@@ -135,6 +143,7 @@ html[data-scheme="harbor"], .scheme-swatch[data-scheme="harbor"] {
   --paper: #F7F8FA; --surface: #FFFFFF; --surface-2: #EDF0F4; --surface-raised: #FFFFFF;
   --ink: #121A27; --ink-soft: #4C5563; --ink-faint: #626C79;
   --accent: #1E3A66; --accent-soft: #162D52; --accent-wash: #E5EBF5; --accent-ink: #FFFFFF; --focus: #1E3A66;
+  --selection: #1E3A66; --selection-ink: #FFFFFF;
   --line-strong: #BEC6D3; --rule: #DDE2EA; --rule-soft: #E8ECF2;
   --shadow: 0 4px 12px rgba(18,26,39,.10), 0 0 0 1px #DDE2EA;
 }
@@ -142,6 +151,7 @@ html[data-scheme="harbor"].dark, .scheme-swatch[data-scheme="harbor"].dark {
   --paper: #0A111D; --surface: #10192A; --surface-2: #060B14; --surface-raised: #162238;
   --ink: #E6ECF5; --ink-soft: #9BA7B8; --ink-faint: #7E8B9E;
   --accent: #E2A94D; --accent-soft: #C9922F; --accent-wash: #2A2314; --accent-ink: #1A1204; --focus: #E2A94D;
+  --selection: #946A24; --selection-ink: #FFFFFF;
   --line-strong: #2E3E58; --rule: #1E2B40; --rule-soft: #172233;
   --shadow: 0 4px 12px rgba(0,0,0,.50), 0 0 0 1px #1E2B40;
 }
@@ -150,6 +160,7 @@ html[data-scheme="ember"], .scheme-swatch[data-scheme="ember"] {
   --paper: #FAFAF8; --surface: #FFFFFF; --surface-2: #F1F1EE; --surface-raised: #FFFFFF;
   --ink: #1A1917; --ink-soft: #5D5B56; --ink-faint: #6E6B66;
   --accent: #B6461C; --accent-soft: #973914; --accent-wash: #F8E8E1; --accent-ink: #FFFFFF; --focus: #B6461C;
+  --selection: #B6461C; --selection-ink: #FFFFFF;
   --line-strong: #C9C7C1; --rule: #E4E3DF; --rule-soft: #ECEBE7;
   --shadow: 0 4px 12px rgba(26,25,23,.10), 0 0 0 1px #E4E3DF;
 }
@@ -157,6 +168,7 @@ html[data-scheme="ember"].dark, .scheme-swatch[data-scheme="ember"].dark {
   --paper: #0F0E0D; --surface: #171614; --surface-2: #0A0908; --surface-raised: #1E1C1A;
   --ink: #EEECE7; --ink-soft: #A09C95; --ink-faint: #89857D;
   --accent: #EA7C4C; --accent-soft: #D3652F; --accent-wash: #2D1B12; --accent-ink: #1C0D06; --focus: #EA7C4C;
+  --selection: #A45E41; --selection-ink: #FFFFFF;
   --line-strong: #3D3A36; --rule: #292826; --rule-soft: #211F1D;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #292826;
 }
@@ -166,6 +178,7 @@ html[data-scheme="crest"], .scheme-swatch[data-scheme="crest"] {
   --paper: #FDF9F9; --surface: #FFFFFF; --surface-2: #F5F0F0; --surface-raised: #FFFFFF;
   --ink: #1C1818; --ink-soft: #625A59; --ink-faint: #736B6A;
   --accent: #AD2F30; --accent-soft: #8A2424; --accent-wash: #FBEAE8; --accent-ink: #FFFFFF; --focus: #AD2F30;
+  --selection: #AD2F30; --selection-ink: #FFFFFF;
   --line-strong: #CFC7C6; --rule: #E7E1E1; --rule-soft: #EFEAEA;
   --danger: #93315F; --danger-strong: #76264B; --state-restricted: #93315F; --danger-fill: #93315F; --danger-fill-strong: #76264B;
   --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E7E1E1;
@@ -174,6 +187,7 @@ html[data-scheme="crest"].dark, .scheme-swatch[data-scheme="crest"].dark {
   --paper: #110E0E; --surface: #1B1616; --surface-2: #0E0A09; --surface-raised: #241E1D;
   --ink: #F3EAE9; --ink-soft: #C4B7B6; --ink-faint: #918584;
   --accent: #FB6862; --accent-soft: #E2514E; --accent-wash: #351D1B; --accent-ink: #1C0D0C; --focus: #FB6862;
+  --selection: #A85C57; --selection-ink: #FFFFFF;
   --line-strong: #443B3A; --rule: #2E2828; --rule-soft: #25201F;
   --danger: #EC91B5; --danger-strong: #EFAAC4; --state-restricted: #EC91B5; --danger-fill: #93315F; --danger-fill-strong: #76264B;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2E2828;
@@ -183,6 +197,7 @@ html[data-scheme="iris"], .scheme-swatch[data-scheme="iris"] {
   --paper: #FAFAFD; --surface: #FFFFFF; --surface-2: #F1F1F6; --surface-raised: #FFFFFF;
   --ink: #19191D; --ink-soft: #5B5B63; --ink-faint: #6C6C74;
   --accent: #6948BC; --accent-soft: #533896; --accent-wash: #EEEDFA; --accent-ink: #FFFFFF; --focus: #6948BC;
+  --selection: #6948BC; --selection-ink: #FFFFFF;
   --line-strong: #C8C8D0; --rule: #E2E2E7; --rule-soft: #EBEBF0;
   --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E2E2E7;
 }
@@ -190,6 +205,7 @@ html[data-scheme="iris"].dark, .scheme-swatch[data-scheme="iris"].dark {
   --paper: #0E0E14; --surface: #16161E; --surface-2: #0A0A11; --surface-raised: #1F1F29;
   --ink: #EBEBFA; --ink-soft: #B8B8CD; --ink-faint: #87889B;
   --accent: #B3A2F8; --accent-soft: #9D8CE1; --accent-wash: #252135; --accent-ink: #120E20; --focus: #B3A2F8;
+  --selection: #7669AA; --selection-ink: #FFFFFF;
   --line-strong: #3C3C4B; --rule: #292932; --rule-soft: #202028;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #292932;
 }
@@ -198,6 +214,7 @@ html[data-scheme="tide"], .scheme-swatch[data-scheme="tide"] {
   --paper: #F7FBFC; --surface: #FFFFFF; --surface-2: #EDF3F4; --surface-raised: #FFFFFF;
   --ink: #151A1C; --ink-soft: #555E60; --ink-faint: #656E71;
   --accent: #247073; --accent-soft: #1B585C; --accent-wash: #E1F2F3; --accent-ink: #FFFFFF; --focus: #247073;
+  --selection: #247073; --selection-ink: #FFFFFF;
   --line-strong: #C1CBCD; --rule: #DEE4E6; --rule-soft: #E7EDEE;
   --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #DEE4E6;
 }
@@ -205,6 +222,7 @@ html[data-scheme="tide"].dark, .scheme-swatch[data-scheme="tide"].dark {
   --paper: #091012; --surface: #0F191C; --surface-2: #040C0F; --surface-raised: #152225;
   --ink: #DFF0F5; --ink-soft: #A7C0C6; --ink-faint: #758D93;
   --accent: #4AD0D7; --accent-soft: #41B8BE; --accent-wash: #082A2C; --accent-ink: #0C1313; --focus: #4AD0D7;
+  --selection: #008085; --selection-ink: #FFFFFF;
   --line-strong: #2E4146; --rule: #202C2F; --rule-soft: #192326;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #202C2F;
 }
@@ -213,6 +231,7 @@ html[data-scheme="dune"], .scheme-swatch[data-scheme="dune"] {
   --paper: #F9F3EB; --surface: #FFFBF7; --surface-2: #F0E9DF; --surface-raised: #FFFFFF;
   --ink: #1F180F; --ink-soft: #665A4A; --ink-faint: #726656;
   --accent: #904181; --accent-soft: #733367; --accent-wash: #F7EAF3; --accent-ink: #FFFFFF; --focus: #904181;
+  --selection: #904181; --selection-ink: #FFFFFF;
   --line-strong: #CEC2B2; --rule: #E5DDD2; --rule-soft: #EDE6DC;
   --shadow: 0 4px 12px rgba(20,16,16,.10), 0 0 0 1px #E5DDD2;
 }
@@ -220,6 +239,7 @@ html[data-scheme="dune"].dark, .scheme-swatch[data-scheme="dune"].dark {
   --paper: #110F0B; --surface: #1A1712; --surface-2: #0D0A06; --surface-raised: #231F19;
   --ink: #F2ECE4; --ink-soft: #C2B9AD; --ink-faint: #8F877C;
   --accent: #DF94CF; --accent-soft: #C87EB8; --accent-wash: #301D2C; --accent-ink: #190D16; --focus: #DF94CF;
+  --selection: #995D8D; --selection-ink: #FFFFFF;
   --line-strong: #433C34; --rule: #2D2924; --rule-soft: #24211C;
   --shadow: 0 4px 12px rgba(0,0,0,.45), 0 0 0 1px #2D2924;
 }
@@ -233,9 +253,12 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
-::selection { background: var(--accent-wash); }
-/* Dark washes sit within ~1.2:1 of their surface, too close to show a selection. */
-html.dark ::selection { background: color-mix(in srgb, var(--accent) 35%, var(--surface)); color: var(--ink); }
+/* Selected text. By day it takes the signal with the signal's ink; by night a dimmer band of the
+   signal's hue with white text, so a selection never outshines the one filled action on the page.
+   Each palette sets the pair: a wash sits within 1.2:1 of its surface and never read as a selection.
+   spa/selectionContrast.test.js measures every palette: >= 3:1 against the surface and against the
+   row/current-line wash, >= 4.5:1 for the text on it. */
+::selection { background: var(--selection); color: var(--selection-ink); }
 
 .masthead {
   border-bottom: 1px solid var(--rule);
@@ -1477,9 +1500,14 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-rail-tree .fc-name-wrap { min-width: 0; overflow: hidden; }
 .file-rail-tree .fc-name-wrap .fc-name { display: block; }
 .file-rail-note { padding: 6px 12px 6px 38px; color: var(--ink-faint); font: 500 13px var(--ui); }
-.rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; }
+/* The rail's edge: a 9px grab strip straddling the border. A short grip at rest says it can
+   be dragged (the strip itself is invisible); the whole edge lights on hover, while dragging
+   and on keyboard focus. The grip keeps to the middle of the window as the page scrolls. */
+.rail-resizer { position: absolute; top: 0; bottom: 0; left: var(--memex-rail-w, 248px); width: 9px; transform: translateX(-4px); cursor: col-resize; z-index: 6; outline: 0; }
 .rail-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; }
-.rail-resizer:hover::before, .rail-resizer.active::before { background: var(--accent); width: 2px; left: 3px; }
+.rail-resizer::after { content: ''; display: block; position: sticky; top: calc(50vh - 16px); margin-left: 3px; width: 3px; height: 32px; border-radius: 2px; background: var(--ink-faint); opacity: 0.6; }
+.rail-resizer:hover::before, .rail-resizer.active::before, .rail-resizer:focus-visible::before { background: var(--accent); width: 2px; left: 3px; }
+.rail-resizer:hover::after, .rail-resizer.active::after, .rail-resizer:focus-visible::after { background: var(--accent); opacity: 1; }
 .file-home-shell.dragging { outline: 2px dashed var(--accent); outline-offset: -12px; background: var(--accent-wash); }
 .file-rail-actions { display: grid; gap: 6px; margin-bottom: 18px; }
 .file-upload-actions, .file-search-actions { position: relative; display: block; }
@@ -1501,6 +1529,8 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 /* The active item is a raised surface on the sunken rail, not an accent bar: the
    accent marks actions and selection, and a nav location is neither. */
 .file-nav-link.active { color: var(--ink); background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px var(--rule); }
+/* Inside a folder the folder's own row is the raised one (markRailLocation); Files keeps its weight. */
+.file-nav-link.current { color: var(--ink); font-weight: 600; }
 .file-nav-icon { flex: 0 0 auto; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; color: currentColor; }
 .file-nav-icon svg { width: 18px; height: 18px; display: block; }
 /* Scheme picker: each card previews the scheme's light and dark faces from the real
@@ -1517,7 +1547,7 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .scheme-card-name { grid-column: 1 / -1; font: 600 13px var(--ui); padding: 8px 11px 0; }
 .scheme-card-note { grid-column: 1 / -1; font: 400 12px var(--ui); color: var(--ink-faint); padding: 1px 11px 0; }
 @media (prefers-reduced-motion: reduce) { .scheme-card { transition: none; } }
-.file-library-nav { display: grid; gap: 8px; }
+.file-library-nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; } /* the library block, then the views: a clear break between the two kinds of thing. One column that can shrink: the heading's name and relation line are nowrap, and without it they set the block's width and a long name made the rail scroll sideways */
 .file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 11px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
 .file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
@@ -1526,8 +1556,23 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-library-heading-sub { font-size: 12px; color: var(--ink-faint); }
 .file-library-heading .chev { flex: 0 0 auto; color: var(--ink-faint); font-size: 13px; }
 .library-switch-wrap { position: relative; }
+/* The library block: the library you are in on top, then the other libraries you pinned
+   as quiet rows, one bordered object. A library is a different shape from a view (views
+   are raised rows), so the eye tells them apart without reading. The menu still hangs
+   off the wrap, so it opens under the whole block. */
+.file-library-block { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+.file-library-block .file-library-heading { border: 0; border-radius: 9px; background: transparent; }
+.file-library-block .file-library-heading:hover { background: var(--surface-2); }
+.file-library-block:has(.file-library-pins:not([hidden])) .file-library-heading { border-radius: 9px 9px 0 0; }
+.file-library-pins { display: grid; gap: 1px; padding: 4px; border-top: 1px solid var(--rule-soft); }
+.file-library-pins[hidden] { display: none; }
+.file-library-pin { width: 100%; min-width: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-soft); display: flex; align-items: center; gap: 10px; padding: 6px 7px 6px 10px; font: 500 13px var(--ui); text-align: left; cursor: pointer; }
+.file-library-pin:hover { background: var(--surface-2); color: var(--ink); }
+.file-library-pin:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.file-library-glyph-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+.file-library-pin-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-menu { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
-.library-menu.open { display: grid; gap: 2px; }
+.library-menu.open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; } /* one column that can shrink: a <button> never wraps below its own text, so without this the widest row set the track and the rail scrolled sideways */
 /* masthead AI model picker */
 .ai-model-wrap { position: relative; }
 .ai-model-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink-soft); font: 500 13px var(--ui); cursor: pointer; }
@@ -1603,6 +1648,15 @@ html.dark .settings-tab.active { color: var(--accent); }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
+/* The foot of the menu: the library you are in, named once as a heading nothing can focus, and
+   the file row menu's verbs under it. "Open at sign-in" is a setting, so it says whether it is on;
+   putting a library away sits last, past a rule, in the row menu's danger colour. */
+.library-menu-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.library-menu-for { padding: 6px 10px 2px; font: 600 12px var(--ui); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-menu-item.danger { color: var(--danger); }
+.library-menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.library-menu-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.library-menu-check { flex: 0 0 auto; font-size: 12px; color: var(--accent); }
 /* "Find a library": the masthead's inset pill, inside the menu, with the rail's magnifier. */
 .menu-find { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-2); color: var(--ink-faint); }
 .menu-find:focus-within { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
@@ -1644,7 +1698,8 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .file-library-nav.collapsed .file-library-heading .chev { transform: rotate(-90deg); }
 .file-library-nav-body { display: grid; gap: 12px; }
 .file-library-nav.collapsed .file-library-nav-body { display: none; }
-.file-nav-section { margin: 8px 12px 0; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+/* Rail labels sit a weight below the rows they label, in the faint ink, sentence case. */
+.file-nav-section { margin: 8px 12px 0; font-size: 12px; font-weight: 600; color: var(--ink-faint); }
 .file-quick-list { display: flex; flex-direction: column; gap: 2px; }
 .file-quick-pill { width: 100%; min-width: 0; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 8px; color: var(--ink-soft); font: 500 14px var(--ui); cursor: pointer; }
 .file-quick-pill:hover { background: var(--surface-2); color: var(--ink); }
@@ -1652,7 +1707,7 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .file-quick-pill.file-quick-empty:hover { background: transparent; color: var(--ink-soft); }
 .file-quick-pill .file-icon { width: 26px; height: 26px; border-radius: 6px; font-size: 8px; flex: 0 0 auto; }
 .file-quick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-quick-group { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); padding: 11px 12px 3px; }
+.file-quick-group { font-size: 12px; font-weight: 600; color: var(--ink-faint); padding: 11px 12px 3px; }
 .file-quick-group:first-child { padding-top: 2px; }
 .file-home-main { min-width: 0; padding: 28px 36px 48px; overflow-x: hidden; }
 .file-home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -1875,6 +1930,9 @@ input.library-menu-search:focus { outline: 0; box-shadow: none; border: 0; }
 .ls-add .run-btn:disabled { opacity: .5; cursor: default; }
 .ls-list { margin-top: 16px; border-top: 1px solid var(--rule-soft); }
 .ls-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--rule-soft); }
+.ls-pin { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font: 400 13px var(--ui); color: var(--ink-soft); white-space: nowrap; cursor: pointer; }
+.ls-pin input { accent-color: var(--accent); margin: 0; }
+@media (max-width: 640px) { .ls-row:has(.ls-pin) { flex-wrap: wrap; } .ls-row:has(.ls-pin) .ls-who, .ls-row:has(.ls-pin) .ls-pin { flex-basis: 100%; } .ls-row:has(.ls-pin) select { margin-left: auto; } }
 .ls-row-btn { width: 100%; border: 0; border-bottom: 1px solid var(--rule-soft); background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .ls-row-btn:hover { background: var(--surface-2); }
 .ls-row-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -2338,6 +2396,9 @@ html.call-docked-right body { padding-right: var(--call-dock-w); } html.call-doc
 body.dragging-items, body.dragging-items * { cursor: grabbing !important; }
 .file-library-table tbody tr:hover { background: var(--surface-2); }
 .file-library-table tbody tr.selected { background: var(--accent-wash); }
+/* A selected row also carries a 3px signal bar at its leading edge: the wash alone is a hint, the bar
+   reads from across the room and survives a hidden checkbox column. */
+.file-library-table tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 /* Compact density: single-line rows (hide the secondary size/type line) with
    tighter padding and a smaller file icon — more rows per screen, file-manager
    feel. The Size column can be enabled from the column chooser to keep that info. */
@@ -2384,22 +2445,6 @@ html[data-density="compact"] .file-library-table .file-folder-icon { width: 24px
 .file-commander-folder .fc-dots:hover { opacity: 1; color: var(--accent); background: var(--accent-wash); }
 .file-commander-main { min-width: 0; overflow-x: auto; }
 /* ---- Two-column file-home redesign: pinned rail, in-rail folder tree, breadcrumb ---- */
-/* Pinned libraries section */
-.file-pinned-section { display: grid; gap: 2px; }
-.file-pinned-section[hidden] { display: none; }
-.file-pinned-header { width: 100%; border: 0; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 6px 12px 2px; font: 800 12px var(--ui); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); cursor: pointer; }
-.file-pinned-header .chev { font-size: 11px; transition: transform 0.15s ease; }
-.file-pinned-section.collapsed .file-pinned-header .chev { transform: rotate(-90deg); }
-.file-pinned-section.collapsed .file-pinned-body { display: none; }
-.file-pinned-body { display: grid; gap: 2px; }
-/* Pinned rail rows: the library-switch button and the unpin button are siblings
-   (never nested) so both are keyboard-operable. */
-.file-pinned-item-wrap { display: flex; align-items: center; }
-.file-pinned-item { flex: 1 1 auto; min-width: 0; }
-.file-pinned-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-pin-star { flex: 0 0 auto; border: 0; background: transparent; color: var(--accent); opacity: 0.75; font-size: 13px; line-height: 1; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
-.file-pin-star:hover { opacity: 1; background: var(--surface-2); }
-.file-pin-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Library dropdown rows: switch button + pin button as siblings */
 .library-menu-item-wrap { display: flex; align-items: center; }
 /* Name on one line, how you hold it on the next: a tag beside the name squeezed "Marketing" to "Mark…". */
@@ -2424,7 +2469,19 @@ html.dark .file-rail-foot { background: var(--surface); }
 /* The tree keeps to its own scroll region so Favorites, Trash and the rest of the rail stay within reach however many folders there are. */
 .file-rail-tree { display: grid; gap: 1px; margin: 0 0 4px; max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
 .file-rail-tree:empty { display: none; }
-.file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr) auto; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+/* In the rail a folder's count waits for hover or focus, then sits over the end of the
+   name: names get the full width at rest and the row never shifts. */
+.file-rail-tree .file-commander-folder { grid-template-columns: 22px minmax(0, 1fr); position: relative; font-size: 13px; padding-top: 6px; padding-bottom: 6px; }
+.file-rail-tree .file-commander-count { position: absolute; inset-inline-end: 9px; top: 50%; transform: translateY(-50%); padding-inline-start: 14px; opacity: 0; background: linear-gradient(to right, transparent, var(--surface-2) 45%); pointer-events: none; }
+.file-rail-tree .file-commander-folder:hover .file-commander-count, .file-rail-tree .file-commander-folder:focus-visible .file-commander-count { opacity: 1; }
+/* One "you are here": the folder being viewed is the raised row (the recipe an active view
+   uses), not an accent wash. The accent is for actions, selection, focus and links. */
+.file-rail-tree .fc-row.active { background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px var(--rule); }
+.file-rail-tree .file-commander-folder.active { background: transparent; color: var(--ink); font-weight: 600; }
+.file-rail-tree .file-commander-folder.active .file-commander-count { background: linear-gradient(to right, transparent, var(--surface) 45%); }
+/* While folders sit below the tree's fold its last rows fade, a cue that it scrolls
+   (overlay scrollbars hide at rest). railTreeCue() lifts the fade at the end of the list. */
+.file-rail-tree.has-more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
 /* Breadcrumb — its own row directly under the Create/Upload toolbar, left-aligned */
 .file-library-breadcrumb-row { margin: 8px 0 2px; }
 .file-library-breadcrumb .crumb-root { font-weight: 700; color: var(--ink); }
@@ -2574,6 +2631,9 @@ html.dark .file-home-shell { background: var(--paper); color: var(--ink); }
 html.dark .file-home-nav { background: var(--surface); border-color: var(--rule); }
 /* The rail is --surface in dark, so the active item steps up to --surface-raised. */
 html.dark .file-nav-link.active { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--line-strong); }
+html.dark .file-library-block { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+html.dark .file-rail-tree .fc-row.active { background: var(--surface-raised); box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 0 0 1px var(--line-strong); }
+html.dark .file-rail-tree .file-commander-folder.active .file-commander-count { background: linear-gradient(to right, transparent, var(--surface-raised) 45%); }
 html.dark .file-home-shell.dragging { background: var(--accent-wash); outline-color: var(--focus); }
 html.dark .file-create-btn { background: var(--surface-raised); border-color: var(--rule); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
 html.dark .file-create-btn:hover { background: var(--surface-2); border-color: var(--line-strong); }
@@ -2593,8 +2653,6 @@ html.dark .file-search-menu button { color: var(--ink); }
 html.dark .file-upload-menu button:hover,
 html.dark .file-search-menu button:hover { background: var(--surface-raised); }
 html.dark .file-library-heading,
-html.dark .file-nav-section,
-html.dark .file-pinned-header,
 html.dark .file-home-title,
 html.dark .file-section-title,
 html.dark .file-home-card-value,
@@ -2697,6 +2755,9 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
      below it and leave pills poking out either side, which reads as broken. */
   .library-switch-wrap { justify-self: stretch; max-width: 100%; }
   .file-library-heading { width: max-content; max-width: 100%; padding: 4px 10px 4px 5px; border-radius: 999px; gap: 8px; }
+  /* The block flattens to the chip; the pinned rows go back to the menu, which lists them. */
+  .file-library-block { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .file-library-block .file-library-heading, .file-library-block:has(.file-library-pins:not([hidden])) .file-library-heading { border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
   .file-library-heading-sub { display: none; }
   .file-library-glyph { width: 24px; height: 24px; border-radius: 50%; font-size: 12px; }
   .library-menu { left: 0; right: 0; min-width: 0; max-width: none; }
@@ -2706,10 +2767,10 @@ html.dark .file-link-status.paused { color: var(--warning); background: color-mi
   .file-library-nav-body > .file-nav-main, #conn-mounts-nav, #conn-mounts-nav > .file-nav-main, .file-rail-foot, .file-rail-foot > .file-nav-main { display: contents; }
   .file-rail-foot { position: static; width: auto; }
   .file-library-nav-body:has(.file-rail-foot) { padding-bottom: 10px; }
-  .file-nav-section, .file-quick-list, .file-pinned-section, .file-rail-tree, .rail-find { display: none; }
+  .file-nav-section, .file-quick-list, .file-library-pins, .file-rail-tree, .rail-find { display: none; }
   .file-home-nav-inner { position: static; max-height: none; overflow: visible; padding: 0; }
   .file-nav-link { flex: 0 0 auto; width: auto; min-height: 36px; gap: 6px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); font-size: 14px; white-space: nowrap; scroll-snap-align: start; box-shadow: none; }
-  .file-nav-link.active { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; }
+  .file-nav-link.active, .file-nav-link.current { background: var(--surface-2); border-color: var(--line-strong); color: var(--ink); font-weight: 600; box-shadow: none; } /* no tree here, so Files stays the pill that is lit inside a folder too */
   .file-nav-link > span > span:last-child:not(:first-child) { display: none; } /* connection pills: name only */
   .file-home-main { padding: 22px 16px 34px; }
   .file-home-title-row { align-items: flex-start; flex-direction: column; }
@@ -3336,12 +3397,12 @@ let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
 let startLibraryId = (() => { try { return localStorage.getItem('memex_start_library') || null; } catch { return null; } })();
 let _prefsLoaded = false;      // the server's preferences have arrived (see sendPreferences)
 let _signInDeepLink = false;   // sign-in was asked to open a particular place
+let _freshSignIn = false;      // this page load completed a sign-in (came back from Keycloak with a code)
 let favoriteFileIds = _loadIdSet('memex_favorite_files');
 // Inline-bell state: which files the user follows, and their notify prefs for
 // the current library (owner default on / member default off).
 let followedFileIds = new Set();
 let folderNotifyState = { libraryId: null, isOwner: false, prefs: new Map() };
-let filePinnedCollapsed = localStorage.getItem('memex_pinned_collapsed') === 'true';
 let fileBreadcrumbHidden = localStorage.getItem('memex_breadcrumb_hidden') === 'true';
 function savePinnedLibraries() { localStorage.setItem('memex_pinned_libraries', JSON.stringify([...pinnedLibraryIds])); syncPreferencesToServer(); }
 function saveFavoriteFiles() { localStorage.setItem('memex_favorite_files', JSON.stringify([...favoriteFileIds])); syncPreferencesToServer(); }
@@ -3397,11 +3458,6 @@ function toggleLibraryPin(event, id) {
   if (menu) menu.innerHTML = libraryMenuInnerHtml();
   refreshPinnedSection();
 }
-function togglePinnedSection() {
-  filePinnedCollapsed = !filePinnedCollapsed;
-  localStorage.setItem('memex_pinned_collapsed', filePinnedCollapsed ? 'true' : 'false');
-  document.getElementById('file-pinned-section')?.classList.toggle('collapsed', filePinnedCollapsed);
-}
 function refreshPinnedSection() {
   const sec = document.getElementById('file-pinned-section');
   if (sec) sec.outerHTML = filePinnedSectionHtml();
@@ -3435,6 +3491,26 @@ function refreshFileRailTree() {
   if (!railFindQuery) tree.querySelector('.file-commander-folder.active')?.scrollIntoView({ block: 'nearest' });
   const find = document.getElementById('file-rail-find-wrap');
   if (find) find.hidden = !railFindWanted();
+  railTreeCue();
+  markRailLocation();
+}
+// The tree fades at its foot while folders sit below the fold (.file-rail-tree.has-more);
+// the fade lifts once the last row is in view. Runs after every redraw, scroll and resize.
+function railTreeCue() {
+  const tree = document.getElementById('file-rail-tree');
+  if (!tree) return;
+  tree.classList.toggle('has-more', tree.scrollHeight - tree.scrollTop - tree.clientHeight > 6);
+}
+document.addEventListener('scroll', e => { if (e.target && e.target.id === 'file-rail-tree') railTreeCue(); }, true);
+window.addEventListener('resize', railTreeCue);
+// One "you are here" in the rail: at a library's root the Files row is the raised one;
+// inside a folder the folder's row is, and Files keeps only its weight.
+function markRailLocation() {
+  if (fileView !== 'active') return;
+  const files = document.querySelector('.file-nav-link[data-view="active"]');
+  if (!files) return;
+  files.classList.toggle('active', !currentFolderPath);
+  files.classList.toggle('current', !!currentFolderPath);
 }
 // "Find a folder" above the rail tree: once a library has more than a screenful of
 // folders, typing narrows the tree to the folders whose names match, at any depth.
@@ -3452,6 +3528,7 @@ function railFind(value) {
   railFindQuery = String(value || '');
   const tree = document.getElementById('file-rail-tree');
   if (tree) tree.innerHTML = fileRailTreeHtml();
+  railTreeCue();
   const inner = document.getElementById('file-home-nav-inner');
   const find = document.getElementById('file-rail-find-wrap');
   if (inner && find && railFindQuery) inner.scrollTop = Math.max(0, find.offsetTop - 12);
@@ -3679,6 +3756,7 @@ async function initApp() {
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code')) {
+    _freshSignIn = true;
     await handleOAuthCallback(urlParams.get('code'), urlParams.get('state'));
     window.history.replaceState({}, '', window.location.pathname);
   }
@@ -3694,6 +3772,14 @@ async function initApp() {
 
 }
 
+// The library a person chose to open at sign-in ("Open X when you sign in") applies to a
+// sign-in only. A page refresh, or a new tab while the session lasts, keeps the library
+// they were in (memex_library_id); a deep link to a particular place wins over both.
+function startLibraryToOpen() {
+  if (!_freshSignIn || _signInDeepLink || !startLibraryId) return null;
+  if (String(startLibraryId) === String(currentLibraryId)) return null;
+  return librariesList.some(l => String(l.id) === String(startLibraryId)) ? String(startLibraryId) : null;
+}
 async function _afterLogin() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim').classList.remove('open');
@@ -3715,11 +3801,11 @@ async function _afterLogin() {
   // library open is not that one, load it again.
   if (document.getElementById('file-library-view') && filesListKey && !filesListKey.startsWith(`${currentLibraryId}|`)) await loadFiles();
   await loadServerPreferences();
-  // Open the library this person chose for sign-in, unless they came by a link to a
-  // particular place.
-  if (!_signInDeepLink && startLibraryId && String(startLibraryId) !== String(currentLibraryId)
-      && librariesList.some(l => String(l.id) === String(startLibraryId))) {
-    currentLibraryId = startLibraryId;
+  // Open the library this person chose for sign-in: only on a sign-in, never on a refresh
+  // (startLibraryToOpen says which).
+  const openAtSignIn = startLibraryToOpen();
+  if (openAtSignIn) {
+    currentLibraryId = openAtSignIn;
     try { localStorage.setItem('memex_library_id', currentLibraryId); } catch { /* private mode */ }
     if (fileView === 'home' && document.getElementById('home-view')) renderHome();
     else if (document.getElementById('file-library-view')) { currentFolderPath = ''; await loadFiles(); }
@@ -8410,21 +8496,22 @@ function wdashHead(label, icon) {
   return `<h2 class="wdash-h">${navIcon(icon, 'wdash-h-ic')}${label}</h2>`;
 }
 const NAV_VIEW = { home: 'home', files: 'active', shared: 'shared', links: 'links', favorites: 'favorites', trash: 'trash' };
-function fileNavButton(label, icon, action, active) {
+function fileNavButton(label, icon, action, active, extra = '') {
   const view = NAV_VIEW[icon];
-  return `<button class="file-nav-link ${active ? 'active' : ''}"${view ? ` data-view="${view}"` : ''} onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
+  return `<button class="file-nav-link ${active ? 'active' : ''}${extra ? ` ${extra}` : ''}"${view ? ` data-view="${view}"` : ''} onclick="${action}">${navIcon(icon)}<span>${label}</span></button>`;
 }
 
-// Pinned libraries: a collapsible rail section of favorited libraries for quick
-// switching, each with a star to unpin. Renders nothing when no library is pinned.
+// Pinned libraries: the other libraries you pinned, as quiet rows under the one you are
+// in, inside the same block. One click switches; the star to unpin lives in the picker
+// menu, so the rail carries no stars. The holder stays (hidden) when nothing else is
+// pinned, so a pin made from the menu can fill it without redrawing the rail.
 function filePinnedSectionHtml() {
-  const pins = (librariesList || []).filter(l => pinnedLibraryIds.has(String(l.id)));
-  if (!pins.length) return `<div class="file-pinned-section" id="file-pinned-section" hidden></div>`;
-  const collapsed = filePinnedCollapsed ? ' collapsed' : '';
-  const items = pins.map(l =>
-    `<div class="file-pinned-item-wrap"><button class="file-nav-link file-pinned-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" onclick="switchLibrary('${l.id}')"><span>${esc(l.name)}</span></button><button class="file-pin-star" type="button" aria-label="Unpin ${esc(l.name)}" title="Unpin" onclick="toggleLibraryPin(event,'${l.id}')">★</button></div>`
+  const pins = (librariesList || []).filter(l => pinnedLibraryIds.has(String(l.id)) && String(l.id) !== String(currentLibraryId));
+  if (!pins.length) return `<div class="file-library-pins" id="file-pinned-section" hidden></div>`;
+  const rows = pins.map(l =>
+    `<button class="file-library-pin" type="button" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="file-library-glyph file-library-glyph-sm" aria-hidden="true">${esc(String(l.name).charAt(0))}</span><span class="file-library-pin-name">${esc(l.name)}</span></button>`
   ).join('');
-  return `<div class="file-pinned-section${collapsed}" id="file-pinned-section"><button class="file-pinned-header" type="button" onclick="togglePinnedSection()"><span>Pinned</span><span class="chev">⌄</span></button><div class="file-pinned-body">${items}</div></div>`;
+  return `<div class="file-library-pins" id="file-pinned-section" role="group" aria-label="Pinned libraries">${rows}</div>`;
 }
 
 // Finder-style folder tree shown in the rail under the Files item. Reuses the
@@ -9027,6 +9114,30 @@ function libraryMenuListHtml() {
     + fold('people', 'People’s own libraries', g.people)
     + fold('away', 'Put away', g.away);
 }
+// The foot of the menu is about the library you are in. Its name is said once, as a heading the
+// actions sit under, so the rows are the file row menu's verbs (Share…, Who has access…, Rename…)
+// and a long name never widens a row. "Open at sign-in" is a setting, so it shows whether it is
+// on instead of reading like a command. Putting a library away is the one thing here that takes
+// it out of everyone's way, so it sits last, past a rule, in the row menu's danger colour.
+// "New library" is about the list, not this library, and stays with the list.
+function libraryMenuActionsHtml(cur) {
+  if (!cur || !cur.id) return '';
+  const id = escAttr(String(cur.id));
+  const opensAtSignIn = String(startLibraryId) === String(cur.id);
+  const away = currentUser?.role === 'admin'
+    ? `<div class="library-menu-sep"></div><button class="library-menu-item${cur.archived_at ? '' : ' danger'}" type="button" data-lib="${id}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? 'Bring back' : 'Put away…'}</button>`
+    : '';
+  return `<div class="library-menu-actions" role="group" aria-labelledby="library-menu-for">`
+    + `<div class="library-menu-for" id="library-menu-for" title="${escAttr(cur.name)}">${esc(cur.name)}</div>`
+    + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${id}">Share…</button>` : '')
+    + `<button class="library-menu-item" type="button" data-access-lib="${id}">${cur.can_manage ? 'Who has access…' : 'Your access…'}</button>`
+    + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename…</button>` : '')
+    + (opensAtSignIn
+        ? `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="true" onclick="setStartLibrary(null)" title="On: this library opens each time you sign in. Select to turn that off."><span>Open at sign-in</span><span class="library-menu-check" aria-hidden="true">✓</span></button>`
+        : `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="false" data-lib="${id}" onclick="setStartLibrary(this.dataset.lib)" title="Open this library each time you sign in"><span>Open at sign-in</span></button>`)
+    + away
+    + `</div>`;
+}
 function libraryMenuInnerHtml() {
   const cur = currentLibrary();
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
@@ -9034,16 +9145,10 @@ function libraryMenuInnerHtml() {
   const search = libraryMenuIsLong()
     ? `<div class="menu-find" onclick="event.stopPropagation()">${navIcon('search', 'rail-find-ic')}<input type="search" class="library-menu-search" id="library-menu-search" placeholder="Find a library…" aria-label="Find a library" autocomplete="off" value="${escAttr(libraryMenuQuery)}" oninput="libraryMenuSearch(this.value)" onkeydown="libraryMenuSearchKey(event)"></div>`
     : '';
+  const actions = libraryMenuActionsHtml(cur);
   return search + `<div class="library-menu-list" id="library-menu-list">${libraryMenuListHtml()}</div>`
-    + `<div class="library-menu-sep"></div>`
-    + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
-    + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
-    + (cur && cur.id ? (String(startLibraryId) === String(cur.id)
-        ? `<button class="library-menu-item" type="button" onclick="setStartLibrary(null)" title="Click to stop opening it at sign-in">✓ “${esc(cur.name)}” opens when you sign in</button>`
-        : `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="setStartLibrary(this.dataset.lib)">Open “${esc(cur.name)}” when you sign in</button>`) : '')
-    + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
-    + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
-    + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
+    + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '')
+    + (actions ? `<div class="library-menu-sep"></div>${actions}` : '');
 }
 function setStartLibrary(id) {
   startLibraryId = id ? String(id) : null;
@@ -9084,6 +9189,17 @@ document.addEventListener('click', (e) => {
   if (b) openLibraryShare({ libraryId: b.dataset.shareLib });
   else openLibraryAccess({ libraryId: a.dataset.accessLib });
 });
+// The rail's width, from a drag or the keyboard: kept between RAIL_MIN and RAIL_MAX,
+// shown on the edge's separator role, and remembered on this device.
+const RAIL_MIN = 190, RAIL_MAX = 460, RAIL_DEFAULT = 248;
+function setRailWidth(w, persist = true) {
+  const shell = document.getElementById('file-home-shell');
+  if (!shell) return;
+  railWidth = Math.round(Math.max(RAIL_MIN, Math.min(RAIL_MAX, Number(w) || RAIL_DEFAULT)));
+  shell.style.setProperty('--memex-rail-w', railWidth + 'px');
+  shell.querySelector('.rail-resizer')?.setAttribute('aria-valuenow', String(railWidth));
+  if (persist) { try { localStorage.setItem('memex_rail_w', String(railWidth)); } catch { /* private mode */ } }
+}
 function startRailResize(event) {
   event.preventDefault();
   const shell = document.getElementById('file-home-shell');
@@ -9091,20 +9207,32 @@ function startRailResize(event) {
   const resizer = shell.querySelector('.rail-resizer');
   resizer?.classList.add('active');
   document.body.style.userSelect = 'none';
-  const move = ev => {
-    const w = Math.max(190, Math.min(460, ev.clientX - shell.getBoundingClientRect().left));
-    railWidth = Math.round(w);
-    shell.style.setProperty('--memex-rail-w', railWidth + 'px');
-  };
+  const move = ev => setRailWidth(ev.clientX - shell.getBoundingClientRect().left, false);
   const up = () => {
     document.removeEventListener('mousemove', move);
     document.removeEventListener('mouseup', up);
     resizer?.classList.remove('active');
     document.body.style.userSelect = '';
-    if (railWidth) localStorage.setItem('memex_rail_w', String(railWidth));
+    if (railWidth) { try { localStorage.setItem('memex_rail_w', String(railWidth)); } catch { /* private mode */ } }
   };
   document.addEventListener('mousemove', move);
   document.addEventListener('mouseup', up);
+}
+// The edge is a separator a keyboard can move (the ARIA window-splitter pattern): the arrow
+// keys shift it 16px (48px with Shift), Home and End take it to its narrowest and widest,
+// and Enter or Space put it back to the default width.
+function railResizeKey(e) {
+  const now = railWidth || RAIL_DEFAULT;
+  const step = e.shiftKey ? 48 : 16;
+  let w = null;
+  if (e.key === 'ArrowLeft') w = now - step;
+  else if (e.key === 'ArrowRight') w = now + step;
+  else if (e.key === 'Home') w = RAIL_MIN;
+  else if (e.key === 'End') w = RAIL_MAX;
+  else if (e.key === 'Enter' || e.key === ' ') w = RAIL_DEFAULT;
+  if (w == null) return;
+  e.preventDefault();
+  setRailWidth(w);
 }
 function toggleLibraryMenu(event) {
   event?.stopPropagation();
@@ -9284,6 +9412,8 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     if (e.target.matches('[data-ls-group]')) { updateAdd(); return; }
     const lvl = e.target.closest('[data-ls-level-for]');
     if (lvl) await changeLevel(lvl.dataset.lsLevelFor, lvl.value);
+    const pin = e.target.closest('[data-ls-pin-for]');
+    if (pin) await setPinForMembers(pin.dataset.lsPinFor, pin.checked);
   });
   emailInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); takeTyped(); }
@@ -9349,6 +9479,15 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     catch (err) { toast(groupErr(err, 'Could not change the level. Try again.')); }
     finally { st.busy = false; await load(); }
   }
+  async function setPinForMembers(shareId, pinned) {
+    if (st.busy) { toast('Still saving your last change…'); await load(); return; }
+    st.busy = true;
+    try {
+      await apiPut(`/libraries/${encodeURIComponent(libraryId)}/shares/${encodeURIComponent(shareId)}/pin`, { pinned });
+      toast(pinned ? 'Pinned for members. Each of them gets it once and can unpin it.' : 'No longer pinned for new members. Pins already given stay.');
+    } catch (err) { toast(groupErr(err, 'Could not change that. Try again.')); }
+    finally { st.busy = false; await load(); }
+  }
   async function remove(shareId, who) {
     if (st.busy) return;
     const words = await removalWords(shareId);
@@ -9377,6 +9516,8 @@ function mountLibraryShare(root, { libraryId, folderPath = '' }) {
     }[x.folder_state];
     if (stateWords) pills.push(`<span class="pill warn" title="${escAttr(stateWords[1])}">${stateWords[0]}</span>`);
     return `<div class="ls-row"><div class="ls-who"><span class="ls-who-name">${esc(x.subject_type === 'group' ? (x.group?.name || 'A group') : x.subject_email)}</span>${pills.length ? `<span class="ls-who-sub">${pills.join('')}</span>` : ''}</div>`
+      // A group's share of the whole library can also pin it for each member, once.
+      + (x.subject_type === 'group' && x.folder_path === '' ? `<label class="ls-pin" title="Adds this library to the pinned list of everyone in ${escAttr(x.group?.name || 'the group')}, now and when they join. They can unpin it, and it won't come back."><input type="checkbox" data-ls-pin-for="${escAttr(String(x.id))}"${x.pin_by_default ? ' checked' : ''}> Pin for members</label>` : '')
       + `<select data-ls-level-for="${escAttr(String(x.id))}" aria-label="Level for ${escAttr(whoOf(x))}">${SHARE_LEVELS.map(([v, t]) => `<option value="${v}"${x.permission === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`
       + `<button class="file-library-tool" type="button" data-ls-remove="${escAttr(String(x.id))}" data-ls-who="${escAttr(whoOf(x))}" aria-label="Remove ${escAttr(whoOf(x))}">Remove</button></div>`;
   };
@@ -9830,20 +9971,23 @@ document.addEventListener('keydown', e => {
 function fileHomeNav(activeWorkspace = 'files', activeFile = 'home') {
   const libraryName = esc(currentLibraryName());
   const collapsed = fileLibraryNavCollapsed ? ' collapsed' : '';
+  // Inside a folder the folder's own row is the raised one (markRailLocation), so Files
+  // keeps only its weight; at the library's root Files is the location.
+  const inFolder = activeFile === 'files' && !!currentFolderPath;
   return `<section class="file-library-nav${collapsed}" id="file-library-nav">
-    <div class="library-switch-wrap">
-      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true" aria-expanded="false" aria-controls="library-menu"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
+    <div class="library-switch-wrap file-library-block">
+      <button class="file-library-heading" type="button" onclick="toggleLibraryMenu(event)" aria-haspopup="true" aria-expanded="false" aria-controls="library-menu"><span class="file-library-glyph" aria-hidden="true">${esc(libraryName.charAt(0))}</span><span class="file-library-heading-meta"><span class="file-library-heading-name" title="${escAttr(currentLibraryName())}">${libraryName}</span><span class="file-library-heading-sub">${esc(libraryRelation(currentLibrary()))}</span></span><span class="chev">⌄</span></button>
+      ${filePinnedSectionHtml()}
       <div class="library-menu" id="library-menu">${libraryMenuInnerHtml()}</div>
     </div>
-    ${filePinnedSectionHtml()}
     <div class="file-library-nav-body">
       <div class="file-nav-main file-files-main">
         ${fileNavButton('Home', 'home', `setFileView('home')`, activeWorkspace === 'files' && activeFile === 'home')}
-        ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files')}
+        ${fileNavButton('Files', 'files', `setFileView('active')`, activeWorkspace === 'files' && activeFile === 'files' && !inFolder, inFolder ? 'current' : '')}
         ${activeFile === 'files' ? `<div class="rail-find" id="file-rail-find-wrap"${railFindWanted() ? '' : ' hidden'}>${navIcon('search', 'rail-find-ic')}<input type="search" class="file-rail-find" id="file-rail-find" placeholder="Find a folder…" aria-label="Find a folder" autocomplete="off" value="${escAttr(railFindQuery)}" oninput="railFind(this.value)" onkeydown="railFindKey(event)"></div><div class="file-rail-tree" id="file-rail-tree">${fileRailTreeHtml()}</div>` : ''}
         ${fileNavButton('Favorites', 'favorites', `setFileView('favorites')`, activeWorkspace === 'files' && activeFile === 'favorites')}
         ${fileNavButton('Shared with me', 'shared', `setFileView('shared')`, activeWorkspace === 'files' && activeFile === 'shared')}
-        ${currentUser?.role === 'viewer' ? '' : fileNavButton('My links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
+        ${currentUser?.role === 'viewer' ? '' : fileNavButton('Links', 'links', `setFileView('links')`, activeWorkspace === 'files' && activeFile === 'links')}
         ${currentUser?.role === 'viewer' ? '' : fileNavButton('Trash', 'trash', `setFileView('trash')`, activeWorkspace === 'files' && activeFile === 'trash')}
       </div>
       ${currentUser?.role === 'admin' ? `<div class="file-rail-foot"><div class="file-nav-section">Workspace</div><div class="file-nav-main">${fileNavButton('Admin', 'admin', "setTab('admin')", activeWorkspace === 'admin')}</div></div>` : ''}
@@ -10145,7 +10289,7 @@ function previewMountEntry(i) {
 
 function fileHomeShell(mainHtml, activeWorkspace = 'files', activeFile = 'home') {
   document.documentElement.classList.add('file-home-mode');
-  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav"><div class="file-home-nav-inner" id="file-home-nav-inner">${fileHomeNav(activeWorkspace, activeFile)}</div></aside><div class="rail-resizer" onmousedown="startRailResize(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
+  return `<div class="panel file-home-panel"><input type="file" id="file-picker" style="display:none" multiple onchange="handleFilePickerChange(event)"><input type="file" id="folder-picker" style="display:none" webkitdirectory directory multiple onchange="handleFolderPickerChange(event)"><div class="file-home-shell" id="file-home-shell"${railWidth ? ` style="--memex-rail-w:${railWidth}px"` : ''} ondragover="handleFileHomeDropOver(event)" ondragleave="handleFileHomeDropLeave(event)" ondrop="handleFileHomeDrop(event)"><aside class="file-home-nav"><div class="file-home-nav-inner" id="file-home-nav-inner">${fileHomeNav(activeWorkspace, activeFile)}</div></aside><div class="rail-resizer" role="separator" aria-orientation="vertical" aria-label="Rail width" aria-valuemin="190" aria-valuemax="460" aria-valuenow="${railWidth || 248}" tabindex="0" onmousedown="startRailResize(event)" onkeydown="railResizeKey(event)" title="Drag to resize"></div><div class="file-home-main" id="file-home-main">${mainHtml}</div></div></div>`;
 }
 
 function wrapPanelInFileHome(activeWorkspace) {
@@ -11308,11 +11452,14 @@ async function renderSharedWithMe() {
   if (data.is_admin) notes.push(`<p class="settings-notice">You're an admin, so you can open everything. This page lists what people have shared with you specifically.</p>`);
   const cap = (x) => (x.view_only && x.level !== 'read' ? ` title="Your account can only view files"` : '');
   const row = (attrs, cells) => `<tr class="swm-row" tabindex="0" role="button" ${attrs}>${cells}</tr>`;
+  // A library that was put away is sent to an admin only (everyone else's list leaves it
+  // out, as the library list does); its row says so.
+  const away = (lib) => (lib?.archived_at ? ' <span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it">Archived</span>' : '');
   const libs = data.libraries.map(l => row(`data-swm-lib="${escAttr(String(l.library.id))}"`,
-    `<td><div class="swm-name">${esc(l.library.name)}</div><div class="swm-sub">${swmShareLine(l.shares, true)}</div></td>`
+    `<td><div class="swm-name">${esc(l.library.name)}${away(l.library)}</div><div class="swm-sub">${swmShareLine(l.shares, true)}</div></td>`
     + `<td${cap(l)}>${swmLevel(l.effective)}</td>${swmStats(l)}<td>${esc(swmWho(l.library.owner))}</td>`)).join('');
   const folders = data.folders.map(f => row(`data-swm-lib="${escAttr(String(f.library.id))}" data-swm-folder="${escAttr(f.path)}"`,
-    `<td><div class="swm-name">${esc(f.name)}</div><div class="swm-sub">in ${esc(f.library.name)} · ${swmShareLine(f.shares)}${f.also_whole_library ? ' (you also have the whole library)' : ''}${f.files ? '' : ' · No files here right now'}</div></td>`
+    `<td><div class="swm-name">${esc(f.name)}${away(f.library)}</div><div class="swm-sub">in ${esc(f.library.name)} · ${swmShareLine(f.shares)}${f.also_whole_library ? ' (you also have the whole library)' : ''}${f.files ? '' : ' · No files here right now'}</div></td>`
     + `<td${cap(f)}>${swmLevel(f.effective)}</td>${swmStats(f)}<td>${esc(swmWho(f.library.owner))}</td>`)).join('');
   const files = data.files.map(x => row(`data-swm-file="${escAttr(String(x.document.id))}" data-swm-lib="${escAttr(String(x.document.library?.id || ''))}" data-swm-folder="${escAttr(x.document.folder || '')}"`,
     `<td><div class="swm-name">${esc(x.document.name)}</div><div class="swm-sub">in ${esc(x.document.library?.name || 'a library')}${x.document.folder ? ` / ${esc(x.document.folder)}` : ''} · given to you by ${esc(swmWho(x.granted_by))}</div></td>`
@@ -11332,6 +11479,10 @@ async function renderSharedWithMe() {
     const lib = r.dataset.swmLib;
     await loadLibraries();
     if (lib && !librariesList.some(l => String(l.id) === lib)) {
+      // A file given to you one by one is still yours to open when its library is no
+      // longer listed to you (put away, say): open it from here. A library or folder you
+      // can't get into any more comes off the list.
+      if (r.dataset.swmFile) { previewFile(r.dataset.swmFile); return; }
       toast("You can't open that any more. The list has been refreshed.");
       renderSharedWithMe();
       return;
@@ -11863,7 +12014,7 @@ async function renderShareLinks(scope = _linksScope) {
   const sub = _linksScope === 'all'
     ? "Every public link in Depot, whoever made it. You can see these because you're an admin."
     : "Public links you've made. Anyone who has one can open the file or folder without signing in, until it expires or you revoke it.";
-  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">${_linksScope === 'all' ? 'All links' : 'My links'}</h2><button class="file-library-tool" type="button" data-links-refresh>Refresh</button></div>`
+  document.getElementById('panel').innerHTML = fileHomeShell(`<div class="file-home-title-row"><h2 class="file-home-title">Links</h2><button class="file-library-tool" type="button" data-links-refresh>Refresh</button></div>`
     + `<p class="file-home-sub swm-sub">${esc(sub)}</p>${seg}<div class="file-links-list" id="file-links-list">${emptyState('Loading links', '')}</div>`, 'files', 'links');
   const panel = document.getElementById('panel');
   panel.onclick = async (e) => {

@@ -27,7 +27,7 @@ jest.mock('../../lib/db', () => ({
     if (/FROM user_roles WHERE lower\(email\)/.test(sql)) return mockState.account;
     if (/UPDATE libraries SET owner_id/.test(sql)) return mockState.updated;
     if (/count\(\*\)::int AS n FROM documents/.test(sql)) return { n: mockState.others };
-    if (/SELECT name FROM libraries WHERE id/.test(sql)) return { name: 'Ptech Workspace' };
+    if (/SELECT name FROM libraries WHERE id/.test(sql)) return { name: 'Company files' };
     if (/UPDATE libraries SET name/.test(sql)) return { id: LIB, name: params[1], owner_id: null, personal: false };
     return null;
   }),
@@ -57,11 +57,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   Object.assign(mockState, {
     user: ADMIN,
-    library: { id: LIB, name: 'Ptech Workspace', owner_id: null },
+    library: { id: LIB, name: 'Company files', owner_id: null },
     account: { user_id: DAVE.id, email: 'Dave@X.com', role: 'contributor' },
-    updated: { id: LIB, name: 'Ptech Workspace', owner_id: DAVE.id, owner_email: 'dave@x.com' },
+    updated: { id: LIB, name: 'Company files', owner_id: DAVE.id, owner_email: 'dave@x.com' },
     adopted: [], others: 0,
-    visible: { id: LIB, name: 'Ptech Workspace', can_manage: true },
+    visible: { id: LIB, name: 'Company files', can_manage: true },
   });
 });
 
@@ -177,7 +177,7 @@ describe('renaming a library', () => {
   });
 
   test('renaming to the same name is not written down as a change', async () => {
-    const res = await rename({ name: 'Ptech Workspace' });
+    const res = await rename({ name: 'Company files' });
     expect(res.status).toBe(200);
     expect(auditLog.append).not.toHaveBeenCalled();
   });

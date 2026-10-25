@@ -125,12 +125,12 @@ describe('the rail lines up', () => {
     expect(css).toMatch(/\.rail-find \{[^}]*min-height: 38px;[^}]*padding: 0 11px;[^}]*border: 1px solid transparent;/);
     expect(css).toMatch(/\.rail-find\[hidden\] \{ display: none; \}/);
     expect(css).toMatch(/\.rail-find:focus-within \{ background: var\(--surface\); border-color: var\(--accent\);/);
-    expect(css).toMatch(/\.file-nav-section, \.file-quick-list, \.file-pinned-section, \.file-rail-tree, \.rail-find \{ display: none; \}/);
+    expect(css).toMatch(/\.file-nav-section, \.file-quick-list, \.file-library-pins, \.file-rail-tree, \.rail-find \{ display: none; \}/);
   });
-  test('tree rows, section labels, the pinned header and quick access share the nav rows\' inset', () => {
+  test('tree rows, section labels, the library block and quick access share the nav rows\' inset', () => {
     expect(css).toMatch(/\.file-rail-tree \{[^}]*margin: 0 0 4px;/);
     expect(css).toMatch(/\.file-nav-section \{ margin: 8px 12px 0;/);
-    expect(css).toMatch(/\.file-pinned-header \{[^}]*padding: 6px 12px 2px;/);
+    expect(css).toMatch(/\.file-library-pin \{[^}]*padding: 6px 7px 6px 10px;/);
     expect(css).toMatch(/\.file-quick-pill \{[^}]*padding: 7px 12px;/);
     expect(css).toMatch(/\.file-quick-group \{[^}]*padding: 11px 12px 3px; \}/);
     expect(css).toMatch(/\.file-library-heading \{[^}]*padding: 9px 11px;/);

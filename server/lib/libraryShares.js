@@ -13,7 +13,7 @@ const documentAccess = require('./documentAccess');
 // has anything in it.
 const SHARE_COLUMNS = `
   g.id, g.library_id, g.folder_path, g.subject_type, g.subject_email, g.group_id, g.permission,
-  g.granted_by_email, g.created_at, g.updated_at,
+  g.granted_by_email, g.created_at, g.updated_at, g.pin_by_default,
   grp.name AS group_name, grp.owner_email AS group_owner_email,
   (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.group_id)::int AS group_member_count,
   CASE WHEN g.subject_type <> 'user' THEN NULL
@@ -51,7 +51,7 @@ function shape(r) {
     id: r.id, library_id: r.library_id, folder_path: r.folder_path, subject_type: r.subject_type,
     subject_email: r.subject_email,
     group: r.subject_type === 'group' ? { id: r.group_id, name: r.group_name, owner_email: r.group_owner_email, member_count: r.group_member_count } : null,
-    permission: r.permission, granted_by_email: r.granted_by_email, created_at: r.created_at, updated_at: r.updated_at,
+    permission: r.permission, pin_by_default: !!r.pin_by_default, granted_by_email: r.granted_by_email, created_at: r.created_at, updated_at: r.updated_at,
     account: r.account, folder_present: r.folder_present, folder_state: r.folder_state,
   };
 }

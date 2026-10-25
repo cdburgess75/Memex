@@ -554,11 +554,15 @@ async function destinationRight(req, res, user, libraryId, parentPath) {
   return r;
 }
 
-// The library a request writes into (header / query / body, default library when
-// absent). A malformed id is answered here as a 400; returns undefined after replying.
+// The library a request writes into (header / query / body; the caller's own library
+// when absent). A malformed id, or no library at all to land in, is answered here as a
+// 400; returns undefined after replying.
 async function targetLibrary(req, res) {
-  try { return await libraries.resolveLibraryId(req); }
+  let id;
+  try { id = await libraries.resolveLibraryId(req); }
   catch (e) { if (e && e.status === 400) { res.status(400).json({ error: e.message }); return undefined; } throw e; }
+  if (!id) { res.status(400).json({ error: libraries.NO_OWN_LIBRARY }); return undefined; }
+  return id;
 }
 
 // The name an upload or a new file lands under. Its folder part keeps an existing folder
@@ -2495,7 +2499,11 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
     // there -- keeps it in that folder; new folders and the file name are cleaned the
     // way uploads are (HTML-significant and control characters stripped, traversal
     // neutralized), so a rename cannot invent a name an upload could never have stored.
+    // A file that is in no library (one from before libraries that was never adopted) is
+    // treated as the renamer's own; with no library of their own either, there is nowhere
+    // to resolve the new name against, and the rename is refused rather than guessed at.
     const libraryId = doc.library_id || (await libraries.defaultLibraryFor(req.user));
+    if (!libraryId) return res.status(400).json({ error: libraries.NO_OWN_LIBRARY });
     const raw = String(req.body?.name || '').replace(/\\/g, '/');
     const cut = raw.lastIndexOf('/');
     const base = cleanDisplayName(raw.slice(cut + 1)).slice(0, 255);
@@ -2599,6 +2607,7 @@ router.post('/create', auth, requireRole('admin', 'contributor'), async (req, re
 
     const path = require('path');
     const libraryId = req.body?.library_id || (await libraries.defaultLibraryFor(req.user));
+    if (!libraryId) return res.status(400).json({ error: libraries.NO_OWN_LIBRARY });
     // An existing (or shared) folder is kept exactly; a new one is named as before.
     const folder = await destinationFolder(req.body?.folder, libraryId, req.user);
     if (folder === null) return res.status(400).json({ error: 'invalid name' });

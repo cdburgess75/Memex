@@ -80,7 +80,7 @@ jest.mock('../../lib/storage', () => ({
 }));
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn().mockResolvedValue(null) }));
 jest.mock('../../lib/libraries', () => ({
-  defaultLibraryId: jest.fn().mockResolvedValue('lib-1'),
+  defaultLibraryFor: jest.fn().mockResolvedValue('lib-1'),
   writeRight: jest.fn().mockResolvedValue({ right: 'owner', scoped: true }),
   sharedFolderAt: jest.fn().mockResolvedValue(false),
   managesLibrary: jest.fn().mockResolvedValue(true),

@@ -4,13 +4,13 @@
   "order": 8,
   "theme": "dark",
   "title": "Keeping track of what you've shared",
-  "intro": "My links keeps a record of every link you have made, from any file or folder, whether it still works or not.",
+  "intro": "Links keeps a record of every link you have made, from any file or folder, whether it still works or not.",
   "sections": [
     {
       "heading": "See your links",
       "shot": "overview",
       "steps": [
-        "Click **My links** in the left rail.",
+        "Click **Links** in the left rail.",
         "Click the chips above the list to show or hide links by status."
       ],
       "bullets": [
