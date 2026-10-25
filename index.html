@@ -3380,6 +3380,7 @@ let pinnedLibraryIds = _loadIdSet('memex_pinned_libraries');
 let startLibraryId = (() => { try { return localStorage.getItem('memex_start_library') || null; } catch { return null; } })();
 let _prefsLoaded = false;      // the server's preferences have arrived (see sendPreferences)
 let _signInDeepLink = false;   // sign-in was asked to open a particular place
+let _freshSignIn = false;      // this page load completed a sign-in (came back from Keycloak with a code)
 let favoriteFileIds = _loadIdSet('memex_favorite_files');
 // Inline-bell state: which files the user follows, and their notify prefs for
 // the current library (owner default on / member default off).
@@ -3738,6 +3739,7 @@ async function initApp() {
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('code')) {
+    _freshSignIn = true;
     await handleOAuthCallback(urlParams.get('code'), urlParams.get('state'));
     window.history.replaceState({}, '', window.location.pathname);
   }
@@ -3753,6 +3755,14 @@ async function initApp() {
 
 }
 
+// The library a person chose to open at sign-in ("Open X when you sign in") applies to a
+// sign-in only. A page refresh, or a new tab while the session lasts, keeps the library
+// they were in (memex_library_id); a deep link to a particular place wins over both.
+function startLibraryToOpen() {
+  if (!_freshSignIn || _signInDeepLink || !startLibraryId) return null;
+  if (String(startLibraryId) === String(currentLibraryId)) return null;
+  return librariesList.some(l => String(l.id) === String(startLibraryId)) ? String(startLibraryId) : null;
+}
 async function _afterLogin() {
   document.documentElement.classList.remove('auth-locked');
   document.getElementById('login-scrim').classList.remove('open');
@@ -3773,11 +3783,11 @@ async function _afterLogin() {
   // library open is not that one, load it again.
   if (document.getElementById('file-library-view') && filesListKey && !filesListKey.startsWith(`${currentLibraryId}|`)) await loadFiles();
   await loadServerPreferences();
-  // Open the library this person chose for sign-in, unless they came by a link to a
-  // particular place.
-  if (!_signInDeepLink && startLibraryId && String(startLibraryId) !== String(currentLibraryId)
-      && librariesList.some(l => String(l.id) === String(startLibraryId))) {
-    currentLibraryId = startLibraryId;
+  // Open the library this person chose for sign-in: only on a sign-in, never on a refresh
+  // (startLibraryToOpen says which).
+  const openAtSignIn = startLibraryToOpen();
+  if (openAtSignIn) {
+    currentLibraryId = openAtSignIn;
     try { localStorage.setItem('memex_library_id', currentLibraryId); } catch { /* private mode */ }
     if (fileView === 'home' && document.getElementById('home-view')) renderHome();
     else if (document.getElementById('file-library-view')) { currentFolderPath = ''; await loadFiles(); }
