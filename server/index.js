@@ -211,6 +211,10 @@ app.get('/api/webrtc/ice', require('./middleware/auth'), async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// While the license says read-only, changes to the workspace's content stop here
+// (middleware/licenseGate); reads, downloads, sign-in and admin repair keep working.
+app.use(require('./middleware/licenseGate'));
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/log', require('./routes/log'));

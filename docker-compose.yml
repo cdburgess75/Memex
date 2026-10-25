@@ -110,6 +110,7 @@ services:
       LICENSE_PUBLIC_KEY_PATH: ${LICENSE_PUBLIC_KEY_PATH:-/app/keys/ptech-license-public.pem}
       LICENSE_PUBLIC_KEYS_DIR: ${LICENSE_PUBLIC_KEYS_DIR:-/app/keys}
       LICENSE_FILE: ${LICENSE_FILE:-/secrets/license.json}
+      LICENSE_ENFORCE: ${LICENSE_ENFORCE:-on}
       MEMEX_UPDATE_COMMAND: ${MEMEX_UPDATE_COMMAND:-}
       # Escrows a wrapped copy of the at-rest encryption key inside every backup
       # archive, so a lost .env no longer means a lost document corpus.

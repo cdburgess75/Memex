@@ -1266,7 +1266,9 @@ router.get('/home-stats', auth, async (req, res) => {
     // (5% on ext4, kept for the system) is in neither, so it no longer shows up as used:
     // on a 1 TB disk that reserve alone read as 45 GB of phantom usage.
     let usedBytes = null, totalBytes = null, freeBytes = null;
-    const qs = await settings.getOrEnv('storage_quota_gb');
+    let qs = await settings.getOrEnv('storage_quota_gb');
+    // The license may cap the workspace quota (storage_gb); the lesser of the two wins.
+    try { const cap = (await require('../lib/licenseEnforce').current()).storageGb; if (cap && (!(Number(qs) > 0) || Number(qs) > cap)) qs = String(cap); } catch { /* no license answer: the setting stands */ }
     try {
       const st = await require('fs').promises.statfs(await storage.localBase());
       const bs = Number(st.bsize);

@@ -4,6 +4,7 @@
 // the host is still starting or stopping the editor.
 jest.mock('../../lib/db', () => ({ query: jest.fn().mockResolvedValue([]) }));
 jest.mock('../../lib/settings', () => ({ getOrEnv: jest.fn(), set: jest.fn().mockResolvedValue() }));
+jest.mock('../../lib/licenseEnforce', () => ({ feature: jest.fn(async () => true) }));
 
 const db = require('../../lib/db');
 const settings = require('../../lib/settings');
@@ -73,5 +74,22 @@ describe('setSwitch', () => {
   test('on is stored as "true"', async () => {
     await editorStatus.setSwitch(true, 'u1');
     expect(settings.set).toHaveBeenCalledWith('collabora_enabled', 'true', 'u1');
+  });
+});
+
+describe('the license', () => {
+  const enforce = require('../../lib/licenseEnforce');
+  afterEach(() => enforce.feature.mockResolvedValue(true));
+  test('editing left out of the license is never offered, even switched on with the editor up', async () => {
+    enforce.feature.mockResolvedValue(false);
+    world({ enabled: 'true', up: true });
+    expect(await editorStatus.available()).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(enforce.feature).toHaveBeenCalledWith('editor');
+    expect((await editorStatus.status()).licensed).toBe(false);
+  });
+  test('included: status says so', async () => {
+    world({ enabled: 'true', up: true });
+    expect((await editorStatus.status()).licensed).toBe(true);
   });
 });

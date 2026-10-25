@@ -5,6 +5,7 @@ jest.mock('jwks-rsa');
 jest.mock('../../lib/db');
 jest.mock('../../lib/auditLog', () => ({ append: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../lib/gettingStarted', () => ({ seedLibrary: jest.fn().mockResolvedValue(true) }));
+jest.mock('../../lib/licenseEnforce', () => ({ admitNewAccount: jest.fn(async () => ({ ok: true })), feature: jest.fn(async () => true), refuseFeature: jest.fn((res, what) => res.status(403).json({ code: 'LICENSE_FEATURE', error: `${what} is not included in this server's license.` })) }));
 
 const jwt              = require('jsonwebtoken');
 const { JwksClient }   = require('jwks-rsa');  // named export in jwks-rsa v3
@@ -359,5 +360,38 @@ describe('request identity equals stored identity', () => {
     const stored = db.query.mock.calls.find(([sql]) => /UPDATE user_roles SET verified_email/.test(sql))[1][1];
     expect(documentAccess.userParams(req.user)[3]).toBe(stored || '');
     console.warn.mockRestore();
+  });
+});
+
+describe('the license on a first sign-in', () => {
+  const enforce = require('../../lib/licenseEnforce');
+  const firstSignIn = () => db.queryOne.mockImplementation(async (sql) => (/INSERT INTO user_roles/.test(sql) ? { role: 'contributor' } : null));
+  afterEach(() => enforce.admitNewAccount.mockImplementation(async () => ({ ok: true })));
+
+  test('an account the license will not seat is refused with its code, and no row is written', async () => {
+    firstSignIn();
+    enforce.admitNewAccount.mockResolvedValue({ ok: false, code: 'LICENSE_SEAT_FREEZE', error: 'No new accounts can be made until this server\'s license is renewed. Ask an administrator.' });
+    const res = makeRes(); const next = jest.fn();
+    await auth(makeReq('token'), res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ code: 'LICENSE_SEAT_FREEZE', error: expect.stringContaining('renewed') });
+    expect(next).not.toHaveBeenCalled();
+    expect(db.queryOne.mock.calls.some(([sql]) => /INSERT INTO user_roles/.test(sql))).toBe(false);
+  });
+
+  test('a hard seat cap refuses the same way', async () => {
+    firstSignIn();
+    enforce.admitNewAccount.mockResolvedValue({ ok: false, code: 'SEAT_LIMIT', error: 'This server has used all 5 of its licensed seats. Ask an administrator.' });
+    const res = makeRes();
+    await auth(makeReq('token'), res, jest.fn());
+    expect(res.json).toHaveBeenCalledWith({ code: 'SEAT_LIMIT', error: expect.stringContaining('all 5') });
+  });
+
+  test('an account that already exists is never asked about seats', async () => {
+    db.queryOne.mockResolvedValue({ role: 'contributor', has_personal: true });
+    const next = jest.fn();
+    await auth(makeReq('token'), makeRes(), next);
+    expect(next).toHaveBeenCalled();
+    expect(enforce.admitNewAccount).not.toHaveBeenCalled();
   });
 });
