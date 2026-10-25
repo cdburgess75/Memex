@@ -1547,7 +1547,7 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .scheme-card-name { grid-column: 1 / -1; font: 600 13px var(--ui); padding: 8px 11px 0; }
 .scheme-card-note { grid-column: 1 / -1; font: 400 12px var(--ui); color: var(--ink-faint); padding: 1px 11px 0; }
 @media (prefers-reduced-motion: reduce) { .scheme-card { transition: none; } }
-.file-library-nav { display: grid; gap: 16px; } /* the library block, then the views: a clear break between the two kinds of thing */
+.file-library-nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; } /* the library block, then the views: a clear break between the two kinds of thing. One column that can shrink: the heading's name and relation line are nowrap, and without it they set the block's width and a long name made the rail scroll sideways */
 .file-library-heading { width: 100%; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 9px 11px; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .file-library-heading:hover { background: var(--surface-2); }
 .file-library-glyph { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 7px; background: var(--surface-2); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; font: 700 13px var(--ui); }
@@ -1572,7 +1572,7 @@ input.file-rail-find:focus { outline: 0; box-shadow: none; border: 0; }
 .file-library-glyph-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
 .file-library-pin-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-menu { display: none; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: 6px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
-.library-menu.open { display: grid; gap: 2px; }
+.library-menu.open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; } /* one column that can shrink: a <button> never wraps below its own text, so without this the widest row set the track and the rail scrolled sideways */
 /* masthead AI model picker */
 .ai-model-wrap { position: relative; }
 .ai-model-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink-soft); font: 500 13px var(--ui); cursor: pointer; }
@@ -1648,6 +1648,15 @@ html.dark .settings-tab.active { color: var(--accent); }
 .library-menu-item.active { color: var(--accent); font-weight: 600; }
 .library-menu-item.new { color: var(--accent); font-weight: 600; }
 .library-menu-sep { height: 1px; background: var(--rule-soft); margin: 4px; }
+/* The foot of the menu: the library you are in, named once as a heading nothing can focus, and
+   the file row menu's verbs under it. "Open at sign-in" is a setting, so it says whether it is on;
+   putting a library away sits last, past a rule, in the row menu's danger colour. */
+.library-menu-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.library-menu-for { padding: 6px 10px 2px; font: 600 12px var(--ui); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-menu-item.danger { color: var(--danger); }
+.library-menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.library-menu-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.library-menu-check { flex: 0 0 auto; font-size: 12px; color: var(--accent); }
 /* "Find a library": the masthead's inset pill, inside the menu, with the rail's magnifier. */
 .menu-find { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 2px 0 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-2); color: var(--ink-faint); }
 .menu-find:focus-within { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
@@ -9086,6 +9095,30 @@ function libraryMenuListHtml() {
     + fold('people', 'People’s own libraries', g.people)
     + fold('away', 'Put away', g.away);
 }
+// The foot of the menu is about the library you are in. Its name is said once, as a heading the
+// actions sit under, so the rows are the file row menu's verbs (Share…, Who has access…, Rename…)
+// and a long name never widens a row. "Open at sign-in" is a setting, so it shows whether it is
+// on instead of reading like a command. Putting a library away is the one thing here that takes
+// it out of everyone's way, so it sits last, past a rule, in the row menu's danger colour.
+// "New library" is about the list, not this library, and stays with the list.
+function libraryMenuActionsHtml(cur) {
+  if (!cur || !cur.id) return '';
+  const id = escAttr(String(cur.id));
+  const opensAtSignIn = String(startLibraryId) === String(cur.id);
+  const away = currentUser?.role === 'admin'
+    ? `<div class="library-menu-sep"></div><button class="library-menu-item${cur.archived_at ? '' : ' danger'}" type="button" data-lib="${id}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? 'Bring back' : 'Put away…'}</button>`
+    : '';
+  return `<div class="library-menu-actions" role="group" aria-labelledby="library-menu-for">`
+    + `<div class="library-menu-for" id="library-menu-for" title="${escAttr(cur.name)}">${esc(cur.name)}</div>`
+    + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${id}">Share…</button>` : '')
+    + `<button class="library-menu-item" type="button" data-access-lib="${id}">${cur.can_manage ? 'Who has access…' : 'Your access…'}</button>`
+    + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename…</button>` : '')
+    + (opensAtSignIn
+        ? `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="true" onclick="setStartLibrary(null)" title="On: this library opens each time you sign in. Select to turn that off."><span>Open at sign-in</span><span class="library-menu-check" aria-hidden="true">✓</span></button>`
+        : `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="false" data-lib="${id}" onclick="setStartLibrary(this.dataset.lib)" title="Open this library each time you sign in"><span>Open at sign-in</span></button>`)
+    + away
+    + `</div>`;
+}
 function libraryMenuInnerHtml() {
   const cur = currentLibrary();
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'contributor';
@@ -9093,16 +9126,10 @@ function libraryMenuInnerHtml() {
   const search = libraryMenuIsLong()
     ? `<div class="menu-find" onclick="event.stopPropagation()">${navIcon('search', 'rail-find-ic')}<input type="search" class="library-menu-search" id="library-menu-search" placeholder="Find a library…" aria-label="Find a library" autocomplete="off" value="${escAttr(libraryMenuQuery)}" oninput="libraryMenuSearch(this.value)" onkeydown="libraryMenuSearchKey(event)"></div>`
     : '';
+  const actions = libraryMenuActionsHtml(cur);
   return search + `<div class="library-menu-list" id="library-menu-list">${libraryMenuListHtml()}</div>`
-    + `<div class="library-menu-sep"></div>`
-    + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${escAttr(String(cur.id))}">Share “${esc(cur.name)}”…</button>` : '')
-    + (cur && cur.id ? `<button class="library-menu-item" type="button" data-access-lib="${escAttr(String(cur.id))}">${cur.can_manage ? `Who has access to “${esc(cur.name)}”…` : `Your access to “${esc(cur.name)}”…`}</button>` : '')
-    + (cur && cur.id ? (String(startLibraryId) === String(cur.id)
-        ? `<button class="library-menu-item" type="button" onclick="setStartLibrary(null)" title="Click to stop opening it at sign-in">✓ “${esc(cur.name)}” opens when you sign in</button>`
-        : `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="setStartLibrary(this.dataset.lib)">Open “${esc(cur.name)}” when you sign in</button>`) : '')
-    + (cur && cur.id && cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename “${esc(cur.name)}”…</button>` : '')
-    + (cur && cur.id && currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${escAttr(String(cur.id))}" data-away="${cur.archived_at ? '' : '1'}" onclick="closeLibraryMenu();setLibraryArchived(this.dataset.lib, !!this.dataset.away)">${cur.archived_at ? `Bring “${esc(cur.name)}” back` : `Put “${esc(cur.name)}” away…`}</button>` : '')
-    + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '');
+    + (canCreate ? `<button class="library-menu-item new" onclick="openNewLibraryModal()">＋ New library</button>` : '')
+    + (actions ? `<div class="library-menu-sep"></div>${actions}` : '');
 }
 function setStartLibrary(id) {
   startLibraryId = id ? String(id) : null;

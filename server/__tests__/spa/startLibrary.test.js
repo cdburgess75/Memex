@@ -54,7 +54,7 @@ describe('the wiring', () => {
     expect(after).not.toMatch(/if \(!_signInDeepLink && startLibraryId/);
   });
   test('the menu still names the choice as a sign-in choice', () => {
-    expect(html).toContain('Open “${esc(cur.name)}” when you sign in');
+    expect(fnText('libraryMenuActionsHtml')).toContain('<span>Open at sign-in</span>');
     expect(html).toContain("'Sign-in will open the library you used last'");
   });
 });

@@ -15,8 +15,8 @@
       "steps": [
         "Click the **Share** icon next to a library you own."
       ],
-      "tip": "For the library you are in, you can also click **Share “Client Projects”…** at the bottom of the list.",
-      "note": "A library you do not manage shows **Your access to “Finance”…** instead. It tells you how you can get in, but does not let you change anything."
+      "tip": "For the library you are in, you can also click **Share…** under its name at the bottom of the list.",
+      "note": "A library you do not manage shows **Your access…** there instead. It tells you how you can get in, but does not let you change anything."
     },
     {
       "heading": "Share it with a person or a group",

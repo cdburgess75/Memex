@@ -18,9 +18,9 @@ const PRIYA_SHARE = U(601); // library share: Priya, Read-Write
 // 1. The library switcher open on Client Projects (owned, already shared), showing the
 // Share icon next to a library you own. Opening the switcher itself is taught in
 // "Finding your way around", so the crop starts at the very top of the page (the whole
-// top bar, uncropped, for context) and runs down through the menu. The "Rename ..." and
-// "+ New library" rows are hidden before measuring, so the crop ends right after "Who
-// has access to ..." -- the brief says never to feature library rename (it shows a
+// top bar, uncropped, for context) and runs down through the menu. The "Rename…" and
+// "+ New library" rows are hidden before measuring, so the crop ends with the library's
+// own rows (Share…, Who has access…, Open at sign-in) under its name -- the brief says never to feature library rename (it shows a
 // false error), and this also stops the picture short of the unrelated "+ New library"
 // row. Starting from the top bar instead of the heading button makes this a taller,
 // still-clean picture (a whole element, not a sliver of one), so it fills more of its
