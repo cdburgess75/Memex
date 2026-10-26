@@ -80,6 +80,14 @@ Each notice is an in-app notification and an email to the administrator's addres
 
 `scripts/depot-check.sh` reports `license=ok`, `license=expiring:12d`, `license=lapsed`, `license=readonly` or `license=invalid:<reason>`. Expiring inside 14 days is WARN; lapsed, read-only or not accepted is CRIT.
 
+## Renewing
+
+An administrator installs a renewed license in **Settings › License**: choose the `license.json` that was sent, or paste it (the JSON, or the same JSON base64-encoded). The server only keeps a version 2 license it would accept right now: signed by a key it trusts, issued for its own address, and with a serial no lower than the one in use. It takes effect on that request, read-only included, and the daily watch records the change and sends the "renewed" notice straight away.
+
+`POST /api/license` with `{ "license": "<text>" }` does the same for an administrator's session. A refusal is `400 LICENSE_REFUSED` with a `reason`: `not_a_license`, `not_v2`, `no_public_key`, or one of the `stateReason` values above. Both outcomes are in the audit log, as `license_installed` and `license_install_refused`. The endpoint stays open while the server is read-only, because this is how read-only ends.
+
+The secrets mount is read-only, so the installed copy is kept in `system_settings` (`license_uploaded`). The server considers both the mounted file and the installed copy and uses the accepted one with the higher serial; `source` in the status says which (`file` or `upload`). Re-provisioning with a newer file therefore still wins, and an installed copy edited in the database fails its signature and is ignored. The trusted keys stay environment-only, so nothing installed this way can change what the server trusts.
+
 ## Checking a server
 
 ```bash
@@ -91,15 +99,16 @@ cd /opt/memex && docker compose -f docker-compose.yml -f docker-compose.prod.yml
 
 ## What the server remembers
 
-Two rows in `system_settings`, written by the server and invisible to the settings API:
+Rows in `system_settings`, written by the server and invisible to the settings API:
 
 - `license_serial_seen`: the highest serial accepted so far.
 - `license_unlicensed_since`: when an `unlicensed` state was first recorded; cleared when a license is accepted again.
+- `license_uploaded`: the renewal an administrator installed in Settings, if any.
 
 To reinstall an older license on purpose, or after a customer's slug changes:
 
 ```sql
-DELETE FROM system_settings WHERE key IN ('license_serial_seen', 'license_unlicensed_since');
+DELETE FROM system_settings WHERE key IN ('license_serial_seen', 'license_unlicensed_since', 'license_uploaded');
 ```
 
 ## Keys

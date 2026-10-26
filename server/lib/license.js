@@ -54,6 +54,12 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // settings.ENV_MAP, so the admin settings API cannot read or write them.
 const MEM_SERIAL = 'license_serial_seen';
 const MEM_UNLICENSED_SINCE = 'license_unlicensed_since';
+// A renewed license an administrator installed in Settings (install() below). The
+// secrets mount is read-only, so a renewal cannot replace the file; it is kept here
+// and status() uses whichever accepted copy has the higher serial. Only a license
+// signed by a trusted key is ever stored, and the trusted keys stay env-only.
+const MEM_UPLOADED = 'license_uploaded';
+const MAX_UPLOAD_CHARS = 64 * 1024;
 
 // Canonical JSON: object keys sorted recursively, no incidental whitespace. The
 // signer MUST serialize the payload identically (scripts/sign-license.js does).
@@ -351,23 +357,73 @@ async function remember(st, ctx, now) {
   } catch { /* no DB: nothing to remember */ }
 }
 
-// The live status: trusted keys + the mounted license file + what the install
-// remembers. Never throws.
+// The license an administrator installed, or null.
+async function storedLicense() {
+  try { return parseLicense(await require('./settings').get(MEM_UPLOADED)); } catch { return null; }
+}
+
+// Of the mounted file and the installed copy, the one that counts: the accepted
+// one with the higher serial; when neither is accepted, the file's answer (it is
+// what provisioning put there), or the installed copy's when there is no file.
+function choose(fromFile, fromUpload) {
+  if (!fromUpload) return fromFile;
+  const n = (st) => (parseSerial(st.serial) || { n: -1 }).n;
+  if (fromFile.accepted && fromUpload.accepted) return n(fromUpload) > n(fromFile) ? fromUpload : fromFile;
+  if (fromUpload.accepted) return fromUpload;
+  if (fromFile.accepted || fromFile.present) return fromFile;
+  return fromUpload;
+}
+
+// The live status: trusted keys + the mounted license file + an installed renewal
+// + what the install remembers. Never throws.
 async function status(now = new Date()) {
   try {
     const keys = trustedKeys();
-    const lic = readLicenseFile(licenseFilePath());
     const ctx = await loadContext();
-    const st = evaluate(lic, keys, now, ctx);
+    const fromFile = { ...evaluate(readLicenseFile(licenseFilePath()), keys, now, ctx), source: 'file' };
+    const up = await storedLicense();
+    const st = choose(fromFile, up ? { ...evaluate(up, keys, now, ctx), source: 'upload' } : null);
+    if (!st.present) st.source = null;
     await remember(st, ctx, now);
     return st;
   } catch (e) {
-    return { configured: false, present: false, valid: false, accepted: false, state: 'unlicensed', stateReason: 'error', readOnly: false, seatFreeze: true, updatesEntitled: false, reason: 'error:' + e.message, warnings: [] };
+    return { configured: false, present: false, valid: false, accepted: false, state: 'unlicensed', stateReason: 'error', readOnly: false, seatFreeze: true, updatesEntitled: false, reason: 'error:' + e.message, warnings: [], source: null };
   }
 }
 
+// What an administrator pasted or picked: the license JSON as text or an object,
+// or that JSON base64-encoded (how it travels in an email). Null when it is none.
+function parseUpload(input) {
+  if (input && typeof input === 'object') return parseLicense(input);
+  const text = String(input ?? '').trim();
+  if (!text || text.length > MAX_UPLOAD_CHARS) return null;
+  if (text.startsWith('{')) return parseLicense(text);
+  if (!/^[A-Za-z0-9+/=_\-\s]+$/.test(text)) return null;
+  try { return parseLicense(Buffer.from(text.replace(/\s+/g, ''), 'base64').toString('utf8')); } catch { return null; }
+}
+
+// Install a renewed license from Settings. It must be a version 2 license this
+// server would accept right now: signed by a trusted key, issued for this server's
+// address, and not older than one it has already seen. Then it is stored and the
+// answer is the new live status. Returns { ok: true, status } or { ok: false, reason }.
+async function install(input, userId = null, now = new Date()) {
+  const lic = parseUpload(input);
+  if (!lic) return { ok: false, reason: 'not_a_license' };
+  if (Number(lic.payload.v) !== 2) return { ok: false, reason: 'not_v2' };
+  const keys = trustedKeys();
+  if (!keys.length) return { ok: false, reason: 'no_public_key' };
+  const ctx = await loadContext();
+  const st = evaluate(lic, keys, now, ctx);
+  if (!st.accepted) return { ok: false, reason: st.stateReason || st.reason || 'bad_signature', serial: st.serial || null };
+  const current = await status(now);
+  const mine = parseSerial(st.serial), theirs = current.accepted ? parseSerial(current.serial) : null;
+  if (mine && theirs && mine.lineage === theirs.lineage && mine.n < theirs.n) return { ok: false, reason: 'serial_regressed', serial: st.serial };
+  await require('./settings').set(MEM_UPLOADED, JSON.stringify(lic), userId);
+  return { ok: true, status: await status(now) };
+}
+
 module.exports = {
-  canonical, evaluate, verifySignature, entitledThrough, status, publicKeyPem, licenseFilePath, readLicenseFile,
+  canonical, evaluate, verifySignature, entitledThrough, status, install, parseUpload, choose, publicKeyPem, licenseFilePath, readLicenseFile,
   parseLicense, trustedKeys, keyId, keysFromPems, parseSerial, endOfDay, loadContext,
-  STATES, EXPIRING_DAYS, DEFAULT_GRACE_DAYS, MEM_SERIAL, MEM_UNLICENSED_SINCE,
+  STATES, EXPIRING_DAYS, DEFAULT_GRACE_DAYS, MEM_SERIAL, MEM_UNLICENSED_SINCE, MEM_UPLOADED, MAX_UPLOAD_CHARS,
 };

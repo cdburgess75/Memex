@@ -8,6 +8,18 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const license = require('../lib/license');
 const enforce = require('../lib/licenseEnforce');
+const licenseWatch = require('../lib/licenseWatch');
+const auditLog = require('../lib/auditLog');
+
+// The status as the client sees it: what the server evaluated, plus the seats in use.
+async function withSeats(st) {
+  st.enforcing = enforce.enforcing();
+  if (st.seats) {
+    st.seats.used = await enforce.seatsUsed();
+    st.seats.overCap = st.seats.licensed != null && st.seats.used != null && st.seats.used > st.seats.licensed;
+  }
+  return st;
+}
 
 // GET /api/license — entitlement status for the signed-in user. Safe fields only
 // (never the signature). Any authenticated user may read it; only the client's
@@ -16,12 +28,30 @@ router.get('/', auth, async (req, res) => {
   try {
     const st = await license.status();
     enforce.prime(st);
-    st.enforcing = enforce.enforcing();
-    if (st.seats) {
-      st.seats.used = await enforce.seatsUsed();
-      st.seats.overCap = st.seats.licensed != null && st.seats.used != null && st.seats.used > st.seats.licensed;
+    res.json(await withSeats(st));
+  } catch (e) {
+    serverError(res, e);
+  }
+});
+
+// POST /api/license — an administrator installs a renewed license: { license } is the
+// file's text, the parsed object, or the same JSON base64-encoded. Only a version 2
+// license this server would accept is kept (lib/license.js install). Works while the
+// server is read-only, because this is how read-only ends (middleware/licenseGate).
+// Both outcomes go to the audit log; a refusal says why in `reason`.
+router.post('/', auth, requireRole('admin'), async (req, res) => {
+  const actor = { actorId: req.user.id, actorEmail: req.user.email || null };
+  try {
+    const r = await license.install(req.body?.license, req.user.id);
+    if (!r.ok) {
+      auditLog.append({ eventType: 'license_install_refused', ...actor, detail: `${r.reason}${r.serial ? ` (${r.serial})` : ''}` }).catch(() => {});
+      return res.status(400).json({ error: 'That license cannot be installed on this server.', code: 'LICENSE_REFUSED', reason: r.reason });
     }
-    res.json(st);
+    const st = r.status;
+    enforce.prime(st); // read-only lifts on this request, not at the next refresh
+    auditLog.append({ eventType: 'license_installed', ...actor, detail: `${st.serial || 'license'}${st.expires ? `, term through ${st.expires}` : ''}` }).catch(() => {});
+    await licenseWatch.check().catch(() => {}); // records the state change and sends "renewed" now
+    res.json(await withSeats(st));
   } catch (e) {
     serverError(res, e);
   }

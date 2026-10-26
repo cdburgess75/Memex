@@ -69,7 +69,7 @@ describe('wiring', () => {
     const refresh = fnText('licenseNoticeRefresh');
     expect(refresh).toContain("isAdmin ? !['expiring', 'lapsed', 'readonly', 'unlicensed'].includes(lic.state) : !lic.readOnly");
     expect(refresh).toContain('isAdmin ? licenseNoticeText(lic) : LICENSE_READONLY_NOTICE');
-    expect(refresh).toContain("const details = isAdmin ? '<button class=\"run-btn\" type=\"button\" onclick=\"openUpdateModal()\">Details</button>' : ''");
+    expect(refresh).toContain("const details = isAdmin ? '<button class=\"run-btn\" type=\"button\" onclick=\"openSettingsAt(\\'license\\')\">Details</button>' : ''"); // straight to Settings > License
     expect(refresh).toContain('onclick="dismissLicenseNotice()"');
     expect(refresh).toContain('role="status"');
     expect(html).toContain("const LICENSE_READONLY_NOTICE = 'Depot is read-only until its license is renewed. You can still view and download files.';");
