@@ -199,9 +199,14 @@ kc() { # kcadm inside the keycloak container
   # shellcheck disable=SC2086
   docker compose $COMPOSE exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@"
 }
+kc_login() { # the password reaches kcadm through KC_CLI_PASSWORD, never as an argument
+  # shellcheck disable=SC2086
+  docker compose $COMPOSE exec -T -e KC_CLI_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" keycloak \
+    /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master \
+    --user "${KEYCLOAK_ADMIN_USER:-admin}" </dev/null
+}
 for _ in $(seq 1 20); do
-  kc config credentials --server http://localhost:8080 --realm master \
-     --user "${KEYCLOAK_ADMIN_USER:-admin}" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 && break
+  kc_login >/dev/null 2>&1 && break
   sleep 3
 done
 kc_user_id() { kc get users -r memex -q "email=$1" --fields id --format csv --noquotes 2>/dev/null | tr -d '\r' | awk -F, 'NF {print $1; exit}'; }
