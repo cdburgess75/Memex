@@ -124,8 +124,10 @@ if [ -n "$KC_TARGET" ] && [ -n "$KC_DB_VERSION" ] && kc_older "$KC_TARGET" "$KC_
     warn "This release runs Keycloak $KC_TARGET, but Keycloak $KC_DB_VERSION already migrated its database."
     warn "Keycloak stays on $KC_DB_VERSION; everything else rolls back. To take Keycloak back too:"
     warn "  KC_RESTORE_DUMP=keycloak-dumps/<the dump from that upgrade> ./upgrade.sh $TAG"
+    # The editor is left out too: editor-switch.sh below starts it or not, and naming a
+    # service would start it even with its profile off (some Compose versions list it).
     # shellcheck disable=SC2086
-    UP_ARGS="--no-deps $($DC $COMPOSE config --services </dev/null | grep -vx -e keycloak -e keycloak-predump | tr '\n' ' ')"
+    UP_ARGS="--no-deps $($DC $COMPOSE config --services </dev/null | grep -vx -e keycloak -e keycloak-predump -e collabora | tr '\n' ' ')"
   fi
 fi
 
