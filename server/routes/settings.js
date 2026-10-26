@@ -73,6 +73,9 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
       const effective = await settings.getOrEnv(key);
       result[key] = (SENSITIVE.has(key) && effective) ? MASKED : (effective ?? '');
     }
+    // DB-only flag (no env fallback; written by POST /api/setup/mfa) — read-only
+    // here, so the Sign-in methods switch shows the real state.
+    result.mfa_required = String((await settings.get('mfa_required')) || '').toLowerCase() === 'true' ? 'true' : '';
     result.ai_endpoints = maskEndpoints(result.ai_endpoints);
     // backup_destinations is a JSON array with embedded S3 secrets — mask them too.
     result.backup_destinations = JSON.stringify(

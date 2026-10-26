@@ -9,6 +9,23 @@ const ROOT = path.join(__dirname, '..', '..');
 
 const FRAMEWORKS = [
   {
+    // Tax and accounting firms are "financial institutions" under the FTC Safeguards
+    // Rule (16 CFR 314). The IRS repeats the same expectations in Pub 4557 and the
+    // Pub 5708 written-plan template. Listed first: it is the profile a CPA office
+    // turns on, and the one the simple "one light, one download" view is built for.
+    id: 'safeguards',
+    setting: 'compliance_safeguards_enabled',
+    name: 'FTC Safeguards Rule (CPA / tax)',
+    scope: 'What the FTC Safeguards Rule and IRS Pub 4557 expect of a tax or accounting firm\'s file system.',
+    note: 'Readiness of this Depot only. Your firm still owns its written plan, training, and yearly report.',
+    controls: [
+      'mfa', 'encryption', 'network_security', 'access_control', 'audit_logging', 'backup_restore',
+      'link_governance', 'retention', 'vulnerability_management',
+      'wisp', 'qualified_individual', 'risk_assessment', 'incident_response', 'training',
+      'provider_oversight', 'annual_report',
+    ],
+  },
+  {
     id: 'soc2',
     setting: 'compliance_soc2_enabled',
     name: 'SOC 2',
@@ -60,31 +77,102 @@ const FRAMEWORKS = [
 
 // `evidence` here is the default/fallback copy; auto controls override it with a live
 // signal (see CHECKS), and manual controls override it with the attestation note.
+// `why` names the Safeguards Rule clause (16 CFR 314.4) the control answers to, in
+// words a firm's office manager can read. `fix` points the client at the place the
+// admin can put it right ('setup:mfa', 'settings:<key>', 'backup').
+// `attestable` auto controls accept a manual confirmation when the live signal is
+// not green — for the things Depot can only see from outside (MFA enforced by a
+// Microsoft tenant, say).
 const CONTROL_CATALOG = {
+  mfa: {
+    label: 'A second step at sign-in (MFA)',
+    why: '314.4(c)(5): multi-factor authentication for anyone who reaches client information.',
+    evidence: 'Sign-in goes through Keycloak; a one-time code can be required for every local account.',
+    gap: 'Require an authenticator app for password sign-ins (Settings › Sign-in methods), or confirm your Microsoft 365 tenant requires a second step.',
+    fix: 'setup:mfa',
+    attestable: true,
+  },
+  link_governance: {
+    label: 'Links to outside people expire',
+    why: '314.4(c)(1): limit who can reach client information, and for how long.',
+    evidence: 'Share links can carry an expiry date and a password.',
+    gap: 'Set the longest a link may live (Settings › Network, limits & calls) and retire links that never expire.',
+    fix: 'settings:share_link_max_days',
+  },
+  wisp: {
+    label: 'A written security plan (WISP)',
+    why: '314.4: the rule is a written program. IRS Pub 5708 is a free template; the IRS asks about it at PTIN renewal.',
+    manual: true,
+    evidence: 'Depot cannot see your written plan. Confirm here once it exists, and keep it with your firm records.',
+    gap: 'Write the plan (IRS Pub 5708 template), have the owners sign it, and confirm here.',
+  },
+  qualified_individual: {
+    label: 'One person is in charge of security',
+    why: '314.4(a): a named Qualified Individual runs the program and reports to the owners.',
+    manual: true,
+    evidence: 'Depot cannot see who holds this role. Confirm here, naming the person in the note.',
+    gap: 'Name the person (an owner, office manager, or your IT provider) and confirm here.',
+  },
+  risk_assessment: {
+    label: 'A written risk assessment',
+    why: '314.4(b): a written look at what could go wrong with client information and what you do about it.',
+    manual: true,
+    evidence: 'Depot cannot see the assessment. Confirm here once it is written.',
+    gap: 'Write it (the Pub 5708 template has a section), review it yearly, and confirm here.',
+  },
+  training: {
+    label: 'Staff trained on security this year',
+    why: '314.4(e): security awareness training for everyone, refreshed as risks change.',
+    manual: true,
+    evidence: 'Depot cannot see training records. Confirm here each year with the date in the note.',
+    gap: 'Run a short session (phishing, passwords, client data handling), keep the sign-in sheet, and confirm here.',
+  },
+  provider_oversight: {
+    label: 'Service providers are checked',
+    why: '314.4(f): pick providers that can protect client information, put it in the contract, and check on them.',
+    manual: true,
+    evidence: 'Depot cannot see your contracts. Confirm here once your IT and software providers are under written terms.',
+    gap: 'Keep a list of providers that touch client data, with a signed agreement for each, and confirm here.',
+  },
+  annual_report: {
+    label: 'A yearly report to the owners',
+    why: '314.4(i): the Qualified Individual reports in writing at least once a year.',
+    manual: true,
+    evidence: 'Depot cannot see the report. The Safeguards packet from this page is written to be attached to it.',
+    gap: 'Attach this page\'s packet to a short written report each year, and confirm here with the date.',
+  },
   access_control: {
-    label: 'Access control',
-    evidence: 'Keycloak authentication with admin/contributor/viewer roles.',
-    gap: 'Add SSO/MFA enforcement and scheduled access review export.',
+    label: 'Only named people can get in',
+    why: '314.4(c)(1): only the people who need client information can reach it, and the list is reviewed.',
+    evidence: 'Everyone signs in with their own account and has a role: admin, contributor, or viewer.',
+    gap: 'Give each person an account and a role; make at least one person an admin.',
   },
   audit_logging: {
-    label: 'Audit logging',
-    evidence: 'Tamper-evident (hash-chained) activity log with an admin integrity-verify check, plus file history, version history, share events, and admin history views.',
-    gap: 'Retain periodic exported integrity attestations off-box.',
+    label: 'A record of who did what',
+    why: '314.4(c)(8): a record of who did what with client information, including views and downloads, that cannot be quietly edited.',
+    evidence: 'Every view, download, upload, change, share, and deletion is logged, and the log is hash-chained so a changed or deleted entry is detectable.',
+    gap: 'The log fills itself in as people use Depot; nothing to set up.',
   },
   encryption: {
-    label: 'Encryption at rest',
-    evidence: 'Local AES-256-GCM encryption is configurable for new uploads.',
-    gap: 'Enable key custody, rotation evidence, and storage-provider encryption verification.',
+    label: 'Files are encrypted where they are stored',
+    why: '314.4(c)(3): client information is encrypted where it is stored.',
+    fix: 'settings:storage_encryption_key',
+    evidence: 'Files on disk are encrypted (AES-256-GCM) with a key only the server holds.',
+    gap: 'Set an encryption key (Settings › Storage & backups). Files uploaded before that are not encrypted.',
   },
   backup_restore: {
-    label: 'Backup and restore evidence',
-    evidence: 'Local backup and verify scripts exist under scripts/.',
-    gap: 'Schedule off-box backups and retain restore-test evidence.',
+    label: 'Backups run and can be restored',
+    why: '314.4(c)(1) and (h): you can get client information back after a failure or an incident.',
+    fix: 'backup',
+    evidence: 'Depot can back itself up on a schedule and check that a backup restores.',
+    gap: 'Turn on scheduled backups (Settings › Storage & backups), or back up the whole server another way and confirm it here.',
+    attestable: true,
   },
   change_management: {
-    label: 'Change management',
-    evidence: 'Git history, version file, tags, and Docker rebuild/deploy flow.',
-    gap: 'Add release approval and rollback evidence.',
+    label: 'Updates are tracked',
+    why: '314.4(c)(4): changes to the system are tracked.',
+    evidence: 'Depot runs signed, numbered releases; every change is in version history.',
+    gap: 'Nothing to set up; Depot keeps its own release record.',
   },
   vendor_ai: {
     label: 'AI/vendor governance',
@@ -92,15 +180,18 @@ const CONTROL_CATALOG = {
     gap: 'Add vendor inventory, BAA/DPA tracking, AI no-send zones, and prompt/content redaction evidence.',
   },
   incident_response: {
-    label: 'Incident response',
+    label: 'A written plan for when something goes wrong',
+    why: '314.4(h): a written plan for what to do when something goes wrong, including who calls whom.',
     manual: true,
-    evidence: 'No formal incident runbook is tracked in app yet.',
-    gap: 'Add incident response policy, tabletop records, and breach/escalation checklist.',
+    evidence: 'Depot cannot see your plan. Confirm here once it is written.',
+    gap: 'Write one page: who to call, how to cut off access, who tells clients, the FTC, and the state (Louisiana gives you 60 days to notify people; the FTC wants 30 days for 500 or more). Confirm here.',
   },
   retention: {
-    label: 'Retention and deletion',
-    evidence: 'Trash retention days are configurable and files can be restored/purged.',
-    gap: 'Add data-class retention policies, legal hold, and erasure request tracking.',
+    label: 'Deleted files are disposed of on a schedule',
+    why: '314.4(c)(6): dispose of client information when it is no longer needed. (Tax returns themselves stay at least three years under IRC 6107; Depot keeps a file until someone deletes it.)',
+    evidence: 'Files in the trash are purged after a set number of days.',
+    gap: 'Set trash retention to between 1 and 90 days (Settings › Network, limits & calls).',
+    fix: 'settings:trash_retention_days',
   },
   export_delete: {
     label: 'Export/delete request workflow',
@@ -109,15 +200,18 @@ const CONTROL_CATALOG = {
     gap: 'Add auditable data-subject request workflow with identity verification and completion evidence.',
   },
   vulnerability_management: {
-    label: 'Vulnerability management',
+    label: 'The server is scanned and kept patched',
+    why: '314.4(d)(2): a yearly penetration test and vulnerability scans every six months, unless the system is watched continuously.',
     manual: true,
-    evidence: 'Dependency tests exist, but no scheduled vulnerability evidence is retained in-app.',
-    gap: 'Add OS/package/dependency scan status, patch cadence, and exception tracking.',
+    evidence: 'Depot updates itself, and "Run live checks" audits its own components. The twice-yearly scan of the server is your IT provider\'s to run and keep.',
+    gap: 'Have your IT provider scan the server every six months and keep the report; confirm here with the date.',
   },
   network_security: {
-    label: 'Network security',
+    label: 'Files are encrypted on the way to you',
+    why: '314.4(c)(3): client information is encrypted in transit (HTTPS).',
+    fix: 'settings:app_url',
     evidence: 'Baseline security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS on HTTPS) are enforced; CORS, bind address, trust proxy, and production Caddy overlay are configurable.',
-    gap: 'Enable HTTPS end to end, MFA/SSO, and retain hardened reverse-proxy evidence.',
+    gap: 'Give Depot an https:// address (Settings › Branding & links) so every connection is encrypted.',
   },
   risk_register: {
     label: 'Risk register',
@@ -144,8 +238,8 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Keycloak authentication is enforced on every request; role-based access is configured (${roles} role assignment(s), ${admins} admin(s)). MFA/SSO enforcement and scheduled access-review export remain to be evidenced.`
-        : 'Keycloak authentication is enforced, but no role assignments were found yet — assign admin/contributor/viewer roles to complete access control.',
+        ? `Everyone signs in with their own account; ${roles} ${roles === 1 ? 'person has' : 'people have'} a role, ${admins} of them admin. A second step at sign-in (MFA) is its own item.`
+        : 'Everyone must sign in, but nobody has a role yet — give people admin, contributor, or viewer roles.',
     };
   },
   audit_logging: async () => {
@@ -158,10 +252,10 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Tamper-evident hash-chained log active (${chain.toLocaleString()} chained event(s); plain activity feed ${activity.toLocaleString()}), plus file, version, and share history.`
+        ? `${chain.toLocaleString()} entries in the hash-chained record of views, downloads, changes, shares, deletions, and access changes.`
         : activity > 0
-          ? `The plain activity feed has ${activity.toLocaleString()} event(s), but the tamper-evident hash chain has no entries yet — not evidenced as tamper-evident.`
-          : 'No audit events recorded yet.',
+          ? `${activity.toLocaleString()} plain activity entries, but the hash-chained record has none yet — it fills in from the next file action.`
+          : 'No activity recorded yet; the record fills in as people use Depot.',
     };
   },
   encryption: async () => {
@@ -169,8 +263,8 @@ const CHECKS = {
     return {
       ready: !!key,
       evidence: key
-        ? 'At-rest AES-256-GCM encryption key is configured for local storage.'
-        : 'No at-rest encryption key configured — new local uploads are stored unencrypted.',
+        ? 'Files on disk are encrypted (AES-256-GCM); the key is set.'
+        : 'No encryption key is set — files are stored on disk unencrypted.',
     };
   },
   backup_restore: async () => {
@@ -190,10 +284,10 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Backup tooling present and a backup has completed successfully${lastRun ? ` (last run ${new Date(lastRun).toISOString()})` : ''}. Retain a restore-test record to complete this control.`
+        ? `A backup has completed${lastRun ? ` (most recent ${new Date(lastRun).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})` : ''}. Keep a note of when you last restored one as a test.`
         : has
-          ? 'Backup scripts are present, but no successful backup run is recorded yet — run a backup (and a restore drill) to evidence this control.'
-          : 'No backup script found under scripts/.',
+          ? 'No backup has completed yet.'
+          : 'Backup tooling is missing from this install.',
     };
   },
   change_management: async ({ git }) => ({
@@ -215,13 +309,50 @@ const CHECKS = {
     };
   },
   retention: async () => {
-    const days = Number(await settings.getOrEnv('trash_retention_days'));
-    const ok = Number.isFinite(days) && days > 0;
+    // Disposal on a schedule: the trash must empty itself, and within a quarter.
+    const raw = await settings.getOrEnv('trash_retention_days');
+    const days = raw == null || raw === '' ? 30 : Number(raw);   // 30 is the sweeper's default
+    const ok = Number.isFinite(days) && days > 0 && days <= 90;
     return {
       ready: ok,
       evidence: ok
-        ? `Trash retention set to ${days} days; deleted files are recoverable until purge.`
-        : 'No explicit trash retention period is configured.',
+        ? `Deleted files are purged after ${days} day${days === 1 ? '' : 's'} in the trash; until then they can be restored.`
+        : days === 0
+          ? 'The trash never empties itself — deleted files stay on disk until someone purges them.'
+          : `Deleted files stay in the trash for ${days} days before purge — longer than the 90 days this profile expects.`,
+    };
+  },
+  mfa: async () => {
+    const required = String((await settings.get('mfa_required')) || '').toLowerCase() === 'true';
+    const ms365 = boolValue(await settings.getOrEnv('login_ms365_enabled'));
+    if (required) {
+      return { ready: true, evidence: 'Every local account must enter a one-time code at sign-in (required action in Keycloak).' };
+    }
+    return {
+      ready: false,
+      evidence: ms365
+        ? 'Sign-in is through Microsoft 365. Depot cannot see whether your Microsoft tenant requires a second step — confirm it below once it does.'
+        : 'A one-time code is not required at sign-in — a stolen password is enough to reach client files.',
+    };
+  },
+  link_governance: async () => {
+    const raw = await settings.getOrEnv('share_link_max_days');
+    const cap = Number.parseInt(raw || '', 10);
+    const capSet = Number.isFinite(cap) && cap > 0;
+    let forever = 0;
+    try {
+      forever = (await db.queryOne(
+        `SELECT (SELECT count(*) FROM document_share_links WHERE revoked_at IS NULL AND expires_at IS NULL)::int
+              + (SELECT count(*) FROM folder_share_links  WHERE revoked_at IS NULL AND expires_at IS NULL)::int AS n`
+      ))?.n || 0;
+    } catch { /* tables may be absent on a fresh install */ }
+    const ready = capSet && forever === 0;
+    const liveNote = forever ? `${forever} live link${forever === 1 ? '' : 's'} never expire${forever === 1 ? 's' : ''}` : 'no live link lasts forever';
+    return {
+      ready,
+      evidence: capSet
+        ? `Links to outside people expire within ${cap} day${cap === 1 ? '' : 's'}; ${liveNote}.`
+        : `No limit is set on how long a link may live; ${liveNote}.`,
     };
   },
   network_security: async () => {
@@ -247,7 +378,8 @@ async function getAttestations() {
 }
 
 async function setAttestation(controlId, { met, note }, user) {
-  if (!CONTROL_CATALOG[controlId]?.manual) throw new Error('Control is not a manual attestation');
+  const base = CONTROL_CATALOG[controlId];
+  if (!base?.manual && !base?.attestable) throw new Error('Control is not a manual attestation');
   await db.query(
     `INSERT INTO compliance_attestations (control_id, met, note, attested_by, attested_by_email, attested_at)
      VALUES ($1, $2, $3, $4, $5, NOW())
@@ -338,14 +470,22 @@ async function evaluateControls() {
         evidence = probes.audit.detail + (a?.met ? ' · attested' : '');
       }
       out[id] = {
-        id, label: base.label, gap: base.gap, manual: true, ready, evidence,
+        id, label: base.label, gap: base.gap, why: base.why || '', manual: true, ready, evidence,
         attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
       };
     } else {
       let r = await CHECKS[id]({ git });
       if (id === 'network_security' && definitive(probes.https)) r = { ready: probes.https.status === 'ok', evidence: probes.https.detail };
       if (id === 'backup_restore' && definitive(probes.backup)) r = { ready: probes.backup.status === 'ok', evidence: probes.backup.detail };
-      out[id] = { id, label: base.label, gap: base.gap, manual: false, ready: r.ready, evidence: r.evidence };
+      // An attestable control takes a confirmation only when the live signal is not
+      // green: the live signal always wins when it is.
+      const a = base.attestable ? attest[id] : null;
+      if (a?.met && !r.ready) r = { ready: true, evidence: a.note ? `Confirmed: ${a.note}` : 'Confirmed by an admin.' };
+      out[id] = {
+        id, label: base.label, gap: base.gap, why: base.why || '', fix: base.fix || null, manual: false,
+        attestable: !!base.attestable, ready: r.ready, evidence: r.evidence,
+        attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
+      };
     }
   }
   return out;

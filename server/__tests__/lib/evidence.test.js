@@ -12,6 +12,11 @@ jest.mock('../../lib/compliance', () => ({
   ]),
   updateStatus: jest.fn().mockResolvedValue({ app: { version: 'v2026.07.12.001', git: { commit: 'abc123' }, updateMethod: 'GitHub pull + rebuild' }, dependencyAudit: { available: true, recommendedCommand: 'npm audit' } }),
   probeMeta: jest.fn().mockReturnValue({ lastRun: 1783900000000, results: { https: { status: 'ok', detail: 'HTTPS reachable' }, backup: { status: 'unknown', detail: 'no backups yet' } } }),
+  boolValue: (v) => ['1', 'true', 'yes', 'on', 'enabled'].includes(String(v || '').toLowerCase()),
+}));
+jest.mock('../../lib/settings', () => ({
+  getOrEnv: jest.fn((k) => Promise.resolve({ brand_name: 'Bayou Tax <&> Books', app_url: 'https://depot.bayou.test', share_link_max_days: '30', trash_retention_days: '45', storage_encryption_key: 'k' }[k] ?? null)),
+  get: jest.fn((k) => Promise.resolve({ mfa_required: 'true', backup_last_run: '1783900000000' }[k] ?? null)),
 }));
 jest.mock('../../lib/accessReview', () => ({
   build: jest.fn().mockResolvedValue({ generatedAt: 'x', userCount: 2, openLibraries: ['Public'], users: [
@@ -65,5 +70,34 @@ describe('toMarkdown', () => {
     const md = evidence.toMarkdown({ generatedAt: 'x', frameworks: [], auditIntegrity: { ok: true, count: 0 }, accessReview: { error: 'db down', users: [], openLibraries: [] } });
     expect(md).toContain('Access review could not be generated: db down');
     expect(md).toContain('must not be treated as evidence');
+  });
+});
+
+describe('toPacketHtml — the Safeguards packet', () => {
+  test('has the cover, the five sections, the firm name, and no scripts', async () => {
+    const b = await evidence.build();
+    expect(b.firm).toEqual({ name: 'Bayou Tax <&> Books', hostname: 'depot.bayou.test' });
+    const html = evidence.toPacketHtml(b);
+    expect(html).toContain('Bayou Tax &lt;&amp;&gt; Books');   // escaped, not raw
+    expect(html).not.toContain('Bayou Tax <&> Books');
+    for (const sec of ['Summary for your written information security plan', 'Safeguards Rule checklist', 'Who has access', 'Audit-log check', 'Settings this packet relies on']) expect(html).toContain(sec);
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('dave@x.com');
+    expect(html).toContain('42 chained entries');
+  });
+
+  test('the prose reads the live settings', async () => {
+    const html = evidence.toPacketHtml(await evidence.build());
+    expect(html).toContain('must enter a one-time code');
+    expect(html).toContain('expires within 30 days');
+    expect(html).toContain('held in the trash for 45 days');
+    expect(html).toContain('encrypted where they are stored');
+    expect(html).toContain("On the firm's own server");
+  });
+
+  test('names what is left when a control is not met', async () => {
+    const html = evidence.toPacketHtml(await evidence.build());
+    expect(html).toContain('To do');             // incident_response in the mocked framework
+    expect(html).toContain('Incident response');
   });
 });

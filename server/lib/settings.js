@@ -46,6 +46,7 @@ const ENV_MAP = {
   min_free_disk_mb:               'MIN_FREE_DISK_MB',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
   max_document_versions:          'MAX_DOCUMENT_VERSIONS',
+  compliance_safeguards_enabled:  'COMPLIANCE_SAFEGUARDS_ENABLED',
   compliance_soc2_enabled:        'COMPLIANCE_SOC2_ENABLED',
   compliance_hipaa_enabled:       'COMPLIANCE_HIPAA_ENABLED',
   compliance_gdpr_enabled:        'COMPLIANCE_GDPR_ENABLED',
@@ -97,6 +98,10 @@ const ENV_MAP = {
   // mailbox) instead of the single workspace address. Falls back automatically
   // when a member has no usable mailbox. 'false' disables.
   email_send_as_user:             'EMAIL_SEND_AS_USER',
+  // Longest a share link or send-by-email link may live, in days (1–365). Unset
+  // means no cap: the dialogs keep their 7/30-day defaults and "never" stays
+  // available. The compliance check `link_governance` wants it set.
+  share_link_max_days:            'SHARE_LINK_MAX_DAYS',
   email_ev_share_granted:         'EMAIL_EV_SHARE_GRANTED',
   email_ev_share_downloaded:      'EMAIL_EV_SHARE_DOWNLOADED',
   email_ev_share_opened:          'EMAIL_EV_SHARE_OPENED',

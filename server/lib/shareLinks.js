@@ -102,7 +102,31 @@ async function publicAppBase(req) {
   return configured || `${req.protocol}://${host}`;
 }
 
+// Longest a link may live, in days, from the admin setting share_link_max_days;
+// null when no cap is set. Exposed to the client through /api/config.
+async function shareLinkMaxDays() {
+  const n = Number.parseInt((await settings.getOrEnv('share_link_max_days')) || '', 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : null;
+}
+
+// Resolve a new link's expiry from the request body: { expiresAt } (null = never),
+// or { error, code } when the body asks for longer than the cap allows. Days above
+// the cap are clamped rather than refused, so an old client that still offers
+// "90 days" on a 30-day box gets a 30-day link; "never" is the one refusal.
+async function resolveLinkExpiry(body, defaultDays) {
+  const cap = await shareLinkMaxDays();
+  if (body?.neverExpires) {
+    if (cap) return { error: `Links on this Depot must expire within ${cap} day${cap === 1 ? '' : 's'}.`, code: 'LINK_MUST_EXPIRE' };
+    return { expiresAt: null };
+  }
+  const n = Number.parseInt(body?.expiresInDays ?? defaultDays, 10);
+  let days = Number.isFinite(n) && n > 0 ? Math.min(n, 365) : defaultDays;
+  if (cap) days = Math.min(days, cap);
+  return { expiresAt: new Date(Date.now() + days * 864e5).toISOString() };
+}
+
 module.exports = {
+  shareLinkMaxDays, resolveLinkExpiry,
   folderShareClientShape,
   tokenHash,
   passwordParts,
