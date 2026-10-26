@@ -12,7 +12,7 @@
 #
 # Exits non-zero, which keeps Keycloak stopped and its database untouched, when the dump
 # fails, or when the database was written by a NEWER Keycloak than the one starting (a
-# rollback that skipped restoring the dump; see upgrade.sh KC_RESTORE_DUMP).
+# rollback that skipped restoring the dump; see scripts/keycloak-restore.sh).
 set -eu
 umask 077
 
@@ -40,7 +40,7 @@ case "$(vcmp "$current" "$target")" in
   1)
     echo "keycloak-predump: the Keycloak database was migrated by Keycloak $current, and $target is older." >&2
     echo "keycloak-predump: an older Keycloak cannot run on it. Restore the dump taken before that upgrade" >&2
-    echo "keycloak-predump: (./upgrade.sh <tag> with KC_RESTORE_DUMP=keycloak-dumps/<file>), or stay on $current." >&2
+    echo "keycloak-predump: (scripts/keycloak-restore.sh keycloak-dumps/<file>), or stay on $current." >&2
     exit 1 ;;
 esac
 
@@ -54,3 +54,4 @@ fi
 mv "$out.part" "$out"
 echo "keycloak-predump: saved keycloak-dumps/$(basename "$out") ($(du -h "$out" | cut -f1))"
 echo "keycloak-predump: to go back to Keycloak $current: KC_RESTORE_DUMP=keycloak-dumps/$(basename "$out") ./upgrade.sh <previous tag>"
+echo "keycloak-predump: (or, after the app alone was rolled back: scripts/keycloak-restore.sh keycloak-dumps/$(basename "$out"))"
