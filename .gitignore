@@ -25,3 +25,6 @@ keys/
 
 # Host files replaced by upgrade.sh are kept here for one release.
 .host-previous/
+
+# Keycloak database dumps taken before a Keycloak upgrade (keycloak-predump).
+keycloak-dumps/

@@ -1,3 +1,7 @@
+# The one place the Keycloak version is set. Pinned to an exact release so every box
+# runs the same build; keycloak-predump reads the same value to know what is starting.
+x-keycloak-image: &keycloak_image quay.io/keycloak/keycloak:26.8.1
+
 services:
 
   postgres:
@@ -16,14 +20,53 @@ services:
       timeout: 3s
       retries: 10
 
+  # Keycloak migrates its database the first time a newer version starts, and an older
+  # version cannot run on it afterwards. This one-shot runs before every Keycloak start
+  # and dumps the Keycloak database into ./keycloak-dumps when the version starting is
+  # newer than the one that last wrote it (scripts/keycloak-predump.sh). If the dump
+  # fails, Keycloak does not start and its database stays as it was.
+  keycloak-predump:
+    image: postgres:16-alpine
+    restart: "no"
+    entrypoint: ["/bin/sh", "/predump.sh"]
+    environment:
+      KC_IMAGE: *keycloak_image
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./scripts/keycloak-predump.sh:/predump.sh:ro
+      - ./keycloak-dumps:/dumps
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: *keycloak_image
     restart: unless-stopped
-    # Public installs pin the hostname (start --hostname=<domain>) so Keycloak's
-    # token issuer is identical on the browser AND internal hosts — required for
-    # delegated Microsoft 365 connectors, whose server-side broker-token fetch
-    # (via KEYCLOAK_INTERNAL_URL) otherwise rejects browser-issued tokens as
-    # invalid. install.sh sets KC_START_CMD per deployment; local mode = start-dev.
+    # Public installs pin the hostname so Keycloak's token issuer is identical on the
+    # browser AND internal hosts — required for delegated Microsoft 365 connectors,
+    # whose server-side broker-token fetch (via KEYCLOAK_INTERNAL_URL) otherwise
+    # rejects browser-issued tokens as invalid. install.sh sets KC_START_CMD per
+    # deployment; local mode = start-dev.
+    # Since Keycloak 25 a bare --hostname=<domain> takes the scheme and port from each
+    # request, so http://keycloak:8080 would issue for http://<domain>:8080 and the
+    # browser for https://<domain>. Only a full URL fixes the issuer; with it,
+    # --hostname-backchannel-dynamic keeps server-to-server calls on the internal URL,
+    # as Keycloak 24 did. Boxes installed before then carry the bare form in .env; the
+    # entrypoint below turns it into the full one so nobody has to edit .env by hand.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        for a; do
+          shift
+          case "$$a" in
+            --hostname=http://*|--hostname=https://*) ;;
+            --hostname=*) set -- "$$@" --hostname-backchannel-dynamic=true; a="--hostname=https://$${a#--hostname=}" ;;
+          esac
+          set -- "$$@" "$$a"
+        done
+        exec /opt/keycloak/bin/kc.sh "$$@"
+      - kc.sh
     command: ${KC_START_CMD:-start-dev --import-realm}
     # Sign-in is a small job, but left alone the JVM sizes itself to the whole host
     # and sat at 1.4 GB idle. Capped, with the heap held to half the cap so the rest
@@ -39,8 +82,10 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: memex
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      # The master-realm admin Keycloak makes on its very first start (install only;
+      # an existing database already has one). The app and kcadm sign in with it.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
     volumes:
@@ -52,6 +97,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-predump:
+        condition: service_completed_successfully
 
   app:
     # Prebuilt image from GHCR (install.sh / upgrade.sh `docker compose pull` it).

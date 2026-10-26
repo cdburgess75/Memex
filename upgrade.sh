@@ -85,13 +85,61 @@ refresh_host_files() {
 }
 refresh_host_files
 
+# ── Keycloak going backwards ─────────────────────────────────────────────────
+# A newer Keycloak migrates its database on first start (the keycloak-predump service
+# in docker-compose.yml dumps it first, into keycloak-dumps/), and an older Keycloak
+# cannot run on a database a newer one has migrated. So when the release being
+# deployed carries an older Keycloak than the one that last wrote the database (a
+# rollback), there are two ways through:
+#   KC_RESTORE_DUMP=keycloak-dumps/<file> ./upgrade.sh <tag>
+#       puts the database back as the dump has it, then starts the older Keycloak.
+#       Sign-in changes made since the dump (new accounts, passwords) are lost.
+#   ./upgrade.sh <tag>   (no KC_RESTORE_DUMP)
+#       rolls back everything else and leaves the newer Keycloak running as it is.
+KC_TARGET="$(grep -o 'quay.io/keycloak/keycloak:[0-9][0-9.]*' docker-compose.yml | head -1 | cut -d: -f2)"
+# shellcheck disable=SC2086
+KC_DB_VERSION="$($DC $COMPOSE exec -T postgres psql -U memex -d keycloak -XAtc \
+  "SELECT version FROM migration_model ORDER BY update_time DESC, version DESC LIMIT 1" </dev/null 2>/dev/null | tr -d '\r' || true)"
+kc_older() { # is $1 an older version than $2?
+  awk -v a="$1" -v b="$2" 'BEGIN { n = split(a, x, "."); m = split(b, y, "."); if (m > n) n = m
+    for (i = 1; i <= n; i++) { if (x[i] + 0 != y[i] + 0) exit !(x[i] + 0 < y[i] + 0) } exit 1 }'
+}
+UP_ARGS=""
+if [ -n "$KC_TARGET" ] && [ -n "$KC_DB_VERSION" ] && kc_older "$KC_TARGET" "$KC_DB_VERSION"; then
+  if [ -n "${KC_RESTORE_DUMP:-}" ]; then
+    [ -s "$KC_RESTORE_DUMP" ] || die "KC_RESTORE_DUMP=$KC_RESTORE_DUMP is not a file here."
+    info "Restoring the Keycloak database from $KC_RESTORE_DUMP for Keycloak $KC_TARGET (it was at $KC_DB_VERSION)"
+    # shellcheck disable=SC2086
+    $DC $COMPOSE stop keycloak </dev/null
+    # Dropped and made again, not restored over: the newer version's extra tables
+    # would otherwise stay behind for the older one to trip on.
+    # shellcheck disable=SC2086
+    $DC $COMPOSE exec -T postgres sh -c 'dropdb -U memex --if-exists keycloak && createdb -U memex -O memex keycloak' </dev/null \
+      || die "Couldn't empty the Keycloak database; Keycloak is stopped. Nothing was restored."
+    # shellcheck disable=SC2086
+    $DC $COMPOSE exec -T postgres pg_restore -U memex -d keycloak --no-owner --exit-on-error < "$KC_RESTORE_DUMP" \
+      || die "Restoring $KC_RESTORE_DUMP failed; Keycloak is stopped. Run the same command again, or restore a full backup (scripts/restore-memex.sh)."
+    info "Keycloak database restored."
+  else
+    warn "This release runs Keycloak $KC_TARGET, but Keycloak $KC_DB_VERSION already migrated its database."
+    warn "Keycloak stays on $KC_DB_VERSION; everything else rolls back. To take Keycloak back too:"
+    warn "  KC_RESTORE_DUMP=keycloak-dumps/<the dump from that upgrade> ./upgrade.sh $TAG"
+    # shellcheck disable=SC2086
+    UP_ARGS="--no-deps $($DC $COMPOSE config --services </dev/null | grep -vx -e keycloak -e keycloak-predump | tr '\n' ' ')"
+  fi
+fi
+
 # Bring the whole stack in line with the compose file, not only the app: a release
 # can change how another service runs (a memory limit, say). Containers whose
 # definition did not change are left running. The in-browser editor sits behind a
 # profile and is not started here; editor-switch.sh below starts or stops it to
 # match the switch in Settings.
 # shellcheck disable=SC2086
-$DC $COMPOSE up -d
+$DC $COMPOSE up -d $UP_ARGS
+# What keycloak-predump did this time (a dump taken, or nothing to do) — said here so
+# the path of a fresh dump is on screen with the rest of the update.
+# shellcheck disable=SC2086
+$DC $COMPOSE logs --no-log-prefix keycloak-predump </dev/null 2>/dev/null | tail -3 | sed 's/^/    /' || true
 
 # App host port (source of truth: .env) — the health probe honors a non-default PORT.
 PORT="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2)"; PORT="${PORT:-3000}"

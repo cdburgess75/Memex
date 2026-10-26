@@ -101,7 +101,7 @@ if [ "$KEEP_ENV" = "0" ]; then
     # public URL on EVERY host (browser + internal). Delegated Microsoft 365
     # connectors fetch the user's token server-side via KEYCLOAK_INTERNAL_URL; a
     # request-derived issuer would make Keycloak reject that browser-issued token.
-    KC_START_CMD="start --hostname=$APP_DOMAIN --import-realm"
+    KC_START_CMD="start --hostname=https://$APP_DOMAIN --hostname-backchannel-dynamic=true --import-realm"
   else
     # Plain http on this box → the editor speaks ws:// (ssl.termination=false).
     APP_URL="http://localhost:$PORT"; KEYCLOAK_URL="http://localhost:$KC_PORT"; TRUST_PROXY=""; COLLABORA_SSL="false"
@@ -188,7 +188,7 @@ else
   if ! grep -q '^KC_START_CMD=' .env; then
     if [ "$MODE" = public ]; then
       _dom="$(sed -n 's#^APP_URL=https\{0,1\}://##p' .env | sed 's#[:/].*##')"
-      [ -n "$_dom" ] && printf 'KC_START_CMD=start --hostname=%s --import-realm\n' "$_dom" >> .env
+      [ -n "$_dom" ] && printf 'KC_START_CMD=start --hostname=https://%s --hostname-backchannel-dynamic=true --import-realm\n' "$_dom" >> .env
     else
       printf 'KC_START_CMD=start-dev --import-realm\n' >> .env
     fi
@@ -252,7 +252,7 @@ if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
     # shellcheck disable=SC2086
     if $DC $COMPOSE exec -T -e APPURL="$APP_URL" keycloak sh -c '
         kc=/opt/keycloak/bin/kcadm.sh
-        "$kc" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+        "$kc" config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
         cid=$("$kc" get clients -r memex -q clientId=memex-app --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
         [ -n "$cid" ] || exit 1
         "$kc" update "clients/$cid" -r memex -s "redirectUris=[\"$APPURL/*\"]" -s "webOrigins=[\"+\"]" >/dev/null 2>&1
@@ -273,7 +273,7 @@ for _ in $(seq 1 20); do
   # shellcheck disable=SC2086
   if $DC $COMPOSE exec -T -e SEEDPW="$SEED_ADMIN_PW" keycloak sh -c '
       kc=/opt/keycloak/bin/kcadm.sh
-      "$kc" config credentials --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+      "$kc" config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
       uid=$("$kc" get users -r memex -q username=admin --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
       [ -n "$uid" ] || exit 1
       "$kc" set-password -r memex --userid "$uid" --new-password "$SEEDPW" --temporary >/dev/null 2>&1
