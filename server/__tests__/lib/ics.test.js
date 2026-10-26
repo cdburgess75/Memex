@@ -43,6 +43,14 @@ describe('buildEvent', () => {
     expect(out.trimEnd().endsWith('END:VCALENDAR')).toBe(true);
   });
 
+  test('names the product, not the company it was first built for, as the producer', () => {
+    // PRODID goes out in every invite a customer's people send. The test's own inputs
+    // (the UID, the URL) are free to say what they like; the producer line is not.
+    const prodid = out.match(/^PRODID:.*$/m)[0];
+    expect(prodid).toBe('PRODID:-//Depot//Meetings//EN');
+    expect(prodid).not.toMatch(/ptech|memex/i);
+  });
+
   test('carries UID, DTSTAMP, DTSTART, DTEND, SUMMARY', () => {
     expect(out).toContain('UID:abc-123@memex');
     expect(out).toContain('DTSTAMP:20260712T120000Z');
