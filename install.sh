@@ -252,7 +252,10 @@ if [ "$MODE" = "public" ] && [ -n "${APP_URL:-}" ]; then
     # shellcheck disable=SC2086
     if $DC $COMPOSE exec -T -e APPURL="$APP_URL" keycloak sh -c '
         kc=/opt/keycloak/bin/kcadm.sh
-        "$kc" config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+        # kcadm reads the password from KC_CLI_PASSWORD, so it never sits on a command line.
+        export KC_CLI_PASSWORD="$KC_BOOTSTRAP_ADMIN_PASSWORD"
+        admin_name="$KC_BOOTSTRAP_ADMIN_USERNAME"
+        "$kc" config credentials --server http://localhost:8080 --realm master --user "$admin_name" </dev/null >/dev/null 2>&1 || exit 1
         cid=$("$kc" get clients -r memex -q clientId=memex-app --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
         [ -n "$cid" ] || exit 1
         "$kc" update "clients/$cid" -r memex -s "redirectUris=[\"$APPURL/*\"]" -s "webOrigins=[\"+\"]" >/dev/null 2>&1
@@ -273,7 +276,10 @@ for _ in $(seq 1 20); do
   # shellcheck disable=SC2086
   if $DC $COMPOSE exec -T -e SEEDPW="$SEED_ADMIN_PW" keycloak sh -c '
       kc=/opt/keycloak/bin/kcadm.sh
-      "$kc" config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null 2>&1 || exit 1
+      # kcadm reads the password from KC_CLI_PASSWORD, so it never sits on a command line.
+      export KC_CLI_PASSWORD="$KC_BOOTSTRAP_ADMIN_PASSWORD"
+      admin_name="$KC_BOOTSTRAP_ADMIN_USERNAME"
+      "$kc" config credentials --server http://localhost:8080 --realm master --user "$admin_name" </dev/null >/dev/null 2>&1 || exit 1
       uid=$("$kc" get users -r memex -q username=admin --fields id 2>/dev/null | grep -oE "[0-9a-f-]{36}" | head -1)
       [ -n "$uid" ] || exit 1
       "$kc" set-password -r memex --userid "$uid" --new-password "$SEEDPW" --temporary >/dev/null 2>&1
