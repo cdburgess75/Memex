@@ -50,7 +50,7 @@ const { Readable } = require('stream');
 // re-exports at the bottom stay stable for existing consumers.
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../lib/fileEvents');
 const {
-  tokenHash, passwordParts, verifySharePassword, shareLinkClientShape,
+  tokenHash, passwordParts, verifySharePassword, shareLinkClientShape, resolveLinkExpiry,
   issueShareTicket, verifyShareTicket, publicAppBase,
 } = require('../lib/shareLinks');
 const { sha256, hashing, 
@@ -2013,9 +2013,9 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
-    const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 7);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const token = crypto.randomBytes(32).toString('base64url');
     const { salt, hash } = passwordParts(String(req.body?.password || '').trim());
 
@@ -2063,9 +2063,9 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     const bad = recipients.filter(r => !/^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(r));
     if (bad.length) return res.status(400).json({ error: `Not a valid email address: ${bad[0]}` });
 
-    const days = Number.parseInt(req.body?.expiresInDays ?? 30, 10);
-    const safeDays = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 864e5).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 30);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const password = String(req.body?.password || '').trim();
     const allowUpload = req.body?.allowUpload !== false;
     const note = String(req.body?.message || '').slice(0, 2000).trim();

@@ -169,7 +169,12 @@ app.get('/api/config', async (req, res) => {
   let setupRequired = false;
   try { setupRequired = String((await settings.get('setup_completed')) || '').toLowerCase() !== 'true'; } catch { /* if the DB is unreadable, don't spuriously gate a running system */ }
   if (String(process.env.FIRST_BOOT || '').toLowerCase() === 'force') setupRequired = true;
+  // Longest a share link may live (admin cap); null = no cap. The link dialogs hide
+  // "never" and trim their day choices to it (server still enforces).
+  let shareLinkMaxDays = null;
+  try { shareLinkMaxDays = await require('./lib/shareLinks').shareLinkMaxDays(); } catch { /* no cap */ }
   res.json({
+    shareLinkMaxDays,
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
