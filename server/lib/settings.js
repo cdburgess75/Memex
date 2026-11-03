@@ -72,6 +72,7 @@ const ENV_MAP = {
   backup_retention:               'BACKUP_RETENTION',
   backup_destinations:            'BACKUP_DESTINATIONS',
   backup_download_secret:         'BACKUP_DOWNLOAD_SECRET',
+  signin_events_enabled:          'SIGNIN_EVENTS_ENABLED',   // sign-ins from Keycloak into the audit record (lib/signInEvents); on unless 'false'
   stun_url:                       'STUN_URL',
   turn_url:                       'TURN_URL',
   turn_username:                  'TURN_USERNAME',

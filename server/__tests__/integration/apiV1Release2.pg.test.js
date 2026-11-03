@@ -285,7 +285,7 @@ suite('the public API, release 2', () => {
     expect(act.body.events.length).toBeGreaterThanOrEqual(2); expect(act.body.eventTypes).toContain('uploaded');
     expect(act.body.events.every(e => e.event_type === 'uploaded')).toBe(true);
     const csv = await api(tokens.admin).get('/admin/activity.csv?event=uploaded').expect(200);
-    expect(csv.headers['content-type']).toMatch(/text\/csv/); expect(csv.text.split('\n')[0]).toBe('timestamp,event,actor,document,detail');
+    expect(csv.headers['content-type']).toMatch(/text\/csv/); expect(csv.text.split('\n')[0]).toBe('timestamp,event,event_label,actor,document,detail');
     // compliance
     expect(Array.isArray((await api(tokens.admin).get('/admin/compliance').expect(200)).body.frameworks)).toBe(true);
     expect((await api(tokens.admin).patch('/admin/compliance', { enabled: { soc2: true } }).expect(200)).body.ok).toBe(true);
