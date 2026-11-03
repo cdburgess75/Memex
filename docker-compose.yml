@@ -1,7 +1,7 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     restart: unless-stopped
     environment:
       POSTGRES_DB: memex
@@ -147,7 +147,7 @@ services:
     profiles: ["editor"]
     # Pinned so every fleet install runs the same editor build; bump deliberately
     # (with a release), not whenever Docker Hub moves `latest`.
-    image: collabora/code:${COLLABORA_TAG:-26.04.3.1.1}
+    image: collabora/code:26.04.3.1.1
     restart: unless-stopped
     environment:
       # WOPI host Collabora accepts callbacks from — the Memex app container.

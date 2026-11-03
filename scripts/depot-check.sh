@@ -12,6 +12,7 @@
 #   $MEMEX_ROOT/.env                      install config (PORT, MEMEX_MODE, APP_URL)
 #   $MEMEX_ROOT/.paratech/expected-tag    tag the fleet last deployed here
 #   $MEMEX_ROOT/.paratech/site.env        STATIC_IP=… APP_DOMAIN=… CUSTOMER_SLUG=…
+#   $MEMEX_ROOT/scripts/host-updates.sh   nightly OS updates and the restart window (--json)
 #
 # Every network call is capped at 5s; whole run stays under ~10s.
 set -uo pipefail
@@ -153,6 +154,33 @@ fi
 if have tailscale; then
   TS="$(timeout 5 tailscale status --json 2>/dev/null | jq -r '.Self.Online' 2>/dev/null || true)"
   if [ "$TS" = "true" ]; then field "ts=online"; else flag 1 tailscale_offline "ts=offline"; fi
+fi
+
+# ---- 8. operating system updates (scripts/host-updates.sh) --------------------
+# Ubuntu, Docker and Tailscale update every night and the box restarts itself at 2:30 a.m.
+# Central when it has to. WARN when that has stopped happening: the last run failed, no
+# run for two days, the box is not set up for it, or a restart has waited three days.
+HU="$MEMEX_ROOT/scripts/host-updates.sh"
+if [ -x "$HU" ]; then
+  HU_JSON="$(timeout 30 "$HU" --json 2>/dev/null || true)"
+  HU_LINE="$(jq -r '
+    def age_h(t): if t then ((now - (t | fromdateiso8601)) / 3600 | floor) else null end;
+    [ (if .managed then 1 else 0 end), (.last_run.result // "none"), (age_h(.last_run.started_at) // -1),
+      (if .reboot.required then 1 else 0 end), (age_h(.reboot.since) // 0), (if .reboot.held then 1 else 0 end),
+      (.pending.security // 0) ] | map(tostring) | join(" ")' <<<"$HU_JSON" 2>/dev/null || true)"
+  read -r HU_MANAGED HU_RESULT HU_RUN_H HU_REBOOT HU_REBOOT_H HU_HELD HU_SEC <<<"$HU_LINE"
+  if [ -z "$HU_LINE" ]; then flag 1 os_updates_unknown "os_updates=unknown"
+  elif [ "$HU_MANAGED" != 1 ]; then flag 1 os_updates_unmanaged "os_updates=unmanaged"
+  elif [ "$HU_RESULT" = failed ]; then flag 1 os_updates_failed "os_updates=failed"
+  elif [ "$HU_RUN_H" -lt 0 ] || [ "$HU_RUN_H" -ge 48 ]; then flag 1 os_updates_stale "os_updates=stale"
+  else field "os_updates=ok"; fi
+  [ -n "$HU_LINE" ] && [ "${HU_SEC:-0}" -gt 0 ] && field "security_pending=$HU_SEC"
+  if [ -n "$HU_LINE" ]; then
+    if [ "$HU_REBOOT" = 1 ] && [ "$HU_REBOOT_H" -ge 72 ]; then
+      flag 1 reboot_overdue "reboot=waiting:$(( HU_REBOOT_H / 24 ))d$([ "$HU_HELD" = 1 ] && echo ':held')"
+    elif [ "$HU_REBOOT" = 1 ]; then field "reboot=$([ "$HU_HELD" = 1 ] && echo held || echo waiting)"
+    else field "reboot=none"; fi
+  fi
 fi
 
 # ---- status line --------------------------------------------------------------

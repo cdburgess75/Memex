@@ -230,6 +230,9 @@ echo
 # Schedule the helper that starts and stops the in-browser editor to match the
 # switch in Settings (Linux servers; elsewhere it says how to run it by hand).
 [ -x scripts/editor-switch.sh ] && { ./scripts/editor-switch.sh --install </dev/null || true; }
+# Nightly Ubuntu, Docker and Tailscale updates, and the 2:30 a.m. Central restart window
+# (Ubuntu servers, as root; elsewhere it says it is leaving the machine alone).
+[ -x scripts/host-updates.sh ] && { ./scripts/host-updates.sh --install </dev/null || true; }
 if [ "$ok" = "1" ]; then info "Depot is up. 🎉"; else warn "Stack started but the app didn't answer on :$PORT yet — check '$DC $COMPOSE logs -f app'."; fi
 
 # Public (internet-facing) installs: narrow Keycloak's sign-in redirect URIs from

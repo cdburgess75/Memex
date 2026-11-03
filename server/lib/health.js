@@ -6,7 +6,8 @@
 // Two halves. note() is the journal: every 5xx (lib/httpError.serverError, and the catch-all
 // in index.js) and the refusals people hit (413, 415, 429) land in health_events, swept after
 // 30 days. summary() reads the journal and the rest of the picture (what people did, failed
-// sign-ins from Keycloak, disk, database, license) and gives a verdict in plain words:
+// sign-ins from Keycloak, disk, database, license, and the operating system's own updates,
+// which the host reports through scripts/host-updates.sh) and gives a verdict in plain words:
 // ok, attention or problem, with the reasons.
 const fs = require('fs');
 const path = require('path');
@@ -43,7 +44,7 @@ function fmtBytes(n) {
 }
 
 // The verdict. Each rule is one sentence an administrator can act on; the worst level wins.
-function verdict({ errors = 0, refusals = 0, disk = null, signins = null, license = null } = {}) {
+function verdict({ errors = 0, refusals = 0, disk = null, signins = null, license = null, host = null, now = Date.now() } = {}) {
   const reasons = [];
   let level = 'ok';
   const raise = (to, why) => { reasons.push(why); if (to === 'problem') level = 'problem'; else if (level === 'ok') level = 'attention'; };
@@ -63,6 +64,20 @@ function verdict({ errors = 0, refusals = 0, disk = null, signins = null, licens
     if (license.read_only || license.state === 'lapsed' || license.state === 'readonly') raise('problem', 'The license has lapsed.');
     else if (license.state === 'expiring') raise('attention', 'The license is about to expire.');
     else if (license.state === 'unlicensed') raise('attention', 'No license is installed.');
+  }
+  if (host) {
+    const daysSince = (t) => (t ? Math.floor((now - new Date(t)) / 86400e3) : null);
+    const plural = (n) => `${n} day${n === 1 ? '' : 's'}`;
+    const quiet = daysSince(host.reported_at);
+    const lastRun = host.last_run || {};
+    const ran = daysSince(lastRun.started_at);
+    const waited = host.reboot && host.reboot.required ? daysSince(host.reboot.since) : null;
+    if (quiet !== null && quiet >= 1) raise('attention', `The server has not reported on its updates for ${plural(quiet)}.`);
+    if (host.managed === false) raise('attention', 'This server is not set up to install its own updates.');
+    if (lastRun.result === 'failed') raise('attention', `The last nightly update failed${lastRun.message ? `: ${lastRun.message}` : '.'}`);
+    else if (host.managed !== false && (ran === null || ran >= 2)) raise('attention', ran === null ? 'Nightly updates have not run yet.' : `Nightly updates have not run for ${plural(ran)}.`);
+    if (waited !== null && waited >= 3) raise('attention', `A restart to finish updates has waited ${plural(waited)}${host.reboot.held ? '; restarts are held on this server' : ''}.`);
+    if (host.docker && host.docker.live_restore === false) raise('attention', 'Depot stops for a minute whenever Docker updates (live-restore is off).');
   }
   return { status: level, reasons };
 }
@@ -101,6 +116,16 @@ async function licenseState() {
   } catch { return null; }
 }
 
+// What scripts/host-updates.sh last said about the operating system: nightly updates, what
+// is waiting, and the restart window. null on a server where the host does not report.
+async function hostUpdates() {
+  try {
+    const row = await require('./db').queryOne("SELECT value, updated_at FROM system_settings WHERE key = 'host_updates'", []);
+    if (!row || !row.value) return null;
+    return { ...JSON.parse(row.value), reported_at: new Date(row.updated_at).toISOString() };
+  } catch { return null; }
+}
+
 async function summary({ days = 1 } = {}) {
   const db = require('./db');
   days = days === 7 ? 7 : 1;
@@ -117,13 +142,13 @@ async function summary({ days = 1 } = {}) {
     db.queryOne('SELECT count(*)::int AS n, count(*) FILTER (WHERE disabled_at IS NULL)::int AS active FROM user_roles', []),
     db.queryOne('SELECT pg_database_size(current_database())::bigint AS bytes', []),
   ]);
-  const [disk, signins, license] = await Promise.all([diskFree(), signIns(sinceDate), licenseState()]);
+  const [disk, signins, license, host] = await Promise.all([diskFree(), signIns(sinceDate), licenseState(), hostUpdates()]);
   const byStatus = {};
   let refusals = 0;
   for (const r of refusalRows || []) { byStatus[r.status] = r.n; refusals += r.n; }
   const errors = errRow?.n || 0;
   const actions = (byType || []).reduce((a, r) => a + r.n, 0);
-  const { status, reasons } = verdict({ errors, refusals, disk, signins, license });
+  const { status, reasons } = verdict({ errors, refusals, disk, signins, license, host });
   return {
     status, reasons, checked_at: new Date().toISOString(), period_days: days,
     version: VERSION, started_at: STARTED_AT.toISOString(), uptime_seconds: Math.round(process.uptime()),
@@ -132,7 +157,7 @@ async function summary({ days = 1 } = {}) {
     signins,
     activity: { actions, by_type: byType || [], active_people: activeRow?.n || 0 },
     stored: { files: filesRow?.n || 0, bytes: Number(filesRow?.bytes || 0), people: peopleRow?.n || 0, people_active: peopleRow?.active || 0, database_bytes: Number(dbRow?.bytes || 0) },
-    disk, license,
+    disk, license, host,
   };
 }
 
