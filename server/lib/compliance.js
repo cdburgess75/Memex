@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..', '..');
 // Control ids a framework may name before the control exists: each is a sibling
 // change in flight (malware scanning, the access review, sign-in events) or a later one
 // (card-number detection). profileStatus() drops them until the catalog has them.
-const UPCOMING = ['malware_scanning', 'access_review', 'signin_events', 'sensitive_data'];
+const UPCOMING = ['access_review', 'signin_events', 'sensitive_data'];
 
 // One requirement: a catalog control, the clause it answers to in this framework, and
 // why, in words the office manager can read. `why` always names the clause.
@@ -350,6 +350,13 @@ const CONTROL_CATALOG = {
     evidence: 'Depot cannot read your policy. Confirm here once a written rule says card numbers never go into Depot, and staff know where payments do go.',
     gap: 'Write the rule (one paragraph: card numbers are never typed into or uploaded to Depot; payments go through the card terminal or payment provider), tell staff, and confirm here.',
   },
+  malware_scanning: {
+    label: 'Uploads are scanned for malware',
+    why: 'HIPAA §164.308(a)(5)(ii)(B) and FTC Safeguards 314.4(c): protection from malicious software.',
+    evidence: 'Every file that enters Depot, by upload, by a link, or from the drive, is checked by a virus scanner before it is kept; a file that fails is refused and the administrators are told.',
+    gap: 'Start the scanner on the server (COMPOSE_PROFILES=clamav in .env, then upgrade.sh) and switch scanning on in Settings › Storage & backups.',
+    fix: 'settings:malware_scan_enabled',
+  },
 };
 
 // Live, config-based signal for each auto-detectable control. Each returns
@@ -507,6 +514,23 @@ const CHECKS = {
       evidence: https
         ? 'App URL is configured for HTTPS (config-level only — run the live checks to verify the certificate and reachability). CORS, bind address, and trust-proxy are set.'
         : 'App URL is not set to HTTPS — traffic may be unencrypted in transit.',
+    };
+  },
+  malware_scanning: async () => {
+    // Green only when scanning is on AND the scanner answered within the last hour: an
+    // enabled switch with a dead scanner refuses every upload, which is not protection.
+    // The ping is cached (lib/malwareScan.status), never made on each page load.
+    const scan = require('./malwareScan');
+    const st = await scan.status();
+    const refused = await scan.refusedCount(30);
+    const when = (iso) => new Date(iso).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const day = (iso) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const refusedLine = `${refused} ${refused === 1 ? 'file' : 'files'} refused in the last 30 days`;
+    if (!st.enabled) return { ready: false, evidence: `Virus scanning is off: files are stored as they arrive. ${refusedLine}.` };
+    if (!st.answering) return { ready: false, evidence: `Virus scanning is on but the scanner is not answering${st.error ? ` (${st.error})` : ''}; uploads are being refused until it does. ${refusedLine}.` };
+    return {
+      ready: true,
+      evidence: `Every upload is scanned (${st.version || 'ClamAV'}, signatures from ${st.signatureDate ? day(st.signatureDate) : 'an unknown date'}); the scanner answered ${st.checkedAt ? when(st.checkedAt) : 'recently'}. Last scan ${st.lastScanAt ? when(st.lastScanAt) : 'not yet'}. ${refusedLine}.`,
     };
   },
 };

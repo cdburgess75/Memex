@@ -5412,6 +5412,7 @@ const CMP_FIX = {
   'settings:share_link_max_days': ['server', 'Set the link limit'],
   'settings:trash_retention_days': ['server', 'Set trash retention'],
   'settings:storage_encryption_key': ['storage', 'Open storage settings'],
+  'settings:malware_scan_enabled': ['storage', 'Open virus scanning'],
   'settings:app_url': ['workspace', 'Open workspace settings'],
   'backup': ['storage', 'Open backups'],
 };
@@ -5869,7 +5870,9 @@ async function loadAdminHealth(days = 1) {
     : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">${esc(h.signins && h.signins.unavailable ? 'Not available: ' + h.signins.unavailable : 'Not available on this server.')}</td></tr>`;
   const didRows = (h.activity.by_type || []).length ? h.activity.by_type.map(t => `<tr><td>${esc(String(t.type || '').replace(/_/g, ' '))}</td><td>${Number(t.n).toLocaleString()}</td></tr>`).join('') : none(2);
   const range = (d, label) => `<button class="dash-act" type="button"${d === days ? ' aria-pressed="true" disabled' : ''} onclick="loadAdminHealth(${d})">${label}</button>`;
-  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}</div>
+  const sc = h.scanner;
+  const scanLine = sc ? `<p>Virus scanning: ${sc.answering ? `on, scanner answering (${esc(sc.version || 'ClamAV')}, signatures from ${sc.signature_date ? esc(new Date(sc.signature_date).toLocaleDateString()) : 'an unknown date'}), last scan ${sc.last_scan_at ? esc(when(sc.last_scan_at)) : 'not yet'}` : 'on, but the scanner is not answering'} · ${Number(sc.refused_30d || 0).toLocaleString()} file${Number(sc.refused_30d) === 1 ? '' : 's'} refused in the last 30 days.</p>` : '';
+  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}${scanLine}</div>
     <div class="health-range">${range(1, 'Last 24 hours')}${range(7, 'Last 7 days')}</div>
     <div class="dash-stats admin-stats-3">
       ${adminStat('Could not finish', Number(h.errors.count).toLocaleString(), 'requests the server failed on')}
@@ -6139,6 +6142,48 @@ async function saveStorageSettings() {
     document.getElementById('cfg-s3-access-key').value = '';
     document.getElementById('cfg-s3-secret').value = '';
   } catch (e) { toast('Save failed: ' + e.message); }
+}
+
+async function saveMalwareScanSettings() {
+  const body = {
+    malware_scan_enabled: document.getElementById('cfg-scan-on').value,
+    malware_scan_host: document.getElementById('cfg-scan-host').value.trim() || null,
+    malware_scan_max_mb: document.getElementById('cfg-scan-max').value.trim() || null,
+  };
+  try { await apiPut('/admin/settings', body); settingsSys = { ...settingsSys, ...body }; toast(body.malware_scan_enabled === 'true' ? 'Scanning on — files that fail the scan are refused' : 'Scanning off'); }
+  catch (e) { toast('Save failed: ' + (e.body?.error || e.message)); }
+}
+// The scanner's own test file (EICAR), sent through the ordinary upload route so the whole
+// path is proved, not just the socket. Assembled from pieces so this page never holds the
+// string itself: a desktop antivirus reading index.html would otherwise flag it.
+function eicarTestFile() {
+  const parts = ['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE', '!$H+H*'];
+  return new File([parts.join('')], 'EICAR test file.txt', { type: 'text/plain' });
+}
+async function testMalwareScan() {
+  const out = document.getElementById('cfg-scan-result');
+  out.textContent = 'Asking the scanner…';
+  let st;
+  try { st = await apiPost('/admin/settings/malware-scan/ping', {}); }
+  catch (e) { out.textContent = 'Could not ask: ' + (e.body?.error || e.message); return; }
+  if (!st.enabled) { out.textContent = 'Scanning is off. Save it as On, then test.'; return; }
+  if (!st.answering) { out.textContent = 'The scanner is not answering' + (st.error ? ' (' + st.error + ')' : '') + '. Uploads are refused until it does.'; return; }
+  out.textContent = `${st.version || 'ClamAV'} answered, signatures from ${st.signatureDate ? new Date(st.signatureDate).toLocaleDateString() : 'an unknown date'}. Uploading the test file…`;
+  const fd = new FormData();
+  fd.append('file', eicarTestFile());
+  let res, body;
+  try {
+    res = await fetch('/api/files/upload', { method: 'POST', headers: { Authorization: `Bearer ${await getToken()}` }, body: fd });
+    body = await res.json().catch(() => ({}));
+  } catch (e) { out.textContent = 'Upload failed: ' + e.message; return; }
+  if (res.status === 422 && body.code === 'MALWARE_DETECTED') { out.textContent = 'Working: the test file was refused. ' + body.error; return; }
+  if (res.status === 503) { out.textContent = 'The scanner stopped answering during the upload: ' + (body.error || ''); return; }
+  if (res.ok && body.doc?.id) {
+    await apiDelete(`/files/${body.doc.id}`).catch(() => {});
+    out.textContent = 'Not working: the test file was stored, not refused (it has been moved to the trash). Check the scanner.';
+    return;
+  }
+  out.textContent = `Unexpected answer (${res.status}): ${body.error || ''}`;
 }
 
 function generateEncKey() {
@@ -6672,7 +6717,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); loadAdminTokens(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
   else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'A second step at sign-in', 'How long a sign-in lasts'); loadSessionLength(); }
-  else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
+  else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Virus scanning', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
   else if (tab === 'license' && admin) { body.innerHTML = licenseSettingsHtml(licenseStatus); loadLicenseSettings(); }
   body.scrollTop = 0;
@@ -7473,7 +7518,7 @@ function activityQuery(extra = {}) {
   return p.toString();
 }
 const ACTIVITY_LABELS = {
-  uploaded: 'Uploaded', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
+  uploaded: 'Uploaded', upload_blocked: 'Refused (malware found)', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
   restored: 'Restored', purged: 'Deleted permanently', updated: 'Updated',
   internal_link_sent: 'Sent a sign-in link', internal_folder_link_sent: 'Sent a folder sign-in link', external_folder_share_sent: 'Sent a folder link', share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
   access_granted: 'Granted access', access_revoked: 'Revoked access',
@@ -7867,6 +7912,25 @@ function systemSettingsHtml() {
         <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder="Nothing is refused. To refuse types, list them: .exe .bat .msi">
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Virus scanning</div>
+      <p class="settings-notice">Every file that enters Depot, by upload, by a link, or from the drive, is checked by a scanner (ClamAV) before it is kept; a file that fails is refused and you are told. Needs the scanner running on the server: add <code>COMPOSE_PROFILES=clamav</code> to the server's <code>.env</code> and run <code>upgrade.sh</code>. <strong>While scanning is on and the scanner is not answering, uploads are refused.</strong></p>
+      <div class="settings-grid">
+        <label>Scan uploads</label>
+        <select id="cfg-scan-on">
+          <option value="false"${s.malware_scan_enabled!=='true'?' selected':''}>Off</option>
+          <option value="true"${s.malware_scan_enabled==='true'?' selected':''}>On — refuse files that fail the scan</option>
+        </select>
+        <label>Scanner address</label>
+        <input type="text" id="cfg-scan-host" value="${esc(s.malware_scan_host||'')}" placeholder="clamav:3310">
+        <label>Largest file scanned (MB)</label>
+        <input type="number" id="cfg-scan-max" min="1" value="${esc(s.malware_scan_max_mb||'')}" placeholder="512 — bigger files are stored unscanned">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+        <button class="ghost-btn" onclick="saveMalwareScanSettings()">Save scanning settings</button>
+        <button class="ghost-btn" onclick="testMalwareScan()">Test with a harmless EICAR file</button>
+        <span id="cfg-scan-result" role="status"></span>
+      </div>
 
       <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
       <p class="settings-notice">Back up the database and files on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>

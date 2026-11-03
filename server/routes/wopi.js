@@ -17,6 +17,7 @@ const docFollows = require('../lib/docFollows');
 const documentAccess = require('../lib/documentAccess');
 const licenseEnforce = require('../lib/licenseEnforce');
 const { pruneOldVersions } = require('../lib/documentVersions');
+const malwareScan = require('../lib/malwareScan');
 
 function tokenEntry(req) {
   const entry = validateToken(req.query.access_token);
@@ -142,6 +143,9 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
     }
 
     const buffer = req.body;
+    // An Office save is a new version of the file: scanned like an upload, before the
+    // version is kept, so a refused save leaves the document exactly as it was.
+    await malwareScan.checkBuffer(buffer, { name: doc.name, actor: { id: entry.userId, email: entry.userEmail }, via: 'Office save', req });
     await saveDocumentVersion(doc, entry, 'wopi_save');
     await storage.upload(doc.storage_path, buffer, doc.mime_type);
     let documentText = null;
@@ -199,6 +203,7 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
     }).catch(() => {});
     res.status(200).end();
   } catch (e) {
+    if (malwareScan.sendRefusal(res, e)) return;
     serverError(res, e);
   }
 });

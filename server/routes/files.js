@@ -35,6 +35,9 @@ const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const externalUpload = require('../lib/externalUpload');
 const externalChunks = require('../lib/externalChunks');
+// Every upload route stores through malwareScan (storeBuffer / storeStream), never storage
+// directly: that is where the scan happens, and sendRefusal is the 422 / 503 answer.
+const malwareScan = require('../lib/malwareScan');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
 const shareOpens = require('../lib/shareOpens');
@@ -805,9 +808,9 @@ router.post('/share/:token/upload',
       try {
         await placeExchangeUpload(req, res, { originalname: got.name, size: got.size, relativePath: got.rel,
           mimetype: require('mime-types').lookup(got.name) || 'application/octet-stream',
-          put: (storagePath, mt) => storage.uploadStream(storagePath, got.stream(), mt, { maxBytes: got.size }) });
+          put: (storagePath, mt) => malwareScan.storeStream(storagePath, got.stream(), mt, { maxBytes: got.size }, { name: got.name, size: got.size, actor: { email: share.recipient_email }, via: 'exchange link', req }) });
       } finally { await got.cleanup(); }
-    } catch (e) { if (externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   },
   (req, res, next) => externalUploadMw()(req, res, (err) => {
     if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB this kind of upload can carry.` });
@@ -817,8 +820,9 @@ router.post('/share/:token/upload',
     try {
       if (!req.file) return res.status(400).json({ error: 'file required' });
       const { buffer, originalname, mimetype, size } = req.file;
-      await placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath: req.body?.relativePath, put: (storagePath, mt) => storage.upload(storagePath, buffer, mt) });
-    } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
+      await placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath: req.body?.relativePath,
+        put: (storagePath, mt) => malwareScan.storeBuffer(storagePath, buffer, mt, { name: originalname, actor: { email: req.exchangeShare.recipient_email }, via: 'exchange link', req }) });
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   });
 
 async function placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath, put }) {
@@ -1425,8 +1429,9 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     storagePath = `documents/${Date.now()}-${path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
     if (!dest) return;
-    await storage.upload(storagePath, buffer, mimetype);
+    await malwareScan.storeBuffer(storagePath, buffer, mimetype, { name: displayName, actor: req.user, via: 'upload', req });
   } catch (e) {
+    if (malwareScan.sendRefusal(res, e)) return;
     return serverError(res, e);
   }
 
@@ -1489,10 +1494,11 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
   const hash = hashing(req);
   let storedSize = 0;
   try {
-    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
+    const result = await malwareScan.storeStream(storagePath, hash.stream, mimetype, { maxBytes }, { name: doc.name, actor: req.user, via: 'replace', req });
     storedSize = result && Number.isFinite(result.size) && result.size >= 0 ? result.size : 0;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    if (malwareScan.sendRefusal(res, e)) return;
     if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
     return serverError(res, e);
   }
@@ -1576,10 +1582,11 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   try {
     // The cap is enforced inside uploadStream's own pipeline (see storage.capStream),
     // so an over-cap abort rejects here cleanly instead of crashing on a stream race.
-    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
+    const result = await malwareScan.storeStream(storagePath, hash.stream, mimetype, { maxBytes }, { name: displayName, size: declaredSize, actor: req.user, via: 'upload stream', req });
     if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    if (malwareScan.sendRefusal(res, e)) return;
     if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
     return serverError(res, e);
   }
@@ -1788,7 +1795,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
 
     const stream = await chunkedFileStream(session);
     const hash = hashing(stream); // content_hash, computed as the chunks are joined
-    const result = await storage.uploadStream(session.storage_path, hash.stream, session.mime_type);
+    // Scanned at assembly: the pieces are only bytes until they are one file.
+    const result = await malwareScan.storeStream(session.storage_path, hash.stream, session.mime_type, {}, { name: session.name, size: Number(session.size || 0), actor: req.user, via: 'resumable upload', req });
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
     const { doc, canIngest } = await createDocumentRecord({
       displayName: session.name,
@@ -2703,6 +2711,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     if (base && current && base !== current && req.body?.force !== true) {
       return res.status(409).json({ code: 'FILE_CHANGED', error: 'This file changed since you opened it', revision: current });
     }
+    await malwareScan.checkBuffer(buffer, { name: doc.name, actor: req.user, via: 'text edit', req });
     const sitting = await textEdits.startsSitting(doc.id, req.user.id);
     let keptVersion = false;
     if (sitting && before && before.length) {
@@ -2718,7 +2727,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
       tellAboutTextEdit(doc, req.user);
     }
     res.json({ ok: true, size: buffer.length, revision: textEdits.revisionOf(buffer), new_sitting: sitting, kept_version: keptVersion });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (malwareScan.sendRefusal(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
