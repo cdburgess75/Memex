@@ -108,6 +108,20 @@ describe('ensureMicrosoftIdp', () => {
     expect(jsonBody(calls[2]).config.clientSecret).toBe(kcAdmin.SECRET_MASK);
   });
 
+  test('a blank secret with a new client or tenant is refused before Keycloak sees it', async () => {
+    const stored = { alias: 'microsoft', config: { clientSecret: kcAdmin.SECRET_MASK, clientId: 'cid', tokenUrl: 'https://login.microsoftonline.com/tid/oauth2/v2.0/token' } };
+    mockFetch([tokenResponse, { status: 200, json: stored }]);
+    await expect(kcAdmin.ensureMicrosoftIdp({ tenantId: 'tid', clientId: 'other', clientSecret: null })).rejects.toThrow(/client secret again/);
+    mockFetch([tokenResponse, { status: 200, json: stored }]);
+    await expect(kcAdmin.ensureMicrosoftIdp({ tenantId: 'tid2', clientId: 'cid', clientSecret: null })).rejects.toThrow(/client secret again/);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    // The same registration re-saved (delegation switched on, say) still keeps the secret.
+    calls = [];
+    mockFetch([tokenResponse, { status: 200, json: stored }, { status: 204 }]);
+    await kcAdmin.ensureMicrosoftIdp({ tenantId: 'tid', clientId: 'cid', clientSecret: null, graphDelegation: true });
+    expect(jsonBody(calls[2]).config.clientSecret).toBe(kcAdmin.SECRET_MASK);
+  });
+
   test('update with a new secret sends the new secret', async () => {
     mockFetch([
       tokenResponse,

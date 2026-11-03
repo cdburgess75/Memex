@@ -183,7 +183,15 @@ async function ensureMicrosoftIdp({ tenantId, clientId, clientSecret, graphDeleg
   const rep = msIdpRepresentation({ tenantId, clientId, clientSecret, graphDelegation });
   const cur = await kc(token, 'GET', `/identity-provider/instances/${MS_ALIAS}`);
   if (cur.ok) {
-    if (!clientSecret) rep.config.clientSecret = (await cur.json())?.config?.clientSecret || SECRET_MASK;
+    if (!clientSecret) {
+      const stored = (await cur.json())?.config || {};
+      // Keycloak (26.8.1 on) refuses the kept secret when the client or tenant changes
+      // with it, since that secret belongs to the old app registration. Say so here
+      // rather than pass on a bare 400.
+      const moved = (k) => stored[k] && stored[k] !== rep.config[k];
+      if (moved('clientId') || moved('tokenUrl')) throw new Error('Enter the client secret again: a new tenant or application (client) ID needs that registration\'s secret.');
+      rep.config.clientSecret = stored.clientSecret || SECRET_MASK;
+    }
     const r = await kc(token, 'PUT', `/identity-provider/instances/${MS_ALIAS}`, rep);
     if (!r.ok) throw new Error(`Keycloak identity-provider update failed (${r.status}).`);
     return { created: false };
