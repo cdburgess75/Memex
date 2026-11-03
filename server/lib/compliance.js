@@ -7,6 +7,15 @@ const db = require('./db');
 
 const ROOT = path.join(__dirname, '..', '..');
 
+// Control ids a framework may name before the control exists: each is a sibling
+// change in flight (malware scanning, the access review, sign-in events) or a later one
+// (card-number detection). profileStatus() drops them until the catalog has them.
+const UPCOMING = ['malware_scanning', 'access_review', 'signin_events', 'sensitive_data'];
+
+// One requirement: a catalog control, the clause it answers to in this framework, and
+// why, in words the office manager can read. `why` always names the clause.
+const req = (control, cite, why) => ({ control, cite, why });
+
 const FRAMEWORKS = [
   {
     // Tax and accounting firms are "financial institutions" under the FTC Safeguards
@@ -16,77 +25,196 @@ const FRAMEWORKS = [
     id: 'safeguards',
     setting: 'compliance_safeguards_enabled',
     name: 'FTC Safeguards Rule (CPA / tax)',
+    short: 'Safeguards',
     scope: 'What the FTC Safeguards Rule and IRS Pub 4557 expect of a tax or accounting firm\'s file system.',
     note: 'Readiness of this Depot only. Your firm still owns its written plan, training, and yearly report.',
-    controls: [
-      'mfa', 'encryption', 'network_security', 'access_control', 'audit_logging', 'backup_restore',
-      'link_governance', 'retention', 'vulnerability_management',
-      'wisp', 'qualified_individual', 'risk_assessment', 'incident_response', 'training',
-      'provider_oversight', 'annual_report',
+    requirements: [
+      req('mfa', '314.4(c)(5)', '314.4(c)(5): multi-factor authentication for anyone who reaches client information.'),
+      req('encryption', '314.4(c)(3)', '314.4(c)(3): client information is encrypted where it is stored.'),
+      req('network_security', '314.4(c)(3)', '314.4(c)(3): client information is encrypted in transit (HTTPS).'),
+      req('access_control', '314.4(c)(1)', '314.4(c)(1): only the people who need client information can reach it, and the list is reviewed.'),
+      req('access_review', '314.4(c)(1)', '314.4(c)(1): who has access is reviewed on a schedule, and access is taken away when it is no longer needed.'),
+      req('audit_logging', '314.4(c)(8)', '314.4(c)(8): a record of who did what with client information, including views and downloads, that cannot be quietly edited.'),
+      req('signin_events', '314.4(c)(8)', '314.4(c)(8): sign-ins and failed sign-ins are recorded, so an attempt to get in by someone unauthorized can be seen.'),
+      req('malware_scanning', '314.4(c)(1) and IRS Pub 4557', '314.4(c)(1) and IRS Pub 4557: files are checked for malicious software before anyone opens them.'),
+      req('backup_restore', '314.4(c)(1) and (h)', '314.4(c)(1) and (h): you can get client information back after a failure or an incident.'),
+      req('link_governance', '314.4(c)(1)', '314.4(c)(1): limit who can reach client information, and for how long.'),
+      req('retention', '314.4(c)(6)', '314.4(c)(6): dispose of client information when it is no longer needed. (Tax returns themselves stay at least three years under IRC 6107; Depot keeps a file until someone deletes it.)'),
+      req('vulnerability_management', '314.4(d)(2)', '314.4(d)(2): a yearly penetration test and vulnerability scans every six months, unless the system is watched continuously.'),
+      req('wisp', '314.4', '314.4: the rule is a written program. IRS Pub 5708 is a free template; the IRS asks about it at PTIN renewal.'),
+      req('qualified_individual', '314.4(a)', '314.4(a): a named Qualified Individual runs the program and reports to the owners.'),
+      req('risk_assessment', '314.4(b)', '314.4(b): a written look at what could go wrong with client information and what you do about it.'),
+      req('incident_response', '314.4(h)', '314.4(h): a written plan for what to do when something goes wrong, including who calls whom.'),
+      req('training', '314.4(e)', '314.4(e): security awareness training for everyone, refreshed as risks change.'),
+      req('provider_oversight', '314.4(f)', '314.4(f): pick providers that can protect client information, put it in the contract, and check on them.'),
+      req('annual_report', '314.4(i)', '314.4(i): the Qualified Individual reports in writing at least once a year.'),
     ],
   },
   {
     id: 'soc2',
     setting: 'compliance_soc2_enabled',
     name: 'SOC 2',
-    scope: 'Customer trust, security reviews, availability, confidentiality, privacy, and change evidence.',
-    note: 'Readiness profile only. A SOC 2 report still requires a CPA examination.',
-    controls: ['access_control', 'audit_logging', 'backup_restore', 'change_management', 'vendor_ai', 'incident_response'],
+    short: 'SOC 2',
+    scope: 'What a customer\'s security review or a SOC 2 examiner asks a file system to show: who gets in, what is recorded, and how changes and incidents are handled.',
+    note: 'Readiness profile only. A SOC 2 report is an opinion on the organization, written by a CPA firm after its own examination.',
+    requirements: [
+      req('access_control', 'CC6.1', 'CC6.1: access to the system is limited to named, authorized people.'),
+      req('mfa', 'CC6.1', 'CC6.1: a second step at sign-in, so a stolen password is not enough.'),
+      req('access_review', 'CC6.2 and CC6.3', 'CC6.2 and CC6.3: access is reviewed on a schedule and taken away when someone leaves or changes role.'),
+      req('encryption', 'CC6.1 and CC6.7', 'CC6.1 and CC6.7: data is encrypted where it is stored.'),
+      req('network_security', 'CC6.7', 'CC6.7: data is encrypted on its way to and from people (HTTPS).'),
+      req('malware_scanning', 'CC6.8', 'CC6.8: the system guards against malicious software in the files it holds.'),
+      req('audit_logging', 'CC7.2', 'CC7.2: what happens in the system is recorded and can be reviewed.'),
+      req('signin_events', 'CC6.1 and CC7.2', 'CC6.1 and CC7.2: sign-ins and failed sign-ins are recorded and watched.'),
+      req('backup_restore', 'A1.2', 'A1.2: data is backed up and can be recovered.'),
+      req('change_management', 'CC8.1', 'CC8.1: changes to the system are tracked and released in an orderly way.'),
+      req('vendor_ai', 'CC9.2', 'CC9.2: outside services that see data (an AI provider, say) are known and managed.'),
+      req('incident_response', 'CC7.4', 'CC7.4: there is a written plan for responding to an incident.'),
+    ],
   },
   {
+    // HIPAA's technical safeguards, 45 CFR 164.312, are what a file system can answer
+    // to. The rest of the Security Rule (risk analysis, policies, training, business
+    // associate agreements) belongs to the covered entity or business associate.
     id: 'hipaa',
     setting: 'compliance_hipaa_enabled',
     name: 'HIPAA',
-    scope: 'Administrative, physical, and technical safeguards for ePHI handling.',
-    note: 'Do not store PHI until BAAs, policies, access review, and audit/export controls are in place.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'backup_restore', 'retention', 'vendor_ai'],
+    short: 'HIPAA',
+    scope: 'The technical safeguards in 45 CFR 164.312: who can get in, when they are signed out, what is recorded, and whether patient files are protected where they sit and on the way.',
+    note: 'HIPAA certifies organizations, not software. The business associate agreements, the risk analysis, your policies, and staff training are your organization\'s own; this report covers what Depot can show.',
+    requirements: [
+      req('access_control', '164.312(a)(1) and (a)(2)(i)', '164.312(a)(1) and (a)(2)(i): each person has their own account, so every action can be traced to one named person.'),
+      req('emergency_access', '164.312(a)(2)(ii)', '164.312(a)(2)(ii): a written way to reach patient files in an emergency, when the usual person or sign-in is not available.'),
+      req('session_timeout', '164.312(a)(2)(iii)', '164.312(a)(2)(iii): a sign-in ends on its own after a set time, so an unattended screen does not stay open.'),
+      req('encryption', '164.312(a)(2)(iv) and (c)(1)', '164.312(a)(2)(iv) and (c)(1): files are encrypted where they are stored, with a cipher that also detects a file altered on disk.'),
+      req('audit_logging', '164.312(b)', '164.312(b): a record of who looked at, changed, or shared each file, kept so it cannot be quietly edited.'),
+      req('signin_events', '164.312(b) and 164.308(a)(5)(ii)(C)', '164.312(b) and 164.308(a)(5)(ii)(C): sign-ins and failed sign-ins are recorded and watched.'),
+      req('mfa', '164.312(d)', '164.312(d): the system checks that a person is who they say they are; a second step at sign-in is the usual way.'),
+      req('network_security', '164.312(e)(1)', '164.312(e)(1): files are encrypted on the way to and from people (HTTPS).'),
+      req('access_review', '164.308(a)(4)', '164.308(a)(4): who may reach patient files is reviewed, and access is taken away when it is no longer needed.'),
+      req('malware_scanning', '164.308(a)(5)(ii)(B)', '164.308(a)(5)(ii)(B): files are checked for malicious software.'),
+      req('backup_restore', '164.308(a)(7)(ii)(A)', '164.308(a)(7)(ii)(A): an exact copy of patient files can be recovered after a failure.'),
+      req('vendor_ai', '164.308(b)(1)', '164.308(b)(1): an outside service that sees file contents (an AI provider, say) is a business associate and needs an agreement, or stays off.'),
+    ],
   },
   {
     id: 'gdpr',
     setting: 'compliance_gdpr_enabled',
     name: 'GDPR',
-    scope: 'Personal-data handling, deletion/erasure workflows, retention, and processor evidence.',
+    short: 'GDPR',
+    scope: 'Personal data held in files: who can reach it, how long it stays, how a person\'s request to see or erase it is met, and which outside services process it.',
     note: 'This profile helps track readiness for data-subject requests; it is not legal advice.',
-    controls: ['access_control', 'audit_logging', 'retention', 'export_delete', 'vendor_ai'],
+    requirements: [
+      req('access_control', 'Article 32(1)(b)', 'Article 32(1)(b): only named, authorized people can reach personal data.'),
+      req('encryption', 'Article 32(1)(a)', 'Article 32(1)(a): personal data is encrypted where it is stored.'),
+      req('audit_logging', 'Article 5(2) and 30', 'Article 5(2) and 30: the organization can show what was done with personal data.'),
+      req('retention', 'Article 5(1)(e)', 'Article 5(1)(e): personal data is not kept longer than needed; deleted files are disposed of on a schedule.'),
+      req('export_delete', 'Articles 15 and 17', 'Articles 15 and 17: a person can get a copy of their data, or have it erased, within a month.'),
+      req('vendor_ai', 'Article 28', 'Article 28: an outside service that processes personal data (an AI provider, say) is a processor and needs a written contract.'),
+    ],
   },
   {
+    // PCI DSS certifies merchants and processors, and only for systems that store,
+    // process or transmit cardholder data. The right goal for a file store is to be
+    // OUT of scope: no card numbers in it, and a way to tell if one slips in.
     id: 'pci_dss',
     setting: 'compliance_pci_dss_enabled',
-    name: 'PCI-DSS',
-    scope: 'Cardholder-data security posture for environments that process, store, or transmit payment data.',
-    note: 'Depot should avoid cardholder data unless PCI scope is intentionally designed and assessed.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'vulnerability_management', 'network_security'],
+    name: 'PCI: no card data in Depot',
+    short: 'PCI',
+    scope: 'Keeping Depot out of PCI scope: a written rule that no card numbers are stored here, the checks that would catch one, and the protections that limit the harm if one slips in.',
+    note: 'PCI DSS applies to systems that store, process, or transmit card data. The aim here is that Depot never does; it is not a PCI assessment, and card payments stay in your payment provider\'s own system.',
+    requirements: [
+      req('no_card_data', 'PCI DSS v4.0, scope', 'PCI DSS v4.0, scope: a system that never stores, processes, or transmits cardholder data is out of scope. A written rule, and staff who know it, keep Depot out.'),
+      req('sensitive_data', 'PCI DSS v4.0, Requirement 3 and scope', 'PCI DSS v4.0, Requirement 3 and scope: uploaded files are checked for card numbers, so a slip is caught instead of silently putting Depot in scope.'),
+      req('access_control', 'Requirement 7', 'Requirement 7: access is limited to named people who need it.'),
+      req('mfa', 'Requirement 8.4', 'Requirement 8.4: a second step at sign-in for everyone.'),
+      req('access_review', 'Requirement 7.2.4', 'Requirement 7.2.4: who has access is reviewed at least every six months.'),
+      req('audit_logging', 'Requirement 10', 'Requirement 10: a record of who did what, kept so it cannot be quietly edited.'),
+      req('signin_events', 'Requirement 10.2.1.4', 'Requirement 10.2.1.4: failed sign-ins are recorded.'),
+      req('encryption', 'Requirement 3.5', 'Requirement 3.5: if a card number did slip into a file, it would sit encrypted on disk.'),
+      req('network_security', 'Requirement 4', 'Requirement 4: files travel over HTTPS, never in the clear.'),
+      req('retention', 'Requirement 3.2.1', 'Requirement 3.2.1: nothing is kept longer than needed; deleted files are disposed of on a schedule.'),
+      req('malware_scanning', 'Requirement 5', 'Requirement 5: files are checked for malicious software.'),
+      req('vulnerability_management', 'Requirement 11', 'Requirement 11: the server is scanned for weaknesses on a schedule.'),
+    ],
+  },
+  {
+    // NIST CSF 2.0's six functions, in plain words, mapped to what Depot can show.
+    id: 'nist_csf',
+    setting: 'compliance_nist_csf_enabled',
+    name: 'NIST Cybersecurity Framework 2.0',
+    short: 'NIST CSF',
+    scope: 'The six functions of NIST CSF 2.0 (Govern, Identify, Protect, Detect, Respond, Recover) as they apply to a file system, in plain words.',
+    note: 'The framework is a way of organizing a program, not a certification. Depot answers the parts a file system can; the governance, risk and planning parts are your organization\'s own.',
+    requirements: [
+      req('qualified_individual', 'Govern, GV.RR-02', 'Govern (GV.RR-02): one named person is responsible for security and reports to leadership.'),
+      req('provider_oversight', 'Govern, GV.SC-05', 'Govern (GV.SC-05): outside providers that touch your data are under written terms and checked on.'),
+      req('risk_assessment', 'Identify, ID.RA-01', 'Identify (ID.RA-01): what could go wrong with your data is written down and reviewed.'),
+      req('vulnerability_management', 'Identify, ID.RA-01', 'Identify (ID.RA-01): the server is scanned for weaknesses on a schedule.'),
+      req('access_control', 'Protect, PR.AA-01', 'Protect (PR.AA-01): each person has their own account and a role.'),
+      req('mfa', 'Protect, PR.AA-03', 'Protect (PR.AA-03): a second step at sign-in.'),
+      req('access_review', 'Protect, PR.AA-05', 'Protect (PR.AA-05): who has access is reviewed and kept to what each person needs.'),
+      req('encryption', 'Protect, PR.DS-01', 'Protect (PR.DS-01): files are encrypted where they are stored.'),
+      req('network_security', 'Protect, PR.DS-02', 'Protect (PR.DS-02): files are encrypted on the way to and from people (HTTPS).'),
+      req('training', 'Protect, PR.AT-01', 'Protect (PR.AT-01): staff are trained to recognize and avoid security risks.'),
+      req('change_management', 'Protect, PR.PS-01', 'Protect (PR.PS-01): changes to the system are tracked and released in an orderly way.'),
+      req('audit_logging', 'Detect, DE.CM-01', 'Detect (DE.CM-01): what happens in the system is recorded, so something wrong can be noticed.'),
+      req('signin_events', 'Detect, DE.CM-03', 'Detect (DE.CM-03): sign-ins and failed sign-ins are recorded and watched.'),
+      req('malware_scanning', 'Detect, DE.CM-09', 'Detect (DE.CM-09): files are checked for malicious software.'),
+      req('incident_response', 'Respond, RS.MA-01', 'Respond (RS.MA-01): a written plan says who does what when something goes wrong.'),
+      req('backup_restore', 'Recover, RC.RP-01', 'Recover (RC.RP-01): backups run and can be restored, so work resumes after a failure.'),
+    ],
   },
   {
     id: 'iso27001',
     setting: 'compliance_iso27001_enabled',
     name: 'ISO/IEC 27001',
-    scope: 'ISMS evidence: risk treatment, controls, policies, internal audit, and management review.',
+    short: 'ISO 27001',
+    scope: 'The Annex A controls a file system can show evidence for: access, encryption, logging, backups, change and incident handling.',
     note: 'Product controls can support an ISMS, but certification is organization-wide.',
-    controls: ['risk_register', 'access_control', 'audit_logging', 'backup_restore', 'change_management', 'incident_response'],
+    requirements: [
+      req('risk_register', 'Clause 6.1.2', 'Clause 6.1.2: risks are listed with an owner and a treatment.'),
+      req('access_control', 'Annex A 5.15', 'Annex A 5.15: access is limited to named, authorized people.'),
+      req('mfa', 'Annex A 8.5', 'Annex A 8.5: a second step at sign-in.'),
+      req('encryption', 'Annex A 8.24', 'Annex A 8.24: data is encrypted where it is stored.'),
+      req('audit_logging', 'Annex A 8.15', 'Annex A 8.15: what happens in the system is recorded and protected from editing.'),
+      req('backup_restore', 'Annex A 8.13', 'Annex A 8.13: backups run and are tested.'),
+      req('change_management', 'Annex A 8.32', 'Annex A 8.32: changes to the system are tracked and released in an orderly way.'),
+      req('incident_response', 'Annex A 5.24', 'Annex A 5.24: a written plan says who does what when something goes wrong.'),
+    ],
   },
   {
     id: 'cmmc',
     setting: 'compliance_cmmc_enabled',
     name: 'CMMC',
-    scope: 'DIB cybersecurity posture for FCI/CUI handling aligned to FAR and NIST requirements.',
-    note: 'Do not store CUI until scoping, SSP, SPRS/eMASS evidence, and required assessments are ready.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'retention', 'vulnerability_management', 'network_security'],
+    short: 'CMMC',
+    scope: 'The NIST SP 800-171 practices a file system can show for a defense contractor handling federal contract information.',
+    note: 'Do not store CUI until scoping, the system security plan, SPRS/eMASS evidence, and required assessments are ready.',
+    requirements: [
+      req('access_control', 'SP 800-171 3.1.1', 'SP 800-171 3.1.1: access is limited to authorized people, each with their own account.'),
+      req('mfa', 'SP 800-171 3.5.3', 'SP 800-171 3.5.3: a second step at sign-in.'),
+      req('audit_logging', 'SP 800-171 3.3.1', 'SP 800-171 3.3.1: a record of who did what, kept so it cannot be quietly edited.'),
+      req('encryption', 'SP 800-171 3.13.16', 'SP 800-171 3.13.16: files are encrypted where they are stored.'),
+      req('network_security', 'SP 800-171 3.13.8', 'SP 800-171 3.13.8: files are encrypted on the way to and from people (HTTPS).'),
+      req('retention', 'SP 800-171 3.8.3', 'SP 800-171 3.8.3: data is disposed of when it is no longer needed.'),
+      req('vulnerability_management', 'SP 800-171 3.11.2', 'SP 800-171 3.11.2: the server is scanned for weaknesses on a schedule.'),
+    ],
   },
 ];
+// `controls` stays derivable from the requirements for everything that reads it.
+for (const f of FRAMEWORKS) f.controls = f.requirements.map(r => r.control);
 
 // `evidence` here is the default/fallback copy; auto controls override it with a live
 // signal (see CHECKS), and manual controls override it with the attestation note.
-// `why` names the Safeguards Rule clause (16 CFR 314.4) the control answers to, in
-// words a firm's office manager can read. `fix` points the client at the place the
-// admin can put it right ('setup:mfa', 'settings:<key>', 'backup').
+// The clause a control answers to, and why, is per framework: FRAMEWORKS[].requirements.
+// `fix` points the client at the place the admin can put it right ('setup:mfa',
+// 'setup:session', 'settings:<key>', 'backup').
 // `attestable` auto controls accept a manual confirmation when the live signal is
 // not green — for the things Depot can only see from outside (MFA enforced by a
 // Microsoft tenant, say).
 const CONTROL_CATALOG = {
   mfa: {
     label: 'A second step at sign-in (MFA)',
-    why: '314.4(c)(5): multi-factor authentication for anyone who reaches client information.',
     evidence: 'Sign-in goes through Keycloak; a one-time code can be required for every local account.',
     gap: 'Require an authenticator app for password sign-ins (Settings › Sign-in methods), or confirm your Microsoft 365 tenant requires a second step.',
     fix: 'setup:mfa',
@@ -94,75 +222,64 @@ const CONTROL_CATALOG = {
   },
   link_governance: {
     label: 'Links to outside people expire',
-    why: '314.4(c)(1): limit who can reach client information, and for how long.',
     evidence: 'Share links can carry an expiry date and a password.',
     gap: 'Set the longest a link may live (Settings › Network, limits & calls) and retire links that never expire.',
     fix: 'settings:share_link_max_days',
   },
   wisp: {
     label: 'A written security plan (WISP)',
-    why: '314.4: the rule is a written program. IRS Pub 5708 is a free template; the IRS asks about it at PTIN renewal.',
     manual: true,
     evidence: 'Depot cannot see your written plan. Confirm here once it exists, and keep it with your firm records.',
     gap: 'Write the plan (IRS Pub 5708 template), have the owners sign it, and confirm here.',
   },
   qualified_individual: {
     label: 'One person is in charge of security',
-    why: '314.4(a): a named Qualified Individual runs the program and reports to the owners.',
     manual: true,
     evidence: 'Depot cannot see who holds this role. Confirm here, naming the person in the note.',
     gap: 'Name the person (an owner, office manager, or your IT provider) and confirm here.',
   },
   risk_assessment: {
     label: 'A written risk assessment',
-    why: '314.4(b): a written look at what could go wrong with client information and what you do about it.',
     manual: true,
     evidence: 'Depot cannot see the assessment. Confirm here once it is written.',
     gap: 'Write it (the Pub 5708 template has a section), review it yearly, and confirm here.',
   },
   training: {
     label: 'Staff trained on security this year',
-    why: '314.4(e): security awareness training for everyone, refreshed as risks change.',
     manual: true,
     evidence: 'Depot cannot see training records. Confirm here each year with the date in the note.',
     gap: 'Run a short session (phishing, passwords, client data handling), keep the sign-in sheet, and confirm here.',
   },
   provider_oversight: {
     label: 'Service providers are checked',
-    why: '314.4(f): pick providers that can protect client information, put it in the contract, and check on them.',
     manual: true,
     evidence: 'Depot cannot see your contracts. Confirm here once your IT and software providers are under written terms.',
     gap: 'Keep a list of providers that touch client data, with a signed agreement for each, and confirm here.',
   },
   annual_report: {
     label: 'A yearly report to the owners',
-    why: '314.4(i): the Qualified Individual reports in writing at least once a year.',
     manual: true,
     evidence: 'Depot cannot see the report. The Safeguards packet from this page is written to be attached to it.',
     gap: 'Attach this page\'s packet to a short written report each year, and confirm here with the date.',
   },
   access_control: {
     label: 'Only named people can get in',
-    why: '314.4(c)(1): only the people who need client information can reach it, and the list is reviewed.',
     evidence: 'Everyone signs in with their own account and has a role: admin, contributor, or viewer.',
     gap: 'Give each person an account and a role; make at least one person an admin.',
   },
   audit_logging: {
     label: 'A record of who did what',
-    why: '314.4(c)(8): a record of who did what with client information, including views and downloads, that cannot be quietly edited.',
     evidence: 'Every view, download, upload, change, share, and deletion is logged, and the log is hash-chained so a changed or deleted entry is detectable.',
     gap: 'The log fills itself in as people use Depot; nothing to set up.',
   },
   encryption: {
     label: 'Files are encrypted where they are stored',
-    why: '314.4(c)(3): client information is encrypted where it is stored.',
     fix: 'settings:storage_encryption_key',
     evidence: 'Files on disk are encrypted (AES-256-GCM) with a key only the server holds.',
     gap: 'Set an encryption key (Settings › Storage & backups). Files uploaded before that are not encrypted.',
   },
   backup_restore: {
     label: 'Backups run and can be restored',
-    why: '314.4(c)(1) and (h): you can get client information back after a failure or an incident.',
     fix: 'backup',
     evidence: 'Depot can back itself up on a schedule and check that a backup restores.',
     gap: 'Turn on scheduled backups (Settings › Storage & backups), or back up the whole server another way and confirm it here.',
@@ -170,7 +287,6 @@ const CONTROL_CATALOG = {
   },
   change_management: {
     label: 'Updates are tracked',
-    why: '314.4(c)(4): changes to the system are tracked.',
     evidence: 'Depot runs signed, numbered releases; every change is in version history.',
     gap: 'Nothing to set up; Depot keeps its own release record.',
   },
@@ -181,14 +297,12 @@ const CONTROL_CATALOG = {
   },
   incident_response: {
     label: 'A written plan for when something goes wrong',
-    why: '314.4(h): a written plan for what to do when something goes wrong, including who calls whom.',
     manual: true,
     evidence: 'Depot cannot see your plan. Confirm here once it is written.',
     gap: 'Write one page: who to call, how to cut off access, who tells clients, the FTC, and the state (Louisiana gives you 60 days to notify people; the FTC wants 30 days for 500 or more). Confirm here.',
   },
   retention: {
     label: 'Deleted files are disposed of on a schedule',
-    why: '314.4(c)(6): dispose of client information when it is no longer needed. (Tax returns themselves stay at least three years under IRC 6107; Depot keeps a file until someone deletes it.)',
     evidence: 'Files in the trash are purged after a set number of days.',
     gap: 'Set trash retention to between 1 and 90 days (Settings › Network, limits & calls).',
     fix: 'settings:trash_retention_days',
@@ -201,14 +315,12 @@ const CONTROL_CATALOG = {
   },
   vulnerability_management: {
     label: 'The server is scanned and kept patched',
-    why: '314.4(d)(2): a yearly penetration test and vulnerability scans every six months, unless the system is watched continuously.',
     manual: true,
     evidence: 'Depot updates itself, and "Run live checks" audits its own components. The twice-yearly scan of the server is your IT provider\'s to run and keep.',
     gap: 'Have your IT provider scan the server every six months and keep the report; confirm here with the date.',
   },
   network_security: {
     label: 'Files are encrypted on the way to you',
-    why: '314.4(c)(3): client information is encrypted in transit (HTTPS).',
     fix: 'settings:app_url',
     evidence: 'Baseline security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS on HTTPS) are enforced; CORS, bind address, trust proxy, and production Caddy overlay are configurable.',
     gap: 'Give Depot an https:// address (Settings › Branding & links) so every connection is encrypted.',
@@ -218,6 +330,25 @@ const CONTROL_CATALOG = {
     manual: true,
     evidence: 'Compliance roadmap exists.',
     gap: 'Add risk register, owners, treatment status, and review cadence.',
+  },
+  emergency_access: {
+    label: 'A written way in during an emergency',
+    manual: true,
+    evidence: 'Depot cannot see your procedure. Confirm here once it says who can reach patient files when the usual person or sign-in is not available.',
+    gap: 'Write one page: who holds a second administrator account, where its credentials are sealed, and who may open them. Confirm here.',
+  },
+  session_timeout: {
+    label: 'People are signed out after a set time',
+    evidence: 'A sign-in ends on its own after the time set under Sign-in methods.',
+    gap: 'Set how long a sign-in lasts to a day or less (Settings › Sign-in methods), or confirm your Microsoft 365 tenant signs people out.',
+    fix: 'setup:session',
+    attestable: true,
+  },
+  no_card_data: {
+    label: 'No cardholder data is stored here (written rule)',
+    manual: true,
+    evidence: 'Depot cannot read your policy. Confirm here once a written rule says card numbers never go into Depot, and staff know where payments do go.',
+    gap: 'Write the rule (one paragraph: card numbers are never typed into or uploaded to Depot; payments go through the card terminal or payment provider), tell staff, and confirm here.',
   },
 };
 
@@ -320,6 +451,19 @@ const CHECKS = {
         : days === 0
           ? 'The trash never empties itself — deleted files stay on disk until someone purges them.'
           : `Deleted files stay in the trash for ${days} days before purge — longer than the 90 days this profile expects.`,
+    };
+  },
+  session_timeout: async () => {
+    const hours = Number(await settings.get('login_session_hours'));
+    const set = Number.isFinite(hours) && hours > 0;
+    const ready = set && hours <= 24;
+    return {
+      ready,
+      evidence: ready
+        ? `A sign-in ends on its own after ${hours} hour${hours === 1 ? '' : 's'}.`
+        : set
+          ? `A sign-in lasts ${hours} hours before it ends on its own — longer than the day this profile expects.`
+          : 'How long a sign-in lasts has not been set here; Keycloak\'s default applies.',
     };
   },
   mfa: async () => {
@@ -533,7 +677,7 @@ async function profileStatus() {
   const items = [];
   for (const f of FRAMEWORKS) {
     const enabled = boolValue(await settings.getOrEnv(f.setting));
-    const controls = f.controls.map(id => evaluated[id]).filter(Boolean);
+    const controls = f.requirements.map(r => evaluated[r.control] && { ...evaluated[r.control], cite: r.cite, why: r.why }).filter(Boolean);
     items.push({ ...f, enabled, controls });
   }
   return items;
@@ -572,4 +716,4 @@ async function updateStatus() {
   };
 }
 
-module.exports = { FRAMEWORKS, CONTROL_CATALOG, CHECKS, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };
+module.exports = { FRAMEWORKS, UPCOMING, CONTROL_CATALOG, CHECKS, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };
