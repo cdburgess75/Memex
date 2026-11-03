@@ -61,7 +61,7 @@ describe('toCsv', () => {
     const lines = csv.split('\n');
     expect(lines[0]).toContain('Memex access review');
     expect(lines[1]).toContain('Listed to every signed-in user (no file access)');
-    expect(lines[2]).toBe('email,name,role,role_assigned,email_verified,owns,library_access,folder_access,groups,listed_in,direct_shares,last_activity');
+    expect(lines[2]).toBe('email,name,role,role_assigned,email_verified,second_step,owns,library_access,folder_access,groups,listed_in,direct_shares,last_activity');
     expect(csv).toContain('ann@x.com,Ann Smith,contributor');
     // libraries joined with "; " must be quoted because of the comma-free but semicolon list
     expect(csv).toMatch(/Clients; Ops/);
@@ -148,7 +148,7 @@ describe('shares in the review', () => {
 
   test('the CSV carries every new column, and the pending addresses as rows', () => {
     const csv = toCsv(r);
-    expect(csv).toMatch(/^ann@x\.com,Ann Smith,contributor,[^,]*,yes,Clients,"?Shared, no members \(Read-Write, direct\)"?/m);
+    expect(csv).toMatch(/^ann@x\.com,Ann Smith,contributor,[^,]*,yes,[^,]*,Clients,"?Shared, no members \(Read-Write, direct\)"?/m);
     expect(csv).toMatch(/^new@outside\.com,,no verified account,,no,,,/m);
   });
 });

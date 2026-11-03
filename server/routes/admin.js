@@ -431,12 +431,13 @@ router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
       params
     );
     const { csvCell } = require('../lib/csv');
-    const header = ['timestamp', 'event', 'actor', 'document', 'detail'];
+    const { label } = require('../lib/activityLabels');
+    const header = ['timestamp', 'event', 'event_label', 'actor', 'document', 'detail'];
     const lines = [header.join(',')];
     for (const r of rows) {
       lines.push([
         r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-        r.event_type, r.actor_email, r.document_name, r.detail,
+        r.event_type, label(r.event_type), r.actor_email, r.document_name, r.detail,
       ].map(csvCell).join(','));
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -490,6 +491,24 @@ router.get('/compliance/packet.html', auth, requireRole('admin'), async (_req, r
 router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/accessReview').build());
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /api/admin/access-review/signoff — record that the list was reviewed: the list as
+// it stands is kept with who signed and when, and the chained event access_reviewed is
+// appended. The compliance control access_review reads the newest one.
+router.post('/access-review/signoff', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const review = require('../lib/accessReview');
+    const row = await review.signoff(req.user, typeof req.body?.note === 'string' ? req.body.note : '');
+    res.json({ ok: true, review: row, history: await review.history() });
+  } catch (e) { serverError(res, e); }
+});
+
+// GET /api/admin/access-review/history — past sign-offs, newest first (no snapshots).
+router.get('/access-review/history', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json({ reviews: await require('../lib/accessReview').history(req.query.limit) });
   } catch (e) { serverError(res, e); }
 });
 

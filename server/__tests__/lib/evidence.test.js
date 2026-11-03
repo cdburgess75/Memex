@@ -20,9 +20,10 @@ jest.mock('../../lib/settings', () => ({
 }));
 jest.mock('../../lib/accessReview', () => ({
   build: jest.fn().mockResolvedValue({ generatedAt: 'x', userCount: 2, openLibraries: ['Public'], users: [
-    { email: 'dave@x.com', name: 'Dave', role: 'admin', libraries: ['all (admin)'], directShares: 0, lastActivity: '2026-07-11T09:00:00Z' },
-    { email: 'ann@x.com', name: '', role: 'viewer', libraries: ['Clients'], directShares: 3, lastActivity: null },
+    { email: 'dave@x.com', name: 'Dave', role: 'admin', libraries: ['all (admin)'], directShares: 0, lastActivity: '2026-07-11T09:00:00Z', mfa: 'enrolled' },
+    { email: 'ann@x.com', name: '', role: 'viewer', libraries: ['Clients'], directShares: 3, lastActivity: null, mfa: 'federated' },
   ] }),
+  mfaWord: (s) => ({ enrolled: 'Authenticator set up', federated: 'Through their identity provider' }[s] || 'Could not check'),
 }));
 jest.mock('../../lib/auditLog', () => ({ verify: jest.fn().mockResolvedValue({ ok: true, count: 42, head: 'deadbeef' }) }));
 

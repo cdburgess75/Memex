@@ -376,6 +376,10 @@ async function start() {
           });
       })(1);
     }
+    // Sign-ins, failed sign-ins and sign-outs from Keycloak into the audit record, every
+    // five minutes (lib/signInEvents; the compliance control signin_events reads it).
+    try { if (require('./lib/signInEvents').start()) console.log('[startup] sign-in record poller armed'); }
+    catch (e) { console.error('[startup] sign-in record poller failed:', e.message); }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
@@ -440,6 +444,7 @@ function shutdown(signal) {
   if (!server) process.exit(0); // signalled before listen (e.g. mid-migration)
   try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
+  try { require('./lib/signInEvents').stop(); } catch { /* not started */ }
   try { require('./lib/gettingStarted').stop(); } catch { /* not started */ }
   const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
   forced.unref?.();

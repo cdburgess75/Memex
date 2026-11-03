@@ -219,6 +219,23 @@ const CONTROL_CATALOG = {
     evidence: 'Compliance roadmap exists.',
     gap: 'Add risk register, owners, treatment status, and review cadence.',
   },
+  // `action` is a button the window draws on the row whatever its state: the admin does
+  // the thing from Compliance without leaving. { label, api } — a POST, with an optional note.
+  access_review: {
+    label: 'Who has access is reviewed every quarter',
+    why: 'FTC Safeguards 314.4(c)(1), HIPAA §164.308(a)(4), SOC 2 CC6.2: periodic review of who can get in.',
+    evidence: 'Settings › Users & access lists every person and what they can open. Record each review there, or here.',
+    gap: 'Look through the list in Settings › Users & access, remove anyone who should not be on it, and record that it was reviewed.',
+    fix: 'access',
+    action: { label: 'Record that this list was reviewed', api: '/admin/access-review/signoff' },
+  },
+  signin_events: {
+    label: 'Sign-ins and failed sign-ins are recorded',
+    why: 'HIPAA §164.312(b), SOC 2 CC7.2: activity review includes authentication.',
+    evidence: 'Every sign-in, failed sign-in and sign-out is copied from Keycloak into the hash-chained activity record every five minutes.',
+    gap: 'Turn sign-in records on (Settings › Server, signin_events_enabled) and make sure Keycloak is keeping events for the realm.',
+    fix: 'settings:signin_events_enabled',
+  },
 };
 
 // Live, config-based signal for each auto-detectable control. Each returns
@@ -325,8 +342,27 @@ const CHECKS = {
   mfa: async () => {
     const required = String((await settings.get('mfa_required')) || '').toLowerCase() === 'true';
     const ms365 = boolValue(await settings.getOrEnv('login_ms365_enabled'));
+    // Per person, from Keycloak (lib/keycloakAdmin mfaStatusByUser): the switch says the
+    // rule, the count says whether everyone has followed it yet.
+    let people = null;
+    try { people = (await require('./keycloakAdmin').mfaStatusByUser()).users; } catch { /* unreachable, or no admin credentials here */ }
+    if (people) {
+      const n = (st) => people.filter(u => u.state === st).length;
+      const federated = people.filter(u => u.state === 'federated');
+      const ms = federated.filter(u => u.provider === 'microsoft').length, ad = federated.length - ms;
+      const local = people.length - federated.length;
+      const counts = [`${n('enrolled')} of ${people.length} ${people.length === 1 ? 'person' : 'people'} enrolled`, `${n('pending')} pending`];
+      if (ms) counts.push(`${ms} through Microsoft 365`);
+      if (ad) counts.push(`${ad} through Active Directory`);
+      const line = counts.join(', ') + '.';
+      const uncovered = n('none') + n('pending');
+      if (required && !uncovered) return { ready: true, evidence: `Every local account must enter a one-time code at sign-in. ${line}` };
+      if (required) return { ready: false, evidence: `A one-time code is required, but ${uncovered} ${uncovered === 1 ? 'person has' : 'people have'} not set one up yet. ${line}` };
+      if (!local) return { ready: false, evidence: `${line} Sign-in is through ${ms ? 'Microsoft 365' : 'your identity provider'}. Depot cannot see whether it requires a second step — confirm it below once it does.` };
+      return { ready: false, evidence: `A one-time code is not required at sign-in — a stolen password is enough to reach client files. ${line}` };
+    }
     if (required) {
-      return { ready: true, evidence: 'Every local account must enter a one-time code at sign-in (required action in Keycloak).' };
+      return { ready: true, evidence: 'Every local account must enter a one-time code at sign-in (required action in Keycloak). Who has set one up could not be counted: Keycloak did not answer.' };
     }
     return {
       ready: false,
@@ -364,6 +400,36 @@ const CHECKS = {
         ? 'App URL is configured for HTTPS (config-level only — run the live checks to verify the certificate and reachability). CORS, bind address, and trust-proxy are set.'
         : 'App URL is not set to HTTPS — traffic may be unencrypted in transit.',
     };
+  },
+  access_review: async () => {
+    const review = require('./accessReview');
+    const last = await review.latest();
+    if (!last) return { ready: false, evidence: 'No review has been recorded yet.' };
+    const at = new Date(last.reviewed_at);
+    const ageDays = Math.floor((Date.now() - at.getTime()) / 86400e3);
+    const when = at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const who = last.reviewed_by_email || 'an administrator';
+    const line = `Last reviewed ${when} by ${who}${last.user_count ? ` (${last.user_count} ${last.user_count === 1 ? 'person' : 'people'} on the list)` : ''}${last.note ? ` · ${last.note}` : ''}.`;
+    return ageDays <= review.REVIEW_DAYS
+      ? { ready: true, evidence: line }
+      : { ready: false, evidence: `${line} That is ${ageDays} days ago — more than a quarter.` };
+  },
+  signin_events: async () => {
+    const poller = require('./signInEvents');
+    const st = await poller.status();
+    let counts = { signed_in: 0, sign_in_failed: 0, signed_out: 0 };
+    try {
+      const rows = await db.query(
+        `SELECT event_type, count(*)::int AS n FROM document_events WHERE event_type = ANY($1) AND created_at >= now() - INTERVAL '30 days' GROUP BY event_type`,
+        [poller.EVENT_TYPES]);
+      for (const r of rows || []) counts[r.event_type] = r.n;
+    } catch { /* table may be absent on a fresh install */ }
+    const line = `In the last 30 days: ${counts.signed_in} sign-in${counts.signed_in === 1 ? '' : 's'}, ${counts.sign_in_failed} failed, ${counts.signed_out} sign-out${counts.signed_out === 1 ? '' : 's'}.`;
+    if (!st.enabled) return { ready: false, evidence: `Sign-in records are switched off (signin_events_enabled). ${line}` };
+    if (!st.last) return { ready: false, evidence: `Sign-in records are on but have not been read from Keycloak yet (the first pass runs a minute after start). ${line}` };
+    if (st.last.eventsEnabled === false) return { ready: false, evidence: `Keycloak is not keeping sign-in records for the realm, so there is nothing to copy. Turn on events in Keycloak (Realm settings › Events). ${line}` };
+    if (!st.last.ok) return { ready: false, evidence: `The last read from Keycloak failed: ${st.last.error}. ${line}` };
+    return { ready: true, evidence: `Copied from Keycloak into the hash-chained record every five minutes; last read ${new Date(st.last.at).toLocaleString('en-US')}. ${line}` };
   },
 };
 
@@ -482,7 +548,7 @@ async function evaluateControls() {
       const a = base.attestable ? attest[id] : null;
       if (a?.met && !r.ready) r = { ready: true, evidence: a.note ? `Confirmed: ${a.note}` : 'Confirmed by an admin.' };
       out[id] = {
-        id, label: base.label, gap: base.gap, why: base.why || '', fix: base.fix || null, manual: false,
+        id, label: base.label, gap: base.gap, why: base.why || '', fix: base.fix || null, action: base.action || null, manual: false,
         attestable: !!base.attestable, ready: r.ready, evidence: r.evidence,
         attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
       };
