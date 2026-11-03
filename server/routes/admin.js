@@ -356,6 +356,38 @@ router.put('/compliance', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
+/* Legal holds (lib/retention.js), for administrators. A hold is placed with a reason and
+ * released with a note; both go into the hash-chained record. The Compliance window lists
+ * the open ones and points here.
+ *
+ *   GET    /api/admin/legal-holds          -> { active: [...], released: [...] }
+ *   POST   /api/admin/legal-holds          { scope: 'library'|'folder'|'document', library_id, folder_path, document_id, reason }
+ *   DELETE /api/admin/legal-holds/:id      { note }   releases it
+ */
+router.get('/legal-holds', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const retention = require('../lib/retention');
+    const [active, released] = await Promise.all([retention.activeHolds(), retention.holdHistory({ limit: 50 })]);
+    res.json({ active, released });
+  } catch (e) { serverError(res, e); }
+});
+router.post('/legal-holds', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await require('../lib/retention').placeHold(req.body || {}, req.user));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    serverError(res, e);
+  }
+});
+router.delete('/legal-holds/:id', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await require('../lib/retention').releaseHold(req.params.id, req.body?.note, req.user));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    serverError(res, e);
+  }
+});
+
 // POST /api/admin/backfill-owner-acl — one-time idempotent owner-grant backfill
 router.post('/backfill-owner-acl', auth, requireRole('admin'), async (req, res) => {
   try {

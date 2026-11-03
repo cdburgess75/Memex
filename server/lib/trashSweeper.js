@@ -12,6 +12,7 @@ const db = require('./db');
 const storage = require('./storage');
 const settings = require('./settings');
 const auditLog = require('./auditLog');
+const retention = require('./retention');
 
 const num = (v, d) => (Number(v) > 0 ? Number(v) : d);
 const INTERVAL_HOURS = num(process.env.TRASH_SWEEP_INTERVAL_HOURS, 12);
@@ -34,9 +35,10 @@ async function sweepOnce({ days } = {}) {
   let docs = [];
   try {
     docs = await db.query(
-      `SELECT id, name, storage_path FROM documents
-       WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - make_interval(days => $1::int)
-       ORDER BY deleted_at ASC LIMIT $2`,
+      `SELECT d.id, d.name, d.storage_path FROM documents d
+       WHERE d.deleted_at IS NOT NULL AND d.deleted_at < NOW() - make_interval(days => $1::int)
+         AND ${retention.purgeableSql('d')}
+       ORDER BY d.deleted_at ASC LIMIT $2`,
       [retention, BATCH]
     );
   } catch { docs = []; }
@@ -61,9 +63,10 @@ async function sweepOnce({ days } = {}) {
         // document, and afterwards nothing is left to say which objects to remove.
         const { rows: versions } = await client.query('SELECT storage_path FROM document_versions WHERE document_id = $1', [d.id]);
         const { rows: gone } = await client.query(
-          `DELETE FROM documents
-            WHERE id = $1 AND deleted_at IS NOT NULL AND deleted_at < NOW() - make_interval(days => $2::int)
-            RETURNING storage_path`,
+          `DELETE FROM documents d
+            WHERE d.id = $1 AND d.deleted_at IS NOT NULL AND d.deleted_at < NOW() - make_interval(days => $2::int)
+              AND ${retention.purgeableSql('d')}
+            RETURNING d.storage_path`,
           [d.id, retention]
         );
         if (!gone.length) return null;   // restored, or already purged, meanwhile

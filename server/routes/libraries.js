@@ -17,6 +17,7 @@ const { actingAs } = require('../lib/email');
 const appLinks = require('../lib/appLinks');
 const { publicAppBase } = require('../lib/shareLinks');
 const { canonicalFolderPath, folderLookupPath } = require('../lib/documents');
+const retention = require('../lib/retention');
 
 // GET /api/libraries — list libraries the caller can access
 router.get('/', auth, async (req, res) => {
@@ -135,6 +136,42 @@ router.patch('/:id', auth, requireRole('admin', 'contributor'), async (req, res)
       } catch (e) { console.error('audit library rename failed:', e.message); }
     }
     res.json(updated);
+  } catch (e) { serverError(res, e); }
+});
+
+/* Retention: how long this library's files must be kept, and whether untouched files are
+ * disposed of on their own (lib/retention.js). The owner or an admin sets it; anyone who can
+ * see the library may read it, since it says what will happen to files they put there.
+ *
+ *   GET /api/libraries/:id/retention        -> { min_years, dispose_years, set_at, set_by }
+ *   PUT /api/libraries/:id/retention        { min_years, dispose_years }  (blank = none)
+ *   GET /api/libraries/:id/holds            -> active legal holds in this library (for the lock marks)
+ */
+router.get('/:id/retention', auth, async (req, res) => {
+  try {
+    const lib = await libraries.visibleLibrary(req.user, req.params.id);
+    if (!lib) return res.status(404).json({ error: 'Library not found' });
+    res.json(await retention.getPolicy(lib.id));
+  } catch (e) { serverError(res, e); }
+});
+router.put('/:id/retention', auth, requireRole('admin', 'contributor'), async (req, res) => {
+  try {
+    const lib = await libraries.visibleLibrary(req.user, req.params.id);
+    if (!lib) return res.status(404).json({ error: 'Library not found' });
+    if (!lib.can_manage) return res.status(403).json({ error: 'Only the library owner or an admin can set how long its files are kept' });
+    const policy = await retention.setPolicy(lib.id, req.body || {}, req.user);
+    if (!policy) return res.status(404).json({ error: 'Library not found' });
+    res.json(policy);
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    serverError(res, e);
+  }
+});
+router.get('/:id/holds', auth, async (req, res) => {
+  try {
+    const lib = await libraries.visibleLibrary(req.user, req.params.id);
+    if (!lib) return res.status(404).json({ error: 'Library not found' });
+    res.json(await retention.activeHolds({ libraryId: lib.id }));
   } catch (e) { serverError(res, e); }
 });
 

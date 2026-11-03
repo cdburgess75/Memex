@@ -43,7 +43,7 @@ async function settingsSnapshot() {
 async function build() {
   // Refresh runtime probes best-effort so the package reflects current posture.
   try { await compliance.runProbes(); } catch { /* keep last cached probes */ }
-  const [posture, frameworks, updates, access, integrity, firm, snapshot] = await Promise.all([
+  const [posture, frameworks, updates, access, integrity, firm, snapshot, retention] = await Promise.all([
     compliance.summary().catch(() => null),
     compliance.profileStatus().catch(() => []),
     compliance.updateStatus().catch(() => null),
@@ -51,6 +51,7 @@ async function build() {
     auditLog.verify().catch(e => ({ ok: false, error: e.message })),
     firmInfo().catch(() => ({ name: 'Your firm', hostname: '' })),
     settingsSnapshot().catch(() => null),
+    retentionSnapshot().catch(() => ({ libraries: [], holds: [], released: [] })),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -64,7 +65,17 @@ async function build() {
     accessReview: access,
     auditIntegrity: integrity,
     updates,
+    retention,
   };
+}
+
+// Each library's retention policy and every open legal hold (lib/retention.js), for the
+// report's "Retention and legal holds" section: what is kept how long, and what nothing
+// may delete right now, with who placed each hold, when, and why.
+async function retentionSnapshot() {
+  const retention = require('./retention');
+  const [libraries, holds, released] = await Promise.all([retention.policies(), retention.activeHolds(), retention.holdHistory({ limit: 20 })]);
+  return { libraries, holds, released };
 }
 
 const yn = (b) => (b === true ? 'Yes' : b === false ? 'No' : 'Unknown');
@@ -160,6 +171,26 @@ function toMarkdown(b) {
     for (const p of ar.pendingShares) lines.push(`- ${esc(p.email)}: ${list([...(p.libraryAccess || []), ...(p.folderAccess || [])])}`);
     lines.push('');
   }
+
+  // Retention and legal holds
+  const rt = b.retention || {};
+  lines.push('## Retention and legal holds');
+  lines.push('');
+  lines.push('| Library | Kept at least | Disposed of after | Set by |');
+  lines.push('|---|---|---|---|');
+  for (const l of rt.libraries || []) {
+    const who = l.set_by ? `${esc(l.set_by)} @ ${esc(l.set_at)}` : '';
+    lines.push(`| ${esc(l.name)}${l.personal ? ' (personal)' : ''}${l.archived ? ' (put away)' : ''} | ${l.min_years ? `${l.min_years} year(s)` : '—'} | ${l.dispose_years ? `${l.dispose_years} year(s) without changes` : '—'} | ${who} |`);
+  }
+  lines.push('');
+  if ((rt.holds || []).length) {
+    lines.push('| Legal hold on | Since | Placed by | Reason |');
+    lines.push('|---|---|---|---|');
+    for (const hd of rt.holds) lines.push(`| ${esc(hd.where)} | ${esc(hd.placed_at)} | ${esc(hd.placed_by || '')} | ${esc(hd.reason)} |`);
+  } else {
+    lines.push('No legal hold is in place.');
+  }
+  lines.push('');
 
   // Update posture
   if (b.updates) {
@@ -421,6 +452,15 @@ function toReportHtml(b, frameworkId, shapeId) {
     ['Server', b.firm?.hostname || '—'],
   ].map(([k, v]) => `<tr><td>${h(k)}</td><td>${h(v)}</td></tr>`).join('');
 
+  const rt = b.retention || { libraries: [], holds: [], released: [] };
+  const retentionRows = (rt.libraries || []).map(l =>
+    `<tr><td>${h(l.name)}${l.personal ? '<div class="why">Personal library</div>' : ''}${l.archived ? '<div class="why">Put away</div>' : ''}</td><td>${l.min_years ? h(plural(l.min_years, 'year')) : '—'}</td><td>${l.dispose_years ? `${h(plural(l.dispose_years, 'year'))} without changes` : '—'}</td><td>${l.set_by ? `${h(l.set_by)}, ${h(longDate(l.set_at))}` : '—'}</td></tr>`
+  ).join('');
+  const holdRows = (rt.holds || []).map(hd =>
+    `<tr><td>${h(hd.where)}</td><td>${h(longDate(hd.placed_at))}</td><td>${h(hd.placed_by || '')}</td><td>${h(hd.reason)}</td></tr>`).join('');
+  const releasedRows = (rt.released || []).slice(0, 10).map(hd =>
+    `<tr><td>${h(hd.where)}</td><td>${h(longDate(hd.placed_at))}, ${h(hd.placed_by || '')}: ${h(hd.reason)}</td><td>${h(longDate(hd.released_at))}, ${h(hd.released_by || '')}</td><td>${h(hd.release_note || '')}</td></tr>`).join('');
+
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${h(firm)} — ${h(short)} report — ${h(b.generatedAt.slice(0, 10))}</title>
@@ -464,7 +504,7 @@ function toReportHtml(b, frameworkId, shapeId) {
       <dt>Framework</dt><dd>${h(fw.name)}</dd>
       <dt>System</dt><dd>Depot ${h(b.version)}${b.firm?.hostname ? `, ${h(b.firm.hostname)}` : ''}</dd>
       <dt>Where it runs</dt><dd>On the ${h(R.who)}'s own server</dd>
-      <dt>Sections</dt><dd>1 ${h(R.section1)} · 2 ${h(R.checklist)} · 3 Who has access · 4 Audit-log check · 5 Settings</dd>
+      <dt>Sections</dt><dd>1 ${h(R.section1)} · 2 ${h(R.checklist)} · 3 Who has access · 4 Audit-log check · 5 Settings · 6 Retention and legal holds</dd>
     </dl>
   </div>
   <p class="disc">Produced by Depot from its own settings and records. It describes this system as it stood on the date above. ${h(R.disclaimer)}</p>
@@ -499,6 +539,15 @@ function toReportHtml(b, frameworkId, shapeId) {
 <section>
   <h2><small>Section 5</small>Settings this ${h(R.what)} relies on</h2>
   <table><thead><tr><th>Setting</th><th>Value on ${h(date)}</th></tr></thead><tbody>${snapshot}</tbody></table>
+</section>
+
+<section>
+  <h2><small>Section 6</small>Retention and legal holds</h2>
+  <p>Each library can say how long its files are kept: a minimum (nothing in it is deleted for good before a file is that old) and, where set, a limit after which a file nobody has changed is moved to the trash on its own, its owner told 30 days ahead. A legal hold stops every deletion, purge, replacement or move of what it covers until an administrator releases it with a note; each hold and release is in the audit record.</p>
+  <table><thead><tr><th>Library</th><th>Kept at least</th><th>Disposed of after</th><th>Set by</th></tr></thead><tbody>${retentionRows || '<tr><td colspan="4">No library yet.</td></tr>'}</tbody></table>
+  <p class="note">${holdRows ? `${plural(rt.holds.length, 'legal hold')} in place on ${h(date)}:` : 'No legal hold is in place.'}</p>
+  ${holdRows ? `<table><thead><tr><th>Hold on</th><th>Since</th><th>Placed by</th><th>Reason</th></tr></thead><tbody>${holdRows}</tbody></table>` : ''}
+  ${releasedRows ? `<p class="note">Released recently:</p><table><thead><tr><th>Hold on</th><th>Placed</th><th>Released</th><th>Note</th></tr></thead><tbody>${releasedRows}</tbody></table>` : ''}
 </section>
 </main></body></html>`;
 }

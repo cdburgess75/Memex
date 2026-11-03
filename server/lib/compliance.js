@@ -40,6 +40,8 @@ const FRAMEWORKS = [
       req('backup_restore', '314.4(c)(1) and (h)', '314.4(c)(1) and (h): you can get client information back after a failure or an incident.'),
       req('link_governance', '314.4(c)(1)', '314.4(c)(1): limit who can reach client information, and for how long.'),
       req('retention', '314.4(c)(6)', '314.4(c)(6): dispose of client information when it is no longer needed. (Tax returns themselves stay at least three years under IRC 6107; Depot keeps a file until someone deletes it.)'),
+      req('retention_policy', '314.4(c)(6)', '314.4(c)(6): client information is kept no longer than needed, and each library says how long its files are kept (the IRS asks tax preparers to keep returns three years, IRC §6107).'),
+      req('legal_hold', '314.4(c)(6)', '314.4(c)(6): a file that must be kept for a dispute or an inquiry can be put under a legal hold, so disposal never reaches it.'),
       req('vulnerability_management', '314.4(d)(2)', '314.4(d)(2): a yearly penetration test and vulnerability scans every six months, unless the system is watched continuously.'),
       req('wisp', '314.4', '314.4: the rule is a written program. IRS Pub 5708 is a free template; the IRS asks about it at PTIN renewal.'),
       req('qualified_individual', '314.4(a)', '314.4(a): a named Qualified Individual runs the program and reports to the owners.'),
@@ -67,6 +69,8 @@ const FRAMEWORKS = [
       req('audit_logging', 'CC7.2', 'CC7.2: what happens in the system is recorded and can be reviewed.'),
       req('signin_events', 'CC6.1 and CC7.2', 'CC6.1 and CC7.2: sign-ins and failed sign-ins are recorded and watched.'),
       req('backup_restore', 'A1.2', 'A1.2: data is backed up and can be recovered.'),
+      req('retention_policy', 'CC6.5', 'CC6.5: data is kept for a set time and disposed of when it is no longer needed, by a written rule per library.'),
+      req('legal_hold', 'CC6.5', 'CC6.5: disposal can be stopped for a file, folder or library under a legal hold.'),
       req('change_management', 'CC8.1', 'CC8.1: changes to the system are tracked and released in an orderly way.'),
       req('vendor_ai', 'CC9.2', 'CC9.2: outside services that see data (an AI provider, say) are known and managed.'),
       req('incident_response', 'CC7.4', 'CC7.4: there is a written plan for responding to an incident.'),
@@ -94,6 +98,8 @@ const FRAMEWORKS = [
       req('access_review', '164.308(a)(4)', '164.308(a)(4): who may reach patient files is reviewed, and access is taken away when it is no longer needed.'),
       req('malware_scanning', '164.308(a)(5)(ii)(B)', '164.308(a)(5)(ii)(B): files are checked for malicious software.'),
       req('backup_restore', '164.308(a)(7)(ii)(A)', '164.308(a)(7)(ii)(A): an exact copy of patient files can be recovered after a failure.'),
+      req('retention_policy', '164.316(b)(2)', '164.316(b)(2): records are kept for six years from when they were made or last in effect; each library says how long its files are kept.'),
+      req('legal_hold', '164.316(b)(2)', '164.316(b)(2): a file that must be kept for an inquiry or a dispute can be put under a legal hold, so nothing disposes of it.'),
       req('vendor_ai', '164.308(b)(1)', '164.308(b)(1): an outside service that sees file contents (an AI provider, say) is a business associate and needs an agreement, or stays off.'),
     ],
   },
@@ -163,6 +169,8 @@ const FRAMEWORKS = [
       req('malware_scanning', 'Detect, DE.CM-09', 'Detect (DE.CM-09): files are checked for malicious software.'),
       req('incident_response', 'Respond, RS.MA-01', 'Respond (RS.MA-01): a written plan says who does what when something goes wrong.'),
       req('backup_restore', 'Recover, RC.RP-01', 'Recover (RC.RP-01): backups run and can be restored, so work resumes after a failure.'),
+      req('retention_policy', 'Govern, GV.PO-01', 'Govern (GV.PO-01): a written rule says how long each library\'s files are kept and when they are disposed of.'),
+      req('legal_hold', 'Protect, PR.DS-01', 'Protect (PR.DS-01): a file that must be kept can be put under a legal hold, so nothing disposes of it.'),
     ],
   },
   {
@@ -179,6 +187,8 @@ const FRAMEWORKS = [
       req('encryption', 'Annex A 8.24', 'Annex A 8.24: data is encrypted where it is stored.'),
       req('audit_logging', 'Annex A 8.15', 'Annex A 8.15: what happens in the system is recorded and protected from editing.'),
       req('backup_restore', 'Annex A 8.13', 'Annex A 8.13: backups run and are tested.'),
+      req('retention_policy', 'Annex A 5.33 and 8.10', 'Annex A 5.33 and 8.10: records are kept for a set time and deleted when no longer needed, by a rule per library.'),
+      req('legal_hold', 'Annex A 5.33', 'Annex A 5.33: a file that must be kept for a legal matter can be put under a legal hold.'),
       req('change_management', 'Annex A 8.32', 'Annex A 8.32: changes to the system are tracked and released in an orderly way.'),
       req('incident_response', 'Annex A 5.24', 'Annex A 5.24: a written plan says who does what when something goes wrong.'),
     ],
@@ -357,6 +367,19 @@ const CONTROL_CATALOG = {
     gap: 'Start the scanner on the server (COMPOSE_PROFILES=clamav in .env, then upgrade.sh) and switch scanning on in Settings › Storage & backups.',
     fix: 'settings:malware_scan_enabled',
   },
+  retention_policy: {
+    label: 'Each library says how long its files are kept',
+    evidence: 'A library can say "keep at least N years" (nothing in it is deleted for good before then) and "move to the trash after N years without changes".',
+    gap: 'Open each shared library\'s menu, choose Retention, and set how long its files must be kept (tax returns: 3 years; patient files: 6 years).',
+    fix: 'retention',
+  },
+  legal_hold: {
+    label: 'A legal hold can stop any deletion',
+    evidence: 'An administrator can put a file, a folder or a whole library under a legal hold with a reason; while it is held, nothing can delete, purge, replace or move it, and every hold and release is in the record.',
+    gap: 'Place a hold when a dispute or an inquiry starts (the Legal hold item in a library, folder or file menu), or confirm here that your office knows how.',
+    fix: 'holds',
+    attestable: true,
+  },
 };
 
 // Live, config-based signal for each auto-detectable control. Each returns
@@ -447,17 +470,24 @@ const CHECKS = {
     };
   },
   retention: async () => {
-    // Disposal on a schedule: the trash must empty itself, and within a quarter.
+    // Disposal on a schedule: the trash must empty itself, and within a quarter. The
+    // per-library policies (lib/retention.js) are counted here too; retention_policy
+    // judges them.
     const raw = await settings.getOrEnv('trash_retention_days');
     const days = raw == null || raw === '' ? 30 : Number(raw);   // 30 is the sweeper's default
     const ok = Number.isFinite(days) && days > 0 && days <= 90;
+    let libs = '';
+    try {
+      const p = await require('./retention').policySummary();
+      if (p.total) libs = ` Of ${p.total} shared librar${p.total === 1 ? 'y' : 'ies'}, ${p.withMinimum} ${p.withMinimum === 1 ? 'has' : 'have'} a minimum time files are kept, ${p.withDisposal} dispose${p.withDisposal === 1 ? 's' : ''} of untouched files on their own, and ${p.withNone} ${p.withNone === 1 ? 'has' : 'have'} no policy.`;
+    } catch { /* counted when the table exists */ }
     return {
       ready: ok,
-      evidence: ok
+      evidence: (ok
         ? `Deleted files are purged after ${days} day${days === 1 ? '' : 's'} in the trash; until then they can be restored.`
         : days === 0
           ? 'The trash never empties itself — deleted files stay on disk until someone purges them.'
-          : `Deleted files stay in the trash for ${days} days before purge — longer than the 90 days this profile expects.`,
+          : `Deleted files stay in the trash for ${days} days before purge — longer than the 90 days this profile expects.`) + libs,
     };
   },
   session_timeout: async () => {
@@ -532,6 +562,37 @@ const CHECKS = {
       ready: true,
       evidence: `Every upload is scanned (${st.version || 'ClamAV'}, signatures from ${st.signatureDate ? day(st.signatureDate) : 'an unknown date'}); the scanner answered ${st.checkedAt ? when(st.checkedAt) : 'recently'}. Last scan ${st.lastScanAt ? when(st.lastScanAt) : 'not yet'}. ${refusedLine}.`,
     };
+  },
+  retention_policy: async () => {
+    // The rule, stated so the office manager can check it: every shared library (one
+    // that is not somebody's personal library and has not been put away) says how long
+    // its files are kept. Personal libraries hold somebody's own parked files, not the
+    // firm's client records, so they are not counted.
+    const retention = require('./retention');
+    const p = await retention.policySummary();
+    const rule = 'The rule: every shared library (not a personal one, not one put away) must say how long its files are kept.';
+    if (!p.total) return { ready: false, evidence: `There is no shared library yet. ${rule}` };
+    const named = (p.libraries || []).filter(l => l.client && l.min_years).map(l => `“${l.name}” ${l.words}`).join('; ');
+    if (p.missingMinimum.length) {
+      return {
+        ready: false,
+        evidence: `${p.missingMinimum.length} of ${p.total} shared librar${p.total === 1 ? 'y' : 'ies'} ${p.missingMinimum.length === 1 ? 'has' : 'have'} no minimum: ${p.missingMinimum.map(n => `“${n}”`).join(', ')}.${named ? ` Set: ${named}.` : ''} ${rule}`,
+      };
+    }
+    return { ready: true, evidence: `Every shared library says how long its files are kept: ${named}. ${rule}` };
+  },
+  legal_hold: async () => {
+    // Green once the feature has been used (a hold placed, open or since released); an
+    // office that has never needed one confirms instead that it knows how.
+    const retention = require('./retention');
+    const [counts, active] = await Promise.all([retention.holdCounts(), retention.activeHolds()]);
+    const day = (iso) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const list = active.slice(0, 5).map(h => `${h.where} since ${day(h.placed_at)} (${h.placed_by || 'an administrator'}: ${h.reason})`).join('; ');
+    const openLine = active.length
+      ? `${active.length} hold${active.length === 1 ? '' : 's'} in place: ${list}${active.length > 5 ? '; …' : ''}.`
+      : 'No hold is in place right now.';
+    if (!counts.ever) return { ready: false, evidence: `A hold has never been placed. ${openLine} An administrator places one from a library, folder or file menu; while it is held, nothing can delete, purge, replace or move it.` };
+    return { ready: true, evidence: `Legal holds are in use: ${counts.ever} placed so far, ${counts.active} open. ${openLine} While a file is held, nothing can delete, purge, replace or move it, by anyone, and each hold and release is in the record.` };
   },
 };
 

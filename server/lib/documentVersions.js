@@ -18,6 +18,8 @@ async function maxDocumentVersions() {
 async function pruneOldVersions(documentId) {
   const max = await maxDocumentVersions();
   if (!max) return { deleted: 0 };
+  // A held file keeps every version it has: pruning is the one way its history could shrink.
+  try { if (await db.queryOne(`SELECT 1 FROM documents d WHERE d.id = $1 AND ${require('./retention').heldSql('d')}`, [documentId])) return { deleted: 0 }; } catch { /* asked below as before */ }
   let old = [];
   try {
     old = await db.query(
