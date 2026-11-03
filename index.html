@@ -1457,6 +1457,35 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
 .cmp-foot { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--rule-soft); }
 .cmp-foot .grow { flex: 1; }
 .cmp-toggle-inline { display: inline-flex; align-items: center; gap: 6px; font: 600 13px var(--ui); }
+/* The simple view: one light, one download, then the short lists. */
+.cmp-simple { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 28px 24px; }
+.cmp-light { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 14px; align-items: start; padding: 18px 20px; border-radius: 12px; border: 1px solid var(--rule); background: var(--surface-2); }
+.cmp-light h3 { margin: 0 0 4px; font: 700 20px/1.25 var(--ui); color: var(--ink); }
+.cmp-light p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-soft); max-width: 70ch; }
+.cmp-light-dot { width: 22px; height: 22px; border-radius: 50%; margin-top: 3px; box-shadow: 0 0 0 5px color-mix(in oklab, currentColor 18%, transparent); }
+.cmp-light.ok .cmp-light-dot { color: var(--success); background: var(--success); }
+.cmp-light.partial .cmp-light-dot { color: var(--warning); background: var(--warning); }
+.cmp-light.no .cmp-light-dot { color: var(--danger); background: var(--danger); }
+.cmp-simple-act { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin: 16px 0 8px; }
+.cmp-simple-act .run-btn { min-height: 44px; padding: 0 22px; font-size: 15px; }
+.cmp-simple-act .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-soft); text-decoration: underline; cursor: pointer; } html.dark .cmp-simple-act .link-btn { color: var(--accent); }
+.cmp-h4 { margin: 26px 0 4px; font: 700 16px var(--ui); color: var(--ink); }
+.cmp-sub { margin: 0 0 6px; font-size: 14px; color: var(--ink-soft); max-width: 70ch; }
+.cmp-rows { display: grid; }
+.cmp-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 16px; padding: 14px 0; border-top: 1px solid var(--rule-soft); }
+.cmp-row:first-child { border-top: 0; }
+.cmp-why { margin-top: 6px; font-size: 13px; color: var(--ink-faint); max-width: 78ch; }
+.cmp-att-btn.primary { border-color: var(--accent); color: var(--accent-soft); } html.dark .cmp-att-btn.primary { color: var(--accent); }
+.cmp-adv { margin-top: 28px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.cmp-adv > summary { cursor: pointer; font: 600 14px var(--ui); color: var(--ink-soft); padding: 8px 0; }
+.cmp-adv > summary:hover { color: var(--ink); }
+.cmp-adv .cmp-main { height: 540px; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-top: 10px; }
+.cmp-adv-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+@media (max-width: 820px) {
+  .cmp-simple { padding: 14px 16px 20px; }
+  .cmp-row { grid-template-columns: minmax(0, 1fr); }
+  .cmp-adv .cmp-main { height: auto; }
+}
 @media (max-width: 820px) {
   .cmp-modal { width: 100vw; height: 100dvh; border-radius: 0; border: 0; display: block; overflow-y: auto; }
   .cmp-detail { overflow: visible; } .cmp-foot .grow { display: none; }
@@ -4871,7 +4900,8 @@ function updateComplianceIndicator(summary) {
   const cls = { ok: 'ok', warn: 'warning', crit: 'critical', off: 'info' };
   const status = summary?.status || 'info';
   btn.className = `security-indicator ${cls[status] || 'info'} admin-menu-item`;
-  btn.innerHTML = `<span class="st-name">Compliance</span><span class="st-state">${(summary && summary.total) ? `${Number(summary.ready)} of ${Number(summary.total)} ready` : 'Not set up'}</span>`;
+  const open = summary ? Number(summary.total) - Number(summary.ready) : 0;
+  btn.innerHTML = `<span class="st-name">Compliance</span><span class="st-state">${(summary && summary.total) ? (open ? `${open} to fix` : 'Ready') : 'Not set up'}</span>`;
   btn.title = (summary && summary.enabledFrameworks)
     ? `${summary.ready} of ${summary.total} controls ready · ${summary.enabledFrameworks} framework(s) enabled`
     : 'Compliance readiness';
@@ -5349,6 +5379,7 @@ async function openComplianceStatus() {
 // One framework is read at a time. Which one, and "gaps only", survive a re-render (a live
 // check or an attestation redraws the window) but not closing it.
 let _cmpSel = null, _cmpGapsOnly = false;
+let _cmpAdvOpen = false; // the Advanced fold in the simple view stays as the admin left it across redraws
 const CMP_STATE = {
   ok: ['Ready', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'],
   partial: ['Partly', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg>'],
@@ -5358,6 +5389,60 @@ const cmpStateOf = (c) => (c.ready === true ? 'ok' : c.ready === false ? 'no' : 
 function cmpBar(controls) {
   const n = controls.length || 1, ok = controls.filter(c => c.ready === true).length, part = controls.filter(c => c.ready !== true && c.ready !== false).length;
   return `<span class="cmp-bar" aria-hidden="true"><span class="ok" style="width:${ok / n * 100}%"></span><span class="partial" style="width:${part / n * 100}%"></span></span>`;
+}
+// Where an admin puts a control right. Keys come from the server catalog's `fix`.
+const CMP_FIX = {
+  'setup:mfa': ['signin', 'Open sign-in settings'],
+  'settings:share_link_max_days': ['server', 'Set the link limit'],
+  'settings:trash_retention_days': ['server', 'Set trash retention'],
+  'settings:storage_encryption_key': ['storage', 'Open storage settings'],
+  'settings:app_url': ['workspace', 'Open workspace settings'],
+  'backup': ['storage', 'Open backups'],
+};
+function cmpFix(key) { const f = CMP_FIX[key]; if (!f) return; closeComplianceStatus(); openSettingsAt(f[0]); }
+// One light, one download. Shown when exactly one framework is tracked — a CPA office
+// tracks the Safeguards Rule and nothing else — so the page answers "are we OK?" and
+// "where is the paperwork?" before it shows a single control.
+function cmpSimpleHtml(fw, data, isAdmin) {
+  const auto = fw.controls.filter(c => !c.manual), manual = fw.controls.filter(c => c.manual);
+  const todo = auto.filter(c => c.ready !== true), unconfirmed = manual.filter(c => c.ready !== true);
+  const open = todo.length + unconfirmed.length;
+  const state = !open ? 'ok' : todo.length ? 'no' : 'partial';
+  const title = !open ? `${esc(fw.name)}: ready` : `${open} thing${open === 1 ? '' : 's'} to do`;
+  const line = !open
+    ? `This Depot is set up the way the ${esc(fw.name)} expects, and every item your firm confirms is confirmed. Download the packet below for your records.`
+    : todo.length
+      ? `${todo.length === 1 ? 'One setting is' : `${todo.length} settings are`} not where the rule expects${unconfirmed.length ? `, and ${unconfirmed.length} item${unconfirmed.length === 1 ? '' : 's'} your firm confirms ${unconfirmed.length === 1 ? 'is' : 'are'} still unconfirmed` : ''}. The packet still downloads; it will say what is left.`
+      : `Depot's own settings are ready. ${unconfirmed.length} item${unconfirmed.length === 1 ? '' : 's'} your firm confirms ${unconfirmed.length === 1 ? 'is' : 'are'} still unconfirmed.`;
+  const meta = (c) => c.attestation?.by ? `<span class="cmp-att-meta">Confirmed by ${esc(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ` · ${esc(c.attestation.note)}` : ''}</span>` : '';
+  const confirmBtn = (c, word) => isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear' : word}</button>` : '';
+  const todoRows = todo.map(c => {
+    const fix = c.fix && CMP_FIX[c.fix] && isAdmin ? `<button type="button" class="cmp-att-btn primary" data-fix="${escAttr(c.fix)}" onclick="cmpFix(this.dataset.fix)">${esc(CMP_FIX[c.fix][1])}</button>` : '';
+    return `<div class="cmp-row"><span class="cmp-state no">${CMP_STATE.no[1]}To do</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${c.gap ? `<div class="cmp-check-gap"><b>What to do</b>${esc(c.gap)}</div>` : ''}${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${fix}${c.attestable ? confirmBtn(c, 'Confirm it is handled elsewhere') : ''}${meta(c)}</div></div></div>`;
+  }).join('');
+  const confirmRows = manual.map(c => `<div class="cmp-row"><span class="cmp-state ${c.ready ? 'ok' : 'partial'}">${c.ready ? CMP_STATE.ok[1] + 'Confirmed' : CMP_STATE.partial[1] + 'Not yet'}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.ready ? (c.evidence || '') : (c.gap || c.evidence || ''))}</div>${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${confirmBtn(c, 'Confirm')}${meta(c)}</div></div></div>`).join('');
+  const checked = data.probes?.lastRun ? `Live checks last ran ${new Date(data.probes.lastRun).toLocaleString()}.` : 'Live checks have not run yet.';
+  return `<div class="cmp-light ${state}" role="status"><span class="cmp-light-dot" aria-hidden="true"></span><div><h3>${title}</h3><p>${line}</p></div></div>`
+    + `<div class="cmp-simple-act">${isAdmin ? `<button type="button" class="run-btn" onclick="downloadSafeguardsPacket(this)">Download your Safeguards packet</button>` : ''}<span class="cmp-probe-meta">${esc(checked)} ${isAdmin ? `<button type="button" class="link-btn" onclick="runComplianceProbes(this)">Run them now</button>` : ''}</span></div>`
+    + (todo.length ? `<h4 class="cmp-h4">Things to fix in Depot</h4><div class="cmp-rows">${todoRows}</div>` : '')
+    + `<h4 class="cmp-h4">Things your firm confirms</h4><p class="cmp-sub">Depot cannot see these. Confirm each once it is true; who confirmed it, and when, goes into the packet.</p><div class="cmp-rows">${confirmRows}</div>`;
+}
+// The packet is built on the server (lib/evidence.js) from live settings and records.
+async function downloadSafeguardsPacket(btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const res = await fetch('/api/admin/compliance/packet.html', { headers: { Authorization: `Bearer ${await getToken()}` } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `safeguards-packet-${new Date().toISOString().slice(0, 10)}.html`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Packet downloaded. Open it and print to PDF for your records.');
+  } catch (e) { toast('Download failed: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
 }
 function renderComplianceModal(data) {
   complianceData = data;
@@ -5395,10 +5480,17 @@ function renderComplianceModal(data) {
   }
   const all = fws.filter(f => f.enabled).flatMap(f => f.controls), allReady = all.filter(c => c.ready === true).length;
   const probeLine = data.probes?.lastRun ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}` : 'Live checks have not been run yet';
-  m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
-    + `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${fws.filter(f => f.enabled).length} tracked framework${fws.filter(f => f.enabled).length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div></div>`
-    + `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`
-    + `<div class="cmp-foot">${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button><span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+  const tracked = fws.filter(f => f.enabled);
+  const simple = tracked.length === 1 ? tracked[0] : null;
+  const browser = `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`;
+  const tools = `${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button>`;
+  if (m.classList) m.classList.toggle('cmp-is-simple', !!simple);
+  m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">${simple ? 'Compliance' : 'Compliance readiness'}</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
+    + (simple ? '' : `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${tracked.length} tracked framework${tracked.length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div>`) + `</div>`
+    + (simple
+        ? `<div class="cmp-simple">${cmpSimpleHtml(simple, data, isAdmin)}<details class="cmp-adv" ${_cmpAdvOpen ? 'open' : ''} ontoggle="_cmpAdvOpen = this.open"><summary>Advanced: every control, other frameworks, live checks, and the raw evidence</summary>${browser}<div class="cmp-adv-tools">${tools}</div></details></div>`
+        : browser)
+    + `<div class="cmp-foot">${simple ? '' : tools}<span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
 }
 function cmpSelect(id) { _cmpSel = id; if (complianceData) renderComplianceModal(complianceData); const d = document.getElementById('cmp-detail'); if (d) d.scrollTop = 0; document.querySelector('.cmp-fw[aria-selected="true"]')?.focus({ preventScroll: true }); }
 function cmpGapsOnly(on) { _cmpGapsOnly = !!on; if (complianceData) renderComplianceModal(complianceData); }
@@ -6094,6 +6186,18 @@ async function saveMs365Login(enable) {
    /setup/session-length accepts; a length set another way (kcadm) is shown as it is. */
 const SESSION_HOUR_CHOICES = [[10, '10 hours'], [24, '1 day'], [168, '1 week'], [336, '2 weeks'], [720, '30 days']];
 function sessionHoursLabel(h) { return SESSION_HOUR_CHOICES.find(([v]) => v === h)?.[1] || (h % 24 === 0 ? `${h / 24} days` : `${h} hours`); }
+// Same route as the setup wizard's switch; mfa_required is a DB-only setting, so the
+// box reads it from the compliance data when the settings read does not carry it.
+async function settingsToggleMfa(enable) {
+  const out = document.getElementById('cfg-mfa-result');
+  if (out) out.innerHTML = '<span class="setup-muted">Applying…</span>';
+  try {
+    const r = await apiPost('/setup/mfa', { enable });
+    if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ ${enable ? 'Required — people set up an authenticator at their next sign-in.' : 'No longer required.'}</span>` : `<span class="setup-err">${esc(r.error || 'Failed')} ${esc(r.hint || '')}</span>`;
+    if (settingsSys) settingsSys.mfa_required = enable ? 'true' : '';
+    loadComplianceSummary();
+  } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
+}
 async function loadSessionLength() {
   const sel = document.getElementById('cfg-session-hours');
   if (!sel) return;
@@ -6180,6 +6284,7 @@ async function saveNetworkSettings() {
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     api_token_rate_limit: document.getElementById('cfg-api-token-rate')?.value || '6000',
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
+    share_link_max_days: document.getElementById('cfg-share-link-max-days')?.value.trim() || '',
     blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
   };
   try {
@@ -6485,7 +6590,7 @@ function switchSettingsTab(tab) {
   else if (tab === 'activity' && admin) { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
   else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); loadAdminTokens(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
-  else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'How long a sign-in lasts'); loadSessionLength(); }
+  else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'A second step at sign-in', 'How long a sign-in lasts'); loadSessionLength(); }
   else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
   else if (tab === 'license' && admin) { body.innerHTML = licenseSettingsHtml(licenseStatus); loadLicenseSettings(); }
@@ -7613,6 +7718,10 @@ function systemSettingsHtml() {
         <span class="setup-result" id="cfg-ldap-result"></span>
       </div>
 
+      <div class="settings-sub" style="margin-top:20px">A second step at sign-in</div>
+      <p class="settings-notice">With this on, everyone with a local (password) account must also enter a code from an authenticator app. People who sign in with Microsoft 365 or Active Directory are not affected: their second step is their own provider's to require.</p>
+      <label class="setup-check" style="margin-bottom:6px"><input type="checkbox" id="cfg-mfa-required" ${s.mfa_required==='true'?'checked':''} onchange="settingsToggleMfa(this.checked)"> Require an authenticator app for password sign-ins</label>
+      <div id="cfg-mfa-result" class="setup-result" style="margin-bottom:4px"></div>
       <div class="settings-sub" style="margin-top:20px">How long a sign-in lasts</div>
       <p class="settings-notice">Everyone is asked to sign in again after this long, on every computer and phone, however they sign in. A change applies from the next sign-in; people already signed in keep their current session until it ends. If someone told Microsoft to keep them signed in, Microsoft 365 may sign them straight back in without asking for a password.</p>
       <div class="settings-grid">
@@ -7671,6 +7780,8 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-api-token-rate" value="${esc(s.api_token_rate_limit||'6000')}" min="60" max="1000000" step="1" title="How many requests one API token may make in 15 minutes. Over it, the token gets 429 answers until the window passes. Sign-ins from the app are not held to this.">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
+        <label for="cfg-share-link-max-days">Longest a share link may live (days) <span style="font-size:10px;color:var(--ink-faint)">(empty means no limit, and links may be set to never expire)</span></label>
+        <input type="number" id="cfg-share-link-max-days" value="${esc(s.share_link_max_days||'')}" min="1" max="365" step="1" placeholder="No limit" title="Applies to every link to someone outside: file links, folder links, and send-by-email. A longer choice is trimmed to this; 'never' is refused.">
         <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; empty means nothing is refused)</span></label>
         <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder="Nothing is refused. To refuse types, list them: .exe .bat .msi">
       </div>
@@ -11279,7 +11390,9 @@ async function openShareSelected({ openAccess = false } = {}) {
     + `<p class="share-how" id="share-how" hidden></p>`
     + `</div></div>`
     + `<div class="share-q" id="share-q3"><div class="share-q-num">3</div><div class="share-q-body"><div class="share-q-title">How long and how locked</div>`
-    + `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`
+    + (shareLinkCap()
+        ? `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" checked disabled> Expires on<span class="share-toggle-hint">Links here last at most ${shareLinkCap()} days.</span></label><input type="date" class="share-inline-input" id="share-expiry-date" value="${dateInDays(Math.min(7, shareLinkCap()))}" min="${dateInDays(1)}" max="${dateInDays(shareLinkCap())}">`
+        : `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`)
     + `<label class="share-toggle"><input type="checkbox" id="share-pw-on" onchange="shareToggle('pw')"> Require a password</label><input type="password" class="share-inline-input" id="share-pw" hidden placeholder="Password" autocomplete="new-password">`
     + `<label class="share-toggle" id="share-upload-row"><input type="checkbox" id="share-upload-on"> Let people outside send files back<span class="share-toggle-hint">They land beside this file, and you are told. Applies to invited people who have no account here.</span></label>`
     + `</div></div>`
@@ -11438,6 +11551,20 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
   }
 }
 
+// The admin cap on how long a link may live (/api/config shareLinkMaxDays); null = none.
+function shareLinkCap() { const n = Number(appConfig?.shareLinkMaxDays); return Number.isFinite(n) && n > 0 ? n : null; }
+// <option>s for an expiry <select>: the given day choices trimmed to the cap, the cap
+// itself added when no choice equals it, and "Never" only when there is no cap.
+function expiryOptionsHtml(days, selected) {
+  const cap = shareLinkCap();
+  let list = cap ? days.filter(d => d > 0 && d <= cap) : days.filter(d => d > 0);
+  if (cap && !list.includes(cap)) list.push(cap);
+  list = [...new Set(list)].sort((a, b) => a - b);
+  const sel = cap ? Math.min(selected, cap) : selected;
+  return list.map(d => `<option value="${d}"${d === sel ? ' selected' : ''}>${d} days</option>`).join('') + (cap ? '' : `<option value="0"${selected === 0 ? ' selected' : ''}>Never</option>`);
+}
+// yyyy-mm-dd for the date input, n days from now.
+function dateInDays(n) { const d = new Date(Date.now() + n * 864e5); return d.toISOString().slice(0, 10); }
 function permissionLabel(permission) {
   return permission === 'admin' ? 'Can manage' : permission === 'write' ? 'Can edit' : 'Can view';
 }
@@ -12937,11 +13064,11 @@ async function openFolderShare(path) {
     <section class="file-share-section"><h3>People and groups</h3>${canManage ? `${accessTabsHtml()}<div class="ls-mount" data-view-panel="share"></div><div class="acc-mount" data-view-panel="access" hidden></div>` : '<div class="acc-mount"></div><p class="file-share-hint" style="margin-top:8px">Only the library owner or an admin can share it further.</p>'}<div class="fs-legacy"></div></section>
     ${canLink ? `<section class="file-share-section" style="margin-top:22px"><h3>Send to people</h3><p class="file-share-hint">Each person is emailed their own link to a page that lists this folder: they can download files one at a time, or the folder as a ZIP. It shows the folder as it is, including what is added later, and you are told the first time each of them opens it. A colleague with a Depot account signs in to open theirs; anyone else gets a link that works for whoever holds it, so add a password if it must not be forwarded.${canManage ? ' To give a colleague ongoing access instead, add them under People and groups above.' : ''}</p>
       <div class="share-people" style="margin-top:8px"><div class="share-chips" id="fsend-chips"></div><input class="share-email-input" id="fsend-input" type="email" autocomplete="off" aria-label="Add people by email" placeholder="Add people by email, then press Enter" onkeydown="folderSendKey(event)" onblur="folderSendCommit(this)"></div>
-      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div><label class="share-toggle"><input type="checkbox" id="fsend-upload"> Let them add files to this folder<span class="share-toggle-hint">Their page gets an upload area. Files land in this folder, belong to you, and you are told when one arrives. Large files are fine.</span></label>
+      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry">${expiryOptionsHtml([7, 30, 90], 30)}</select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div><label class="share-toggle"><input type="checkbox" id="fsend-upload"> Let them add files to this folder<span class="share-toggle-hint">Their page gets an upload area. Files land in this folder, belong to you, and you are told when one arrives. Large files are fine.</span></label>
       <div class="btn-row"><button class="run-btn" id="fsend-go" onclick="sendFolderToPeople()" disabled>Send</button></div>
       <div class="share-how" id="fsend-result" role="status"></div>
       </section><section class="file-share-section" style="margin-top:22px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates one link, no sign-in needed, to a page that lists this folder's files for download (one at a time, or as a ZIP). It covers only the files in the folder right now, because a link like this can be forwarded to anyone.</p>
-      <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
+      <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry">${expiryOptionsHtml([7, 30, 90], 7)}</select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
       <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
       <div class="file-share-result" id="folder-share-result"><input class="file-share-url" id="folder-share-url" readonly><button class="file-library-tool" onclick="copyFolderShareUrl()">Copy link</button></div>
       <div class="file-share-list" id="folder-share-list">${emptyState('Loading links', 'Checking existing links for this folder.')}</div>

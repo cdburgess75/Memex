@@ -20,7 +20,7 @@ test('the section exists, with a labelled select and a Save button', () => {
 });
 
 test('the Sign-in tab renders both sections and loads the current length', () => {
-  expect(fnText('switchSettingsTab')).toContain("{ body.innerHTML = systemSections('Sign-in methods', 'How long a sign-in lasts'); loadSessionLength(); }");
+  expect(fnText('switchSettingsTab')).toContain("{ body.innerHTML = systemSections('Sign-in methods', 'A second step at sign-in', 'How long a sign-in lasts'); loadSessionLength(); }");
 });
 
 describe('loadSessionLength', () => {

@@ -473,6 +473,19 @@ router.get('/compliance/evidence.md', auth, requireRole('admin'), async (_req, r
   } catch (e) { serverError(res, e); }
 });
 
+// GET /api/admin/compliance/packet.html — the Safeguards packet: one printable
+// page a tax or accounting firm attaches to its written security plan.
+router.get('/compliance/packet.html', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const evidence = require('../lib/evidence');
+    const bundle = await evidence.build();
+    const slug = String(bundle.firm?.name || 'depot').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'depot';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${slug}-safeguards-packet-${bundle.generatedAt.slice(0, 10)}.html"`);
+    res.send(evidence.toPacketHtml(bundle));
+  } catch (e) { serverError(res, e); }
+});
+
 // GET /api/admin/access-review — user/role/library-access/last-activity review.
 router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
   try {

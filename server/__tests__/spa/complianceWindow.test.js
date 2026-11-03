@@ -56,3 +56,30 @@ test('Admin: a framework is a full-width row that opens the window on ITSELF, no
   const admin = block('complianceHtml');
   expect(admin).toContain('_cmpSel = this.dataset.fw'); expect(admin).not.toContain('compliance-control-row'); expect(admin).not.toContain('<details');
 });
+
+// One tracked framework — a CPA office tracking the Safeguards Rule and nothing else —
+// gets the simple view: one light, the packet button, the short lists, and the full
+// browser folded under Advanced. Two tracked frameworks keep the browser on top.
+describe('the simple view', () => {
+  test('one tracked framework: light, packet download, to-do and confirm lists, Advanced fold', () => {
+    const out = render();
+    expect(out).toMatch(/<div class="cmp-light (ok|partial|no)" role="status">/);
+    expect(out).toContain('Download your Safeguards packet');
+    expect(out).toContain('Things your firm confirms');
+    expect(out).toContain('Things to fix in Depot');
+    expect(out).toMatch(/<details class="cmp-adv"[^>]*><summary>Advanced/);
+    expect(out).not.toContain('cmp-overall');          // the controls-ready bar belongs to the browser view
+  });
+  test('two tracked frameworks: no light, the browser leads', () => {
+    const two = JSON.parse(JSON.stringify(DATA)); two.frameworks[0].enabled = true;
+    const modal = { innerHTML: '' };
+    const ctx = { document: { querySelector: () => modal, getElementById: () => null }, currentUser: { role: 'admin' }, complianceData: null, modal };
+    const esc = html.match(/^function esc\(.*$/m)[0], escAttr = html.match(/^function escAttr\(.*$/m)[0];
+    vm.runInNewContext(`${esc}\n${escAttr}\n${between('let _cmpSel = null', 'function renderComplianceModal(')}\n${block('renderComplianceModal')}\nrenderComplianceModal(${JSON.stringify(two)});`, ctx);
+    expect(modal.innerHTML).not.toContain('cmp-light');
+    expect(modal.innerHTML).toContain('cmp-overall');
+  });
+  test('the light counts only what is not ready and says it in a sentence', () => {
+    expect(render()).toContain('<h3>2 things to do</h3>');
+  });
+});

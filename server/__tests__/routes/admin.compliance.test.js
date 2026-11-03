@@ -4,10 +4,12 @@ const express = require('express');
 
 jest.mock('../../lib/db', () => ({
   query: jest.fn().mockResolvedValue([]),
+  queryOne: jest.fn().mockResolvedValue(null),
 }));
 
 jest.mock('../../lib/settings', () => ({
   getOrEnv: jest.fn().mockResolvedValue(null),
+  get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),
   refresh: jest.fn().mockResolvedValue(undefined),
 }));
@@ -58,6 +60,27 @@ describe('admin compliance routes', () => {
   test('returns 403 for non-admin users', async () => {
     mockUser = { id: 'user-1', email: 'user@test.com', role: 'contributor' };
     const res = await request(makeApp()).get('/api/admin/compliance');
+    expect(res.status).toBe(403);
+  });
+
+  test('GET /compliance/packet.html is a printable attachment named after the firm', async () => {
+    // The packet refreshes the live probes first (HTTPS HEAD, npm audit, backup dir);
+    // none of that belongs in a route test, and npm audit alone can take seconds.
+    jest.spyOn(require('../../lib/compliance'), 'runProbes').mockResolvedValue({});
+    settings.getOrEnv.mockImplementation(key => Promise.resolve(
+      key === 'compliance_safeguards_enabled' ? 'true' : key === 'brand_name' ? 'Bayou Tax & Books, LLC' : null));
+    const res = await request(makeApp()).get('/api/admin/compliance/packet.html');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.headers['content-disposition']).toMatch(/^attachment; filename="bayou-tax-books-llc-safeguards-packet-\d{4}-\d{2}-\d{2}\.html"$/);
+    expect(res.text).toContain('Bayou Tax &amp; Books, LLC');
+    expect(res.text).toContain('Safeguards Rule checklist');
+    expect(res.text).not.toMatch(/<script/i);
+  });
+
+  test('GET /compliance/packet.html is admin-only', async () => {
+    mockUser = { id: 'user-1', email: 'user@test.com', role: 'contributor' };
+    const res = await request(makeApp()).get('/api/admin/compliance/packet.html');
     expect(res.status).toBe(403);
   });
 });

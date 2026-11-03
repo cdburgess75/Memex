@@ -23,7 +23,7 @@ const folderLinks = require('../../lib/folderLinks');
 const shareOpens = require('../../lib/shareOpens');
 const appLinks = require('../../lib/appLinks');
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../../lib/fileEvents');
-const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase, issueShareTicket, verifyShareTicket } = require('../../lib/shareLinks');
+const { folderShareClientShape, tokenHash, passwordParts, verifySharePassword, publicAppBase, issueShareTicket, verifyShareTicket, resolveLinkExpiry } = require('../../lib/shareLinks');
 const { safeDocName, folderLookupPath, destinationFolder, createDocumentRecord, DOCUMENT_COLUMNS } = require('../../lib/documents');
 const { isUuid } = require('../../lib/groups');
 const { withFolderOp, sendFolderOpError, FolderOpError, whatIsAt, writeRightOrThrow, copyLanding } = require('../../lib/folderOps');
@@ -865,9 +865,9 @@ router.post('/links', auth, requireRole('admin', 'contributor'), async (req, res
     // No size refusal any more: the link opens a PAGE, where each file downloads on its own.
     // Only the "download everything as a ZIP" button answers to the ZIP limit.
 
-    const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
-    const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 7);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const token = crypto.randomBytes(32).toString('base64url');
     const { salt, hash } = passwordParts(String(req.body?.password || '').trim());
 
@@ -914,8 +914,9 @@ router.post('/send', auth, requireRole('admin', 'contributor'), async (req, res)
     const bad = recipients.filter(r => !/^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(r));
     if (bad.length) return res.status(400).json({ error: `Not a valid email address: ${bad[0]}` });
 
-    const days = Number.parseInt(req.body?.expiresInDays ?? 30, 10);
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + (Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30) * 864e5).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 30);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const password = String(req.body?.password || '').trim();
     const note = String(req.body?.message || '').slice(0, 2000).trim();
     // Off unless asked for: receiving files is a bigger thing to hand out than a download.
