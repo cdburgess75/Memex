@@ -90,10 +90,14 @@ async function setSessionLength(seconds) {
 /* ---------- Sign-in records (realm events) ---------- */
 
 // Keycloak keeps a record of sign-ins and failed sign-ins only when told to. Depot turns that
-// on, LOGIN and LOGIN_ERROR kept 30 days, so Admin › Health can count failed sign-ins and say
-// where they came from (lib/health.js). A realm whose list of types is empty records every
-// type, so that is left alone; only the two needed are added to a narrower list.
+// on, LOGIN, LOGIN_ERROR and LOGOUT kept 30 days, so Admin › Health can count failed sign-ins
+// and say where they came from (lib/health.js) and the audit record can carry them
+// (lib/signInEvents). A realm whose list of types is empty records every type, so that is
+// left alone; only the ones needed are added to a narrower list.
 const LOGIN_EVENT_TYPES = ['LOGIN', 'LOGIN_ERROR'];
+// The three the compliance record keeps (lib/signInEvents): sign-outs too, so the
+// record shows a session's end as well as its start.
+const SIGNIN_EVENT_TYPES = ['LOGIN', 'LOGIN_ERROR', 'LOGOUT'];
 const EVENTS_KEEP_SECONDS = 30 * 86400;
 async function ensureLoginEvents() {
   const token = await adminToken();
@@ -101,11 +105,11 @@ async function ensureLoginEvents() {
   if (!cur.ok) throw new Error(`Keycloak events config read failed (${cur.status}).`);
   const cfg = await cur.json();
   const types = Array.isArray(cfg.enabledEventTypes) ? cfg.enabledEventTypes : [];
-  const covers = cfg.eventsEnabled && (!types.length || LOGIN_EVENT_TYPES.every(t => types.includes(t)));
+  const covers = cfg.eventsEnabled && (!types.length || SIGNIN_EVENT_TYPES.every(t => types.includes(t)));
   const keepsLongEnough = (Number(cfg.eventsExpiration) || 0) >= EVENTS_KEEP_SECONDS;
   if (covers && keepsLongEnough) return { changed: false };
   const want = { ...cfg, eventsEnabled: true, eventsExpiration: Math.max(Number(cfg.eventsExpiration) || 0, EVENTS_KEEP_SECONDS) };
-  if (types.length) want.enabledEventTypes = [...new Set([...types, ...LOGIN_EVENT_TYPES])];
+  if (types.length) want.enabledEventTypes = [...new Set([...types, ...SIGNIN_EVENT_TYPES])];
   const r = await kc(token, 'PUT', '/events/config', want);
   if (!r.ok) throw new Error(`Keycloak events config update failed (${r.status}).`);
   return { changed: true };
@@ -126,6 +130,91 @@ async function loginEvents({ since, max = 200 } = {}) {
   }
   return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
+// Whether Keycloak is keeping sign-in records at all (and which types), for the
+// compliance check to say so instead of reporting an empty record as a clean one.
+async function eventsConfig() {
+  const token = await adminToken();
+  const r = await kc(token, 'GET', '/events/config');
+  if (!r.ok) throw new Error(`Keycloak events config read failed (${r.status}).`);
+  const cfg = await r.json();
+  const types = Array.isArray(cfg.enabledEventTypes) ? cfg.enabledEventTypes : [];
+  return { enabled: !!cfg.eventsEnabled, types, keepSeconds: Number(cfg.eventsExpiration) || 0 };
+}
+// Every event of the given types since a day, oldest first, paged until Keycloak runs out
+// (it only filters by whole days, so the caller trims by time). userId comes along for
+// events that carry no username, a sign-out say, so the caller can look the person up.
+async function realmEvents({ types = SIGNIN_EVENT_TYPES, since, pageSize = 200, maxPages = 10 } = {}) {
+  const token = await adminToken();
+  const out = [];
+  for (const type of types) {
+    for (let page = 0; page < maxPages; page++) {
+      const q = new URLSearchParams({ type, max: String(pageSize), first: String(page * pageSize) });
+      if (since) q.set('dateFrom', new Date(since).toISOString().slice(0, 10));
+      const r = await kc(token, 'GET', `/events?${q}`);
+      if (!r.ok) throw new Error(`Keycloak events read failed (${r.status}).`);
+      const rows = await r.json();
+      if (!Array.isArray(rows) || !rows.length) break;
+      for (const e of rows) {
+        out.push({ at: new Date(Number(e.time)).toISOString(), time: Number(e.time), type: e.type, userId: e.userId || null, username: e.details?.username || null, ip: e.ipAddress || null, provider: e.details?.identity_provider || null, error: e.error || null });
+      }
+      if (rows.length < pageSize) break;
+    }
+  }
+  return out.sort((a, b) => a.time - b.time);
+}
+// A user's address by Keycloak id; null when the account is gone.
+async function userEmail(id) {
+  const token = await adminToken();
+  const r = await kc(token, 'GET', `/users/${encodeURIComponent(id)}`);
+  if (!r.ok) return null;
+  const u = await r.json();
+  return u.email || u.username || null;
+}
+
+/* ---------- Second step at sign-in, per person ---------- */
+
+// One of four words per account, read the same way setLocalTotpRequirement decides whom to
+// stamp: 'federated' (the second step belongs to Microsoft 365 or Active Directory),
+// 'enrolled' (an authenticator is set up), 'pending' (told to set one up, not done yet),
+// 'none'. Cached ten minutes: it is one Keycloak call per user, and the access list, the
+// evidence packet and the compliance check all ask for it.
+const MFA_CACHE_MS = 10 * 60 * 1000;
+let _mfaCache = { at: 0, value: null };
+async function mfaStatusByUser({ fresh = false } = {}) {
+  if (!fresh && _mfaCache.value && Date.now() - _mfaCache.at < MFA_CACHE_MS) return _mfaCache.value;
+  const token = await adminToken();
+  const users = [];
+  for (let first = 0; ; first += 100) {
+    const page = await kc(token, 'GET', `/users?max=100&first=${first}`);
+    if (!page.ok) throw new Error(`Keycloak user list failed (${page.status}).`);
+    const batch = await page.json();
+    if (!Array.isArray(batch) || !batch.length) break;
+    for (const u of batch) {
+      const pending = Array.isArray(u.requiredActions) ? u.requiredActions : [];
+      let provider = u.federationLink ? 'ldap' : null;
+      if (!provider) {
+        const fid = await kc(token, 'GET', `/users/${u.id}/federated-identity`);
+        const links = fid.ok ? ((await fid.json()) || []) : [];
+        if (links.length) provider = links[0].identityProvider || 'idp';
+      }
+      let state;
+      if (provider) state = 'federated';
+      else {
+        const creds = await kc(token, 'GET', `/users/${u.id}/credentials`);
+        const hasOtp = creds.ok && ((await creds.json()) || []).some((c) => c.type === 'otp');
+        state = hasOtp ? 'enrolled' : pending.includes('CONFIGURE_TOTP') ? 'pending' : 'none';
+      }
+      users.push({ id: u.id, email: u.email || u.username || '', state, provider });
+    }
+    if (batch.length < 100) break;
+  }
+  const byEmail = {};
+  for (const u of users) if (u.email) byEmail[u.email.toLowerCase()] = { state: u.state, provider: u.provider };
+  const value = { checkedAt: new Date().toISOString(), users, byEmail };
+  _mfaCache = { at: Date.now(), value };
+  return value;
+}
+function _resetMfaCache() { _mfaCache = { at: 0, value: null }; }
 
 /* ---------- Microsoft 365 sign-in (OIDC identity provider) ---------- */
 
@@ -618,6 +707,12 @@ module.exports = {
   setSessionLength,
   ensureLoginEvents,
   loginEvents,
+  eventsConfig,
+  realmEvents,
+  userEmail,
+  mfaStatusByUser,
+  _resetMfaCache,
+  SIGNIN_EVENT_TYPES,
   setLocalTotpRequirement,
   ensureMicrosoftIdp,
   validateMsClientSecret,

@@ -146,12 +146,14 @@ function toMarkdown(b) {
   lines.push('');
   lines.push('Access comes from owning a library, a share of a library or folder (to the person or a group they belong to; shares match only a verified address), or files shared one by one. "Listed in" is the older member list, which only decides who sees a library listed.');
   lines.push('');
-  lines.push('| User | Role | Owns | Library access | Folder access | Groups | Listed in | Direct shares | Last activity |');
-  lines.push('|---|---|---|---|---|---|---|---|---|');
+  if (ar.mfaError) lines.push(`Second step at sign-in could not be checked: ${esc(ar.mfaError)}.`);
+  lines.push('');
+  lines.push('| User | Role | Second step | Owns | Library access | Folder access | Groups | Listed in | Direct shares | Last activity |');
+  lines.push('|---|---|---|---|---|---|---|---|---|---|');
   const list = (a) => esc((a || []).join('; ')) || '—';
   for (const u of ar.users || []) {
     const who = `${esc(u.email)}${u.name ? ` (${esc(u.name)})` : ''}${u.emailVerified === false ? ' — email not verified' : ''}`;
-    lines.push(`| ${who} | ${esc(u.role)} | ${list(u.owns)} | ${list(u.libraryAccess)} | ${list(u.folderAccess)} | ${list(u.groups)} | ${list(u.libraries)} | ${u.directShares || 0} | ${esc(u.lastActivity || 'never')} |`);
+    lines.push(`| ${who} | ${esc(u.role)} | ${esc(accessReview.mfaWord(u.mfa))} | ${list(u.owns)} | ${list(u.libraryAccess)} | ${list(u.folderAccess)} | ${list(u.groups)} | ${list(u.libraries)} | ${u.directShares || 0} | ${esc(u.lastActivity || 'never')} |`);
   }
   lines.push('');
   if (ar.pendingShares && ar.pendingShares.length) {
@@ -398,7 +400,7 @@ function toReportHtml(b, frameworkId, shapeId) {
   const ar = b.accessReview || {};
   const list = (a) => (a || []).length ? h(a.join('; ')) : '—';
   const accessRows = (ar.users || []).map(u =>
-    `<tr><td>${h(u.email)}${u.name ? `<div class="why">${h(u.name)}</div>` : ''}</td><td>${h(u.role)}</td><td>${list(u.owns)}</td><td>${list([...(u.libraryAccess || []), ...(u.folderAccess || [])])}</td><td>${list(u.groups)}</td><td>${h(u.lastActivity ? longDate(u.lastActivity) : 'never')}</td></tr>`
+    `<tr><td>${h(u.email)}${u.name ? `<div class="why">${h(u.name)}</div>` : ''}</td><td>${h(u.role)}</td><td>${h(accessReview.mfaWord(u.mfa))}</td><td>${list(u.owns)}</td><td>${list([...(u.libraryAccess || []), ...(u.folderAccess || [])])}</td><td>${list(u.groups)}</td><td>${h(u.lastActivity ? longDate(u.lastActivity) : 'never')}</td></tr>`
   ).join('');
 
   const ai = b.auditIntegrity || {};
@@ -486,7 +488,7 @@ function toReportHtml(b, frameworkId, shapeId) {
   <h2><small>Section 3</small>Who has access</h2>
   ${ar.error ? `<p class="note"><b>The access list could not be produced:</b> ${h(ar.error)}. Do not treat the table below as complete.</p>` : ''}
   <p class="note">${(ar.userCount || (ar.users || []).length || 0) === 1 ? 'One person' : `${ar.userCount || (ar.users || []).length || 0} people`} can sign in. Access comes from owning a library, from a library or folder shared with the person or a group they belong to, or from files shared one by one.${ar.openLibraries?.length ? ` Listed to everyone who signs in (no file access): ${h(ar.openLibraries.join(', '))}.` : ''}</p>
-  <table><thead><tr><th>Person</th><th>Role</th><th>Owns</th><th>Shared with them</th><th>Groups</th><th>Last active</th></tr></thead><tbody>${accessRows || '<tr><td colspan="6">No one yet.</td></tr>'}</tbody></table>
+  <table><thead><tr><th>Person</th><th>Role</th><th>Second step</th><th>Owns</th><th>Shared with them</th><th>Groups</th><th>Last active</th></tr></thead><tbody>${accessRows || '<tr><td colspan="7">No one yet.</td></tr>'}</tbody></table>
   ${ar.pendingShares?.length ? `<p class="note">Shared with addresses that have not signed in yet: ${ar.pendingShares.map(p => h(p.email)).join(', ')}.</p>` : ''}
 </section>
 

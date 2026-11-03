@@ -23,7 +23,11 @@ function describe(a) {
 
 // Pure assembler over already-fetched rows (kept separate so it is unit-testable
 // without a database).
-function assemble({ roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers }, now = new Date()) {
+function assemble({ roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers, mfa }, now = new Date()) {
+  // Second step at sign-in, per address, from Keycloak (lib/keycloakAdmin mfaStatusByUser).
+  // Without an answer every person is 'unknown' and the report says why.
+  const mfaByEmail = mfa && mfa.byEmail ? mfa.byEmail : null;
+  const mfaOf = (email) => (mfaByEmail ? (mfaByEmail[email]?.state || 'unknown') : 'unknown');
   const libName = new Map((libraries || []).map(l => [String(l.id), l.name]));
   const groupName = new Map((groups || []).map(g => [String(g.id), g.name]));
   const nameByEmail = new Map((profiles || []).map(p => [lc(p.email), p.display_name]));
@@ -93,6 +97,7 @@ function assemble({ roles, profiles, memberships, libraries, lastActivity, share
       libraries: r.role === 'admin' ? ['all (admin)'] : (memByEmail.get(k) || []).sort(),
       directShares: shareByEmail.get(k) || 0,
       lastActivity: lastByEmail.get(k) || null,
+      mfa: mfaOf(verified || k),
     };
   });
 
@@ -108,11 +113,33 @@ function assemble({ roles, profiles, memberships, libraries, lastActivity, share
     return { email, libraryAccess: reach.libraryAccess.map(describe), folderAccess: reach.folderAccess.map(describe) };
   }).filter(p => p.libraryAccess.length || p.folderAccess.length);
 
-  return { generatedAt: now.toISOString(), userCount: users.length, openLibraries, users, pendingShares };
+  const out = { generatedAt: now.toISOString(), userCount: users.length, openLibraries, users, pendingShares };
+  if (mfa && mfa.error) out.mfaError = mfa.error;
+  return out;
+}
+
+// What each word in the mfa column means, for the list, the CSV and the packet.
+const MFA_WORDS = {
+  federated: 'Through their identity provider',
+  enrolled: 'Authenticator set up',
+  pending: 'Asked to set one up',
+  none: 'None',
+  unknown: 'Could not check',
+};
+const mfaWord = (state) => MFA_WORDS[state] || MFA_WORDS.unknown;
+
+// Keycloak's answer, or why there is none. Never throws: the list must still come out when
+// Keycloak is down or this server holds no admin credentials.
+async function mfaStates() {
+  try {
+    return await require('./keycloakAdmin').mfaStatusByUser();
+  } catch (e) {
+    return { byEmail: null, error: e.message || 'Keycloak did not answer.' };
+  }
 }
 
 async function build() {
-  const [roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers] = await Promise.all([
+  const [roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers, mfa] = await Promise.all([
     db.query('SELECT user_id, email, role, assigned_at, verified_email FROM user_roles ORDER BY email'),
     db.query('SELECT email, display_name FROM user_profiles'),
     db.query('SELECT subject_email, library_id FROM library_members'),
@@ -127,8 +154,42 @@ async function build() {
     db.query('SELECT library_id, folder_path, subject_type, subject_email, group_id, permission FROM library_grants'),
     db.query('SELECT id, name FROM groups'),
     db.query('SELECT group_id, lower(member_email) AS email FROM group_members'),
+    mfaStates(),
   ]);
-  return assemble({ roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers });
+  return assemble({ roles, profiles, memberships, libraries, lastActivity, shares, grants, groups, groupMembers, mfa });
+}
+
+// ---- Sign-off: proof the list was looked at ----
+// A review is the whole list as it stood, who signed it, and when (access_reviews,
+// migrations/0025). The compliance control access_review turns green on a sign-off
+// within the last 92 days, and the chained event access_reviewed records it.
+
+// A quarter, with a few days' grace so a review done on the same date each quarter counts.
+const REVIEW_DAYS = 92;
+
+async function signoff(user, note = '') {
+  const report = await build();
+  const row = await db.queryOne(
+    `INSERT INTO access_reviews (reviewed_by_email, reviewed_by, user_count, note, snapshot)
+     VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id, reviewed_at, reviewed_by_email, user_count, note`,
+    [user?.email || null, user?.id || null, report.userCount, String(note || '').slice(0, 1000) || null, JSON.stringify(report)]
+  );
+  const detail = `${report.userCount} ${report.userCount === 1 ? 'person' : 'people'} on the list${row.note ? ` · ${row.note}` : ''}`;
+  await require('./auditLog').append({ documentId: null, eventType: 'access_reviewed', actorId: user?.id || null, actorEmail: user?.email || null, detail });
+  return row;
+}
+
+// Newest first, without the snapshots (one can be a whole workspace).
+async function history(limit = 50) {
+  try {
+    return await db.query('SELECT id, reviewed_at, reviewed_by_email, user_count, note FROM access_reviews ORDER BY reviewed_at DESC LIMIT $1', [Math.min(Math.max(Number(limit) || 50, 1), 500)]);
+  } catch { return []; }
+}
+
+async function latest() {
+  try {
+    return await db.queryOne('SELECT id, reviewed_at, reviewed_by_email, user_count, note FROM access_reviews ORDER BY reviewed_at DESC LIMIT 1');
+  } catch { return null; }
 }
 
 const iso = (v) => (v instanceof Date ? v.toISOString() : (v || ''));
@@ -140,20 +201,21 @@ function toCsv(report) {
   // physical row that could start with a formula.
   lines.push(csvCell(`# Memex access review: generated ${report.generatedAt}`));
   if (report.openLibraries.length) lines.push(csvCell(`# Listed to every signed-in user (no file access): ${report.openLibraries.join('; ')}`));
-  lines.push(['email', 'name', 'role', 'role_assigned', 'email_verified', 'owns', 'library_access', 'folder_access', 'groups', 'listed_in', 'direct_shares', 'last_activity'].join(','));
+  if (report.mfaError) lines.push(csvCell(`# Second step at sign-in could not be checked: ${report.mfaError}`));
+  lines.push(['email', 'name', 'role', 'role_assigned', 'email_verified', 'second_step', 'owns', 'library_access', 'folder_access', 'groups', 'listed_in', 'direct_shares', 'last_activity'].join(','));
   for (const u of report.users) {
     lines.push([
-      u.email, u.name, u.role, iso(u.roleAssignedAt), u.emailVerified ? 'yes' : 'no', u.owns.join('; '),
+      u.email, u.name, u.role, iso(u.roleAssignedAt), u.emailVerified ? 'yes' : 'no', mfaWord(u.mfa), u.owns.join('; '),
       u.libraryAccess.join('; '), u.folderAccess.join('; '), u.groups.join('; '), u.libraries.join('; '),
       u.directShares, iso(u.lastActivity),
     ].map(csvCell).join(','));
   }
   // Addresses with shares but no verified account yet, in the same columns.
   for (const p of report.pendingShares || []) {
-    lines.push([p.email, '', 'no verified account', '', 'no', '', p.libraryAccess.join('; '), p.folderAccess.join('; '), '', '', '', '']
+    lines.push([p.email, '', 'no verified account', '', 'no', '', '', p.libraryAccess.join('; '), p.folderAccess.join('; '), '', '', '', '']
       .map(csvCell).join(','));
   }
   return lines.join('\n');
 }
 
-module.exports = { assemble, build, toCsv, describe };
+module.exports = { assemble, build, toCsv, describe, signoff, history, latest, mfaWord, MFA_WORDS, REVIEW_DAYS };

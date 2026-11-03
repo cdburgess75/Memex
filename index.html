@@ -988,6 +988,7 @@ html.dark .chip { color: var(--accent-soft); }
 .access-review-table tbody tr:last-child td { border-bottom: 0; }
 .ar-role { display: inline-block; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 11px; background: var(--accent-wash); color: var(--accent-soft); text-transform: capitalize; }
 .ar-role-admin { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.ar-history { margin-top: 4px; } .ar-history summary { cursor: pointer; } .ar-history ul { margin: 4px 0 0 18px; padding: 0; }
 .ar-role-viewer { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
 .modal h2 {
   font-family: var(--display);
@@ -5415,8 +5416,28 @@ const CMP_FIX = {
   'settings:malware_scan_enabled': ['storage', 'Open virus scanning'],
   'settings:app_url': ['workspace', 'Open workspace settings'],
   'backup': ['storage', 'Open backups'],
+  'access': ['access', 'Open the users list'],
+  'settings:signin_events_enabled': ['server', 'Open server settings'],
 };
 function cmpFix(key) { const f = CMP_FIX[key]; if (!f) return; closeComplianceStatus(); openSettingsAt(f[0]); }
+// A control's `action` ({ label, api }, from the server catalog): one POST with an optional
+// note, done from the window itself. Recording an access review is the first.
+function cmpActionBtn(c, isAdmin) {
+  if (!isAdmin || !c.action || !c.action.api || !c.action.label) return '';
+  return `<button type="button" class="cmp-att-btn primary" data-api="${escAttr(String(c.action.api))}" data-label="${escAttr(String(c.action.label))}" onclick="cmpAction(this.dataset.api, this.dataset.label)">${esc(c.action.label)}</button>`;
+}
+async function cmpAction(api, label) {
+  const note = await askPrompt(`${label}. Add a note if you like:`, '', { okLabel: label, title: 'Compliance', placeholder: 'Optional note' });
+  if (note === null) return;
+  try {
+    await apiPost(api, { note: note || '' });
+    toast('Recorded');
+    const data = await apiGet('/admin/compliance');
+    renderComplianceModal(data);
+    updateComplianceIndicator(data.summary);
+    loadAccessReviewHistory();
+  } catch (e) { toast('Could not record it: ' + e.message); }
+}
 // One light, one download. Shown when exactly one framework is tracked — a CPA office
 // tracks the Safeguards Rule and nothing else — so the page answers "are we OK?" and
 // "where is the paperwork?" before it shows a single control.
@@ -5435,7 +5456,7 @@ function cmpSimpleHtml(fw, data, isAdmin) {
   const confirmBtn = (c, word) => isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear' : word}</button>` : '';
   const todoRows = todo.map(c => {
     const fix = c.fix && CMP_FIX[c.fix] && isAdmin ? `<button type="button" class="cmp-att-btn primary" data-fix="${escAttr(c.fix)}" onclick="cmpFix(this.dataset.fix)">${esc(CMP_FIX[c.fix][1])}</button>` : '';
-    return `<div class="cmp-row"><span class="cmp-state no">${CMP_STATE.no[1]}To do</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${c.gap ? `<div class="cmp-check-gap"><b>What to do</b>${esc(c.gap)}</div>` : ''}${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${fix}${c.attestable ? confirmBtn(c, 'Confirm it is handled elsewhere') : ''}${meta(c)}</div></div></div>`;
+    return `<div class="cmp-row"><span class="cmp-state no">${CMP_STATE.no[1]}To do</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${c.gap ? `<div class="cmp-check-gap"><b>What to do</b>${esc(c.gap)}</div>` : ''}${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${cmpActionBtn(c, isAdmin)}${fix}${c.attestable ? confirmBtn(c, 'Confirm it is handled elsewhere') : ''}${meta(c)}</div></div></div>`;
   }).join('');
   const confirmRows = manual.map(c => `<div class="cmp-row"><span class="cmp-state ${c.ready ? 'ok' : 'partial'}">${c.ready ? CMP_STATE.ok[1] + 'Confirmed' : CMP_STATE.partial[1] + 'Not yet'}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.ready ? (c.evidence || '') : (c.gap || c.evidence || ''))}</div>${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${confirmBtn(c, 'Confirm')}${meta(c)}</div></div></div>`).join('');
   const checked = data.probes?.lastRun ? `Live checks last ran ${new Date(data.probes.lastRun).toLocaleString()}.` : 'Live checks have not run yet.';
@@ -5540,6 +5561,9 @@ function renderComplianceModal(data) {
         const meta = c.attestation?.by ? `<span class="cmp-att-meta">Marked met by ${esc(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ` · ${esc(c.attestation.note)}` : ''}</span>` : '';
         const btn = isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear "met"' : 'Mark as met'}</button>` : '';
         attest = (meta || btn) ? `<div class="cmp-attest">${btn}${meta}</div>` : '';
+      } else if (c.action) {
+        const act = cmpActionBtn(c, isAdmin);
+        attest = act ? `<div class="cmp-attest">${act}</div>` : '';
       }
       const gap = st !== 'ok' && c.gap ? `<div class="cmp-check-gap"><b>What is missing</b>${esc(c.gap)}</div>` : '';
       return `<div class="cmp-check"><span class="cmp-state ${st}">${icon}${word}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}${c.manual ? '<span class="cmp-manual" title="Depot cannot see this one. Someone confirms it.">You confirm this</span>' : ''}</div>${c.evidence ? `<div class="cmp-check-ev">${esc(c.evidence)}</div>` : ''}${gap}${attest}</div></div>`;
@@ -6410,6 +6434,7 @@ async function saveNetworkSettings() {
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     api_token_rate_limit: document.getElementById('cfg-api-token-rate')?.value || '6000',
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
+    signin_events_enabled: document.getElementById('cfg-signin-events')?.value || 'true',
     share_link_max_days: document.getElementById('cfg-share-link-max-days')?.value.trim() || '',
     blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
   };
@@ -7526,6 +7551,9 @@ const ACTIVITY_LABELS = {
   guide_added: 'Getting-started guide added automatically',
   guide_updated: 'Getting-started guide updated automatically',
   guide_removed: 'Getting-started guide (Word copy) removed automatically',
+  // From Keycloak, copied into the record by the server (lib/signInEvents); no file.
+  signed_in: 'Signed in', sign_in_failed: 'Sign-in failed', signed_out: 'Signed out',
+  access_reviewed: 'Access list reviewed',
 };
 function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
 function activityWhen(ts) {
@@ -7552,7 +7580,7 @@ async function loadActivity(reset) {
     }
     const rows = r.events.map(e => `<div class="activity-row">
         <span class="activity-ev activity-ev-${esc(e.event_type)}">${esc(activityLabel(e.event_type))}</span>
-        <span class="activity-doc">${e.document_name ? esc(e.document_name) : '<em>(deleted file)</em>'}</span>
+        <span class="activity-doc">${e.document_name ? esc(e.document_name) : e.document_id ? '<em>(deleted file)</em>' : '<span class="cell-empty">—</span>'}</span>
         <span class="activity-actor">${esc(e.actor_email || 'unknown')}</span>
         <span class="activity-when" title="${esc(e.detail || '')}">${esc(activityWhen(e.created_at))}</span>
       </div>`).join('');
@@ -7906,6 +7934,8 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-api-token-rate" value="${esc(s.api_token_rate_limit||'6000')}" min="60" max="1000000" step="1" title="How many requests one API token may make in 15 minutes. Over it, the token gets 429 answers until the window passes. Sign-ins from the app are not held to this.">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
+        <label for="cfg-signin-events">Record sign-ins in the activity log <span style="font-size:10px;color:var(--ink-faint)">(who signed in, who failed to, and who signed out, copied from Keycloak every five minutes into the tamper-evident record; the Compliance window reads it)</span></label>
+        <select id="cfg-signin-events"><option value="true" ${String(s.signin_events_enabled||'').toLowerCase()!=='false'?'selected':''}>Yes</option><option value="false" ${String(s.signin_events_enabled||'').toLowerCase()==='false'?'selected':''}>No</option></select>
         <label for="cfg-share-link-max-days">Longest a share link may live (days) <span style="font-size:10px;color:var(--ink-faint)">(empty means no limit, and links may be set to never expire)</span></label>
         <input type="number" id="cfg-share-link-max-days" value="${esc(s.share_link_max_days||'')}" min="1" max="365" step="1" placeholder="No limit" title="Applies to every link to someone outside: file links, folder links, and send-by-email. A longer choice is trimmed to this; 'never' is refused.">
         <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; empty means nothing is refused)</span></label>
@@ -8033,7 +8063,8 @@ function activitySettingsHtml() {
 function accessSettingsHtml() {
   return `<div class="settings-sub">Users &amp; access</div>
       <p class="settings-notice">Every user, their role, the libraries they own, the libraries, folders and groups that give them access, direct file shares, and last activity. Use it for periodic review and sign-off.</p>
-      <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
+      <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button><button class="run-btn" type="button" onclick="recordAccessReview()">Record that this list was reviewed</button></div>
+      <p class="settings-notice" id="access-review-last">Loading past reviews…</p>
       <div id="access-review">${emptyState('Loading users', 'Working out who can open what.')}</div>
       <div class="settings-sub">API tokens</div>
       <p class="settings-notice">Every live token anyone has made for the <a href="/api/docs" target="_blank" rel="noopener">API</a>, and whose it is. A token acts as that person with their rights. Revoke one here if it should not exist; the person sees it gone from their own list.</p>
@@ -8066,19 +8097,52 @@ async function verifyAuditLog() {
 function accessWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 async function loadAccessReview() {
   const el = document.getElementById('access-review'); if (!el) return;
+  loadAccessReviewHistory();
   try { el.innerHTML = renderAccessReview(await apiGet('/admin/access-review')); }
   catch (e) {
     el.innerHTML = emptyState('Could not load the users list', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
       '<button class="ghost-btn" type="button" onclick="loadAccessReview()">Try again</button>');
   }
 }
+// "Last reviewed … by …", from the sign-offs the server keeps (access_reviews).
+async function loadAccessReviewHistory() {
+  const el = document.getElementById('access-review-last'); if (!el) return;
+  try { el.innerHTML = accessReviewHistoryHtml((await apiGet('/admin/access-review/history')).reviews || []); }
+  catch (e) { el.textContent = `Past reviews could not be loaded. ${e.message || ''}`; }
+}
+function accessReviewHistoryHtml(reviews) {
+  if (!reviews.length) return 'No review has been recorded yet. Look through the list, then record that it was reviewed; the compliance window expects one each quarter.';
+  const r = reviews[0];
+  const older = reviews.slice(1, 6).map(x => `<li>${esc(accessWhen(x.reviewed_at))} by ${esc(x.reviewed_by_email || 'an administrator')}${x.note ? ` · ${esc(x.note)}` : ''}</li>`).join('');
+  return `Last reviewed ${esc(accessWhen(r.reviewed_at))} by ${esc(r.reviewed_by_email || 'an administrator')}${r.user_count ? ` (${r.user_count} ${r.user_count === 1 ? 'person' : 'people'} on the list)` : ''}${r.note ? ` · ${esc(r.note)}` : ''}.`
+    + (older ? `<details class="ar-history"><summary>Earlier reviews</summary><ul>${older}</ul></details>` : '');
+}
+// The sign-off: kept with the list as it stands, and in the chained activity record.
+async function recordAccessReview() {
+  const note = await askPrompt('Record that you reviewed who has access. Add a note if you like (what you changed, say):', '', { okLabel: 'Record review', title: 'Access review', placeholder: 'Optional note' });
+  if (note === null) return;
+  try {
+    await apiPost('/admin/access-review/signoff', { note: note || '' });
+    toast('Review recorded');
+    loadAccessReviewHistory();
+    loadComplianceSummary();
+  } catch (e) { toast('Could not record the review: ' + e.message); }
+}
+// The words for the second-step column (the server's accessReview.MFA_WORDS, one pill each).
+const AR_MFA = {
+  federated: ['ok', 'Through their identity provider'], enrolled: ['ok', 'Authenticator set up'],
+  pending: ['warn', 'Asked to set one up'], none: ['warn', 'None'], unknown: ['', 'Could not check'],
+};
+function mfaPill(state) { const [cls, word] = AR_MFA[state] || AR_MFA.unknown; return `<span class="pill${cls ? ' ' + cls : ''}">${esc(word)}</span>`; }
 function renderAccessReview(r) {
   const open = (r.openLibraries && r.openLibraries.length)
     ? `<p class="settings-notice">Listed to every signed-in user (this gives no access to the files in them): ${r.openLibraries.map(esc).join(', ')}</p>` : '';
   const list = (a) => (a && a.length ? a.map(esc).join('<br>') : '<span class="cell-empty">—</span>');
+  const mfaNote = r.mfaError ? `<p class="settings-notice">Second step at sign-in could not be checked: ${esc(r.mfaError)}</p>` : '';
   const rows = r.users.map(u => `<tr>
       <td>${esc(u.email)}${u.name ? `<div class="file-row-sub">${esc(u.name)}</div>` : ''}${u.emailVerified === false ? '<div><span class="pill warn">Email not verified</span></div>' : ''}</td>
       <td><span class="ar-role ar-role-${esc(u.role)}">${esc(u.role)}</span></td>
+      <td>${mfaPill(u.mfa)}</td>
       <td>${list(u.owns)}</td>
       <td>${u.role === 'admin' ? 'All libraries (admin)' : list(u.libraryAccess)}</td>
       <td>${list(u.folderAccess)}</td>
@@ -8089,7 +8153,7 @@ function renderAccessReview(r) {
     </tr>`).join('');
   const pending = (r.pendingShares && r.pendingShares.length)
     ? `<p class="settings-notice">Shared with addresses that have no verified account yet (they get this access once they sign in with that address verified):</p><ul class="settings-notice">${r.pendingShares.map(p => `<li>${esc(p.email)}: ${[...(p.libraryAccess || []), ...(p.folderAccess || [])].map(esc).join('; ')}</li>`).join('')}</ul>` : '';
-  return `${open}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th>Owns</th><th>Library access</th><th>Folder access</th><th>Groups</th><th title="Older member lists: they only decide who sees a library listed">Listed in</th><th style="text-align:right">Files shared directly</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
+  return `${open}${mfaNote}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th title="Second step at sign-in (MFA)">Second step</th><th>Owns</th><th>Library access</th><th>Folder access</th><th>Groups</th><th title="Older member lists: they only decide who sees a library listed">Listed in</th><th style="text-align:right">Files shared directly</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${pending}<p class="settings-notice">${r.userCount} user${r.userCount === 1 ? '' : 's'} · generated ${esc(accessWhen(r.generatedAt))}. Access comes from owning a library, a share of a library or folder (directly or through a group), or a file shared directly.</p>`;
 }
 async function exportAccessReviewCsv() {
