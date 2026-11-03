@@ -151,6 +151,10 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       changed.push(key);
     }
     await settings.refresh();
+    // The report schedule can also be set here (and through /api/v1): re-arm its timer.
+    if (changed.includes('compliance_report_schedule')) {
+      try { await require('../lib/complianceReports').reschedule(); } catch { /* scheduler re-arm is best-effort */ }
+    }
     // Record WHICH settings changed (key names only, never values) in the audit chain.
     if (changed.length) {
       try {

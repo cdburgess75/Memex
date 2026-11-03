@@ -68,7 +68,7 @@ Caddy reverse proxy (optional, production TLS)
 | Frontend | Single-file vanilla-JS SPA (`index.html`), no bundler |
 | API | Node.js + Express |
 | Database | PostgreSQL 16 |
-| Auth | Keycloak 24, OIDC with PKCE, roles: admin / contributor / viewer |
+| Auth | Keycloak 26, OIDC with PKCE, roles: admin / contributor / viewer |
 | Office editing | Collabora CODE over WOPI (optional) |
 | Storage | Local filesystem (AES-256-GCM at rest), S3-compatible, or Supabase |
 | AI | Anthropic (default), OpenAI-compatible, or self-hosted Ollama |

@@ -64,7 +64,7 @@ describe('the simple view', () => {
   test('one tracked framework: light, packet download, to-do and confirm lists, Advanced fold', () => {
     const out = render();
     expect(out).toMatch(/<div class="cmp-light (ok|partial|no)" role="status">/);
-    expect(out).toContain('Download your Safeguards packet');
+    expect(out).toContain('Download your HIPAA packet');   // the one tracked framework, by name
     expect(out).toContain('Things your firm confirms');
     expect(out).toContain('Things to fix in Depot');
     expect(out).toMatch(/<details class="cmp-adv"[^>]*><summary>Advanced/);

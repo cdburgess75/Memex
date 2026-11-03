@@ -58,6 +58,9 @@ const ENV_MAP = {
   compliance_pci_dss_enabled:     'COMPLIANCE_PCI_DSS_ENABLED',
   compliance_iso27001_enabled:    'COMPLIANCE_ISO27001_ENABLED',
   compliance_cmmc_enabled:        'COMPLIANCE_CMMC_ENABLED',
+  compliance_nist_csf_enabled:    'COMPLIANCE_NIST_CSF_ENABLED',
+  compliance_report_schedule:     'COMPLIANCE_REPORT_SCHEDULE',   // off | monthly | quarterly
+  compliance_report_email:        'COMPLIANCE_REPORT_EMAIL',      // comma list; the scheduled report goes here
   backup_enabled:                 'BACKUP_ENABLED',
   backup_interval_hours:          'BACKUP_INTERVAL_HOURS',
   backup_retention:               'BACKUP_RETENTION',
