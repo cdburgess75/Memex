@@ -35,11 +35,12 @@ cd "$ROOT_DIR"
 
 NEW_PASSWORD="$(openssl rand -hex 24)"
 
-docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh config credentials \
+# kcadm reads the password from KC_CLI_PASSWORD, so it is never an argument.
+docker compose exec -T -e KC_CLI_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" keycloak \
+  /opt/keycloak/bin/kcadm.sh config credentials \
   --server http://localhost:8080 \
   --realm master \
-  --user "$KEYCLOAK_ADMIN_USER" \
-  --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
+  --user "$KEYCLOAK_ADMIN_USER" </dev/null >/dev/null
 
 USER_ID="$(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh get users \
   -r "$REALM" \

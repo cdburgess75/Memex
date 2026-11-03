@@ -294,10 +294,13 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
 // GET /api/admin/compliance — readiness profiles and update posture
 router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
   try {
-    const [frameworks, updates, summary] = await Promise.all([
+    const reports = require('../lib/complianceReports');
+    const [frameworks, updates, summary, pastReports, schedule] = await Promise.all([
       compliance.profileStatus(),
       compliance.updateStatus(),
       compliance.summary(),
+      reports.list({ limit: 24 }).catch(() => []),
+      reports.status().catch(() => null),
     ]);
     res.json({
       disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Depot or the operating organization.',
@@ -305,6 +308,8 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       updates,
       summary,
       probes: compliance.probeMeta(),
+      reports: pastReports,
+      reportSchedule: schedule,
     });
   } catch (e) {
     serverError(res, e);
@@ -484,6 +489,66 @@ router.get('/compliance/packet.html', auth, requireRole('admin'), async (_req, r
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${slug}-safeguards-packet-${bundle.generatedAt.slice(0, 10)}.html"`);
     res.send(evidence.toPacketHtml(bundle));
+  } catch (e) { serverError(res, e); }
+});
+
+// GET /api/admin/compliance/report.html?framework=<id> — the same kind of page for any
+// framework, named <firm>-<framework>-report-<date>.html. Not kept; see /reports for that.
+router.get('/compliance/report.html', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const id = String(req.query.framework || 'safeguards');
+    if (!compliance.FRAMEWORKS.some(f => f.id === id)) return res.status(404).json({ error: 'No such framework' });
+    const evidence = require('../lib/evidence');
+    const bundle = await evidence.build();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${evidence.reportFileName(bundle.firm?.name, id, bundle.generatedAt)}"`);
+    res.send(evidence.toReportHtml(bundle, id));
+  } catch (e) { serverError(res, e); }
+});
+
+// Past reports (lib/complianceReports.js): the list, one as a download, and "run one now".
+router.get('/compliance/reports', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    res.json({ reports: await reports.list({ limit: req.query.limit }), schedule: await reports.status() });
+  } catch (e) { serverError(res, e); }
+});
+// POST { framework } keeps a report for that framework; with none, one per tracked framework.
+router.post('/compliance/reports', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    const id = req.body?.framework ? String(req.body.framework) : null;
+    if (id && !compliance.FRAMEWORKS.some(f => f.id === id)) return res.status(404).json({ error: 'No such framework' });
+    const bundle = await require('../lib/evidence').build();
+    const ids = id ? [id] : (bundle.frameworks || []).filter(f => f.enabled).map(f => f.id);
+    if (!ids.length) return res.status(400).json({ error: 'No framework is being tracked' });
+    const made = [];
+    for (const f of ids) made.push(await reports.generate(f, req.user.email || req.user.id, bundle));
+    res.status(201).json({ ok: true, reports: made });
+  } catch (e) { serverError(res, e); }
+});
+router.get('/compliance/reports/:id.html', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await require('../lib/complianceReports').get(req.params.id);
+    if (!r) return res.status(404).json({ error: 'No such report' });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${r.file_name}"`);
+    res.send(r.html);
+  } catch (e) { serverError(res, e); }
+});
+// PUT { schedule: off|monthly|quarterly, email } — the two settings, and re-arm the timer.
+router.put('/compliance/reports/schedule', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    const { schedule, email } = req.body || {};
+    if (schedule !== undefined) {
+      if (!reports.SCHEDULES.includes(String(schedule))) return res.status(400).json({ error: 'schedule must be off, monthly or quarterly' });
+      await settings.set('compliance_report_schedule', String(schedule), req.user.id);
+    }
+    if (email !== undefined) await settings.set('compliance_report_email', reports.parseRecipients(email).join(', ') || null, req.user.id);
+    await settings.refresh();
+    await reports.reschedule();
+    res.json({ ok: true, schedule: await reports.status() });
   } catch (e) { serverError(res, e); }
 });
 

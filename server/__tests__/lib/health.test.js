@@ -122,3 +122,30 @@ describe('summary', () => {
     expect(s.errors.count).toBe(1);
   });
 });
+
+// Virus scanning: one line on the page when it is on; a dead scanner is a problem,
+// since every upload is being refused meanwhile.
+describe('scanner', () => {
+  const scan = require('../../lib/malwareScan');
+  afterEach(() => jest.restoreAllMocks());
+  test('verdict: on and not answering is a problem; on and answering, or off, says nothing', () => {
+    expect(health.verdict({ scanner: { enabled: true, answering: false } })).toEqual({ status: 'problem', reasons: ['Virus scanning is on but the scanner is not answering, so uploads are refused.'] });
+    expect(health.verdict({ scanner: { enabled: true, answering: true } }).status).toBe('ok');
+    expect(health.verdict({ scanner: null }).status).toBe('ok');
+  });
+  test('summary carries the scanner line when scanning is on, and null when it is off', async () => {
+    db.queryOne.mockResolvedValue({ n: 0, bytes: 0, active: 0 });
+    db.query.mockResolvedValue([]);
+    jest.spyOn(scan, 'status').mockResolvedValue({ enabled: true, answering: true, version: 'ClamAV 1.4.6', signatureDate: '2026-11-02T06:00:00.000Z', lastScanAt: '2026-11-03T14:30:00.000Z', error: null });
+    jest.spyOn(scan, 'refusedCount').mockResolvedValue(2);
+    const s = await health.summary();
+    expect(s.scanner).toEqual({ enabled: true, answering: true, version: 'ClamAV 1.4.6', signature_date: '2026-11-02T06:00:00.000Z', last_scan_at: '2026-11-03T14:30:00.000Z', refused_30d: 2, error: null });
+    expect(s.status).toBe('ok');
+    scan.status.mockResolvedValue({ enabled: false, answering: false });
+    expect((await health.summary()).scanner).toBeNull();
+    scan.status.mockResolvedValue({ enabled: true, answering: false, error: 'connect ECONNREFUSED' });
+    const down = await health.summary();
+    expect(down.status).toBe('problem');
+    expect(down.scanner).toMatchObject({ enabled: true, answering: false, error: 'connect ECONNREFUSED' });
+  });
+});

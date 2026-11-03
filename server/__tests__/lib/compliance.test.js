@@ -74,12 +74,12 @@ describe('backup_restore readiness', () => {
 });
 
 // ---- FTC Safeguards Rule profile (the CPA / tax-firm profile) ----
-const { FRAMEWORKS, CONTROL_CATALOG } = require('../../lib/compliance');
+const { FRAMEWORKS, CONTROL_CATALOG, UPCOMING } = require('../../lib/compliance');
 
 describe('safeguards framework', () => {
-  test('exists, is listed first, and every control it names is in the catalog', () => {
+  test('exists, is listed first, and every control it names is in the catalog or on its way', () => {
     expect(FRAMEWORKS[0].id).toBe('safeguards');
-    for (const id of FRAMEWORKS[0].controls) expect(CONTROL_CATALOG[id]).toBeDefined();
+    for (const id of FRAMEWORKS[0].controls) expect(CONTROL_CATALOG[id] || UPCOMING.includes(id)).toBeTruthy();
   });
 
   test('every catalog entry has the copy the simple view and the packet print', () => {
@@ -91,8 +91,58 @@ describe('safeguards framework', () => {
       if (c.manual) expect(require('../../lib/compliance').CHECKS[id]).toBeUndefined();
       else expect(typeof require('../../lib/compliance').CHECKS[id]).toBe('function');
     }
-    // each Safeguards control names the clause it answers to
-    for (const id of FRAMEWORKS[0].controls) expect(CONTROL_CATALOG[id].why).toMatch(/314\.4/);
+    // each Safeguards requirement names the clause it answers to
+    for (const r of FRAMEWORKS[0].requirements) expect(r.why).toMatch(/314\.4/);
+  });
+});
+
+// The citation is per framework: one control answers to 314.4(c)(5) for a CPA office and
+// to 164.312(d) for a clinic. Every requirement says which, and names only controls that
+// exist or are on the explicit list of ones on their way.
+describe('every framework cites its clauses', () => {
+  test('each requirement has a control, a cite, and a why that names the cite', () => {
+    for (const f of FRAMEWORKS) {
+      expect(f.requirements.length).toBeGreaterThan(0);
+      for (const r of f.requirements) {
+        expect(typeof r.control).toBe('string');
+        expect(r.cite).toMatch(/\S/);
+        expect(r.why).toContain(r.cite.split(' and ')[0].replace(/,.*$/, ''));
+      }
+      expect(f.controls).toEqual(f.requirements.map(r => r.control));
+      expect(new Set(f.controls).size).toBe(f.controls.length);   // a control once per framework
+    }
+  });
+  test('every control id named exists in the catalog or is in UPCOMING', () => {
+    for (const f of FRAMEWORKS) for (const id of f.controls) {
+      if (!CONTROL_CATALOG[id]) expect(UPCOMING).toContain(id);
+    }
+  });
+  test('the profiles say what they are not', () => {
+    const by = Object.fromEntries(FRAMEWORKS.map(f => [f.id, f]));
+    expect(by.hipaa.note).toMatch(/certifies organizations, not software/);
+    expect(by.hipaa.requirements.map(r => r.cite).join(' ')).toMatch(/164\.312\(a\)\(2\)\(iii\)/);   // automatic logoff
+    expect(by.pci_dss.name).toBe('PCI: no card data in Depot');
+    expect(by.pci_dss.controls).toContain('no_card_data');
+    expect(by.pci_dss.controls).toContain('sensitive_data');
+    expect(by.nist_csf.requirements.map(r => r.cite).join(' ')).toMatch(/Govern.*Identify.*Protect.*Detect.*Respond.*Recover/s);
+    for (const id of ['malware_scanning', 'access_review', 'signin_events']) for (const fw of ['safeguards', 'hipaa', 'pci_dss', 'soc2']) expect(by[fw].controls).toContain(id);
+  });
+});
+
+describe('session_timeout readiness (HIPAA automatic logoff)', () => {
+  test('ready when a sign-in lasts a day or less', async () => {
+    settings.get.mockImplementation(k => Promise.resolve(k === 'login_session_hours' ? '10' : null));
+    const r = await require('../../lib/compliance').CHECKS.session_timeout();
+    expect(r.ready).toBe(true);
+    expect(r.evidence).toMatch(/10 hours/);
+  });
+  test('not ready when it is longer, or not set', async () => {
+    settings.get.mockImplementation(k => Promise.resolve(k === 'login_session_hours' ? '168' : null));
+    expect((await require('../../lib/compliance').CHECKS.session_timeout()).ready).toBe(false);
+    settings.get.mockResolvedValue(null);
+    const r = await require('../../lib/compliance').CHECKS.session_timeout();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/not been set/);
   });
 });
 
@@ -147,5 +197,47 @@ describe('retention readiness (disposal on a schedule)', () => {
     expect((await CHECKS.retention()).ready).toBe(false);
     settings.getOrEnv.mockResolvedValue('45');
     expect((await CHECKS.retention()).ready).toBe(true);
+  });
+});
+
+// malware_scanning: green only when scanning is on AND the scanner answered within the
+// hour (lib/malwareScan caches the ping); the evidence names what an auditor asks for.
+describe('malware_scanning readiness', () => {
+  const scan = require('../../lib/malwareScan');
+  afterEach(() => jest.restoreAllMocks());
+  const stub = (st, refused = 0) => {
+    jest.spyOn(scan, 'status').mockResolvedValue({ enabled: false, answering: false, checkedAt: null, version: null, signatureDate: null, lastScanAt: null, error: null, ...st });
+    jest.spyOn(scan, 'refusedCount').mockResolvedValue(refused);
+  };
+  test('off: not ready, says files are stored as they arrive', async () => {
+    stub({ enabled: false }, 0);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/scanning is off/i);
+    expect(r.evidence).toMatch(/0 files refused in the last 30 days/);
+  });
+  test('on but the scanner is not answering: not ready, says uploads are refused', async () => {
+    stub({ enabled: true, answering: false, error: 'connect ECONNREFUSED' }, 1);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/not answering/);
+    expect(r.evidence).toMatch(/uploads are being refused/);
+    expect(r.evidence).toMatch(/1 file refused/);
+  });
+  test('on and answering: ready, with the signature date, the last scan and the count', async () => {
+    stub({ enabled: true, answering: true, version: 'ClamAV 1.4.6', signatureDate: '2026-11-02T06:00:00.000Z', checkedAt: '2026-11-03T15:00:00.000Z', lastScanAt: '2026-11-03T14:30:00.000Z' }, 3);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(true);
+    expect(r.evidence).toMatch(/ClamAV 1\.4\.6/);
+    expect(r.evidence).toMatch(/signatures from November 2, 2026/);
+    expect(r.evidence).toMatch(/Last scan November 3, 2026/);
+    expect(r.evidence).toMatch(/3 files refused in the last 30 days/);
+    expect(scan.status).toHaveBeenCalledWith(); // the cached status, never a forced ping
+  });
+  test('the catalog entry: label, why, and a fix that opens the storage settings', () => {
+    const { CONTROL_CATALOG } = require('../../lib/compliance');
+    expect(CONTROL_CATALOG.malware_scanning).toMatchObject({ label: 'Uploads are scanned for malware', fix: 'settings:malware_scan_enabled' });
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/164\.308\(a\)\(5\)\(ii\)\(B\)/);
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/314\.4\(c\)/);
   });
 });

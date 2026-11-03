@@ -382,6 +382,8 @@ async function start() {
     catch (e) { console.error('[startup] sign-in record poller failed:', e.message); }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
+    // Arm the scheduled compliance reports (no-op unless the schedule is on).
+    try { await require('./lib/complianceReports').reschedule(); } catch (e) { console.error('[startup] compliance report scheduler failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
     try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
     catch (e) { console.error('[startup] upload sweeper failed:', e.message); }

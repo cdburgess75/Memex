@@ -8,7 +8,7 @@ const accessReview = require('./accessReview');
 const auditLog = require('./auditLog');
 const settings = require('./settings');
 
-// Who this Depot belongs to and where it runs, for the packet's cover. The brand
+// Who this Depot belongs to and where it runs, for the report's cover. The brand
 // name is what the firm typed into Workspace settings; the license names the
 // customer when no brand is set.
 async function firmInfo() {
@@ -20,14 +20,16 @@ async function firmInfo() {
   return { name: name || 'Your firm', hostname };
 }
 
-// The settings the Safeguards packet quotes as numbers, read once.
+// The settings the reports quote as numbers, read once.
 async function settingsSnapshot() {
   const get = async (k) => { try { return await settings.getOrEnv(k); } catch { return null; } };
   const getDb = async (k) => { try { return await settings.get(k); } catch { return null; } };
   const linkCap = Number.parseInt((await get('share_link_max_days')) || '', 10);
   const trashRaw = await get('trash_retention_days');
   const backupRun = await getDb('backup_last_run');
+  const sessionRaw = Number(await getDb('login_session_hours'));
   return {
+    sessionHours: Number.isFinite(sessionRaw) && sessionRaw > 0 ? sessionRaw : null,
     mfaRequired: String((await getDb('mfa_required')) || '').toLowerCase() === 'true',
     ms365SignIn: compliance.boolValue(await get('login_ms365_enabled')),
     shareLinkMaxDays: Number.isFinite(linkCap) && linkCap > 0 ? linkCap : null,
@@ -173,65 +175,222 @@ function toMarkdown(b) {
   return lines.join('\n');
 }
 
-// ---- The Safeguards packet ----
-// One printable HTML file for a tax or accounting firm: a cover, a page of prose
-// written to be pasted into their written security plan (IRS Pub 5708 template), the
-// Safeguards Rule checklist, who has access, the audit-log check, and the settings
-// the prose quotes. No scripts, inline CSS only, so it opens and prints anywhere.
+// ---- The report, one framework at a time ----
+// One printable HTML file per framework: a cover, a page of prose written to be pasted
+// into the organization's own plan or policy, the framework's checklist with its
+// citations, who has access, the audit-log check, and the settings the prose quotes.
+// No scripts, inline CSS only, so it opens and prints anywhere. The Safeguards one is
+// the "packet" a CPA office attaches to its written plan (IRS Pub 5708).
 
 const h = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const longDate = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }); };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
-// The framework the packet is about: Safeguards when it is tracked, else the first
-// tracked one, else Safeguards untracked (so the checklist still prints).
-function packetFramework(b) {
+// The framework a report is about: the one asked for, else Safeguards when it is
+// tracked, else the first tracked one, else Safeguards untracked (so the checklist
+// still prints).
+function reportFramework(b, frameworkId) {
   const fws = b.frameworks || [];
-  return fws.find(f => f.id === 'safeguards' && f.enabled) || fws.find(f => f.enabled) || fws.find(f => f.id === 'safeguards') || fws[0] || { name: 'Compliance', controls: [] };
+  if (frameworkId) return fws.find(f => f.id === frameworkId) || null;
+  return fws.find(f => f.id === 'safeguards' && f.enabled) || fws.find(f => f.enabled) || fws.find(f => f.id === 'safeguards') || fws[0] || { id: 'safeguards', name: 'Compliance', controls: [] };
 }
 
-// Section 2: the prose. Each paragraph reads the live state so it stays true.
-function wispParagraphs(b, fw) {
+// What every prose builder reads: the live settings, who is in, and the record.
+function facts(b, fw) {
   const s = b.settings || {};
   const by = Object.fromEntries((fw.controls || []).map(c => [c.id, c]));
-  const met = (id) => by[id]?.ready === true;
-  const firm = b.firm?.name || 'The firm';
-  const where = b.firm?.hostname ? ` at ${b.firm.hostname}` : '';
-  const paras = [];
-  paras.push(`${firm} keeps client files in Depot, a file system that runs on the firm's own server${where}. Files never leave that server except when a member of the firm downloads one or deliberately shares it. No outside service holds a copy.`);
-  paras.push(s.mfaRequired
-    ? 'Every person signs in with their own account and must enter a one-time code as a second step. A password on its own does not open the system.'
-    : s.ms365SignIn
-      ? `Every person signs in with their own Microsoft 365 account. The second step at sign-in (multi-factor authentication) is enforced by the firm's Microsoft 365 tenant${met('mfa') ? ', which the firm has confirmed' : ' — the firm is to confirm this'}.`
-      : 'Every person signs in with their own account. A second step at sign-in (multi-factor authentication) is not yet required; the firm is to turn it on.');
-  paras.push(s.encryptionAtRest
-    ? `Files are encrypted where they are stored (AES-256-GCM) and ${s.https ? 'in transit (HTTPS)' : 'are to be encrypted in transit once HTTPS is enabled'}.`
-    : `Files are ${s.https ? 'encrypted in transit (HTTPS) but ' : ''}not yet encrypted where they are stored; the firm is to turn on encryption at rest.`);
   const ar = b.accessReview || {};
-  const admins = (ar.users || []).filter(u => u.role === 'admin').length;
-  const n = ar.userCount || (ar.users || []).length || 0;
-  paras.push(`Access is by named person. ${n === 1 ? 'One person' : `${n} people`} can sign in, ${plural(admins, 'administrator')}. A person sees only the libraries and folders shared with them; a library is private to its owner until shared. The full list is in section 3 and is reviewed when staff join or leave and at least once a year.`);
-  paras.push(`Depot records who viewed, downloaded, uploaded, changed, shared, or deleted each file, and who was given or lost access. The record is hash-chained so a changed or deleted entry is detectable${b.auditIntegrity?.ok && b.auditIntegrity.count ? `; it was verified intact when this packet was produced (${b.auditIntegrity.count.toLocaleString()} entries)` : ''}.`);
-  paras.push(s.shareLinkMaxDays
-    ? `When a file must go to someone outside the firm, it goes by a link that expires within ${plural(s.shareLinkMaxDays, 'day')} and can carry a password. Links can be cut off at any time, and each use is recorded.`
-    : 'When a file must go to someone outside the firm, it goes by a link that can carry an expiry date and a password. The firm is to set a limit on how long a link may live.');
-  paras.push(met('backup_restore')
-    ? `The server is backed up${s.backupLastRun ? ` (most recently ${longDate(s.backupLastRun)})` : ''}, so client files can be recovered after a hardware failure or an incident.`
-    : 'The firm is to put a tested backup of the server in place so client files can be recovered after a hardware failure or an incident.');
-  paras.push(Number.isFinite(s.trashRetentionDays) && s.trashRetentionDays > 0
-    ? `A deleted file is held in the trash for ${plural(s.trashRetentionDays, 'day')} and then disposed of. Tax returns and workpapers are kept for the periods the IRS and the firm's professional standards require, and deleted after that.`
-    : 'Deleted files are to be disposed of on a schedule. Tax returns and workpapers are kept for the periods the IRS and the firm\'s professional standards require, and deleted after that.');
-  paras.push(`Depot is kept up to date through signed releases. The version in use when this packet was produced was ${b.version}.`);
-  return paras;
+  return {
+    s, by, met: (id) => by[id]?.ready === true,
+    firm: b.firm?.name || 'The organization',
+    where: b.firm?.hostname ? ` at ${b.firm.hostname}` : '',
+    people: ar.userCount || (ar.users || []).length || 0,
+    admins: (ar.users || []).filter(u => u.role === 'admin').length,
+    chain: b.auditIntegrity?.ok && b.auditIntegrity.count ? `; it was verified intact when this report was produced (${b.auditIntegrity.count.toLocaleString()} entries)` : '',
+  };
+}
+// Sentences several frameworks share, each true to the live settings.
+const line = {
+  signIn: (f, what) => f.s.mfaRequired
+    ? `Every person signs in with their own account and must enter a one-time code as a second step. A password on its own does not open the system.`
+    : f.s.ms365SignIn
+      ? `Every person signs in with their own Microsoft 365 account. The second step at sign-in (multi-factor authentication) is enforced by the ${what}'s Microsoft 365 tenant${f.met('mfa') ? `, which the ${what} has confirmed` : ` — the ${what} is to confirm this`}.`
+      : `Every person signs in with their own account. A second step at sign-in (multi-factor authentication) is not yet required; the ${what} is to turn it on.`,
+  encrypted: (f, what) => f.s.encryptionAtRest
+    ? `Files are encrypted where they are stored (AES-256-GCM) and ${f.s.https ? 'in transit (HTTPS)' : 'are to be encrypted in transit once HTTPS is enabled'}.`
+    : `Files are ${f.s.https ? 'encrypted in transit (HTTPS) but ' : ''}not yet encrypted where they are stored; the ${what} is to turn on encryption at rest.`,
+  access: (f) => `Access is by named person. ${f.people === 1 ? 'One person' : `${f.people} people`} can sign in, ${plural(f.admins, 'administrator')}. A person sees only the libraries and folders shared with them; a library is private to its owner until shared. The full list is in section 3 and is reviewed when staff join or leave and at least once a year.`,
+  record: (f) => `Depot records who viewed, downloaded, uploaded, changed, shared, or deleted each file, and who was given or lost access. The record is hash-chained so a changed or deleted entry is detectable${f.chain}.`,
+  links: (f, what) => f.s.shareLinkMaxDays
+    ? `When a file must go to someone outside the ${what}, it goes by a link that expires within ${plural(f.s.shareLinkMaxDays, 'day')} and can carry a password. Links can be cut off at any time, and each use is recorded.`
+    : `When a file must go to someone outside the ${what}, it goes by a link that can carry an expiry date and a password. The ${what} is to set a limit on how long a link may live.`,
+  backup: (f, what) => f.met('backup_restore')
+    ? `The server is backed up${f.s.backupLastRun ? ` (most recently ${longDate(f.s.backupLastRun)})` : ''}, so files can be recovered after a hardware failure or an incident.`
+    : `The ${what} is to put a tested backup of the server in place so files can be recovered after a hardware failure or an incident.`,
+  trash: (f) => Number.isFinite(f.s.trashRetentionDays) && f.s.trashRetentionDays > 0
+    ? `A deleted file is held in the trash for ${plural(f.s.trashRetentionDays, 'day')} and then disposed of.`
+    : 'Deleted files are to be disposed of on a schedule.',
+  session: (f, what) => f.s.sessionHours
+    ? `A sign-in ends on its own after ${plural(f.s.sessionHours, 'hour')}${f.s.sessionHours > 24 ? `; the ${what} is to shorten this to a day or less` : ''}.`
+    : `How long a sign-in lasts has not been set; the ${what} is to set it to a day or less.`,
+  version: (b) => `Depot is kept up to date through signed releases. The version in use when this report was produced was ${b.version}.`,
+};
+
+// Section 1 for the Safeguards packet: written to be pasted into the firm's WISP.
+function wispParagraphs(b, fw) {
+  const f = facts(b, fw);
+  return [
+    `${f.firm} keeps client files in Depot, a file system that runs on the firm's own server${f.where}. Files never leave that server except when a member of the firm downloads one or deliberately shares it. No outside service holds a copy.`,
+    line.signIn(f, 'firm'),
+    line.encrypted(f, 'firm'),
+    line.access(f),
+    line.record(f),
+    line.links(f, 'firm'),
+    line.backup(f, 'firm').replace('so files can', 'so client files can'),
+    `${line.trash(f)} Tax returns and workpapers are kept for the periods the IRS and the firm's professional standards require, and deleted after that.`,
+    line.version(b),
+  ];
+}
+// Section 1 for HIPAA: the technical safeguards, for the organization's security policies.
+function hipaaParagraphs(b, fw) {
+  const f = facts(b, fw);
+  return [
+    `${f.firm} keeps patient files in Depot, a file system that runs on the organization's own server${f.where}. Files never leave that server except when a member of staff downloads one or deliberately shares it. No outside service holds a copy.`,
+    `${line.signIn(f, 'organization')} Each action in Depot is tied to that one named person.`,
+    line.session(f, 'organization'),
+    line.encrypted(f, 'organization').replace('(AES-256-GCM)', '(AES-256-GCM, a cipher that also detects a file altered on disk)'),
+    line.access(f),
+    line.record(f),
+    f.met('emergency_access')
+      ? 'The organization has a written procedure for reaching patient files in an emergency, when the usual person or sign-in is not available.'
+      : 'The organization is to write down how patient files are reached in an emergency, when the usual person or sign-in is not available.',
+    line.backup(f, 'organization').replace('so files can', 'so an exact copy of patient files can'),
+    'Business associate agreements, the risk analysis, the organization\'s policies, and staff training are kept with the organization\'s own records; they are outside what Depot can show.',
+    line.version(b),
+  ];
+}
+// Section 1 for PCI: a statement of scope, for the organization's PCI questionnaire.
+function pciScopeParagraphs(b, fw) {
+  const f = facts(b, fw);
+  return [
+    `${f.firm} keeps its files in Depot, a file system that runs on its own server${f.where}. Depot is not used to store, process, or transmit cardholder data: card payments go through the organization's card terminal or payment provider, never through a file kept here. Depot is therefore outside the organization's PCI DSS scope.`,
+    f.met('no_card_data')
+      ? 'A written rule says card numbers are never typed into or uploaded to Depot, and staff have been told where payments do go.'
+      : 'The organization is to write that rule down (card numbers are never typed into or uploaded to Depot) and tell staff where payments do go.',
+    f.by.sensitive_data
+      ? (f.met('sensitive_data') ? 'Uploaded files are checked for card numbers, so a slip is caught instead of silently bringing Depot into scope.' : 'Depot is to check uploaded files for card numbers, so a slip is caught instead of silently bringing Depot into scope.')
+      : 'Should a card number ever slip into a file, the organization removes the file and records the event; the protections below limit the exposure in the meantime.',
+    line.signIn(f, 'organization'),
+    line.encrypted(f, 'organization'),
+    line.access(f),
+    line.record(f),
+    line.trash(f),
+    line.version(b),
+  ];
+}
+// Section 1 for NIST CSF 2.0: the six functions, one short paragraph each.
+function nistParagraphs(b, fw) {
+  const f = facts(b, fw);
+  return [
+    `${f.firm} keeps its files in Depot, a file system that runs on its own server${f.where}. This summary follows the six functions of the NIST Cybersecurity Framework 2.0.`,
+    `Govern. ${f.met('qualified_individual') ? 'One named person is responsible for security and reports to leadership.' : 'The organization is to name one person responsible for security who reports to leadership.'} ${f.met('provider_oversight') ? 'Outside providers that touch the organization\'s data are under written terms.' : 'Outside providers that touch the organization\'s data are to be put under written terms.'}`,
+    `Identify. ${f.met('risk_assessment') ? 'A written risk assessment says what could go wrong with the organization\'s data and what is done about it.' : 'The organization is to write down what could go wrong with its data and what is done about it.'} Section 3 lists who can reach the files.`,
+    `Protect. ${line.signIn(f, 'organization')} ${line.encrypted(f, 'organization')}`,
+    `Detect. ${line.record(f)}`,
+    `Respond. ${f.met('incident_response') ? 'A written plan says who does what when something goes wrong.' : 'The organization is to write a one-page plan saying who does what when something goes wrong.'}`,
+    `Recover. ${line.backup(f, 'organization')}`,
+    line.version(b),
+  ];
+}
+// Section 1 for any other framework: the shared sentences, read from the live settings.
+function genericParagraphs(b, fw) {
+  const f = facts(b, fw);
+  return [
+    `${f.firm} keeps its files in Depot, a file system that runs on its own server${f.where}. Files never leave that server except when a member of staff downloads one or deliberately shares it. No outside service holds a copy.`,
+    line.signIn(f, 'organization'),
+    line.encrypted(f, 'organization'),
+    line.access(f),
+    line.record(f),
+    line.links(f, 'organization'),
+    line.backup(f, 'organization'),
+    line.trash(f),
+    line.version(b),
+  ];
 }
 
-function toPacketHtml(b) {
-  const fw = packetFramework(b);
+// What differs between the reports: the words on the cover, what section 1 is for,
+// what the checklist is called, and who the report says it is not.
+const REPORT = {
+  safeguards: {
+    kicker: 'FTC Safeguards Rule · Information security packet',
+    lead: 'How client information is protected in Depot',
+    prose: wispParagraphs,
+    section1: 'Summary for your written information security plan',
+    section1Note: 'Paste this into the "Information systems" or "Safeguards" part of your plan (IRS Pub 5708 template). Every sentence reflects this Depot\'s settings on {date}; produce a fresh packet when they change.',
+    checklist: 'Safeguards Rule checklist',
+    checklistNote: 'Each line names the part of 16 CFR 314.4 it answers to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.',
+    disclaimer: 'It is not legal advice, an audit opinion, or a certification; the firm\'s written information security plan, risk assessment, training, and yearly report remain the firm\'s own.',
+    who: 'firm', what: 'packet',
+  },
+  hipaa: {
+    kicker: 'HIPAA Security Rule · Technical safeguards report',
+    lead: 'How patient files are protected in Depot',
+    prose: hipaaParagraphs,
+    section1: 'Summary for your security policies',
+    section1Note: 'Paste this into the part of your policies that describes the systems holding patient files. Every sentence reflects this Depot\'s settings on {date}; produce a fresh report when they change.',
+    checklist: 'Technical safeguards checklist (45 CFR 164.312)',
+    checklistNote: 'Each line names the clause it answers to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.',
+    disclaimer: 'HIPAA certifies organizations, not software. It is not legal advice or a certification; the business associate agreements, risk analysis, policies, and training remain the organization\'s own.',
+  },
+  pci_dss: {
+    kicker: 'PCI DSS · Statement of scope',
+    lead: 'Why Depot holds no card data',
+    prose: pciScopeParagraphs,
+    section1: 'Statement of scope',
+    section1Note: 'Attach this to your PCI self-assessment questionnaire as the description of this system. Every sentence reflects this Depot\'s settings on {date}; produce a fresh report when they change.',
+    checklist: 'Scope-avoidance checklist',
+    checklistNote: 'Each line names the PCI DSS v4.0 requirement it relates to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.',
+    disclaimer: 'It is not a PCI DSS assessment or an attestation of compliance. PCI DSS applies to systems that store, process, or transmit cardholder data; the aim of this report is to show that Depot is not one of them.',
+  },
+  nist_csf: {
+    kicker: 'NIST Cybersecurity Framework 2.0 · Profile report',
+    lead: 'How Depot answers the six functions',
+    prose: nistParagraphs,
+    section1: 'Profile summary',
+    section1Note: 'Use this as the file-system part of your organization\'s current profile. Every sentence reflects this Depot\'s settings on {date}; produce a fresh report when they change.',
+    checklist: 'Framework checklist',
+    checklistNote: 'Each line names the function and subcategory it answers to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.',
+    disclaimer: 'The framework is a way of organizing a program, not a certification. It is not legal advice; the governance, risk, and planning parts remain the organization\'s own.',
+  },
+  default: {
+    kicker: '{name} · Readiness report',
+    lead: 'How files are protected in Depot',
+    prose: genericParagraphs,
+    section1: 'Summary for your policies',
+    section1Note: 'Paste this into the part of your policies that describes this system. Every sentence reflects this Depot\'s settings on {date}; produce a fresh report when they change.',
+    checklist: 'Checklist',
+    checklistNote: 'Each line names the clause it answers to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.',
+    disclaimer: 'It is not legal advice, an audit opinion, or a certification; the organization\'s own policies, assessments, and training remain its own.',
+  },
+};
+// Every shape says who it is for and what it calls itself; the packet keeps "firm" and "packet".
+for (const r of Object.values(REPORT)) { r.who = r.who || 'organization'; r.what = r.what || 'report'; }
+const reportShape = (fw) => REPORT[fw.id] || REPORT.default;
+
+// `shapeId` picks the words (cover, section 1, checklist title) apart from the framework
+// whose controls are listed: the packet keeps the Safeguards words even when that
+// framework is not tracked here.
+function toReportHtml(b, frameworkId, shapeId) {
+  const fw = reportFramework(b, frameworkId);
+  if (!fw) throw new Error(`No such framework: ${frameworkId}`);
+  const R = REPORT[shapeId] || reportShape(fw);
   const firm = b.firm?.name || 'Your firm';
   const date = longDate(b.generatedAt) || b.generatedAt;
+  const fill = (t) => String(t).replace('{date}', date).replace('{name}', fw.name);
   const controls = fw.controls || [];
   const open = controls.filter(c => c.ready !== true);
   const verdict = !open.length ? 'Ready' : `${open.length} to do`;
+  const short = fw.short || fw.name || fw.label || 'Compliance';
 
   const checklistRows = controls.map(c => {
     const who = c.attestation?.met && c.attestation.by ? `${h(c.attestation.by)}, ${h(longDate(c.attestation.at))}` : '';
@@ -254,6 +413,7 @@ function toPacketHtml(b) {
   const snapshot = [
     ['Second step at sign-in required (local accounts)', yesNo(s.mfaRequired)],
     ['Sign-in through Microsoft 365', yesNo(s.ms365SignIn)],
+    ['How long a sign-in lasts', s.sessionHours ? plural(s.sessionHours, 'hour') : 'Not set here'],
     ['Longest a share link may live', s.shareLinkMaxDays ? plural(s.shareLinkMaxDays, 'day') : 'No limit set'],
     ['Deleted files disposed of after', Number.isFinite(s.trashRetentionDays) && s.trashRetentionDays > 0 ? plural(s.trashRetentionDays, 'day') : 'Never (manual only)'],
     ['Encrypted where stored', yesNo(s.encryptionAtRest)],
@@ -265,7 +425,7 @@ function toPacketHtml(b) {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${h(firm)} — Safeguards packet — ${h(b.generatedAt.slice(0, 10))}</title>
+<title>${h(firm)} — ${h(short)} report — ${h(b.generatedAt.slice(0, 10))}</title>
 <style>
   @page { size: letter; margin: 0.9in 0.85in; }
   html { color-scheme: light; }
@@ -297,29 +457,30 @@ function toPacketHtml(b) {
 <body><main>
 <div class="cover">
   <div>
-    <div class="kicker">FTC Safeguards Rule · Information security packet</div>
+    <div class="kicker">${h(fill(R.kicker))}</div>
     <h1>${h(firm)}</h1>
-    <p>How client information is protected in Depot, as of ${h(date)}.</p>
+    <p>${h(R.lead)}, as of ${h(date)}.</p>
     <span class="verdict ${open.length ? 'no' : 'ok'}">${h(fw.name)}: ${h(verdict)}</span>
     <dl>
       <dt>Prepared</dt><dd>${h(date)}</dd>
+      <dt>Framework</dt><dd>${h(fw.name)}</dd>
       <dt>System</dt><dd>Depot ${h(b.version)}${b.firm?.hostname ? `, ${h(b.firm.hostname)}` : ''}</dd>
-      <dt>Where it runs</dt><dd>On the firm's own server</dd>
-      <dt>Sections</dt><dd>1 Summary for your written plan · 2 Checklist · 3 Who has access · 4 Audit-log check · 5 Settings</dd>
+      <dt>Where it runs</dt><dd>On the ${h(R.who)}'s own server</dd>
+      <dt>Sections</dt><dd>1 ${h(R.section1)} · 2 ${h(R.checklist)} · 3 Who has access · 4 Audit-log check · 5 Settings</dd>
     </dl>
   </div>
-  <p class="disc">Produced by Depot from its own settings and records. It describes this system as it stood on the date above. It is not legal advice, an audit opinion, or a certification; the firm's written information security plan, risk assessment, training, and yearly report remain the firm's own.</p>
+  <p class="disc">Produced by Depot from its own settings and records. It describes this system as it stood on the date above. ${h(R.disclaimer)}</p>
 </div>
 
 <section>
-  <h2><small>Section 1</small>Summary for your written information security plan</h2>
-  <p class="note">Paste this into the "Information systems" or "Safeguards" part of your plan (IRS Pub 5708 template). Every sentence reflects this Depot's settings on ${h(date)}; produce a fresh packet when they change.</p>
-  ${wispParagraphs(b, fw).map(p => `<p>${h(p)}</p>`).join('\n  ')}
+  <h2><small>Section 1</small>${h(R.section1)}</h2>
+  <p class="note">${h(fill(R.section1Note))}</p>
+  ${R.prose(b, fw).map(p => `<p>${h(p)}</p>`).join('\n  ')}
 </section>
 
 <section>
-  <h2><small>Section 2</small>Safeguards Rule checklist</h2>
-  <p class="note">Each line names the part of 16 CFR 314.4 it answers to. "Met" lines Depot can see for itself, or an administrator confirmed; "To do" lines say what to do next.</p>
+  <h2><small>Section 2</small>${h(R.checklist)}</h2>
+  <p class="note">${h(R.checklistNote)}</p>
   <table><thead><tr><th>Status</th><th>Requirement</th><th>What Depot shows</th><th>Confirmed by</th></tr></thead><tbody>${checklistRows}</tbody></table>
 </section>
 
@@ -338,10 +499,21 @@ function toPacketHtml(b) {
 </section>
 
 <section>
-  <h2><small>Section 5</small>Settings this packet relies on</h2>
+  <h2><small>Section 5</small>Settings this ${h(R.what)} relies on</h2>
   <table><thead><tr><th>Setting</th><th>Value on ${h(date)}</th></tr></thead><tbody>${snapshot}</tbody></table>
 </section>
 </main></body></html>`;
 }
 
-module.exports = { build, toMarkdown, toPacketHtml };
+// The Safeguards packet: the report for that framework, under the name the route,
+// the tests and the simple view already use.
+const toPacketHtml = (b) => toReportHtml(b, undefined, 'safeguards');
+
+// The attachment name: <firm>-<framework>-report-<date>.html.
+function reportFileName(firmName, frameworkId, iso) {
+  const slug = String(firmName || 'depot').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'depot';
+  const fw = String(frameworkId || 'compliance').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return `${slug}-${fw}-report-${String(iso || new Date().toISOString()).slice(0, 10)}.html`;
+}
+
+module.exports = { build, toMarkdown, toPacketHtml, toReportHtml, reportFileName, PROSE: { safeguards: wispParagraphs, hipaa: hipaaParagraphs, pci_dss: pciScopeParagraphs, nist_csf: nistParagraphs, default: genericParagraphs } };
