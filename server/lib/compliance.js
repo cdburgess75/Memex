@@ -10,7 +10,7 @@ const ROOT = path.join(__dirname, '..', '..');
 // Control ids a framework may name before the control exists: each is a sibling
 // change in flight (malware scanning, the access review, sign-in events) or a later one
 // (card-number detection). profileStatus() drops them until the catalog has them.
-const UPCOMING = ['access_review', 'signin_events', 'sensitive_data'];
+const UPCOMING = ['access_review', 'signin_events'];
 
 // One requirement: a catalog control, the clause it answers to in this framework, and
 // why, in words the office manager can read. `why` always names the clause.
@@ -33,6 +33,7 @@ const FRAMEWORKS = [
       req('encryption', '314.4(c)(3)', '314.4(c)(3): client information is encrypted where it is stored.'),
       req('network_security', '314.4(c)(3)', '314.4(c)(3): client information is encrypted in transit (HTTPS).'),
       req('access_control', '314.4(c)(1)', '314.4(c)(1): only the people who need client information can reach it, and the list is reviewed.'),
+      req('sensitive_data', '314.4(c)(1) and (c)(2)', '314.4(c)(1) and (c)(2): know where customer information sits. Depot checks each file for card, Social Security and bank numbers and lists what it finds, so a card number that should never have been uploaded is caught.'),
       req('access_review', '314.4(c)(1)', '314.4(c)(1): who has access is reviewed on a schedule, and access is taken away when it is no longer needed.'),
       req('audit_logging', '314.4(c)(8)', '314.4(c)(8): a record of who did what with client information, including views and downloads, that cannot be quietly edited.'),
       req('signin_events', '314.4(c)(8)', '314.4(c)(8): sign-ins and failed sign-ins are recorded, so an attempt to get in by someone unauthorized can be seen.'),
@@ -84,6 +85,7 @@ const FRAMEWORKS = [
     note: 'HIPAA certifies organizations, not software. The business associate agreements, the risk analysis, your policies, and staff training are your organization\'s own; this report covers what Depot can show.',
     requirements: [
       req('access_control', '164.312(a)(1) and (a)(2)(i)', '164.312(a)(1) and (a)(2)(i): each person has their own account, so every action can be traced to one named person.'),
+      req('sensitive_data', '164.308(a)(1)(ii)(A)', '164.308(a)(1)(ii)(A): the risk analysis starts with knowing where protected information is. Depot checks each file for card, Social Security and bank numbers and lists what it finds.'),
       req('emergency_access', '164.312(a)(2)(ii)', '164.312(a)(2)(ii): a written way to reach patient files in an emergency, when the usual person or sign-in is not available.'),
       req('session_timeout', '164.312(a)(2)(iii)', '164.312(a)(2)(iii): a sign-in ends on its own after a set time, so an unattended screen does not stay open.'),
       req('encryption', '164.312(a)(2)(iv) and (c)(1)', '164.312(a)(2)(iv) and (c)(1): files are encrypted where they are stored, with a cipher that also detects a file altered on disk.'),
@@ -357,6 +359,12 @@ const CONTROL_CATALOG = {
     gap: 'Start the scanner on the server (COMPOSE_PROFILES=clamav in .env, then upgrade.sh) and switch scanning on in Settings › Storage & backups.',
     fix: 'settings:malware_scan_enabled',
   },
+  sensitive_data: {
+    label: 'No card numbers are stored in Depot',
+    evidence: 'Every file\'s text is checked for payment card numbers (and, as information, Social Security and bank numbers) as it arrives; what is found is listed under Findings until an administrator resolves it or deletes the file.',
+    gap: 'Open Findings in the Compliance window: each file that holds what looks like a card number is listed with where it is. Delete the file or move the number out of Depot, or mark the finding resolved with a note. Card detection must be on (Compliance › Findings).',
+    fix: 'compliance:findings',
+  },
 };
 
 // Live, config-based signal for each auto-detectable control. Each returns
@@ -532,6 +540,19 @@ const CHECKS = {
       ready: true,
       evidence: `Every upload is scanned (${st.version || 'ClamAV'}, signatures from ${st.signatureDate ? day(st.signatureDate) : 'an unknown date'}); the scanner answered ${st.checkedAt ? when(st.checkedAt) : 'recently'}. Last scan ${st.lastScanAt ? when(st.lastScanAt) : 'not yet'}. ${refusedLine}.`,
     };
+  },
+  sensitive_data: async () => {
+    // Green when card detection is on and no card finding is open. Social Security and
+    // bank findings are reported but never fail this control: a tax office holds them.
+    const sd = require('./sensitiveData');
+    const s = await sd.summary();
+    const when = (iso) => new Date(iso).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const n = (k) => `${s.open[k]} open, ${s.resolved[k]} resolved`;
+    const files = `${s.files_checked.toLocaleString()} of ${s.files_total.toLocaleString()} files checked${s.last_check_at ? `, last ${when(s.last_check_at)}` : ''}`;
+    const tail = `Card numbers: ${n('card')}. Social Security numbers: ${s.modes.ssn === 'flag' ? n('ssn') : 'not checked'}. Bank numbers: ${s.modes.bank === 'flag' ? n('bank') : 'not checked'}. ${files}.`;
+    if (s.modes.card !== 'flag') return { ready: false, evidence: `Card numbers are not being checked for. ${tail}` };
+    if (s.open.card > 0) return { ready: false, evidence: `${s.open.card} file${s.open.card === 1 ? ' holds' : 's hold'} what looks like a payment card number. ${tail}` };
+    return { ready: true, evidence: `Every file is checked for card numbers as it arrives, and none is open. ${tail}` };
   },
 };
 

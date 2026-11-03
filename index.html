@@ -1482,6 +1482,19 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
 .cmp-adv .cmp-main { height: 540px; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-top: 10px; }
 .cmp-adv-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .cmp-reports { display: grid; }
+.cmp-findings { margin-top: 4px; }
+.cmp-find-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 16px; align-items: end; margin: 6px 0 4px; }
+.cmp-find-mode { display: flex; flex-direction: column; gap: 4px; font: 600 14px var(--ui); color: var(--ink); }
+.cmp-find-mode select { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 4px 8px; font: 500 14px var(--ui); }
+.cmp-find-mode small { font: 400 12px var(--ui); color: var(--ink-soft); }
+.cmp-find-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.cmp-find-wrap { overflow-x: auto; margin: 6px 0 10px; }
+.cmp-find-table { min-width: 720px; font-size: 13px; }
+.cmp-find-table td, .cmp-find-table th { padding: 7px 10px 7px 0; vertical-align: top; }
+.cmp-find-file { font: 600 14px var(--ui); color: var(--accent-soft); text-align: left; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.dark .cmp-find-file { color: var(--accent); }
+.cmp-find-path { font-size: 12px; color: var(--ink-faint); }
+.cmp-find-card td:nth-child(3) { color: var(--danger); font-weight: 600; }
 .cmp-report { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule-soft); font-size: 14px; }
 .cmp-report-meta { color: var(--ink-soft); font-size: 13px; }
 .cmp-report-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; }
@@ -5415,8 +5428,12 @@ const CMP_FIX = {
   'settings:malware_scan_enabled': ['storage', 'Open virus scanning'],
   'settings:app_url': ['workspace', 'Open workspace settings'],
   'backup': ['storage', 'Open backups'],
+  'compliance:findings': ['findings', 'Open findings'],
 };
-function cmpFix(key) { const f = CMP_FIX[key]; if (!f) return; closeComplianceStatus(); openSettingsAt(f[0]); }
+function cmpFix(key) {
+  if (key === 'compliance:findings') { _cmpFindOpen = true; if (complianceData) renderComplianceModal(complianceData); document.getElementById('cmp-findings')?.scrollIntoView({ block: 'start' }); return; }
+  const f = CMP_FIX[key]; if (!f) return; closeComplianceStatus(); openSettingsAt(f[0]);
+}
 // One light, one download. Shown when exactly one framework is tracked — a CPA office
 // tracks the Safeguards Rule and nothing else — so the page answers "are we OK?" and
 // "where is the paperwork?" before it shows a single control.
@@ -5473,6 +5490,105 @@ function cmpScheduleHtml(data, isAdmin) {
     <label for="cmp-sched-email">send it to:</label><input id="cmp-sched-email" type="text" placeholder="owner@firm.com, it@provider.com" value="${escAttr(sched.email || '')}">
     <button type="button" class="cmp-att-btn primary" onclick="saveComplianceReportSchedule(this)">Save</button></div>`;
 }
+// Sensitive data in files (server lib/sensitiveData.js): the Findings fold, drawn in the
+// compliance window and on Admin › Compliance from the same data. Admin only. Each row
+// is a file that holds what looks like a card, Social Security or bank number, with a
+// sample masked to its last four digits; "Resolved" records who, when and a note.
+let _cmpFindOpen = false;
+const CMP_FIND_WORDS = { card: 'Card number', ssn: 'Social Security number', bank: 'Bank number' };
+function cmpFindingsHtml(data, isAdmin) {
+  if (!isAdmin) return '';
+  const f = data.findings;
+  if (!f) return '<p class="cmp-sub">Findings could not be loaded.</p>';
+  const modes = f.modes || {};
+  const sel = (id, type, label, hint) => `<label class="cmp-find-mode"><span>${label}</span><select id="${id}" data-type="${type}"><option value="flag"${modes[type] === 'flag' ? ' selected' : ''}>Flag</option><option value="off"${modes[type] === 'off' ? ' selected' : ''}>Off</option></select><small>${hint}</small></label>`;
+  const switches = `<div class="cmp-find-modes">${sel('cmp-find-cards', 'card', 'Card numbers', 'The PCI control. Flag: list the file and tell the admins.')}${sel('cmp-find-ssn', 'ssn', 'Social Security numbers', 'Information only: a tax office holds these.')}${sel('cmp-find-bank', 'bank', 'Bank routing and account numbers', 'Information only. Off unless you want them listed.')}<button type="button" class="cmp-att-btn primary" onclick="saveFindingSettings(this)">Save</button></div>`;
+  const bf = f.backfill || {};
+  const checked = `${Number(f.files_checked || 0).toLocaleString()} of ${Number(f.files_total || 0).toLocaleString()} files checked${f.last_check_at ? `, last ${new Date(f.last_check_at).toLocaleString()}` : ''}.`;
+  const unchecked = Math.max(0, Number(f.files_total || 0) - Number(f.files_checked || 0));
+  let bfLine = '';
+  if (bf.running) bfLine = `Checking existing files: ${Number(bf.done).toLocaleString()} of ${Number(bf.total).toLocaleString()} done.`;
+  else if (bf.error) bfLine = `The last check of existing files stopped with an error: ${bf.error}`;
+  else if (bf.finished_at) bfLine = `Existing files were last checked ${new Date(bf.finished_at).toLocaleString()}${bf.by ? ` (started by ${bf.by})` : ''}.`;
+  const checkBtn = bf.running
+    ? `<button type="button" class="cmp-att-btn" onclick="refreshFindings(this)">Refresh</button>`
+    : `<button type="button" class="cmp-att-btn" data-all="${unchecked ? '0' : '1'}" onclick="checkExistingFiles(this, this.dataset.all === '1')">${unchecked ? `Check existing files (${unchecked.toLocaleString()} not yet checked)` : 'Check all files again'}</button>`;
+  const status = `<p class="cmp-sub">Files are checked as they arrive and when they change. ${esc(checked)} ${esc(bfLine)}</p><div class="cmp-find-act">${checkBtn}<span class="cmp-probe-meta">Runs in the background in small batches; the server stays responsive and nothing is refused.</span></div>`;
+  const open = Array.isArray(f.open) ? f.open : [], resolved = Array.isArray(f.resolved) ? f.resolved : [];
+  const row = (r, done) => `<tr class="cmp-find-${esc(r.type)}">
+      <td><button type="button" class="link-btn cmp-find-file" data-fid="${escAttr(String(r.document_id))}" onclick="openFindingFile(this.dataset.fid)" title="${escAttr(r.document_name || '')}">${esc(fileDisplayName({ name: r.document_name || '' }))}</button>${r.document_name && r.document_name.includes('/') ? `<div class="cmp-find-path">${esc(r.document_name.split('/').slice(0, -1).join('/'))}</div>` : ''}</td>
+      <td>${esc(r.library_name || '—')}</td>
+      <td>${esc(CMP_FIND_WORDS[r.type] || r.type)}</td>
+      <td class="tnum">${Number(r.count).toLocaleString()}</td>
+      <td class="tnum">${esc(r.sample || '')}</td>
+      <td>${esc(new Date(r.first_seen).toLocaleDateString())}</td>
+      <td>${done
+        ? `<span class="cmp-att-meta">${r.resolved_by === 'depot' ? 'No longer in the file' : `Resolved by ${esc(r.resolved_by || '')}`} ${esc(new Date(r.resolved_at).toLocaleDateString())}${r.note && r.resolved_by !== 'depot' ? ` · ${esc(r.note)}` : ''}</span>`
+        : `<button type="button" class="cmp-att-btn" data-id="${escAttr(String(r.id))}" onclick="resolveFinding(this, this.dataset.id)">Resolved</button>`}</td>
+    </tr>`;
+  const head = `<thead><tr><th>File</th><th>Library</th><th>What</th><th>How many</th><th>Sample</th><th>First seen</th><th></th></tr></thead>`;
+  const cards = open.filter(r => r.type === 'card').length;
+  const lead = !open.length
+    ? '<p class="cmp-sub">Nothing is open. A file is listed here when Depot finds what looks like a card number, a Social Security number, or a bank number in it.</p>'
+    : `<p class="cmp-sub">${cards ? `<b>${cards} file${cards === 1 ? ' holds' : 's hold'} what looks like a card number.</b> Delete the file or take the number out of it; or, if it is where it should be, mark it resolved with a note. ` : ''}Social Security and bank findings are information only: they never fail a control.</p>`;
+  const openTable = open.length ? `<div class="cmp-find-wrap"><table class="admin-table cmp-find-table">${head}<tbody>${open.map(r => row(r, false)).join('')}</tbody></table></div>` : '';
+  const doneTable = resolved.length ? `<h4 class="cmp-h4">Recently resolved</h4><div class="cmp-find-wrap"><table class="admin-table cmp-find-table">${head}<tbody>${resolved.map(r => row(r, true)).join('')}</tbody></table></div>` : '';
+  return `<div class="cmp-findings" id="cmp-findings"><h4 class="cmp-h4">What is checked for</h4>${switches}<h4 class="cmp-h4">Checking</h4>${status}<h4 class="cmp-h4">Open findings${open.length ? ` (${open.length})` : ''}</h4>${lead}${openTable}${doneTable}</div>`;
+}
+function cmpFindingsFold(data, isAdmin) {
+  if (!isAdmin) return '';
+  const f = data.findings;
+  const n = f && Array.isArray(f.open) ? f.open.length : 0, cards = f ? Number(f.open?.filter?.(r => r.type === 'card').length || 0) : 0;
+  const word = cards ? `${cards} with a card number` : n ? `${n} open` : 'nothing open';
+  return `<details class="cmp-adv cmp-findings-fold" ${_cmpFindOpen ? 'open' : ''} ontoggle="_cmpFindOpen = this.open"><summary>Findings: files that hold card, Social Security or bank numbers (${esc(word)})</summary>${cmpFindingsHtml(data, isAdmin)}</details>`;
+}
+// One line for Admin › Compliance.
+function cmpFindingsLine(data) {
+  const f = data?.findings;
+  if (!f) return '';
+  const open = Array.isArray(f.open) ? f.open : [];
+  const cards = open.filter(r => r.type === 'card').length;
+  if (cards) return `${cards} file${cards === 1 ? ' holds' : 's hold'} what looks like a card number.`;
+  if (open.length) return `${open.length} finding${open.length === 1 ? '' : 's'} open, none a card number.`;
+  return `No card numbers found in ${Number(f.files_checked || 0).toLocaleString()} checked files.`;
+}
+async function refreshFindings(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await loadComplianceSummary();
+    if (complianceData && document.querySelector('#compliance-status-scrim .modal')) renderComplianceModal(complianceData);
+  } finally { if (btn) btn.disabled = false; }
+}
+async function resolveFinding(btn, id) {
+  const note = await askPrompt('Mark this finding resolved. Say what was done (the number was removed, the file was deleted, or it belongs where it is):', '', { okLabel: 'Resolved', title: 'Resolve finding', placeholder: 'Optional note' });
+  if (note === null) return;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPost(`/admin/compliance/findings/${encodeURIComponent(id)}/resolve`, { note });
+    toast('Finding resolved');
+    await refreshFindings();
+  } catch (e) { toast('Could not resolve: ' + e.message); if (btn) btn.disabled = false; }
+}
+async function saveFindingSettings(btn) {
+  const v = (id) => document.getElementById(id)?.value || undefined;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPut('/admin/compliance/findings/settings', { cards: v('cmp-find-cards'), ssn: v('cmp-find-ssn'), bank: v('cmp-find-bank') });
+    toast('Saved');
+    await refreshFindings();
+  } catch (e) { toast('Save failed: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+async function checkExistingFiles(btn, all) {
+  if (all && !await askConfirm('Check every file again? It runs in the background in small batches and may take a while on a large install.', { okLabel: 'Check all files' })) return;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPost('/admin/compliance/findings/check', { all: !!all });
+    toast('Checking existing files in the background.');
+    await refreshFindings();
+  } catch (e) { toast('Could not start: ' + e.message); if (btn) btn.disabled = false; }
+}
+function openFindingFile(id) { if (document.querySelector('#compliance-status-scrim')) closeComplianceStatus(); openFileDefault(id); }
 // A report is built on the server (lib/evidence.js) from live settings and records,
 // kept in Past reports, and then downloaded.
 async function downloadComplianceReport(btn, frameworkId) {
@@ -5555,14 +5671,15 @@ function renderComplianceModal(data) {
   const tracked = fws.filter(f => f.enabled);
   const simple = tracked.length === 1 ? tracked[0] : null;
   const browser = `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`;
+  const findingsFold = cmpFindingsFold(data, isAdmin);
   const reportsFold = `<details class="cmp-adv cmp-reports-fold" ${_cmpRepOpen ? 'open' : ''} ontoggle="_cmpRepOpen = this.open"><summary>Reports: download one for any tracked framework, past reports, and the schedule</summary>${cmpReportsAreaHtml(data, isAdmin)}${cmpScheduleHtml(data, isAdmin)}</details>`;
   const tools = `${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button>`;
   if (m.classList) m.classList.toggle('cmp-is-simple', !!simple);
   m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">${simple ? 'Compliance' : 'Compliance readiness'}</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
     + (simple ? '' : `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${tracked.length} tracked framework${tracked.length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div>`) + `</div>`
     + (simple
-        ? `<div class="cmp-simple">${cmpSimpleHtml(simple, data, isAdmin)}<details class="cmp-adv" ${_cmpAdvOpen ? 'open' : ''} ontoggle="_cmpAdvOpen = this.open"><summary>Advanced: every control, other frameworks, live checks, the schedule, and the raw evidence</summary>${cmpScheduleHtml(data, isAdmin)}${browser}<div class="cmp-adv-tools">${tools}</div></details></div>`
-        : `<div class="cmp-simple cmp-browse">${browser}${reportsFold}</div>`)
+        ? `<div class="cmp-simple">${cmpSimpleHtml(simple, data, isAdmin)}${findingsFold}<details class="cmp-adv" ${_cmpAdvOpen ? 'open' : ''} ontoggle="_cmpAdvOpen = this.open"><summary>Advanced: every control, other frameworks, live checks, the schedule, and the raw evidence</summary>${cmpScheduleHtml(data, isAdmin)}${browser}<div class="cmp-adv-tools">${tools}</div></details></div>`
+        : `<div class="cmp-simple cmp-browse">${browser}${findingsFold}${reportsFold}</div>`)
     + `<div class="cmp-foot">${simple ? '' : tools}<span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
 }
 function cmpSelect(id) { _cmpSel = id; if (complianceData) renderComplianceModal(complianceData); const d = document.getElementById('cmp-detail'); if (d) d.scrollTop = 0; document.querySelector('.cmp-fw[aria-selected="true"]')?.focus({ preventScroll: true }); }
@@ -5802,6 +5919,7 @@ function complianceHtml(data) {
       <div class="update-card"><strong>Dependency audit</strong><span>${deps.available ? 'Node package lock found.' : 'Package audit metadata unavailable.'}</span><span>${esc(deps.recommendedCommand || '')}</span></div>
     </div>
     <p class="cmp-sched-line">${esc(cmpScheduleLine(data))} <button type="button" class="link-btn" onclick="_cmpRepOpen = true; _cmpAdvOpen = true; openComplianceStatus()">Reports</button></p>
+    ${data.findings ? `<p class="cmp-sched-line">Findings: ${esc(cmpFindingsLine(data))} <button type="button" class="link-btn" onclick="_cmpFindOpen = true; openComplianceStatus()">Open findings</button></p>` : ''}
     <div class="compliance-grid">${frameworkCards}</div>
     <button class="ghost-btn" onclick="saveComplianceProfiles()">Save compliance profiles</button>
   </div>`;
@@ -5872,7 +5990,9 @@ async function loadAdminHealth(days = 1) {
   const range = (d, label) => `<button class="dash-act" type="button"${d === days ? ' aria-pressed="true" disabled' : ''} onclick="loadAdminHealth(${d})">${label}</button>`;
   const sc = h.scanner;
   const scanLine = sc ? `<p>Virus scanning: ${sc.answering ? `on, scanner answering (${esc(sc.version || 'ClamAV')}, signatures from ${sc.signature_date ? esc(new Date(sc.signature_date).toLocaleDateString()) : 'an unknown date'}), last scan ${sc.last_scan_at ? esc(when(sc.last_scan_at)) : 'not yet'}` : 'on, but the scanner is not answering'} · ${Number(sc.refused_30d || 0).toLocaleString()} file${Number(sc.refused_30d) === 1 ? '' : 's'} refused in the last 30 days.</p>` : '';
-  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}${scanLine}</div>
+  const fd = h.findings;
+  const findLine = fd ? `<p>Sensitive data: ${Number(fd.open?.card || 0).toLocaleString()} card, ${Number(fd.open?.ssn || 0).toLocaleString()} Social Security, ${Number(fd.open?.bank || 0).toLocaleString()} bank finding${Number(fd.open?.bank || 0) === 1 ? '' : 's'} open · ${Number(fd.files_checked || 0).toLocaleString()} of ${Number(fd.files_total || 0).toLocaleString()} files checked${fd.backfill?.running ? ` · checking existing files, ${Number(fd.backfill.done).toLocaleString()} of ${Number(fd.backfill.total).toLocaleString()} done` : ''}.</p>` : '';
+  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}${scanLine}${findLine}</div>
     <div class="health-range">${range(1, 'Last 24 hours')}${range(7, 'Last 7 days')}</div>
     <div class="dash-stats admin-stats-3">
       ${adminStat('Could not finish', Number(h.errors.count).toLocaleString(), 'requests the server failed on')}
@@ -7518,7 +7638,7 @@ function activityQuery(extra = {}) {
   return p.toString();
 }
 const ACTIVITY_LABELS = {
-  uploaded: 'Uploaded', upload_blocked: 'Refused (malware found)', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
+  uploaded: 'Uploaded', upload_blocked: 'Refused (malware found)', sensitive_data_found: 'Sensitive data found', sensitive_data_resolved: 'Finding resolved', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
   restored: 'Restored', purged: 'Deleted permanently', updated: 'Updated',
   internal_link_sent: 'Sent a sign-in link', internal_folder_link_sent: 'Sent a folder sign-in link', external_folder_share_sent: 'Sent a folder link', share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
   access_granted: 'Granted access', access_revoked: 'Revoked access',
