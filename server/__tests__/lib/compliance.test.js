@@ -149,3 +149,45 @@ describe('retention readiness (disposal on a schedule)', () => {
     expect((await CHECKS.retention()).ready).toBe(true);
   });
 });
+
+// malware_scanning: green only when scanning is on AND the scanner answered within the
+// hour (lib/malwareScan caches the ping); the evidence names what an auditor asks for.
+describe('malware_scanning readiness', () => {
+  const scan = require('../../lib/malwareScan');
+  afterEach(() => jest.restoreAllMocks());
+  const stub = (st, refused = 0) => {
+    jest.spyOn(scan, 'status').mockResolvedValue({ enabled: false, answering: false, checkedAt: null, version: null, signatureDate: null, lastScanAt: null, error: null, ...st });
+    jest.spyOn(scan, 'refusedCount').mockResolvedValue(refused);
+  };
+  test('off: not ready, says files are stored as they arrive', async () => {
+    stub({ enabled: false }, 0);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/scanning is off/i);
+    expect(r.evidence).toMatch(/0 files refused in the last 30 days/);
+  });
+  test('on but the scanner is not answering: not ready, says uploads are refused', async () => {
+    stub({ enabled: true, answering: false, error: 'connect ECONNREFUSED' }, 1);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/not answering/);
+    expect(r.evidence).toMatch(/uploads are being refused/);
+    expect(r.evidence).toMatch(/1 file refused/);
+  });
+  test('on and answering: ready, with the signature date, the last scan and the count', async () => {
+    stub({ enabled: true, answering: true, version: 'ClamAV 1.4.6', signatureDate: '2026-11-02T06:00:00.000Z', checkedAt: '2026-11-03T15:00:00.000Z', lastScanAt: '2026-11-03T14:30:00.000Z' }, 3);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(true);
+    expect(r.evidence).toMatch(/ClamAV 1\.4\.6/);
+    expect(r.evidence).toMatch(/signatures from November 2, 2026/);
+    expect(r.evidence).toMatch(/Last scan November 3, 2026/);
+    expect(r.evidence).toMatch(/3 files refused in the last 30 days/);
+    expect(scan.status).toHaveBeenCalledWith(); // the cached status, never a forced ping
+  });
+  test('the catalog entry: label, why, and a fix that opens the storage settings', () => {
+    const { CONTROL_CATALOG } = require('../../lib/compliance');
+    expect(CONTROL_CATALOG.malware_scanning).toMatchObject({ label: 'Uploads are scanned for malware', fix: 'settings:malware_scan_enabled' });
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/164\.308\(a\)\(5\)\(ii\)\(B\)/);
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/314\.4\(c\)/);
+  });
+});

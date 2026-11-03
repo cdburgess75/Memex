@@ -88,6 +88,13 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
 });
 
 // PUT /api/admin/settings
+// POST /api/admin/settings/malware-scan/ping — the Test button: ask the scanner now,
+// not from the hourly cache, and say what it answered.
+router.post('/malware-scan/ping', auth, requireRole('admin'), async (req, res) => {
+  try { res.json(await require('../lib/malwareScan').status({ fresh: true })); }
+  catch (e) { serverError(res, e); }
+});
+
 router.put('/', auth, requireRole('admin'), async (req, res) => {
   try {
     // Guard the encryption key: changing it silently makes every already-stored local

@@ -31,6 +31,7 @@ const folderPaths = require('../../lib/folderPaths');
 const folderCarry = require('../../lib/folderCarry');
 const folderPreview = require('../../lib/folderPreview');
 const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
+const malwareScan = require('../../lib/malwareScan'); // every upload is stored through it (the scan)
 const folderUndo = require('../../lib/folderUndo');
 const externalUpload = require('../../lib/externalUpload');
 const externalChunks = require('../../lib/externalChunks');
@@ -1104,9 +1105,9 @@ router.post('/share/:token/upload',
       try {
         await placeFolderUpload(req, res, { name: got.name, size: got.size, at: got.at, rel: got.rel,
           mimetype: require('mime-types').lookup(got.name) || 'application/octet-stream',
-          put: (storagePath, mimetype) => storage.uploadStream(storagePath, got.stream(), mimetype, { maxBytes: got.size }) });
+          put: (storagePath, mimetype) => malwareScan.storeStream(storagePath, got.stream(), mimetype, { maxBytes: got.size }, { name: got.name, size: got.size, actor: { email: share.recipient_email }, via: 'folder link', req }) });
       } finally { await got.cleanup(); }
-    } catch (e) { if (externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   },
   (req, res, next) => externalUpload.middleware()(req, res, (err) => {
     if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB this kind of upload can carry.` });
@@ -1117,8 +1118,8 @@ router.post('/share/:token/upload',
       if (!req.file) return res.status(400).json({ error: 'file required' });
       const { buffer, originalname, mimetype, size } = req.file;
       await placeFolderUpload(req, res, { name: originalname, size, mimetype, at: req.body?.path, rel: req.body?.relativePath,
-        put: (storagePath, mt) => storage.upload(storagePath, buffer, mt) });
-    } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
+        put: (storagePath, mt) => malwareScan.storeBuffer(storagePath, buffer, mt, { name: originalname, actor: { email: req.folderUpload.share.recipient_email }, via: 'folder link', req }) });
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   });
 
 async function placeFolderUpload(req, res, { name, size, mimetype, at: atRaw, rel, put }) {
