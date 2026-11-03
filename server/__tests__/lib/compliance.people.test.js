@@ -25,11 +25,11 @@ beforeEach(() => {
 describe('the catalog', () => {
   test('the two new controls are the last entries, with the clauses they answer to and a row action', () => {
     const ids = Object.keys(CONTROL_CATALOG);
-    expect(ids.slice(-2)).toEqual(['access_review', 'signin_events']);
+    expect(ids.slice(-4, -2)).toEqual(['access_review', 'signin_events']);   // retention_policy and legal_hold follow
     expect(CONTROL_CATALOG.access_review.why).toMatch(/314\.4\(c\)\(1\).*164\.308\(a\)\(4\).*CC6\.2/);
     expect(CONTROL_CATALOG.access_review.action).toEqual({ label: 'Record that this list was reviewed', api: '/admin/access-review/signoff' });
     expect(CONTROL_CATALOG.signin_events.why).toMatch(/164\.312\(b\).*CC7\.2/);
-    expect(Object.keys(CHECKS).slice(-2)).toEqual(['access_review', 'signin_events']);
+    expect(Object.keys(CHECKS).slice(-4, -2)).toEqual(['access_review', 'signin_events']);
   });
 });
 

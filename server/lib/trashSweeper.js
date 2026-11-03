@@ -12,7 +12,7 @@ const db = require('./db');
 const storage = require('./storage');
 const settings = require('./settings');
 const auditLog = require('./auditLog');
-const retention = require('./retention');
+const holds = require('./retention');   // legal holds and minimum retention: what may never be purged
 
 const num = (v, d) => (Number(v) > 0 ? Number(v) : d);
 const INTERVAL_HOURS = num(process.env.TRASH_SWEEP_INTERVAL_HOURS, 12);
@@ -37,7 +37,7 @@ async function sweepOnce({ days } = {}) {
     docs = await db.query(
       `SELECT d.id, d.name, d.storage_path FROM documents d
        WHERE d.deleted_at IS NOT NULL AND d.deleted_at < NOW() - make_interval(days => $1::int)
-         AND ${retention.purgeableSql('d')}
+         AND ${holds.purgeableSql('d')}
        ORDER BY d.deleted_at ASC LIMIT $2`,
       [retention, BATCH]
     );
@@ -65,7 +65,7 @@ async function sweepOnce({ days } = {}) {
         const { rows: gone } = await client.query(
           `DELETE FROM documents d
             WHERE d.id = $1 AND d.deleted_at IS NOT NULL AND d.deleted_at < NOW() - make_interval(days => $2::int)
-              AND ${retention.purgeableSql('d')}
+              AND ${holds.purgeableSql('d')}
             RETURNING d.storage_path`,
           [d.id, retention]
         );

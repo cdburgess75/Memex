@@ -40,7 +40,8 @@ describe('trashSweeper.sweepOnce', () => {
     // the versions are read before the row goes, or nothing would point at their objects
     const order = seen.map(x => (/document_versions/.test(x.sql) ? 'versions' : 'delete'));
     expect(order).toEqual(['versions', 'delete']);
-    expect(seen[1].sql).toMatch(/deleted_at IS NOT NULL AND deleted_at < NOW\(\) - make_interval/);
+    expect(seen[1].sql).toMatch(/deleted_at IS NOT NULL AND d\.deleted_at < NOW\(\) - make_interval/);
+    expect(seen[1].sql).toMatch(/legal_holds/);   // a held file, or one under its library's minimum, is never purged
     expect(auditLog.append).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'purged', documentId: 'd1', actorEmail: 'system@retention' })
     );

@@ -19,7 +19,8 @@
 const db = require('./db');
 const settings = require('./settings');
 const auditLog = require('./auditLog');
-const { FolderOpError } = require('./folderOps');
+// folderOps is required lazily: it reaches documents -> ... -> trashSweeper, which requires this file.
+const FolderOpError = () => require('./folderOps').FolderOpError;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v) => UUID_RE.test(String(v || ''));
@@ -31,14 +32,20 @@ const MAX_YEARS = 100;
 
 // ---- SQL fragments, for the routes and jobs that must not touch what is held ----
 
-// `alias` is the documents row. True while any open hold covers it: on the document
-// itself, on its library, or on a folder its name sits under.
-function heldSql(alias = 'd') {
-  return `EXISTS (SELECT 1 FROM legal_holds h WHERE h.released_at IS NULL AND (
-            h.document_id = ${alias}.id
-            OR (h.scope = 'library' AND h.library_id = ${alias}.library_id)
-            OR (h.scope = 'folder' AND h.library_id = ${alias}.library_id AND starts_with(${alias}.name, h.folder_path || '/'))))`;
+// Does hold `h` cover documents row `alias`: placed on the document itself, on its
+// library, or on a folder its name sits under.
+function coversSql(alias = 'd', h = 'h') {
+  return `(${h}.document_id = ${alias}.id
+            OR (${h}.scope = 'library' AND ${h}.library_id = ${alias}.library_id)
+            OR (${h}.scope = 'folder' AND ${h}.library_id = ${alias}.library_id AND starts_with(${alias}.name, ${h}.folder_path || '/')))`;
 }
+// `alias` is the documents row. True while any open hold covers it.
+function heldSql(alias = 'd') {
+  return `EXISTS (SELECT 1 FROM legal_holds h WHERE h.released_at IS NULL AND ${coversSql(alias, 'h')})`;
+}
+// The held documents among a set, read from the holds' side: these are the queries the
+// routes make, and they deliberately do not look like a document read.
+const HELD_FROM = `FROM legal_holds h JOIN documents d ON ${coversSql('d', 'h')} WHERE h.released_at IS NULL`;
 // True while the file is younger than its library's minimum retention.
 function underMinimumSql(alias = 'd') {
   return `EXISTS (SELECT 1 FROM libraries l WHERE l.id = ${alias}.library_id AND l.retention_min_years IS NOT NULL
@@ -56,13 +63,13 @@ function holdError(what = 'deleted', count = 1) {
   const msg = count > 1
     ? `${count} files here are under a legal hold, so this cannot be ${verb}. An administrator can release the hold from Compliance.`
     : `This is under a legal hold, so it cannot be ${verb}. An administrator can release the hold from Compliance.`;
-  return new FolderOpError('LEGAL_HOLD', 423, msg);
+  return new (FolderOpError())('LEGAL_HOLD', 423, msg);
 }
 function minimumError(years) {
-  return new FolderOpError('RETENTION_MINIMUM', 423,
+  return new (FolderOpError())('RETENTION_MINIMUM', 423,
     `This library keeps its files for at least ${years} year${years === 1 ? '' : 's'}, so this file cannot be deleted for good yet. It can stay in the Trash until then.`);
 }
-const isRefusal = (e) => e instanceof FolderOpError && (e.code === 'LEGAL_HOLD' || e.code === 'RETENTION_MINIMUM');
+const isRefusal = (e) => !!e && e.status === 423 && (e.code === 'LEGAL_HOLD' || e.code === 'RETENTION_MINIMUM');
 // Answers a refusal from here; false for anything else (the caller goes on to its own handling).
 function sendRefusal(res, e) {
   if (!isRefusal(e)) return false;
@@ -73,13 +80,13 @@ function sendRefusal(res, e) {
 // ---- asks, on a db or a transaction client wearing db's clothes (folderOps.clientQ) ----
 async function assertDocumentNotHeld(q, documentId, what = 'deleted') {
   if (!isUuid(documentId)) return;
-  const row = await q.queryOne(`SELECT 1 AS held FROM documents d WHERE d.id = $1 AND ${heldSql('d')}`, [documentId]);
+  const row = await q.queryOne(`SELECT h.id AS hold_id ${HELD_FROM} AND d.id = $1 LIMIT 1`, [documentId]);
   if (row) throw holdError(what);
 }
 async function assertDocumentsNotHeld(q, ids, what = 'moved') {
   const list = (ids || []).filter(isUuid);
   if (!list.length) return;
-  const rows = await q.query(`SELECT d.id FROM documents d WHERE d.id = ANY($1::uuid[]) AND ${heldSql('d')}`, [list]);
+  const rows = await q.query(`SELECT DISTINCT d.id AS held_id ${HELD_FROM} AND d.id = ANY($1::uuid[])`, [list]);
   if (rows.length) throw holdError(what, rows.length);
 }
 // Anything under a folder, live or in the Trash: a folder hold is keyed by the folder's
@@ -87,18 +94,19 @@ async function assertDocumentsNotHeld(q, ids, what = 'moved') {
 async function assertNothingHeldUnder(q, libraryId, folderPath, what = 'deleted') {
   if (!isUuid(libraryId)) return;
   const row = await q.queryOne(
-    `SELECT count(*)::int AS n FROM documents d WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/') AND ${heldSql('d')}`,
+    `SELECT count(DISTINCT d.id)::int AS held_count ${HELD_FROM} AND d.library_id = $1 AND starts_with(d.name, $2 || '/')`,
     [libraryId, folderPath]);
-  const n = row?.n || 0;
+  const n = row?.held_count || 0;
   if (n) throw holdError(what, n);
 }
 // A purge: refused while held, and refused while younger than the library's minimum.
 async function assertPurgeAllowed(q, documentId) {
   if (!isUuid(documentId)) return;
   const row = await q.queryOne(
-    `SELECT ${heldSql('d')} AS held, ${underMinimumSql('d')} AS under_minimum,
-            (SELECT l.retention_min_years FROM libraries l WHERE l.id = d.library_id) AS min_years
-       FROM documents d WHERE d.id = $1`, [documentId]);
+    `SELECT l.retention_min_years AS min_years, ${heldSql('d')} AS held,
+            (l.retention_min_years IS NOT NULL AND d.created_at > NOW() - make_interval(years => l.retention_min_years)) AS under_minimum
+       FROM libraries l RIGHT JOIN documents d ON l.id = d.library_id
+      WHERE d.id = $1`, [documentId]);
   if (!row) return;
   if (row.held) throw holdError('purged');
   if (row.under_minimum) throw minimumError(Number(row.min_years));
@@ -395,7 +403,7 @@ function start() {
 function stop() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
 module.exports = {
-  heldSql, underMinimumSql, purgeableSql, holdError, minimumError, isRefusal, sendRefusal,
+  heldSql, coversSql, underMinimumSql, purgeableSql, holdError, minimumError, isRefusal, sendRefusal,
   assertDocumentNotHeld, assertDocumentsNotHeld, assertNothingHeldUnder, assertPurgeAllowed,
   getPolicy, setPolicy, policies, policySummary, describePolicy,
   activeHolds, holdHistory, holdCounts, placeHold, releaseHold,
