@@ -18,6 +18,7 @@ const documentAccess = require('../lib/documentAccess');
 const licenseEnforce = require('../lib/licenseEnforce');
 const { pruneOldVersions } = require('../lib/documentVersions');
 const malwareScan = require('../lib/malwareScan');
+const sensitiveData = require('../lib/sensitiveData');
 
 function tokenEntry(req) {
   const entry = validateToken(req.query.access_token);
@@ -158,6 +159,7 @@ router.post('/files/:fileId/contents', tokenBeforeBody, express.raw({ type: '*/*
     }
     if (textExtracted) {
       await db.query('UPDATE documents SET size = $1, document_text = $2, content_hash = $4, modified_at = NOW() WHERE id = $3', [buffer.length, documentText, doc.id, sha256(buffer)]);
+      sensitiveData.check(doc.id, documentText, { name: doc.name });
     } else {
       await db.query('UPDATE documents SET size = $1, content_hash = $3, modified_at = NOW() WHERE id = $2', [buffer.length, doc.id, sha256(buffer)]);
     }

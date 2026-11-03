@@ -246,7 +246,7 @@ suite('a legal hold keeps a file, whatever tries to remove it', () => {
     expect(again.evidence).toMatch(/“Archive” keep at least 6 years; “Clients” keep at least 2 years; move to the trash after 2 years without changes/);
     const report = await authed(as(ADMIN).get('/api/admin/compliance/packet.html'));
     expect(report.status).toBe(200);
-    expect(report.text).toMatch(/Section 6<\/small>Retention and legal holds/);
+    expect(report.text).toMatch(/Section 7<\/small>Retention and legal holds/);
     expect(report.text).toMatch(/Smith v\. Jones/);
   });
 
