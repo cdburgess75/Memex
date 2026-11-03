@@ -54,6 +54,7 @@ suite('sensitive data in files, through the real routers and a real database', (
     }
     await db.query('INSERT INTO libraries (id, name, owner_id, owner_email) VALUES ($1, $2, $3, $4)', [LIB, 'Clients', OWNER.id, OWNER.email]);
     sd = require('../../lib/sensitiveData');
+    sd.enableForTests();   // the hook is off under Jest unless a suite asks for it
     compliance = require('../../lib/compliance');
     const body = '4111111111111111'.slice(0, 15);
     for (let d = 0; d <= 9; d++) if (sd.luhn(body + d)) { CARD = body + d; break; }
@@ -69,7 +70,7 @@ suite('sensitive data in files, through the real routers and a real database', (
     app.use('/api/admin', require('../../routes/admin'));
     app.use('/api/v1', require('../../routes/v1'));
   });
-  afterAll(async () => { try { await reset(); } catch { /* best effort */ } try { await db.end(); } catch { /* closed */ } });
+  afterAll(async () => { try { await sd.idle(); } catch { /* nothing queued */ } try { await reset(); } catch { /* best effort */ } try { await db.end(); } catch { /* closed */ } });
 
   const as = (a) => { jwt.verify.mockReturnValue({ sub: a.id, email: a.email, email_verified: true }); return (r) => r.set('Authorization', 'Bearer t').set('x-library-id', LIB); };
   const findings = () => db.query('SELECT f.type, f.count, f.sample, f.resolved_at, f.resolved_by, f.note, d.name FROM document_findings f JOIN documents d ON d.id = f.document_id ORDER BY d.name, f.type');
