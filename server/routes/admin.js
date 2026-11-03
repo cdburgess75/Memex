@@ -295,12 +295,13 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
 router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
   try {
     const reports = require('../lib/complianceReports');
-    const [frameworks, updates, summary, pastReports, schedule] = await Promise.all([
+    const [frameworks, updates, summary, pastReports, schedule, findings] = await Promise.all([
       compliance.profileStatus(),
       compliance.updateStatus(),
       compliance.summary(),
       reports.list({ limit: 24 }).catch(() => []),
       reports.status().catch(() => null),
+      findingsBundle().catch(() => null),
     ]);
     res.json({
       disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Depot or the operating organization.',
@@ -310,6 +311,7 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       probes: compliance.probeMeta(),
       reports: pastReports,
       reportSchedule: schedule,
+      findings,
     });
   } catch (e) {
     serverError(res, e);
@@ -534,6 +536,61 @@ router.get('/compliance/reports/:id.html', auth, requireRole('admin'), async (re
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${r.file_name}"`);
     res.send(r.html);
+  } catch (e) { serverError(res, e); }
+});
+// Sensitive data in files (lib/sensitiveData.js): the findings list, one resolved, the
+// three switches, and the one-time check of files that were here before this existed.
+// The summary, the open findings and the newest resolved ones, as the Findings fold wants them.
+async function findingsBundle() {
+  const sd = require('../lib/sensitiveData');
+  const [summary, open, resolved] = await Promise.all([sd.summary(), sd.list({ status: 'open', limit: 200 }), sd.list({ status: 'resolved', limit: 20 })]);
+  return { ...summary, open, resolved };
+}
+// GET /api/admin/compliance/findings?status=open|resolved|all&type=card|ssn|bank&limit=
+router.get('/compliance/findings', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const status = ['open', 'resolved', 'all'].includes(String(req.query.status)) ? String(req.query.status) : 'open';
+    const type = sd.TYPES.includes(String(req.query.type)) ? String(req.query.type) : null;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+    const [findings, summary] = await Promise.all([sd.list({ status, type, limit }), sd.summary()]);
+    res.json({ findings, summary });
+  } catch (e) { serverError(res, e); }
+});
+// POST /api/admin/compliance/findings/:id/resolve { note } — an administrator says it is handled.
+router.post('/compliance/findings/:id/resolve', auth, requireRole('admin'), async (req, res) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) return res.status(404).json({ error: 'No such finding' });
+    const sd = require('../lib/sensitiveData');
+    const finding = await sd.resolve(req.params.id, req.user, String(req.body?.note || ''));
+    if (!finding) return res.status(404).json({ error: 'No such finding' });
+    res.json({ ok: true, finding, summary: await compliance.summary() });
+  } catch (e) { serverError(res, e); }
+});
+// POST /api/admin/compliance/findings/check { all } — check existing files, in the background.
+router.post('/compliance/findings/check', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const backfill = await sd.startBackfill({ all: req.body?.all === true, by: req.user.email });
+    res.json({ ok: true, backfill });
+  } catch (e) { serverError(res, e); }
+});
+// PUT /api/admin/compliance/findings/settings { cards, ssn, bank } — each off or flag.
+router.put('/compliance/findings/settings', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const body = req.body || {};
+    const given = { card: body.cards, ssn: body.ssn, bank: body.bank };
+    const changed = [];
+    for (const type of sd.TYPES) {
+      if (given[type] === undefined) continue;
+      const v = String(given[type]).toLowerCase();
+      if (!['off', 'flag'].includes(v)) return res.status(400).json({ error: `${sd.SETTING_KEYS[type]} must be off or flag` });
+      await settings.set(sd.SETTING_KEYS[type], v, req.user.id);
+      changed.push(`${type} ${v}`);
+    }
+    if (changed.length) await require('../lib/fileEvents').logEvent(`settings · sensitive data: ${changed.join(', ')}`, req.user.id, req.user.email);
+    res.json({ ok: true, modes: await sd.modes() });
   } catch (e) { serverError(res, e); }
 });
 // PUT { schedule: off|monthly|quarterly, email } — the two settings, and re-arm the timer.

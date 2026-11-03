@@ -11,6 +11,7 @@ const storage = require('./storage');
 const libraries = require('./libraries');
 const documentAccess = require('./documentAccess');
 const { extractText } = require('./textExtraction');
+const sensitiveData = require('./sensitiveData');
 const { logEvent, logDocumentEvent } = require('./fileEvents');
 
 // lib/folderOps requires THIS module (prefixRange), so it is required lazily inside the
@@ -243,6 +244,7 @@ async function createDocumentRecord({ displayName, storagePath, mimetype, stored
   }
   await logDocumentEvent(placed.doc.id, eventType, user.id, user.email, `${fileSizeLabelForEvent(storedSize || 0)} · ${sourceDetail}`);
   if (logActivity) await logEvent(`upload · ${placed.name}`, user.id, user.email);
+  sensitiveData.check(placed.doc.id, documentText, { name: placed.name }); // after the response; never blocks
   // Notify the library owner + folder followers (summary-batched), on real user
   // uploads only — not copies/migrations, which pass notifyUpload:false.
   if (notifyUpload) recordUploadNotify(user, placed.name, lib, placed.doc.id);

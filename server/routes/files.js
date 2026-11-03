@@ -38,6 +38,7 @@ const externalChunks = require('../lib/externalChunks');
 // Every upload route stores through malwareScan (storeBuffer / storeStream), never storage
 // directly: that is where the scan happens, and sendRefusal is the 422 / 503 answer.
 const malwareScan = require('../lib/malwareScan');
+const sensitiveData = require('../lib/sensitiveData');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
 const shareOpens = require('../lib/shareOpens');
@@ -1466,6 +1467,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     });
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${name}`);
     recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
+    sensitiveData.check(doc.id, documentText, { name });
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -1526,6 +1528,7 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
     if (!updated) { await storage.del(storagePath).catch(() => {}); return res.status(409).json({ error: 'The file went to the trash meanwhile' }); }
     await storage.del(doc.storage_path).catch(() => {}); // the version kept above holds these bytes
     await logDocumentEvent(doc.id, 'replaced', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize)} · replaced`);
+    sensitiveData.check(doc.id, documentText, { name: doc.name });
     await logEvent(`replace · ${doc.name}`, req.user.id, req.user.email);
     res.json({ doc: updated, replaced: true, streamed: true });
   } catch (e) {
@@ -1622,6 +1625,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     });
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
     recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
+    sensitiveData.check(doc.id, documentText, { name });
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
@@ -2453,6 +2457,7 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     });
 
     await logDocumentEvent(doc.id, 'version_restored', req.user.id, req.user.email, `restored version ${version.version_number}`);
+    sensitiveData.check(doc.id, version.document_text || null, { name: updated.name });
     await logEvent(`version restore · ${updated.name} · v${version.version_number}`, req.user.id, req.user.email);
     res.json({ doc: updated });
   } catch (e) {
@@ -2722,6 +2727,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     let documentText = null;
     try { documentText = await extractText(buffer, doc.name); } catch { /* non-fatal */ }
     await db.query('UPDATE documents SET size = $2, document_text = $3, content_hash = $4, modified_at = NOW() WHERE id = $1', [doc.id, buffer.length, documentText, sha256(buffer)]);
+    sensitiveData.check(doc.id, documentText, { name: doc.name });
     if (sitting) {
       await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
       tellAboutTextEdit(doc, req.user);

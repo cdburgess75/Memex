@@ -43,7 +43,7 @@ async function settingsSnapshot() {
 async function build() {
   // Refresh runtime probes best-effort so the package reflects current posture.
   try { await compliance.runProbes(); } catch { /* keep last cached probes */ }
-  const [posture, frameworks, updates, access, integrity, firm, snapshot] = await Promise.all([
+  const [posture, frameworks, updates, access, integrity, firm, snapshot, findings] = await Promise.all([
     compliance.summary().catch(() => null),
     compliance.profileStatus().catch(() => []),
     compliance.updateStatus().catch(() => null),
@@ -51,6 +51,7 @@ async function build() {
     auditLog.verify().catch(e => ({ ok: false, error: e.message })),
     firmInfo().catch(() => ({ name: 'Your firm', hostname: '' })),
     settingsSnapshot().catch(() => null),
+    findingsSection().catch(() => null),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -64,7 +65,28 @@ async function build() {
     accessReview: access,
     auditIntegrity: integrity,
     updates,
+    findings,
   };
+}
+
+// Sensitive data in files (lib/sensitiveData.js): the totals by type and every open card
+// finding, for the report. null when the module cannot answer.
+async function findingsSection() {
+  const sd = require('./sensitiveData');
+  const s = await sd.summary();
+  const openCards = await sd.list({ status: 'open', type: 'card', limit: 200 });
+  return { ...s, openCards };
+}
+
+const FINDING_WORDS = { card: 'Payment card numbers', ssn: 'Social Security numbers', bank: 'Bank routing or account numbers' };
+// The sentences both the Markdown and the printed report use.
+function findingsLines(f) {
+  if (!f) return { lead: 'Sensitive-data checks could not be read for this report.', rows: [], cards: [] };
+  const checked = `${Number(f.files_checked || 0).toLocaleString()} of ${Number(f.files_total || 0).toLocaleString()} files have been checked`;
+  const last = f.last_check_at ? `, most recently ${longDate(f.last_check_at)}` : '';
+  const lead = `Depot reads the text of each file as it arrives and looks for payment card numbers, US Social Security numbers, and US bank routing and account numbers. ${checked}${last}. A finding stays open until an administrator resolves it with a note or the number leaves the file; findings never hold the number itself, only its last four digits.`;
+  const rows = ['card', 'ssn', 'bank'].map(t => ({ type: FINDING_WORDS[t], checked: f.modes?.[t] === 'flag' ? 'Yes' : 'No', open: Number(f.open?.[t] || 0), resolved: Number(f.resolved?.[t] || 0) }));
+  return { lead, rows, cards: f.openCards || [] };
 }
 
 const yn = (b) => (b === true ? 'Yes' : b === false ? 'No' : 'Unknown');
@@ -161,6 +183,25 @@ function toMarkdown(b) {
     lines.push('');
     for (const p of ar.pendingShares) lines.push(`- ${esc(p.email)}: ${list([...(p.libraryAccess || []), ...(p.folderAccess || [])])}`);
     lines.push('');
+  }
+
+  // Sensitive data in files
+  {
+    const f = findingsLines(b.findings);
+    lines.push('## Sensitive data in files');
+    lines.push('');
+    lines.push(esc(f.lead));
+    lines.push('');
+    lines.push('| Type | Checked for | Open | Resolved |');
+    lines.push('|---|---|---|---|');
+    for (const r of f.rows) lines.push(`| ${r.type} | ${r.checked} | ${r.open} | ${r.resolved} |`);
+    lines.push('');
+    if (f.cards.length) {
+      lines.push('Open card-number findings:');
+      lines.push('');
+      for (const c of f.cards) lines.push(`- ${esc(c.document_name)}${c.library_name ? ` (${esc(c.library_name)})` : ''}: ${c.count} (${esc(c.sample)}), first seen ${esc(longDate(c.first_seen))}`);
+      lines.push('');
+    }
   }
 
   // Update posture
@@ -408,6 +449,7 @@ function toReportHtml(b, frameworkId, shapeId) {
     ? ai.count ? `The record was checked entry by entry and is intact: ${ai.count.toLocaleString()} chained entries, none altered or missing.` : 'The record has no entries yet; it fills in as people use Depot.'
     : ai.error ? `The record could not be checked: ${h(ai.error)}.` : `The check FAILED at entry ${h(ai.brokenAt)}: ${h(ai.reason)}. Treat the log as altered and investigate.`;
 
+  const fl = findingsLines(b.findings);
   const s = b.settings || {};
   const yesNo = (v) => (v ? 'Yes' : 'No');
   const snapshot = [
@@ -466,7 +508,7 @@ function toReportHtml(b, frameworkId, shapeId) {
       <dt>Framework</dt><dd>${h(fw.name)}</dd>
       <dt>System</dt><dd>Depot ${h(b.version)}${b.firm?.hostname ? `, ${h(b.firm.hostname)}` : ''}</dd>
       <dt>Where it runs</dt><dd>On the ${h(R.who)}'s own server</dd>
-      <dt>Sections</dt><dd>1 ${h(R.section1)} · 2 ${h(R.checklist)} · 3 Who has access · 4 Audit-log check · 5 Settings</dd>
+      <dt>Sections</dt><dd>1 ${h(R.section1)} · 2 ${h(R.checklist)} · 3 Who has access · 4 Audit-log check · 5 Settings · 6 Sensitive data in files</dd>
     </dl>
   </div>
   <p class="disc">Produced by Depot from its own settings and records. It describes this system as it stood on the date above. ${h(R.disclaimer)}</p>
@@ -501,6 +543,13 @@ function toReportHtml(b, frameworkId, shapeId) {
 <section>
   <h2><small>Section 5</small>Settings this ${h(R.what)} relies on</h2>
   <table><thead><tr><th>Setting</th><th>Value on ${h(date)}</th></tr></thead><tbody>${snapshot}</tbody></table>
+</section>
+
+<section>
+  <h2><small>Section 6</small>Sensitive data in files</h2>
+  <p>${h(fl.lead)}</p>
+  <table><thead><tr><th>Type</th><th>Checked for</th><th>Open</th><th>Resolved</th></tr></thead><tbody>${fl.rows.map(r => `<tr><td>${h(r.type)}</td><td>${h(r.checked)}</td><td>${r.open}</td><td>${r.resolved}</td></tr>`).join('')}</tbody></table>
+  ${fl.cards.length ? `<p class="note">Open card-number findings, each to be resolved or the file removed:</p><table><thead><tr><th>File</th><th>Library</th><th>How many</th><th>Sample</th><th>First seen</th></tr></thead><tbody>${fl.cards.map(c => `<tr><td>${h(c.document_name)}</td><td>${h(c.library_name || '—')}</td><td>${c.count}</td><td>${h(c.sample)}</td><td>${h(longDate(c.first_seen))}</td></tr>`).join('')}</tbody></table>` : '<p class="note">No card-number finding is open.</p>'}
 </section>
 </main></body></html>`;
 }

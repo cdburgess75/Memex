@@ -49,6 +49,12 @@ const ENV_MAP = {
   malware_scan_enabled:           'MALWARE_SCAN_ENABLED',
   malware_scan_host:              'MALWARE_SCAN_HOST',
   malware_scan_max_mb:            'MALWARE_SCAN_MAX_MB',
+  // Sensitive data in files (lib/sensitiveData.js): off or flag, per type. Card numbers
+  // and Social Security numbers flag by default; bank numbers are off. Findings show
+  // under Compliance; nothing is refused.
+  sensitive_data_cards:           'SENSITIVE_DATA_CARDS',
+  sensitive_data_ssn:             'SENSITIVE_DATA_SSN',
+  sensitive_data_bank:            'SENSITIVE_DATA_BANK',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
   max_document_versions:          'MAX_DOCUMENT_VERSIONS',
   compliance_safeguards_enabled:  'COMPLIANCE_SAFEGUARDS_ENABLED',

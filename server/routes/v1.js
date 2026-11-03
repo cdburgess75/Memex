@@ -467,6 +467,7 @@ router.get('/admin/compliance/evidence', adminOnly, (req, res, next) => forward(
 router.get('/admin/compliance/evidence.md', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/evidence.md' }));
 router.get('/admin/compliance/reports', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/reports', query: req.query }));
 router.get('/admin/compliance/reports/:id', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: `/compliance/reports/${enc(req.params.id)}.html` }));
+router.get('/admin/compliance/findings', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/compliance/findings', query: req.query }));
 router.get('/admin/access-review', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/access-review' }));
 router.get('/admin/access-review.csv', adminOnly, (req, res, next) => forward(req, res, next, adminRouter, { method: 'GET', url: '/access-review.csv' }));
 router.get('/admin/tokens', adminOnly, (req, res, next) => forward(req, res, next, tokensRouter, { method: 'GET', url: '/all' }));
