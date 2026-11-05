@@ -219,15 +219,26 @@ async function scanDocument(docId, text, opts = {}) {
 
 // The hook the file routes call once extracted text is stored: never throws, never waits.
 // Pending work is tracked so a test (or a shutdown) can wait for it with idle().
+//
+// Under Jest the hook is off unless a suite opts in with enableForTests(): every suite that
+// uploads or edits a file would otherwise queue a scan it never waits for, which then logs
+// (or hits a schema without document_findings) after the suite has finished.
 const pending = new Set();
+let testOptIn = false;
+function enableForTests(on = true) { testOptIn = !!on; }
+function active() { return process.env.NODE_ENV !== 'test' || testOptIn; }
 function check(docId, text, opts = {}) {
-  if (!docId) return;
+  if (!docId || !active()) return;
   const p = (async () => {
     await new Promise(r => setImmediate(r));
     try {
       const name = opts.name ?? (await db.queryOne('SELECT name FROM documents WHERE id = $1', [docId]))?.name ?? null;
       await scanDocument(docId, text, { name });
-    } catch (e) { console.error('sensitive data check failed (non-fatal):', e.message); }
+    } catch (e) {
+      // 42P01 = undefined_table: the findings table is not there (a schema without migration 0028); nothing to record, nothing to say.
+      if (e?.code === '42P01' || /document_findings" does not exist/.test(e?.message || '')) return;
+      console.error('sensitive data check failed (non-fatal):', e.message);
+    }
   })();
   pending.add(p);
   p.finally(() => pending.delete(p));
@@ -358,12 +369,12 @@ async function healthLine() {
   return { open: s.open, files_checked: s.files_checked, files_total: s.files_total, last_check_at: s.last_check_at, backfill: s.backfill };
 }
 
-function _resetForTests() { pending.clear(); _backfill = { running: false, done: 0, total: 0, started_at: null, finished_at: null, error: null, by: null, all: false }; _backfillPromise = null; }
+function _resetForTests() { pending.clear(); testOptIn = false; _backfill = { running: false, done: 0, total: 0, started_at: null, finished_at: null, error: null, by: null, all: false }; _backfillPromise = null; }
 
 module.exports = {
   TYPES, SETTING_KEYS, DEFAULTS, WORDS, WORD, MAX_CHARS,
   detect, luhn, cardBrand, abaValid, validSsn, findCards, findSsns, findBank,
-  modes, enabledTypes, scanDocument, record, check, idle,
+  modes, enabledTypes, scanDocument, record, check, idle, enableForTests,
   list, get, resolve, summary, healthLine,
   startBackfill, backfillStatus, waitBackfill, restoreBackfillStatus,
   _resetForTests,
