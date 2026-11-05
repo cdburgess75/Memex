@@ -1343,6 +1343,18 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
    corner of the tile instead, where no width can swallow it -- on the raised surface,
    which is the one that reads against a tile in both themes. */
 .file-card-preview .folder-shared-tag { position: absolute; left: 8px; top: 8px; margin: 0; background: var(--surface-raised); }
+/* A legal hold: a small lock after the name, in ink (it is a fact, not an action). */
+.hold-mark { display: inline-flex; align-items: center; vertical-align: -2px; margin-left: 6px; color: var(--ink-soft); }
+.hold-mark svg { width: 12px; height: 12px; }
+.library-menu-item-name .hold-mark { margin-left: 4px; }
+.rt-form { display: grid; gap: 14px; margin-top: 14px; }
+.rt-form label { display: grid; gap: 4px; font: 500 13px var(--ui); color: var(--ink); }
+.rt-form input[type=number] { width: 120px; }
+.rt-form .rt-help { font: 400 12px var(--ui); color: var(--ink-faint); }
+.hold-list { display: grid; gap: 8px; margin-top: 12px; }
+.hold-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; }
+.hold-row .grow { flex: 1 1 auto; min-width: 0; }
+.hold-row .hold-meta { font: 400 12px var(--ui); color: var(--ink-faint); margin-top: 2px; }
 .pill.ok   { color: var(--success); background: color-mix(in srgb, var(--success) 10%, var(--paper)); border-color: color-mix(in srgb, var(--success) 30%, var(--rule)); }
 .pill.warn { color: color-mix(in oklab, var(--warning) 80%, var(--ink)); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
 
@@ -5431,11 +5443,18 @@ const CMP_FIX = {
   'backup': ['storage', 'Open backups'],
   'access': ['access', 'Open the users list'],
   'settings:signin_events_enabled': ['server', 'Open server settings'],
+  // Retention and holds live in the libraries, not in Settings: these open their own dialogs.
+  'retention': ['retention', 'Set how long files are kept'],
+  'holds': ['holds', 'See and place legal holds'],
   'compliance:findings': ['findings', 'Open findings'],
 };
 function cmpFix(key) {
   if (key === 'compliance:findings') { _cmpFindOpen = true; if (complianceData) renderComplianceModal(complianceData); document.getElementById('cmp-findings')?.scrollIntoView({ block: 'start' }); return; }
-  const f = CMP_FIX[key]; if (!f) return; closeComplianceStatus(); openSettingsAt(f[0]);
+  const f = CMP_FIX[key]; if (!f) return;
+  closeComplianceStatus();
+  if (f[0] === 'retention') return openRetentionOverview();
+  if (f[0] === 'holds') return openLegalHolds();
+  openSettingsAt(f[0]);
 }
 // A control's `action` ({ label, api }, from the server catalog): one POST with an optional
 // note, done from the window itself. Recording an access review is the first.
@@ -7674,6 +7693,7 @@ const ACTIVITY_LABELS = {
   // From Keycloak, copied into the record by the server (lib/signInEvents); no file.
   signed_in: 'Signed in', sign_in_failed: 'Sign-in failed', signed_out: 'Signed out',
   access_reviewed: 'Access list reviewed',
+  hold_placed: 'Legal hold placed', hold_released: 'Legal hold released', disposed: 'Moved to trash by retention policy', retention_policy_set: 'Retention policy set',
 };
 function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
 function activityWhen(ts) {
@@ -8597,7 +8617,7 @@ function fileNameCellHtml(f) {
   if (!fileVisibleCols.has('size')) bits.push(fileSizeLabel(f.size || 0));
   if (folder) bits.push(esc(folder));
   const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
-  return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" role="button" tabindex="0" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
+  return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" role="button" tabindex="0" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(fileDisplayName(f))}${holdMark(f.held ? 'Under a legal hold: it cannot be deleted, replaced or moved' : '')}</div>${sub}</div></div></td>`;
 }
 // Click the file name → open/preview; clicking elsewhere on the row toggles selection.
 function openFileFromName(event, el) {
@@ -8620,7 +8640,7 @@ function folderLibraryRow(folder) {
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
     `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}</div><div class="file-row-sub">${folder.where ? esc(folder.where) + ' · ' : ''}${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}${folderHoldTag(folder.path)}</div><div class="file-row-sub">${folder.where ? esc(folder.where) + ' · ' : ''}${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
@@ -9340,7 +9360,128 @@ async function loadCurrentFolderFiles() {
 }
 async function loadLibraryData() {
   nameSearch = { key: '', rows: [] };
-  await Promise.all([loadFolderIndex(), loadCurrentFolderFiles()]);
+  await Promise.all([loadFolderIndex(), loadCurrentFolderFiles(), loadLibraryHolds()]);
+}
+// The open legal holds in the current library (GET /api/libraries/:id/holds), for the lock
+// marks on folders; a file's own mark comes with the file (held).
+let libraryHolds = { libraryId: null, holds: [] };
+async function loadLibraryHolds() {
+  const id = currentLibraryId;
+  if (!id) { libraryHolds = { libraryId: null, holds: [] }; return; }
+  try { libraryHolds = { libraryId: id, holds: await apiGet('/libraries/' + encodeURIComponent(id) + '/holds') }; }
+  catch { libraryHolds = { libraryId: id, holds: [] }; }
+}
+const ICON_HOLD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+function holdMark(title) { return title ? `<span class="hold-mark" title="${escAttr(title)}" aria-label="${escAttr(title)}">${ICON_HOLD}</span>` : ''; }
+// A hold placed on exactly this folder (for the menu's wording).
+function folderHoldHere(path) {
+  const p = normalizeFilePath(path || '');
+  return (libraryHolds.holds || []).find(h => h.scope === 'folder' && normalizeFilePath(h.folder_path || '') === p) || null;
+}
+// A folder is marked when the library is held, or a hold sits on it or a folder above it.
+function folderHoldTag(path) {
+  const p = normalizeFilePath(path || '');
+  const hs = libraryHolds.holds || [];
+  if (hs.some(h => h.scope === 'library')) return holdMark('This whole library is under a legal hold');
+  const on = hs.find(h => h.scope === 'folder' && (normalizeFilePath(h.folder_path || '') === p || p.startsWith(normalizeFilePath(h.folder_path || '') + '/')));
+  return on ? holdMark(`Under a legal hold (${on.reason}): nothing in it can be deleted, replaced or moved`) : '';
+}
+// ---- Retention: how long a library's files are kept ----
+async function openLibraryRetention(libraryId) {
+  const lib = librariesList.find(l => String(l.id) === String(libraryId));
+  if (!lib || !lib.id) { toast('That library is no longer available.'); return; }
+  let cur = lib.retention || { min_years: null, dispose_years: null };
+  try { cur = await apiGet('/libraries/' + encodeURIComponent(lib.id) + '/retention') || cur; } catch { /* the listing's copy */ }
+  const m = openModal({ id: 'retention-scrim', labelledBy: 'rt-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-rt-close>✕</button>`
+    + `<h2 id="rt-title">Retention for “${esc(lib.name)}”</h2>`
+    + `<p class="sub">How long the files in this library are kept. Leave both blank and nothing changes: deleted files leave the Trash after the usual number of days, and nothing is deleted unasked.</p>`
+    + `<div class="rt-form">`
+    + `<label>Keep at least<span><input type="number" id="rt-min" min="1" max="100" step="1" value="${escAttr(cur.min_years == null ? '' : String(cur.min_years))}" placeholder="years"> years</span><span class="rt-help">Nothing in this library is deleted for good before a file is this old, even from the Trash. Tax returns: 3 years. Patient files: 6 years.</span></label>`
+    + `<label>Move to the Trash after<span><input type="number" id="rt-dispose" min="1" max="100" step="1" value="${escAttr(cur.dispose_years == null ? '' : String(cur.dispose_years))}" placeholder="years"> years without changes</span><span class="rt-help">A file nobody has changed for this long goes to the Trash on its own. Whoever added it is told 30 days ahead, and it can be restored from the Trash afterwards. Blank means never.</span></label>`
+    + `</div>`
+    + (cur.set_by ? `<p class="sub">Last set by ${esc(cur.set_by)} on ${esc(new Date(cur.set_at).toLocaleDateString())}.</p>` : '')
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-rt-close>Cancel</button><button class="run-btn" type="button" id="rt-save">Save</button></div>` });
+  m.el.querySelectorAll('[data-rt-close]').forEach(b => b.onclick = () => m.close());
+  m.el.querySelector('#rt-save').onclick = async () => {
+    const body = { min_years: m.el.querySelector('#rt-min').value || null, dispose_years: m.el.querySelector('#rt-dispose').value || null };
+    try {
+      const r = await apiPut('/libraries/' + encodeURIComponent(lib.id) + '/retention', body);
+      lib.retention = { min_years: r.min_years, dispose_years: r.dispose_years };
+      m.close();
+      toast(r.min_years || r.dispose_years ? `Retention set for “${lib.name}”` : `No retention policy for “${lib.name}”`);
+    } catch (e) { toast('Could not save: ' + e.message); }
+  };
+}
+// Every library's policy at a glance, reached from the Compliance window's fix pointer.
+function openRetentionOverview() {
+  const libs = (librariesList || []).filter(l => l.id && !l.archived_at);
+  const words = (r) => { const p = []; if (r?.min_years) p.push(`kept at least ${r.min_years} year${r.min_years === 1 ? '' : 's'}`); if (r?.dispose_years) p.push(`to the Trash after ${r.dispose_years} year${r.dispose_years === 1 ? '' : 's'} without changes`); return p.length ? p.join('; ') : 'no policy yet'; };
+  const rows = libs.map(l => `<div class="hold-row"><div class="grow"><b>${esc(l.name)}</b>${l.personal ? ' <span class="library-menu-item-sub">personal</span>' : ''}<div class="hold-meta">${esc(words(l.retention))}</div></div>${l.can_manage ? `<button class="cmp-att-btn" type="button" data-lib="${escAttr(String(l.id))}" onclick="openLibraryRetention(this.dataset.lib)">Set…</button>` : ''}</div>`).join('');
+  const m = openModal({ id: 'retention-all-scrim', labelledBy: 'rta-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-rta-close>✕</button><h2 id="rta-title">How long files are kept</h2>`
+    + `<p class="sub">Each shared library should say how long its files are kept. Personal libraries hold people's own parked files and are not counted.</p>`
+    + `<div class="hold-list">${rows || '<p class="sub">No library yet.</p>'}</div>`
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-rta-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-rta-close]').forEach(b => b.onclick = () => m.close());
+}
+// ---- Legal holds (administrators) ----
+// One dialog for a library, a folder or a file: shows the hold that is on exactly this
+// thing with a way to release it, or asks for a reason and places one.
+async function openLegalHold({ scope, libraryId = null, folderPath = '', fileId = null }) {
+  if (currentUser?.role !== 'admin') { toast('Only an administrator can place or release a legal hold.'); return; }
+  let holds = [];
+  try { holds = (await apiGet('/admin/legal-holds')).active || []; } catch (e) { toast('Could not read the holds: ' + e.message); return; }
+  const f = fileId ? findFile(fileId) : null;
+  const lib = librariesList.find(l => String(l.id) === String(libraryId || f?.library_id));
+  const fp = normalizeFilePath(folderPath || '');
+  const here = holds.find(h => scope === 'document' ? String(h.document_id) === String(fileId)
+    : scope === 'folder' ? (h.scope === 'folder' && String(h.library_id) === String(libraryId) && normalizeFilePath(h.folder_path || '') === fp)
+      : (h.scope === 'library' && String(h.library_id) === String(libraryId)));
+  const what = scope === 'document' ? `file “${f ? fileDisplayName(f) : 'this file'}”` : scope === 'folder' ? `folder “${fp.split('/').pop()}”` : `library “${lib?.name || 'this library'}”`;
+  if (here) {
+    const note = await askPrompt(`A legal hold is on this ${what} since ${new Date(here.placed_at).toLocaleDateString()} (${here.placed_by || 'an administrator'}): “${here.reason}”.\n\nTo release it, say why it is no longer needed:`, '', { okLabel: 'Release the hold', title: 'Legal hold' });
+    if (note == null) return;
+    if (!String(note).trim()) { toast('A note is needed to release a hold.'); return; }
+    try { await apiDelete('/admin/legal-holds/' + encodeURIComponent(here.id), { note }); toast(`Hold released on ${what}`); await afterHoldChange(); }
+    catch (e) { toast('Could not release the hold: ' + e.message); }
+    return;
+  }
+  const reason = await askPrompt(`Put this ${what} under a legal hold?\n\nWhile it is held, nothing in it can be deleted, deleted for good, replaced or moved, by anyone, until an administrator releases the hold. Say what the hold is for:`, '', { okLabel: 'Place the hold', title: 'Legal hold', placeholder: 'e.g. Smith v. Jones, subpoena received 3 Nov' });
+  if (reason == null) return;
+  if (!String(reason).trim()) { toast('A hold needs a reason.'); return; }
+  try {
+    await apiPost('/admin/legal-holds', { scope, library_id: libraryId || f?.library_id || null, folder_path: fp || null, document_id: fileId || null, reason });
+    toast(`Legal hold placed on ${what}`);
+    await afterHoldChange();
+  } catch (e) { toast('Could not place the hold: ' + e.message); }
+}
+async function afterHoldChange() {
+  await loadLibraries();
+  if (document.getElementById('file-library-view')) { await loadLibraryData(); renderDocumentLibraryList(); }
+  else if (document.getElementById('file-list')) await loadFiles();
+}
+// Every open hold, reached from the Compliance window's fix pointer: release any, or place one on a library.
+async function openLegalHolds() {
+  if (currentUser?.role !== 'admin') return;
+  let data = { active: [], released: [] };
+  try { data = await apiGet('/admin/legal-holds'); } catch (e) { toast('Could not read the holds: ' + e.message); return; }
+  const rows = (data.active || []).map(h => `<div class="hold-row"><div class="grow"><b>${esc(h.where)}</b><div class="hold-meta">Since ${esc(new Date(h.placed_at).toLocaleDateString())} · ${esc(h.placed_by || 'an administrator')} · ${esc(h.reason)}</div></div><button class="cmp-att-btn" type="button" data-id="${escAttr(String(h.id))}" data-where="${escAttr(h.where)}" onclick="releaseHoldFromList(this.dataset.id, this.dataset.where)">Release…</button></div>`).join('');
+  const libs = (librariesList || []).filter(l => l.id && !l.archived_at);
+  const m = openModal({ id: 'holds-scrim', labelledBy: 'holds-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-holds-close>✕</button><h2 id="holds-title">Legal holds</h2>`
+    + `<p class="sub">While something is held, nothing in it can be deleted, deleted for good, replaced or moved, by anyone. Holds on a folder or a single file are placed from that folder's or file's menu.</p>`
+    + `<div class="hold-list">${rows || '<p class="sub">No hold is in place.</p>'}</div>`
+    + (libs.length ? `<div class="btn-row" style="margin-top:14px;align-items:center;gap:8px"><label for="holds-lib">Place a hold on a whole library:</label><select id="holds-lib">${libs.map(l => `<option value="${escAttr(String(l.id))}">${esc(l.name)}</option>`).join('')}</select><button class="cmp-att-btn primary" type="button" onclick="openLegalHold({ scope: 'library', libraryId: document.getElementById('holds-lib').value })">Place…</button></div>` : '')
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-holds-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-holds-close]').forEach(b => b.onclick = () => m.close());
+}
+async function releaseHoldFromList(id, where) {
+  const note = await askPrompt(`Release the hold on ${where}? Say why it is no longer needed:`, '', { okLabel: 'Release the hold', title: 'Legal hold' });
+  if (note == null) return;
+  if (!String(note).trim()) { toast('A note is needed to release a hold.'); return; }
+  try { await apiDelete('/admin/legal-holds/' + encodeURIComponent(id), { note }); toast('Hold released'); document.getElementById('holds-scrim')?.remove(); await afterHoldChange(); }
+  catch (e) { toast('Could not release the hold: ' + e.message); }
 }
 // Searching by name inside a library asks the server (it reaches every folder); the
 // result is kept until the words, the library or the files change.
@@ -9580,7 +9721,7 @@ function libraryMenuRow(l) {
     ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
     : (LIBRARY_PILL[l.my_access] ? `<span class="library-menu-item-sub">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
-  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
+  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}${holdMark(l.held ? 'This whole library is under a legal hold' : l.has_holds ? 'Something in this library is under a legal hold' : '')}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
 }
 // ---- Library menu ----
 // With a handful of libraries the menu is a plain list. Past LIBRARY_MENU_COMPACT it gets a
@@ -9663,6 +9804,8 @@ function libraryMenuActionsHtml(cur) {
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${id}">Share…</button>` : '')
     + `<button class="library-menu-item" type="button" data-access-lib="${id}">${cur.can_manage ? 'Who has access…' : 'Your access…'}</button>`
     + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename…</button>` : '')
+    + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();openLibraryRetention(this.dataset.lib)">Retention…</button>` : '')
+    + (currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();openLegalHold({ scope: 'library', libraryId: this.dataset.lib })">${cur.held ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '')
     + (opensAtSignIn
         ? `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="true" onclick="setStartLibrary(null)" title="On: this library opens each time you sign in. Select to turn that off."><span>Open at sign-in</span><span class="library-menu-check" aria-hidden="true">✓</span></button>`
         : `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="false" data-lib="${id}" onclick="setStartLibrary(this.dataset.lib)" title="Open this library each time you sign in"><span>Open at sign-in</span></button>`)
@@ -11123,7 +11266,7 @@ function fileCardHtml(f) {
     + `<button class="file-card-star${fav ? ' on' : ''}" data-fid="${fid}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
-    + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}${holdMark(f.held ? 'Under a legal hold' : '')}</div>`
     + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.modified_at || f.created_at)}</div></div></div>`;
 }
 function folderCardHtml(folder) {
@@ -11134,7 +11277,7 @@ function folderCardHtml(folder) {
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></div>`
-    + `<div class="file-card-body"><div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}${folderHoldTag(folder.path)}</div>`
     + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div>`;
 }
 
@@ -11487,6 +11630,7 @@ function folderOpMessage(e) {
   const code = e?.body?.code;
   if (code === 'LIBRARY_BUSY') return 'Someone else is moving things in this library right now. Give it a moment and try again.';
   if (code === 'CHANGED') return 'Who can open this folder changed while you were deciding. Have another look and try again.';
+  if (code === 'LEGAL_HOLD' || code === 'RETENTION_MINIMUM') return e?.body?.error || e?.message || 'This is under a legal hold.';
   return e?.message || 'Something went wrong.';
 }
 
@@ -13140,6 +13284,7 @@ function openFileMenu(fileId, event) {
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDetails('${fileId}')">Details</button>`,
+    currentUser?.role === 'admin' ? `<button class="file-menu-item" data-fid="${escAttr(String(fileId))}" onclick="closeFileMenu();openLegalHold({ scope: 'document', fileId: this.dataset.fid })">${f.held ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '',
     canChange ? `<div class="file-menu-rule"></div>` : '',
     canChange ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFile('${fileId}')">Delete</button>` : '',
   ].filter(Boolean).join('');
@@ -13252,6 +13397,7 @@ function openFolderMenu(path, event) {
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>` : '',
     canEnd ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
     canCopy ? `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>` : '',
+    currentUser?.role === 'admin' ? `<button class="file-menu-item" onclick="closeFileMenu();openLegalHold({ scope: 'folder', libraryId: currentLibraryId, folderPath: folderMenuPath })">${folderHoldHere(path) ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '',
     canEnd ? `<div class="file-menu-rule"></div>` : '',
     canEnd ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
     canChange && !canEnd ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder is shared with other people. Renaming it or moving it here keeps the sharing; deleting it would end it, so that is the library owner's to do.</div>` : '',

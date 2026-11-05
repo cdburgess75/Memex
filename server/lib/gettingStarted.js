@@ -196,6 +196,7 @@ async function removeCopy(d) {
       `DELETE FROM documents d
         WHERE d.id = $1 AND d.storage_path = $2 AND d.content_hash = $3
           AND NOT EXISTS (SELECT 1 FROM document_versions v WHERE v.document_id = d.id)
+          AND NOT ${require('./retention').heldSql('d')}
         RETURNING d.storage_path, d.name, d.deleted_at`, [d.id, d.storage_path, d.content_hash]);
     if (!rows.length) return { gone: null, planted: [] };   // edited, or already removed, in the meantime
     const live = rows.filter(r => !r.deleted_at).map(r => r.name);

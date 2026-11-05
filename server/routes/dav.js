@@ -35,6 +35,7 @@ const { effectiveScope, scopeCovers } = require('../lib/apiTokens');
 const { logEvent, logDocumentEvent } = require('../lib/fileEvents');
 const { DOCUMENT_COLUMNS, prefixRange, destinationFolder, createDocumentRecord, fileSizeLabelForEvent } = require('../lib/documents');
 const { sendFolderOpError, copyLanding } = require('../lib/folderOps');
+const retention = require('../lib/retention');
 const { serverError } = require('../lib/httpError');
 const { makeRateLimiters } = require('../lib/rateLimiters');
 const filesRouter = require('./files');
@@ -315,6 +316,7 @@ const overwriteAllowed = (req) => String(req.headers.overwrite || 'T').trim().to
 async function replaceWith(req, res, dest, src) {
   const writable = await documentAccess.getAccessibleDocument({ id: dest.id, user: req.user, required: 'write', columns: `${DOCUMENT_COLUMNS}, document_text`, deleted: 'active' });
   if (!writable) return { status: 403, body: { error: 'You can open that file but not change it' } };
+  try { await retention.assertDocumentNotHeld(db, writable.id, 'replaced'); } catch (e) { if (retention.isRefusal(e)) return { status: e.status, body: { code: e.code, error: e.message } }; throw e; }
   if (writable.content_hash && src.content_hash && writable.content_hash === src.content_hash) return { status: 200, body: { unchanged: true } };
   const source = await db.queryOne('SELECT document_text FROM documents WHERE id = $1', [src.id]);
   const storagePath = `documents/${Date.now()}-${path.basename(dest.name).replace(/[^a-zA-Z0-9._-]/g, '_')}`;

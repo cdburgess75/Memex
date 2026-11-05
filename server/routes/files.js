@@ -38,6 +38,7 @@ const externalChunks = require('../lib/externalChunks');
 // Every upload route stores through malwareScan (storeBuffer / storeStream), never storage
 // directly: that is where the scan happens, and sendRefusal is the 422 / 503 answer.
 const malwareScan = require('../lib/malwareScan');
+const retention = require('../lib/retention');
 const sensitiveData = require('../lib/sensitiveData');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
@@ -1007,7 +1008,7 @@ router.get('/', auth, async (req, res) => {
       limit = 'LIMIT 500';
     }
     const rows = await db.query(
-      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
+      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name, ${retention.heldSql('d')} AS held
        FROM documents d
        LEFT JOIN user_profiles up ON up.user_id = d.uploaded_by
        WHERE d.deleted_at IS NULL
@@ -1121,6 +1122,8 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
           [...documentAccess.userParams(req.user, 'write'), accessible.map(d => d.id)]
         );
         const fresh = freshAll.filter(d => !d.library_id || sources.includes(String(d.library_id)));
+        // A held file stays in its library: the whole move is refused rather than quietly leaving it behind.
+        await retention.assertDocumentsNotHeld(q, fresh.filter(d => String(d.library_id) !== String(libraryId)).map(d => d.id), 'moved');
         const rightNow = new Map();
         for (const parent of new Set(fresh.map(d => parentOf(d.name)))) {
           rightNow.set(parent, await writeRightOrThrow(req.user, libraryId, parent, q));
@@ -1172,7 +1175,7 @@ router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res)
     // conditionInTrash: a folder share reaches a deleted file only if the share already
     // existed when it was deleted -- folder names come round again (documentAccess).
     const rows = await db.query(
-      `SELECT ${DOCUMENT_COLUMNS}
+      `SELECT ${DOCUMENT_COLUMNS}, ${retention.heldSql('d')} AS held, ${retention.underMinimumSql('d')} AS under_minimum
        FROM documents d
        WHERE d.deleted_at IS NOT NULL
          AND ${documentAccess.conditionInTrash('d', 1)}
@@ -1492,6 +1495,8 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
   if (!isUuid(docId)) return res.status(404).json({ error: 'Document not found' });
   const doc = await documentAccess.getAccessibleDocument({ id: docId, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
+  // A held file keeps its bytes: refused before anything is read from the request.
+  try { await retention.assertDocumentNotHeld(db, doc.id, 'replaced'); } catch (e) { if (retention.sendRefusal(res, e)) return; throw e; }
   const storagePath = `documents/${Date.now()}-${path.basename(doc.name).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const hash = hashing(req);
   let storedSize = 0;
@@ -2426,6 +2431,8 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
       [req.params.versionId, req.params.id]
     );
     if (!version) return res.status(404).json({ error: 'Version not found' });
+    // Putting an old version back replaces what the file holds now: not while it is held.
+    try { await retention.assertDocumentNotHeld(db, doc.id, 'replaced'); } catch (e) { if (retention.sendRefusal(res, e)) return; throw e; }
 
     // Restore the CONTENT, and the file name the version had -- but keep the file where
     // it is now. A version's stored name carries the folder it was in at the time, and
@@ -2483,6 +2490,7 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     // this was the last live file under a shared folder, the folder is kept (empty and
     // still shared) rather than left as a name a future folder could inherit.
     const planted = await withFolderOp({ libraryIds: [doc.library_id], kind: 'placement', mode: 'shared' }, async (q) => {
+      await retention.assertDocumentNotHeld(q, doc.id, 'deleted');   // a legal hold: 423 LEGAL_HOLD
       const gone = await q.query(
         'UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1 AND deleted_at IS NULL RETURNING name',
         [req.params.id, req.user.id, req.user.email]
@@ -2546,6 +2554,7 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
       let nameNow = name;
       let scopedNow = scoped;
       if (parentOf(name) !== parentOf(doc.name)) {
+        await retention.assertDocumentNotHeld(q, doc.id, 'moved');   // a hold keeps a file where it is
         const folderNow = cut >= 0 ? await destinationFolder(raw.slice(0, cut), libraryId, req.user, q) : '';
         if (folderNow === null) throw new FolderOpError(null, 400, 'invalid folder');
         nameNow = folderNow ? `${folderNow}/${base}` : base;
@@ -2782,6 +2791,8 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
       deleted: 'deleted',
     });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
+    // Refused under a legal hold, and before the library's minimum retention is reached.
+    await retention.assertPurgeAllowed(db, doc.id);
 
     // The row goes first, and only while it is still in the Trash: deleting the object
     // first was a way to destroy a file somebody restored in between, and to record a
@@ -2802,6 +2813,7 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
     await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
+    if (retention.sendRefusal(res, e)) return;
     serverError(res, e);
   }
 });

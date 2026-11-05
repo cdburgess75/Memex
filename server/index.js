@@ -389,6 +389,7 @@ async function start() {
     try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
     catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
     // Periodically hard-delete trashed documents past the retention window.
+    try { require('./lib/retention').start(); console.log('[startup] retention job armed'); } catch (e) { console.error('[startup] retention job failed:', e.message); }
     try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
     catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
     // Once a day: tell the administrators when the license needs attention.
@@ -448,6 +449,7 @@ function shutdown(signal) {
   try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/signInEvents').stop(); } catch { /* not started */ }
+  try { require('./lib/retention').stop(); } catch { /* not started */ }
   try { require('./lib/gettingStarted').stop(); } catch { /* not started */ }
   const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
   forced.unref?.();

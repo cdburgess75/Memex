@@ -186,6 +186,9 @@ function shareSubject(t, idIdx) {
 const LISTING = `
   SELECT v.* FROM (
     SELECT l.id, l.name, l.personal, l.archived_at, l.created_by_email, l.created_at, l.owner_id, l.owner_email,
+           l.retention_min_years, l.retention_dispose_years,
+           EXISTS (SELECT 1 FROM legal_holds h WHERE h.library_id = l.id AND h.released_at IS NULL AND h.scope = 'library') AS held,
+           EXISTS (SELECT 1 FROM legal_holds h WHERE h.library_id = l.id AND h.released_at IS NULL) AS has_holds,
            EXISTS (SELECT 1 FROM library_grants x WHERE x.library_id = l.id) AS shared,
            (SELECT max(g.permission) FROM library_grants g
              WHERE g.library_id = l.id AND g.folder_path = '' AND ${shareSubject('g', 2)}) AS root_level,
@@ -239,6 +242,10 @@ function shapeLibrary(user, r) {
     id: r.id, name: r.name, personal: !!r.personal, archived_at: r.archived_at || null, created_by_email: r.created_by_email, created_at: r.created_at,
     owner_id: r.owner_id, owner_email: r.owner_email,
     can_manage: canManage, my_access: myAccess, my_folders: myFolders, add_right: addRight,
+    // Retention and holds: shown to everyone who can see the library, since they say what
+    // happens to files put there; held = a hold on the whole library, has_holds = any hold in it.
+    retention: { min_years: r.retention_min_years ?? null, dispose_years: r.retention_dispose_years ?? null },
+    held: !!r.held, has_holds: !!r.has_holds,
   };
   if (canManage) { out.shared = !!r.shared; out.shared_folders = r.shared_folders || []; }
   return out;

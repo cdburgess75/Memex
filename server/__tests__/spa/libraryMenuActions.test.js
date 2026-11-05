@@ -26,11 +26,11 @@ function menu({ library = LIB(), role = 'contributor', start = null, others = []
   const libraries = [...(library ? [library] : []), ...others];
   const ctx = {
     librariesList: libraries, currentLibraryId: library ? library.id : null, pinnedLibraryIds: new Set(), startLibraryId: start,
-    currentUser: { id: 'me', role }, navIcon: () => '', ICON_SHARE: '', LIBRARY_PILL: {},
+    currentUser: { id: 'me', role }, navIcon: () => '', ICON_SHARE: '', ICON_HOLD: '', LIBRARY_PILL: {},
     localStorage: { getItem: () => null, setItem: () => {} },
     currentLibrary: () => libraries.find(l => String(l.id) === String(library && library.id)) || null,
   };
-  vm.runInNewContext(['esc', 'escAttr', 'canShareLibrary', 'libraryMenuRow'].map(fnSource).join('\n') + '\n' + section + '\nthis.out = libraryMenuInnerHtml();', ctx);
+  vm.runInNewContext(['esc', 'escAttr', 'canShareLibrary', 'holdMark', 'libraryMenuRow'].map(fnSource).join('\n') + '\n' + section + '\nthis.out = libraryMenuInnerHtml();', ctx);
   return ctx.out;
 }
 const foot = (out) => out.slice(out.indexOf('<div class="library-menu-actions"'));
@@ -42,7 +42,7 @@ describe('the library you are in, at the foot of the menu', () => {
     const f = foot(out);
     expect(f).toContain('<div class="library-menu-for" id="library-menu-for" title="Dave Burgess">Dave Burgess</div>');
     expect(f.split('Dave Burgess').length - 1).toBe(2);             // the heading's text and its tooltip, nowhere else
-    expect(buttonsIn(f)).toEqual(['Share…', 'Who has access…', 'Rename…', 'Open at sign-in']);
+    expect(buttonsIn(f)).toEqual(['Share…', 'Who has access…', 'Rename…', 'Retention…', 'Open at sign-in']);
     expect(f).not.toMatch(/library-menu-for[^>]*(tabindex|role="button"|onclick)/);
     expect(html).not.toContain('when you sign in</button>');
     expect(html).not.toContain('Who has access to “${esc(cur.name)}”');
@@ -106,10 +106,10 @@ describe('who sees which rows', () => {
     expect(out.indexOf('＋ New library')).toBeLessThan(out.indexOf('library-menu-for'));
   });
   test('an administrator who manages it: every row', () => {
-    expect(buttonsIn(foot(menu({ role: 'admin' })))).toEqual(['Share…', 'Who has access…', 'Rename…', 'Open at sign-in', 'Put away…']);
+    expect(buttonsIn(foot(menu({ role: 'admin' })))).toEqual(['Share…', 'Who has access…', 'Rename…', 'Retention…', 'Legal hold…', 'Open at sign-in', 'Put away…']);
   });
   test('a library with no owner yet cannot be shared, as before', () => {
-    expect(buttonsIn(foot(menu({ role: 'admin', library: LIB({ my_access: 'admin', owner_id: null }) })))).toEqual(['Who has access…', 'Rename…', 'Open at sign-in', 'Put away…']);
+    expect(buttonsIn(foot(menu({ role: 'admin', library: LIB({ my_access: 'admin', owner_id: null }) })))).toEqual(['Who has access…', 'Rename…', 'Retention…', 'Legal hold…', 'Open at sign-in', 'Put away…']);
   });
   test('no library open: the list and New library, with no rule left dangling', () => {
     const out = menu({ library: null, role: 'admin', others: [LIB({ id: 'L2', name: 'Clients' })] });

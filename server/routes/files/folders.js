@@ -33,6 +33,7 @@ const folderPreview = require('../../lib/folderPreview');
 const { keepSharedFoldersAlive } = require('../../lib/keepMarker');
 const malwareScan = require('../../lib/malwareScan'); // every upload is stored through it (the scan)
 const folderUndo = require('../../lib/folderUndo');
+const retention = require('../../lib/retention');
 const externalUpload = require('../../lib/externalUpload');
 const externalChunks = require('../../lib/externalChunks');
 
@@ -351,6 +352,7 @@ router.post('/rename', auth, requireRole('admin', 'contributor'), async (req, re
     // name, or rename anything else in this library, while this runs.
     const out = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
       if (await folderLibraryId(req, oldPath, req.user, q) !== libraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await retention.assertNothingHeldUnder(q, libraryId, oldPath, 'renamed');   // a hold is keyed by the folder's name
       await writeRightOrThrow(req.user, libraryId, parent, q);
       const dest = await writeRightOrThrow(req.user, libraryId, newPath, q);
       return carryFolder(q, { req, libraryId, oldPath, newPath, kind: 'rename', dest });
@@ -403,6 +405,7 @@ router.post('/delete', auth, requireRole('admin', 'contributor'), async (req, re
     if (first.status) return res.status(first.status).json({ error: first.error });
     const out = await withFolderOp({ libraryIds: [libraryId] }, async (q) => {
       if (await folderLibraryId(req, folderPath, req.user, q) !== libraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await retention.assertNothingHeldUnder(q, libraryId, folderPath, 'deleted');   // 423 LEGAL_HOLD
       await writeRightOrThrow(req.user, libraryId, parent, q);
       const carried = await folderCarry.grantsUnder(q, libraryId, folderPath);
       // Ending somebody else's access is the library owner's to do.
@@ -520,26 +523,30 @@ router.post('/purge-trashed', auth, requireRole('admin', 'contributor'), async (
     }
     const gone = await withFolderOp({ libraryIds: [String(libraryId)] }, async (q) => {
       if (!(await libraries.managesLibrary(req.user, libraryId, q))) throw new FolderOpError(null, 403, 'Not yours to empty.');
+      // Under a legal hold nothing here goes (423 LEGAL_HOLD); a file younger than the
+      // library's minimum retention simply stays in the Trash, counted as kept.
+      await retention.assertNothingHeldUnder(q, libraryId, folderPath, 'purged');
+      const inTrash = `d.library_id = $1 AND starts_with(d.name, $2 || '/') AND d.deleted_at IS NOT NULL AND d.library_scoped`;
+      const kept = await q.queryOne(`SELECT count(*)::int AS n FROM documents d WHERE ${inTrash} AND NOT (${retention.purgeableSql('d')})`, [libraryId, folderPath]);
       // Every version's object is read BEFORE the delete: document_versions CASCADEs, so
       // afterwards there is nothing left to say which objects to remove, and they would
       // sit in storage forever.
       const paths = await q.query(
         `SELECT d.storage_path FROM documents d
-          WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/') AND d.deleted_at IS NOT NULL AND d.library_scoped
+          WHERE ${inTrash} AND ${retention.purgeableSql('d')}
           UNION ALL
          SELECT v.storage_path FROM document_versions v
           WHERE v.document_id IN (SELECT d.id FROM documents d
-                                   WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/')
-                                     AND d.deleted_at IS NOT NULL AND d.library_scoped)`,
+                                   WHERE ${inTrash} AND ${retention.purgeableSql('d')})`,
         [libraryId, folderPath]
       );
       const rows = await q.query(
         `DELETE FROM documents d
-          WHERE d.library_id = $1 AND starts_with(d.name, $2 || '/') AND d.deleted_at IS NOT NULL AND d.library_scoped
+          WHERE ${inTrash} AND ${retention.purgeableSql('d')}
           RETURNING d.id`,
         [libraryId, folderPath]
       );
-      return { count: rows.length, objects: paths.map(p => p.storage_path).filter(Boolean) };
+      return { count: rows.length, kept: kept?.n || 0, objects: paths.map(p => p.storage_path).filter(Boolean) };
     });
     // After the commit: a crash here leaves objects nobody points at, which the access
     // self-check counts, rather than rows pointing at objects that are already gone.
@@ -548,7 +555,7 @@ router.post('/purge-trashed', auth, requireRole('admin', 'contributor'), async (
       await logEvent(`folder purge · ${folderPath} (${gone.count})`, req.user.id, req.user.email);
       await logDocumentEvent(null, 'folder_purged', req.user.id, req.user.email, `${folderPath} (${gone.count})`);
     } catch (e) { console.error('folder purged, but recording it did not:', e.message); }
-    res.json({ ok: true, count: gone.count });
+    res.json({ ok: true, count: gone.count, kept: gone.kept });
   } catch (e) { if (sendFolderOpError(res, e) || folderScopeError(res, e)) return; serverError(res, e); }
 });
 
@@ -577,6 +584,7 @@ router.post('/reparent', auth, requireRole('admin', 'contributor'), async (req, 
     if (first.status) return res.status(first.status).json({ error: first.error });
     const out = await withFolderOp({ libraryIds: [srcLibraryId] }, async (q) => {
       if (await folderLibraryId(req, oldPath, req.user, q) !== srcLibraryId) throw new FolderOpError(null, 404, 'Folder not found');
+      await retention.assertNothingHeldUnder(q, srcLibraryId, oldPath, 'moved');
       await writeRightOrThrow(req.user, srcLibraryId, parent, q);
       const dest = await writeRightOrThrow(req.user, srcLibraryId, newPath, q);
       return carryFolder(q, { req, libraryId: srcLibraryId, oldPath, newPath, kind: 'reparent', dest });
@@ -608,6 +616,7 @@ router.post('/move', auth, requireRole('admin', 'contributor'), async (req, res)
     const out = await withFolderOp({ libraryIds: [srcLibraryId, libraryId] }, async (q) => {
       const dest = await writeRightOrThrow(req.user, libraryId, folderPath, q);
       if (String(srcLibraryId) !== String(libraryId)) {
+        await retention.assertNothingHeldUnder(q, srcLibraryId, folderPath, 'moved');   // a hold keeps a folder in its library
         await refuseIfSomethingIsAt(q, { destLibraryId: libraryId, newPath: folderPath, fromLibraryId: srcLibraryId, fromPath: folderPath, viewer: req.user, verb: 'move' });
       }
       // Sharing belongs to the library it was made in, and to that library's owner. A
