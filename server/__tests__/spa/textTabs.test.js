@@ -1,5 +1,5 @@
 'use strict';
-// A text file in its own browser tab, and autosave on by default (index.html): the route,
+// A text file in its own browser tab, and autosave off by default (index.html): the route,
 // which tab a file opens in, the document window's header, saving with a revision, what
 // happens when the file changed elsewhere, and the autosave timing.
 const fs = require('fs');
@@ -155,8 +155,8 @@ describe('saving', () => {
 });
 
 describe('autosave', () => {
-  test('is on unless switched off, and is remembered per browser', () => {
-    expect(html).toContain("const codeEdAutosaveOn = () => { try { return localStorage.getItem('memex_editor_autosave') !== '0'; } catch { return true; } };");
+  test('is off unless switched on, and is remembered per browser', () => {
+    expect(html).toContain("const codeEdAutosaveOn = () => { try { return localStorage.getItem('memex_editor_autosave') === '1'; } catch { return false; } };");
     expect(fnText('codeEdSetAutosave')).toContain("localStorage.setItem('memex_editor_autosave', on ? '1' : '0')");
   });
   test('waits 3 seconds after typing stops, but no longer than 30 seconds after the first unsaved change', () => {
@@ -164,15 +164,63 @@ describe('autosave', () => {
     const now = 1_000_000;
     const c = load(['codeEdAutosaveSoon'], {
       setTimeout: (fn, ms) => { delays.push(ms); return 1; }, clearTimeout: () => {}, Date: { now: () => now },
-      localStorage: { getItem: () => null }, CODE_ED_AUTOSAVE_MS: 3000, CODE_ED_AUTOSAVE_MAX_MS: 30000, _codeEdAutoTimer: null,
+      localStorage: { getItem: () => '1' }, CODE_ED_AUTOSAVE_MS: 3000, CODE_ED_AUTOSAVE_MAX_MS: 30000, _codeEdAutoTimer: null,
       _codeEd: { fileId: UUID, canEdit: true, clash: false, dirtySince: null },
     });
-    vm.runInNewContext("const codeEdAutosaveOn = () => localStorage.getItem('memex_editor_autosave') !== '0';", c);
+    vm.runInNewContext("const codeEdAutosaveOn = () => localStorage.getItem('memex_editor_autosave') === '1';", c);
     c.codeEdAutosaveSoon();
     expect(c._codeEd.dirtySince).toBe(now);
     c._codeEd.dirtySince = now - 31000; c.codeEdAutosaveSoon();
     c._codeEd.clash = true; c.codeEdAutosaveSoon();
     expect(delays).toEqual([3000, 0]);
+  });
+  test('with no choice stored, nothing is scheduled: typing never saves on its own', () => {
+    const delays = [];
+    const c = load(['codeEdAutosaveSoon'], {
+      setTimeout: (fn, ms) => { delays.push(ms); return 1; }, clearTimeout: () => {}, Date: { now: () => 5 },
+      localStorage: { getItem: () => null }, CODE_ED_AUTOSAVE_MS: 3000, CODE_ED_AUTOSAVE_MAX_MS: 30000, _codeEdAutoTimer: null,
+      _codeEd: { fileId: UUID, canEdit: true, clash: false, dirtySince: null },
+    });
+    vm.runInNewContext("const codeEdAutosaveOn = () => localStorage.getItem('memex_editor_autosave') === '1';", c);
+    c.codeEdAutosaveSoon();
+    expect(delays).toEqual([]);
+    expect(c._codeEd.dirtySince).toBeNull();
+  });
+  test('closing the preview with unsaved changes asks first when they would not be saved', async () => {
+    const make = ({ on, ed, answer }) => {
+      const calls = { closed: 0, focused: 0, asked: [] };
+      const c = load(['codeEdBeforeClose'], {
+        _codeEd: ed, codeEdAutosaveOn: () => on, closeModalEl: () => { calls.closed++; },
+        askConfirm: (msg, opts) => { calls.asked.push([msg, opts]); return Promise.resolve(answer); },
+        document: { getElementById: () => ({ focus: () => { calls.focused++; } }) },
+      });
+      return { c, calls };
+    };
+    const dirty = () => ({ fileId: UUID, canEdit: true, saved: 'old', value: 'new', clash: false });
+    // nothing to lose, or autosave will save on the way out: close straight away
+    expect(make({ on: false, ed: { ...dirty(), value: 'old' }, answer: true }).c.codeEdBeforeClose({})).toBe(true);
+    expect(make({ on: true, ed: dirty(), answer: true }).c.codeEdBeforeClose({})).toBe(true);
+    expect(make({ on: false, ed: { ...dirty(), canEdit: false }, answer: true }).c.codeEdBeforeClose({})).toBe(true);
+    // autosave off and dirty: held, asked, closed only on yes
+    const yes = make({ on: false, ed: dirty(), answer: true });
+    expect(yes.c.codeEdBeforeClose({})).toBe(false);
+    await new Promise(r => setTimeout(r, 0));
+    expect(yes.calls.asked[0][0]).toBe('Close without saving? What you changed since the last save will be lost.');
+    expect(yes.calls.asked[0][1]).toEqual({ okLabel: 'Close without saving', cancelLabel: 'Keep editing', danger: true });
+    expect(yes.calls.closed).toBe(1);
+    expect(yes.c._codeEd.discard).toBe(true);
+    expect(yes.c.codeEdBeforeClose({})).toBe(true); // the second pass, after "Close without saving", goes through
+    const no = make({ on: false, ed: dirty(), answer: false });
+    expect(no.c.codeEdBeforeClose({})).toBe(false);
+    await new Promise(r => setTimeout(r, 0));
+    expect(no.calls.closed).toBe(0);
+    expect(no.calls.focused).toBe(1);
+    // autosave on but the file changed elsewhere: flush would not save, so this asks too
+    const clash = make({ on: true, ed: { ...dirty(), clash: true }, answer: false });
+    expect(clash.c.codeEdBeforeClose({})).toBe(false);
+    // the dialog helper honours the veto and the preview passes it
+    expect(html).toContain("if (scrim._beforeClose && scrim._beforeClose(scrim) === false) return;");
+    expect(html).toContain("openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, beforeClose: codeEdBeforeClose,");
   });
   test('the last changes go with the tab: saved on close or hide with autosave on, asked about with it off', () => {
     expect(html).toContain("window.addEventListener('beforeunload', (e) => {\n  if (!_codeEd?.canEdit || _codeEd.value === _codeEd.saved) return;\n  if (codeEdAutosaveOn() && !_codeEd.clash) { codeEdFlush(); return; }\n  e.preventDefault(); e.returnValue = '';\n});");
