@@ -5,7 +5,7 @@ x-keycloak-image: &keycloak_image quay.io/keycloak/keycloak:26.8.1
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     restart: unless-stopped
     environment:
       POSTGRES_DB: memex
@@ -26,7 +26,7 @@ services:
   # newer than the one that last wrote it (scripts/keycloak-predump.sh). If the dump
   # fails, Keycloak does not start and its database stays as it was.
   keycloak-predump:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     restart: "no"
     entrypoint: ["/bin/sh", "/predump.sh"]
     environment:
@@ -200,7 +200,7 @@ services:
     profiles: ["editor"]
     # Pinned so every fleet install runs the same editor build; bump deliberately
     # (with a release), not whenever Docker Hub moves `latest`.
-    image: collabora/code:${COLLABORA_TAG:-26.04.3.1.1}
+    image: collabora/code:26.04.3.1.1
     restart: unless-stopped
     environment:
       # WOPI host Collabora accepts callbacks from — the Memex app container.

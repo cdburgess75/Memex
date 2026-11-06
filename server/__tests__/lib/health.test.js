@@ -57,6 +57,30 @@ describe('verdict', () => {
     expect(v.status).toBe('problem');
     expect(v.reasons).toHaveLength(3);
   });
+  describe('operating system updates (scripts/host-updates.sh)', () => {
+    const now = Date.parse('2026-11-04T15:00:00Z');
+    const ago = (h) => new Date(now - h * 3600e3).toISOString();
+    const host = (over = {}) => ({
+      reported_at: ago(1), managed: true, last_run: { started_at: ago(14), result: 'ok' },
+      reboot: { required: false, since: null, held: false }, docker: { live_restore: true }, ...over,
+    });
+    const v = (h) => health.verdict({ host: h, now });
+    test('updated last night, nothing waiting long: ok', () => {
+      expect(v(host())).toEqual({ status: 'ok', reasons: [] });
+      expect(v(host({ reboot: { required: true, since: ago(30), held: false } })).status).toBe('ok');
+      expect(health.verdict({ host: null }).status).toBe('ok');
+    });
+    test('each way it can stop working is worth a look, in words', () => {
+      expect(v(host({ last_run: { started_at: ago(14), result: 'failed', message: 'dpkg returned an error code (1)' } })).reasons)
+        .toEqual(['The last nightly update failed: dpkg returned an error code (1)']);
+      expect(v(host({ last_run: { started_at: ago(60), result: 'ok' } })).reasons).toEqual(['Nightly updates have not run for 2 days.']);
+      expect(v(host({ reported_at: ago(30) })).reasons).toEqual(['The server has not reported on its updates for 1 day.']);
+      expect(v(host({ managed: false, last_run: { started_at: null, result: 'none' } })).reasons).toEqual(['This server is not set up to install its own updates.']);
+      expect(v(host({ reboot: { required: true, since: ago(80), held: true } })).reasons)
+        .toEqual(['A restart to finish updates has waited 3 days; restarts are held on this server.']);
+      expect(v(host({ docker: { live_restore: false } })).status).toBe('attention');
+    });
+  });
 });
 
 describe('summary', () => {
@@ -96,6 +120,17 @@ describe('summary', () => {
     const since = db.queryOne.mock.calls[0][1][0];
     expect(Date.now() - new Date(since).getTime()).toBeGreaterThan(86000e3);
     expect((await health.summary({ days: 3 })).period_days).toBe(1);
+    expect(s.host).toBeNull();
+  });
+  test('carries what the host last reported, with the time the report was written', async () => {
+    answers();
+    const base = db.queryOne.getMockImplementation();
+    db.queryOne.mockImplementation(async (sql, p) => (/key = 'host_updates'/.test(sql)
+      ? { value: JSON.stringify({ managed: true, last_run: { result: 'failed', started_at: new Date().toISOString() }, pending: { total: 3, security: 1 } }), updated_at: new Date('2026-11-04T08:00:00Z') }
+      : base(sql, p)));
+    const s = await health.summary({ days: 1 });
+    expect(s.host).toMatchObject({ pending: { total: 3, security: 1 }, reported_at: '2026-11-04T08:00:00.000Z' });
+    expect(s.reasons).toContain('The last nightly update failed.');
   });
   test('with Keycloak credentials, sign-ins come from its records: counts, the worst address, the failures listed', async () => {
     answers();

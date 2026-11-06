@@ -222,6 +222,35 @@ cd /opt/memex && git checkout -- . && git pull --ff-only && docker compose up -d
 Open tabs auto-detect a new version and show a "Memex was updated, Refresh"
 banner within a few minutes.
 
+### Operating system updates and the restart window
+
+On Ubuntu servers, `install.sh` and every `upgrade.sh` run
+`scripts/host-updates.sh --install`, which:
+
+- lets Ubuntu's nightly unattended-upgrades install security fixes, Ubuntu's
+  ordinary fixes, Docker and Tailscale (the run starts around midnight to 1 a.m.
+  Central on a UTC clock);
+- turns on Docker's `live-restore`, so containers keep running while Docker itself
+  updates (a reload, nothing stops);
+- restarts the server at **2:30 a.m. Central** when an update needs a restart, and
+  only then. Containers come back on their own (`restart: unless-stopped`). A
+  missed window is skipped, never made up in the morning;
+- reports hourly to Admin › Health ("Operating system updates") and gives
+  `depot-check` four new reasons: `os_updates_failed`, `os_updates_stale`,
+  `os_updates_unmanaged`, `reboot_overdue`.
+
+Restarts go in ring order. A server with `UPDATE_RING=0` in `.env` restarts the
+same night; every other server waits until the restart has been pending about a
+day, so it restarts the night after ring 0 went through the same updates. Leave
+`UPDATE_RING` out on customer servers. To stop restarts on a server for a while:
+
+```bash
+touch /etc/depot/hold-reboot     # rm /etc/depot/hold-reboot to let go
+```
+
+Images are pinned to exact versions (the app's Node base by digest too).
+Dependabot proposes bumps as pull requests; they ship like any other change.
+
 ---
 
 ## Quick per-customer checklist

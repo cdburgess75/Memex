@@ -2075,6 +2075,9 @@ html.file-home-mode #panel > .panel.admin-view { padding: 8px 4px 40px; }
 .health-ok strong { color: var(--success); } .health-attention strong { color: var(--warning); } .health-problem strong { color: var(--danger); }
 .health-status p, .health-reasons { margin: 6px 0 0; } .health-reasons { padding-left: 20px; } .health-reasons li { margin: 2px 0; }
 .health-range { display: flex; gap: 8px; margin-bottom: 12px; }
+.health-facts { display: grid; grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr); gap: 8px 16px; margin: 0; }
+.health-facts dt { color: var(--ink-faint); } .health-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .health-facts { grid-template-columns: minmax(0, 1fr); gap: 2px; } .health-facts dd { margin-bottom: 8px; } }
 .admin-pane { display: flex; flex-direction: column; gap: 20px; }
 .admin-pane[hidden] { display: none; }
 .admin-pane > .usage-section { margin: 0; } .admin-pane > .usage-section > h3:first-child { display: none; } /* the tab already says it */
@@ -6031,6 +6034,23 @@ async function loadAdminHealth(days = 1) {
     : `<tr><td colspan="4" style="color:var(--ink-faint);font-style:italic">${esc(h.signins && h.signins.unavailable ? 'Not available: ' + h.signins.unavailable : 'Not available on this server.')}</td></tr>`;
   const didRows = (h.activity.by_type || []).length ? h.activity.by_type.map(t => `<tr><td>${esc(String(t.type || '').replace(/_/g, ' '))}</td><td>${Number(t.n).toLocaleString()}</td></tr>`).join('') : none(2);
   const range = (d, label) => `<button class="dash-act" type="button"${d === days ? ' aria-pressed="true" disabled' : ''} onclick="loadAdminHealth(${d})">${label}</button>`;
+  // The operating system under Depot, as the host last reported it (scripts/host-updates.sh).
+  const hu = h.host;
+  const huRow = (k, v) => `<dt>${esc(k)}</dt><dd>${v}</dd>`;
+  const plural = (n, w) => `${Number(n).toLocaleString()} ${w}${Number(n) === 1 ? '' : 's'}`;
+  const hostHtml = !hu
+    ? '<p class="wdash-empty">This server does not report its operating system updates. Ubuntu servers start reporting after their next Depot update.</p>'
+    : `<dl class="health-facts">${[
+      huRow('Last nightly update', !hu.last_run || !hu.last_run.started_at ? 'Has not run yet'
+        : `${esc(when(hu.last_run.started_at))} · ${hu.last_run.result === 'failed' ? `<strong>failed</strong>${hu.last_run.message ? ': ' + esc(hu.last_run.message) : ''}` : hu.last_run.result === 'ok' ? 'finished' : 'did not finish'}`),
+      huRow('Waiting to install', hu.pending && hu.pending.total ? `${plural(hu.pending.total, 'update')}${hu.pending.security ? `, ${Number(hu.pending.security).toLocaleString()} for security` : ''} · installs tonight` : 'Nothing'),
+      huRow('Restart', !hu.reboot || !hu.reboot.required ? 'Not needed'
+        : `Needed since ${esc(when(hu.reboot.since || hu.reported_at))} · ${hu.reboot.held ? 'restarts are held on this server' : `restarts at ${esc(hu.reboot.window || '2:30 a.m. Central')}${hu.reboot.wait_hours ? ', the night after the first server' : ''}`}`),
+      huRow('Running', `${esc(hu.os || 'Linux')} · kernel ${esc(hu.kernel_running || '?')}${hu.kernel_installed && hu.kernel_installed !== hu.kernel_running ? ` (${esc(hu.kernel_installed)} is installed and starts at the next restart)` : ''}`),
+      huRow('Docker', hu.docker && hu.docker.version ? `${esc(hu.docker.version)} · ${hu.docker.live_restore ? 'Depot keeps running while Docker updates' : 'Depot stops for a minute while Docker updates'}` : 'Not reported'),
+      huRow('Last restart', hu.last_boot ? esc(when(hu.last_boot)) : 'Not reported'),
+      huRow('Reported', esc(when(hu.reported_at))),
+    ].join('')}</dl>`;
   const sc = h.scanner;
   const scanLine = sc ? `<p>Virus scanning: ${sc.answering ? `on, scanner answering (${esc(sc.version || 'ClamAV')}, signatures from ${sc.signature_date ? esc(new Date(sc.signature_date).toLocaleDateString()) : 'an unknown date'}), last scan ${sc.last_scan_at ? esc(when(sc.last_scan_at)) : 'not yet'}` : 'on, but the scanner is not answering'} · ${Number(sc.refused_30d || 0).toLocaleString()} file${Number(sc.refused_30d) === 1 ? '' : 's'} refused in the last 30 days.</p>` : '';
   const fd = h.findings;
@@ -6045,6 +6065,7 @@ async function loadAdminHealth(days = 1) {
       ${adminStat('Disk free', h.disk ? big(h.disk.free_bytes) : '—', h.disk ? `of ${big(h.disk.total_bytes)} on the file store` : 'files are not on this server\'s disk')}
       ${adminStat('Stored', big(h.stored.bytes), `${Number(h.stored.files).toLocaleString()} files · database ${big(h.stored.database_bytes)}`)}
     </div>
+    ${adminCard('Operating system updates', hostHtml)}
     <div class="admin-two">
       ${adminCard('Requests the server could not finish', `<div class="table-scroll"><table class="data-table"><thead><tr><th>When</th><th>Request</th><th>What went wrong</th><th>Who</th></tr></thead><tbody>${errRows}</tbody></table></div>`)}
       ${adminCard('Failed sign-ins', `<div class="table-scroll"><table class="data-table"><thead><tr><th>When</th><th>Who</th><th>From</th><th>Why</th></tr></thead><tbody>${signRows}</tbody></table></div>`)}

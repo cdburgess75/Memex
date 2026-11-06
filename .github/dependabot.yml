@@ -1,0 +1,39 @@
+# Component bumps arrive as pull requests and reach servers the same way as any other
+# change: merged, released and shipped ring by ring with ship-pr.sh. The operating system
+# underneath updates itself every night (scripts/host-updates.sh).
+version: 2
+updates:
+  # The server's npm packages: one weekly pull request for the routine bumps.
+  # Security fixes come as their own pull requests as soon as an advisory lands.
+  - package-ecosystem: npm
+    directory: /server
+    schedule: { interval: weekly, day: monday }
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  # The app's base image (Node on Alpine), pinned by digest so a rebuild with Alpine
+  # fixes shows up as a pull request too. Node majors are moved by hand.
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  # Postgres, Keycloak, Caddy and the editor, pinned in the compose files. A Postgres
+  # major needs a dump and restore, so only minors are proposed.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]

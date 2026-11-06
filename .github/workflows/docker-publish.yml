@@ -21,7 +21,7 @@ jobs:
     # lacks "test". They drop and recreate the schema, so they run one after another.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.15-alpine3.24
         env:
           POSTGRES_DB: memex_ci_test
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -38,7 +38,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: server/package-lock.json
 

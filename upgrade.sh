@@ -75,7 +75,7 @@ refresh_host_files() {
         cp -p "$f" "$name.new" && mv -f "$name.new" "$name" && info "Updated $name"
       done
     fi
-    chmod +x upgrade.sh scripts/editor-switch.sh 2>/dev/null || true
+    chmod +x upgrade.sh scripts/editor-switch.sh scripts/host-updates.sh 2>/dev/null || true
   else
     # A release from before host files travelled with the image (a rollback, say).
     info "This release carries no host files — keeping the ones here."
@@ -193,4 +193,7 @@ fi
 
 # Keep the editor's on/off helper scheduled, and apply the switch once now.
 [ -x scripts/editor-switch.sh ] && { ./scripts/editor-switch.sh --install </dev/null || true; }
+# Nightly Ubuntu, Docker and Tailscale updates, and the 2:30 a.m. Central restart window
+# (Ubuntu servers, as root; elsewhere it says it is leaving the machine alone).
+[ -x scripts/host-updates.sh ] && { ./scripts/host-updates.sh --install </dev/null || true; }
 exit 0

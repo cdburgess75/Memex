@@ -86,3 +86,46 @@ d('depot-check.sh license field', () => {
     expect(r.out).toMatch(/^DEPOT /);
   });
 });
+
+d('depot-check.sh operating system updates', () => {
+  const hours = (h) => new Date(Date.now() - h * 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
+  const facts = (over = {}) => JSON.stringify({
+    managed: true, last_run: { started_at: hours(3), result: 'ok' }, pending: { total: 0, security: 0 },
+    reboot: { required: false, since: null, held: false }, ...over,
+  });
+  let hu;
+  beforeAll(() => {
+    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    hu = path.join(root, 'scripts', 'host-updates.sh');
+    fs.writeFileSync(hu, '#!/usr/bin/env bash\nprintf "%s" "$HU_JSON"\n');
+    fs.chmodSync(hu, 0o755);
+  });
+  afterAll(() => fs.rmSync(hu));
+  const check = (json) => { const r = run('yes ok 200 ok', { HU_JSON: json }); return { ...r, os: (/\bos_updates=(\S+)/.exec(r.out) || [])[1], reboot: (/\breboot=(\S+)/.exec(r.out) || [])[1] }; };
+
+  test('a clean run last night and nothing waiting', () => {
+    const r = check(facts());
+    expect(r).toMatchObject({ os: 'ok', reboot: 'none' });
+    expect(r.reasons.filter((x) => /os_updates|reboot/.test(x))).toEqual([]);
+  });
+
+  test('a failed run, no run for two days, or a box not set up is WARN', () => {
+    expect(check(facts({ last_run: { started_at: hours(3), result: 'failed' } })).reasons).toContain('os_updates_failed');
+    expect(check(facts({ last_run: { started_at: hours(50), result: 'ok' } })).reasons).toContain('os_updates_stale');
+    expect(check(facts({ last_run: { started_at: null, result: 'none' } })).reasons).toContain('os_updates_stale');
+    expect(check(facts({ managed: false })).reasons).toContain('os_updates_unmanaged');
+    expect(check('').reasons).toContain('os_updates_unknown');
+  });
+
+  test('a restart waiting under three days is shown; three days or more is WARN', () => {
+    expect(check(facts({ reboot: { required: true, since: hours(20), held: false } })).reboot).toBe('waiting');
+    expect(check(facts({ reboot: { required: true, since: hours(20), held: true } })).reboot).toBe('held');
+    const late = check(facts({ reboot: { required: true, since: hours(80), held: true } }));
+    expect(late.reboot).toBe('waiting:3d:held');
+    expect(late.reasons).toContain('reboot_overdue');
+  });
+
+  test('waiting security fixes are reported', () => {
+    expect(check(facts({ pending: { total: 4, security: 2 } })).out).toMatch(/security_pending=2/);
+  });
+});
