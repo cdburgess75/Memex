@@ -10532,7 +10532,7 @@ new MutationObserver(() => {
   _bindLabelsQueued = true;
   requestAnimationFrame(() => { _bindLabelsQueued = false; bindLabels(document.body); });
 }).observe(document.documentElement, { childList: true, subtree: true });
-function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '', modalStyle = '' } = {}) {
+function openModal({ id, html, onClose = null, beforeClose = null, labelledBy = null, modalClass = '', modalStyle = '' } = {}) {
   closeModal(id);
   const prev = document.activeElement;
   const scrim = document.createElement('div');
@@ -10540,7 +10540,7 @@ function openModal({ id, html, onClose = null, labelledBy = null, modalClass = '
   scrim.setAttribute('role', 'dialog'); scrim.setAttribute('aria-modal', 'true');
   if (labelledBy) scrim.setAttribute('aria-labelledby', labelledBy);
   scrim.innerHTML = `<div class="modal ${modalClass}"${modalStyle ? ` style="${modalStyle}"` : ''} tabindex="-1">${html}</div>`;
-  scrim._onClose = onClose; scrim._restoreFocus = prev;
+  scrim._onClose = onClose; scrim._beforeClose = beforeClose; scrim._restoreFocus = prev;
   bindLabels(scrim);
   // Backdrop dismiss only when the press AND the release were on the backdrop — a
   // drag that starts in an input and ends outside must not close the dialog (per UI
@@ -10587,6 +10587,7 @@ function topOverlayZ() {
 }
 function closeModalEl(scrim) {
   if (!scrim || scrim._closing) return;
+  if (scrim._beforeClose && scrim._beforeClose(scrim) === false) return; // the dialog asked, and may call back
   scrim._closing = true;
   const hook = scrim._onClose; scrim._onClose = null;
   const isStatic = STATIC_SCRIMS.has(scrim.id);
@@ -13809,12 +13810,15 @@ function codeEdSetWrap(on) {
   ta?.setAttribute('wrap', on ? 'soft' : 'off'); codeEdLines(); codeEdCursor();
   if (on && ta && ta.value.split('\n').length > CODE_ED_WRAP_MAX_LINES) toast('Line numbers are approximate with wrapping on in a file this long');
 }
-// Autosave: on unless switched off in the editor's bar (remembered per browser). A few seconds
-// after typing stops, at the latest half a minute after the first unsaved change, and when the
-// file is closed or its tab is hidden or closed. Saving overwrites the file, as Save does.
+// Autosave: OFF unless switched on in the editor's bar (remembered per browser). Off is the
+// default on purpose: nothing is written until the person presses Save (or Ctrl/Cmd+S), so
+// closing a file without saving is the way back from a slip, and a mistaken edit cannot
+// overwrite a file on its own. Switched on, it saves a few seconds after typing stops, at the
+// latest half a minute after the first unsaved change, and when the file is closed or its tab
+// is hidden or closed. Saving overwrites the file, as Save does.
 const CODE_ED_AUTOSAVE_MS = 3000, CODE_ED_AUTOSAVE_MAX_MS = 30000;
 let _codeEdAutoTimer = null;
-const codeEdAutosaveOn = () => { try { return localStorage.getItem('memex_editor_autosave') !== '0'; } catch { return true; } };
+const codeEdAutosaveOn = () => { try { return localStorage.getItem('memex_editor_autosave') === '1'; } catch { return false; } };
 function codeEdSetAutosave(on) {
   try { localStorage.setItem('memex_editor_autosave', on ? '1' : '0'); } catch { /* this visit only */ }
   if (on) codeEdAutosaveSoon();
@@ -13848,6 +13852,18 @@ function codeEdFlush() {
     });
 }
 function codeEdSaved() { const ta = document.getElementById('file-edit-text'); if (_codeEd && ta) { _codeEd.saved = ta.value; _codeEd.dirtySince = null; codeEdLines(); } }
+// The preview is closing (its X, Escape or the backdrop) with changes that would not be saved:
+// autosave off, or the file changed elsewhere and the person has not chosen a side. Ask first,
+// so a close is never a silent loss, and close only on "Close without saving". The browser's own
+// leave-page prompt covers a file open in a tab of its own (see beforeunload below).
+function codeEdBeforeClose(scrim) {
+  if (!_codeEd?.canEdit || _codeEd.value === _codeEd.saved || _codeEd.discard) return true;
+  if (codeEdAutosaveOn() && !_codeEd.clash) return true;
+  const ed = _codeEd;
+  askConfirm('Close without saving? What you changed since the last save will be lost.', { okLabel: 'Close without saving', cancelLabel: 'Keep editing', danger: true })
+    .then((ok) => { if (ok && _codeEd === ed) { ed.discard = true; closeModalEl(scrim); } else document.getElementById('file-edit-text')?.focus(); });
+  return false;
+}
 // Someone else saved this file first (another tab, another person, a restored version): the
 // server refused to save over it. Autosave stops until the person chooses in the bar: take
 // theirs (what was typed here goes), or keep this copy and save it over theirs.
@@ -14024,7 +14040,7 @@ async function previewFile(fileId, opts = {}) {
   closeFilePreview();
   const navPrev = _previewIdx > 0 ? '' : ' disabled';
   const navNext = (_previewIdx >= 0 && _previewIdx < _previewIds.length - 1) ? '' : ' disabled';
-  openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, labelledBy: 'fp-title', html: `<div class="file-preview-head"><strong id="fp-title" title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${tabBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
+  openModal({ id: 'file-preview-scrim', onClose: codeEdFlush, beforeClose: codeEdBeforeClose, labelledBy: 'fp-title', html: `<div class="file-preview-head"><strong id="fp-title" title="${esc(name)}">${esc(name)}</strong><div class="file-preview-head-actions">${primaryBtn}${tabBtn}${openWith}${shareBtn}<button class="ghost-btn" onclick="downloadFile('${fileId}')">Download</button><button class="ghost-btn" onclick="togglePreviewInfo()" title="Details (press i)">Details</button><button class="ghost-btn" onclick="closeFilePreview()">Close</button></div></div><div class="file-preview-body"><button class="preview-nav preview-nav-prev" title="Previous (←)" aria-label="Previous file" onclick="previewNav(-1)"${navPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div class="file-preview-stage">${body}</div><button class="preview-nav preview-nav-next" title="Next (→)" aria-label="Next file" onclick="previewNav(1)"${navNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><aside class="file-preview-info">${previewInfoHtml(f, name, ext)}</aside></div>`, modalClass: 'file-preview-modal' });
   if (isText) {
     const el = document.getElementById('file-edit-text');
     let t = null;

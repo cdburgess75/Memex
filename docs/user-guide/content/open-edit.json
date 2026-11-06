@@ -36,7 +36,7 @@
       ],
       "steps": [
         "Type your changes into the file. Click **Save**, or press ⌘S (Ctrl+S on Windows), to save them straight away.",
-        "**Autosave** is on: a few seconds after you stop typing, Depot saves for you, and again when you close the file or switch to another tab. Untick it if you would rather save by hand.",
+        "**Autosave** is off unless you tick it. Nothing is written until you press **Save** (Ctrl+S, or Cmd+S on a Mac), so closing a file without saving is the way back from a slip, and Depot asks before it closes a file that has unsaved changes. Tick **Autosave** if you would rather have Depot save for you a few seconds after you stop typing, and again when you close the file or switch to another tab.",
         "Click **Open in a tab** to give the file a browser tab of its own."
       ],
       "note": "A new text file (**+ Create**, then **New Markdown file** or **New Text file**) opens in a tab of its own straight away. You can also hold ⌘ (Ctrl on Windows) while you click a text file in the list, or click it with the middle mouse button."
