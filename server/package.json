@@ -38,7 +38,7 @@
     "@aws-sdk/s3-request-presigner": "^3.0.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^18.0.9",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "googleapis": "^144.0.0",
