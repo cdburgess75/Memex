@@ -73,6 +73,9 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
       const effective = await settings.getOrEnv(key);
       result[key] = (SENSITIVE.has(key) && effective) ? MASKED : (effective ?? '');
     }
+    // DB-only flag (no env fallback; written by POST /api/setup/mfa) — read-only
+    // here, so the Sign-in methods switch shows the real state.
+    result.mfa_required = String((await settings.get('mfa_required')) || '').toLowerCase() === 'true' ? 'true' : '';
     result.ai_endpoints = maskEndpoints(result.ai_endpoints);
     // backup_destinations is a JSON array with embedded S3 secrets — mask them too.
     result.backup_destinations = JSON.stringify(
@@ -85,6 +88,13 @@ router.get('/', auth, requireRole('admin'), async (req, res) => {
 });
 
 // PUT /api/admin/settings
+// POST /api/admin/settings/malware-scan/ping — the Test button: ask the scanner now,
+// not from the hourly cache, and say what it answered.
+router.post('/malware-scan/ping', auth, requireRole('admin'), async (req, res) => {
+  try { res.json(await require('../lib/malwareScan').status({ fresh: true })); }
+  catch (e) { serverError(res, e); }
+});
+
 router.put('/', auth, requireRole('admin'), async (req, res) => {
   try {
     // Guard the encryption key: changing it silently makes every already-stored local
@@ -141,6 +151,10 @@ router.put('/', auth, requireRole('admin'), async (req, res) => {
       changed.push(key);
     }
     await settings.refresh();
+    // The report schedule can also be set here (and through /api/v1): re-arm its timer.
+    if (changed.includes('compliance_report_schedule')) {
+      try { await require('../lib/complianceReports').reschedule(); } catch { /* scheduler re-arm is best-effort */ }
+    }
     // Record WHICH settings changed (key names only, never values) in the audit chain.
     if (changed.length) {
       try {

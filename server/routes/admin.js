@@ -294,10 +294,14 @@ router.get('/usage', auth, requireRole('admin'), async (req, res) => {
 // GET /api/admin/compliance — readiness profiles and update posture
 router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
   try {
-    const [frameworks, updates, summary] = await Promise.all([
+    const reports = require('../lib/complianceReports');
+    const [frameworks, updates, summary, pastReports, schedule, findings] = await Promise.all([
       compliance.profileStatus(),
       compliance.updateStatus(),
       compliance.summary(),
+      reports.list({ limit: 24 }).catch(() => []),
+      reports.status().catch(() => null),
+      findingsBundle().catch(() => null),
     ]);
     res.json({
       disclaimer: 'Compliance profiles track readiness controls and evidence only. They do not certify Depot or the operating organization.',
@@ -305,6 +309,9 @@ router.get('/compliance', auth, requireRole('admin'), async (_req, res) => {
       updates,
       summary,
       probes: compliance.probeMeta(),
+      reports: pastReports,
+      reportSchedule: schedule,
+      findings,
     });
   } catch (e) {
     serverError(res, e);
@@ -347,6 +354,38 @@ router.put('/compliance', auth, requireRole('admin'), async (req, res) => {
     await settings.refresh();
     res.json({ ok: true, frameworks: await compliance.profileStatus() });
   } catch (e) {
+    serverError(res, e);
+  }
+});
+
+/* Legal holds (lib/retention.js), for administrators. A hold is placed with a reason and
+ * released with a note; both go into the hash-chained record. The Compliance window lists
+ * the open ones and points here.
+ *
+ *   GET    /api/admin/legal-holds          -> { active: [...], released: [...] }
+ *   POST   /api/admin/legal-holds          { scope: 'library'|'folder'|'document', library_id, folder_path, document_id, reason }
+ *   DELETE /api/admin/legal-holds/:id      { note }   releases it
+ */
+router.get('/legal-holds', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const retention = require('../lib/retention');
+    const [active, released] = await Promise.all([retention.activeHolds(), retention.holdHistory({ limit: 50 })]);
+    res.json({ active, released });
+  } catch (e) { serverError(res, e); }
+});
+router.post('/legal-holds', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await require('../lib/retention').placeHold(req.body || {}, req.user));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    serverError(res, e);
+  }
+});
+router.delete('/legal-holds/:id', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json(await require('../lib/retention').releaseHold(req.params.id, req.body?.note, req.user));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     serverError(res, e);
   }
 });
@@ -431,12 +470,13 @@ router.get('/activity.csv', auth, requireRole('admin'), async (req, res) => {
       params
     );
     const { csvCell } = require('../lib/csv');
-    const header = ['timestamp', 'event', 'actor', 'document', 'detail'];
+    const { label } = require('../lib/activityLabels');
+    const header = ['timestamp', 'event', 'event_label', 'actor', 'document', 'detail'];
     const lines = [header.join(',')];
     for (const r of rows) {
       lines.push([
         r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
-        r.event_type, r.actor_email, r.document_name, r.detail,
+        r.event_type, label(r.event_type), r.actor_email, r.document_name, r.detail,
       ].map(csvCell).join(','));
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -473,10 +513,156 @@ router.get('/compliance/evidence.md', auth, requireRole('admin'), async (_req, r
   } catch (e) { serverError(res, e); }
 });
 
+// GET /api/admin/compliance/packet.html — the Safeguards packet: one printable
+// page a tax or accounting firm attaches to its written security plan.
+router.get('/compliance/packet.html', auth, requireRole('admin'), async (_req, res) => {
+  try {
+    const evidence = require('../lib/evidence');
+    const bundle = await evidence.build();
+    const slug = String(bundle.firm?.name || 'depot').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'depot';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${slug}-safeguards-packet-${bundle.generatedAt.slice(0, 10)}.html"`);
+    res.send(evidence.toPacketHtml(bundle));
+  } catch (e) { serverError(res, e); }
+});
+
+// GET /api/admin/compliance/report.html?framework=<id> — the same kind of page for any
+// framework, named <firm>-<framework>-report-<date>.html. Not kept; see /reports for that.
+router.get('/compliance/report.html', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const id = String(req.query.framework || 'safeguards');
+    if (!compliance.FRAMEWORKS.some(f => f.id === id)) return res.status(404).json({ error: 'No such framework' });
+    const evidence = require('../lib/evidence');
+    const bundle = await evidence.build();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${evidence.reportFileName(bundle.firm?.name, id, bundle.generatedAt)}"`);
+    res.send(evidence.toReportHtml(bundle, id));
+  } catch (e) { serverError(res, e); }
+});
+
+// Past reports (lib/complianceReports.js): the list, one as a download, and "run one now".
+router.get('/compliance/reports', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    res.json({ reports: await reports.list({ limit: req.query.limit }), schedule: await reports.status() });
+  } catch (e) { serverError(res, e); }
+});
+// POST { framework } keeps a report for that framework; with none, one per tracked framework.
+router.post('/compliance/reports', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    const id = req.body?.framework ? String(req.body.framework) : null;
+    if (id && !compliance.FRAMEWORKS.some(f => f.id === id)) return res.status(404).json({ error: 'No such framework' });
+    const bundle = await require('../lib/evidence').build();
+    const ids = id ? [id] : (bundle.frameworks || []).filter(f => f.enabled).map(f => f.id);
+    if (!ids.length) return res.status(400).json({ error: 'No framework is being tracked' });
+    const made = [];
+    for (const f of ids) made.push(await reports.generate(f, req.user.email || req.user.id, bundle));
+    res.status(201).json({ ok: true, reports: made });
+  } catch (e) { serverError(res, e); }
+});
+router.get('/compliance/reports/:id.html', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await require('../lib/complianceReports').get(req.params.id);
+    if (!r) return res.status(404).json({ error: 'No such report' });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${r.file_name}"`);
+    res.send(r.html);
+  } catch (e) { serverError(res, e); }
+});
+// Sensitive data in files (lib/sensitiveData.js): the findings list, one resolved, the
+// three switches, and the one-time check of files that were here before this existed.
+// The summary, the open findings and the newest resolved ones, as the Findings fold wants them.
+async function findingsBundle() {
+  const sd = require('../lib/sensitiveData');
+  const [summary, open, resolved] = await Promise.all([sd.summary(), sd.list({ status: 'open', limit: 200 }), sd.list({ status: 'resolved', limit: 20 })]);
+  return { ...summary, open, resolved };
+}
+// GET /api/admin/compliance/findings?status=open|resolved|all&type=card|ssn|bank&limit=
+router.get('/compliance/findings', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const status = ['open', 'resolved', 'all'].includes(String(req.query.status)) ? String(req.query.status) : 'open';
+    const type = sd.TYPES.includes(String(req.query.type)) ? String(req.query.type) : null;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+    const [findings, summary] = await Promise.all([sd.list({ status, type, limit }), sd.summary()]);
+    res.json({ findings, summary });
+  } catch (e) { serverError(res, e); }
+});
+// POST /api/admin/compliance/findings/:id/resolve { note } — an administrator says it is handled.
+router.post('/compliance/findings/:id/resolve', auth, requireRole('admin'), async (req, res) => {
+  try {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) return res.status(404).json({ error: 'No such finding' });
+    const sd = require('../lib/sensitiveData');
+    const finding = await sd.resolve(req.params.id, req.user, String(req.body?.note || ''));
+    if (!finding) return res.status(404).json({ error: 'No such finding' });
+    res.json({ ok: true, finding, summary: await compliance.summary() });
+  } catch (e) { serverError(res, e); }
+});
+// POST /api/admin/compliance/findings/check { all } — check existing files, in the background.
+router.post('/compliance/findings/check', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const backfill = await sd.startBackfill({ all: req.body?.all === true, by: req.user.email });
+    res.json({ ok: true, backfill });
+  } catch (e) { serverError(res, e); }
+});
+// PUT /api/admin/compliance/findings/settings { cards, ssn, bank } — each off or flag.
+router.put('/compliance/findings/settings', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const sd = require('../lib/sensitiveData');
+    const body = req.body || {};
+    const given = { card: body.cards, ssn: body.ssn, bank: body.bank };
+    const changed = [];
+    for (const type of sd.TYPES) {
+      if (given[type] === undefined) continue;
+      const v = String(given[type]).toLowerCase();
+      if (!['off', 'flag'].includes(v)) return res.status(400).json({ error: `${sd.SETTING_KEYS[type]} must be off or flag` });
+      await settings.set(sd.SETTING_KEYS[type], v, req.user.id);
+      changed.push(`${type} ${v}`);
+    }
+    if (changed.length) await require('../lib/fileEvents').logEvent(`settings · sensitive data: ${changed.join(', ')}`, req.user.id, req.user.email);
+    res.json({ ok: true, modes: await sd.modes() });
+  } catch (e) { serverError(res, e); }
+});
+// PUT { schedule: off|monthly|quarterly, email } — the two settings, and re-arm the timer.
+router.put('/compliance/reports/schedule', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const reports = require('../lib/complianceReports');
+    const { schedule, email } = req.body || {};
+    if (schedule !== undefined) {
+      if (!reports.SCHEDULES.includes(String(schedule))) return res.status(400).json({ error: 'schedule must be off, monthly or quarterly' });
+      await settings.set('compliance_report_schedule', String(schedule), req.user.id);
+    }
+    if (email !== undefined) await settings.set('compliance_report_email', reports.parseRecipients(email).join(', ') || null, req.user.id);
+    await settings.refresh();
+    await reports.reschedule();
+    res.json({ ok: true, schedule: await reports.status() });
+  } catch (e) { serverError(res, e); }
+});
+
 // GET /api/admin/access-review — user/role/library-access/last-activity review.
 router.get('/access-review', auth, requireRole('admin'), async (_req, res) => {
   try {
     res.json(await require('../lib/accessReview').build());
+  } catch (e) { serverError(res, e); }
+});
+
+// POST /api/admin/access-review/signoff — record that the list was reviewed: the list as
+// it stands is kept with who signed and when, and the chained event access_reviewed is
+// appended. The compliance control access_review reads the newest one.
+router.post('/access-review/signoff', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const review = require('../lib/accessReview');
+    const row = await review.signoff(req.user, typeof req.body?.note === 'string' ? req.body.note : '');
+    res.json({ ok: true, review: row, history: await review.history() });
+  } catch (e) { serverError(res, e); }
+});
+
+// GET /api/admin/access-review/history — past sign-offs, newest first (no snapshots).
+router.get('/access-review/history', auth, requireRole('admin'), async (req, res) => {
+  try {
+    res.json({ reviews: await require('../lib/accessReview').history(req.query.limit) });
   } catch (e) { serverError(res, e); }
 });
 

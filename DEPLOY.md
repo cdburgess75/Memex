@@ -53,6 +53,19 @@ costs about 600 MB of memory whether or not anyone uses it. An admin turns it on
 in Settings → Branding & links → In-browser editing; the installer has already set
 the correct SSL mode for whichever Mode you chose.
 
+Virus scanning of uploads (ClamAV) also starts switched off: the scanner holds
+about 1.3 GB of memory for its signatures. To turn it on for a customer, add one
+line to the server's `.env` and run the upgrade script (Compose reads the line
+itself, so it survives every later upgrade):
+
+```bash
+echo 'COMPOSE_PROFILES=clamav' >> .env && ./upgrade.sh "$(cat VERSION)"
+```
+
+Then, in Settings → Storage & backups → Virus scanning, set it to On and press
+"Test with a harmless EICAR file". From then on every file that enters Depot is
+scanned before it is kept; while the scanner is not answering, uploads are refused.
+
 ---
 
 ## 2. First login

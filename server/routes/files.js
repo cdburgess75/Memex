@@ -35,6 +35,11 @@ const blankDocs = require('../lib/blankDocs');
 const mp4Faststart = require('../lib/mp4Faststart');
 const externalUpload = require('../lib/externalUpload');
 const externalChunks = require('../lib/externalChunks');
+// Every upload route stores through malwareScan (storeBuffer / storeStream), never storage
+// directly: that is where the scan happens, and sendRefusal is the 422 / 503 answer.
+const malwareScan = require('../lib/malwareScan');
+const retention = require('../lib/retention');
+const sensitiveData = require('../lib/sensitiveData');
 const folderNotifyPrefs = require('../lib/folderNotifyPrefs');
 const docFollows = require('../lib/docFollows');
 const shareOpens = require('../lib/shareOpens');
@@ -50,7 +55,7 @@ const { Readable } = require('stream');
 // re-exports at the bottom stay stable for existing consumers.
 const { logEvent, logDocumentEvent, requestAuditDetail } = require('../lib/fileEvents');
 const {
-  tokenHash, passwordParts, verifySharePassword, shareLinkClientShape,
+  tokenHash, passwordParts, verifySharePassword, shareLinkClientShape, resolveLinkExpiry,
   issueShareTicket, verifyShareTicket, publicAppBase,
 } = require('../lib/shareLinks');
 const { sha256, hashing, 
@@ -805,9 +810,9 @@ router.post('/share/:token/upload',
       try {
         await placeExchangeUpload(req, res, { originalname: got.name, size: got.size, relativePath: got.rel,
           mimetype: require('mime-types').lookup(got.name) || 'application/octet-stream',
-          put: (storagePath, mt) => storage.uploadStream(storagePath, got.stream(), mt, { maxBytes: got.size }) });
+          put: (storagePath, mt) => malwareScan.storeStream(storagePath, got.stream(), mt, { maxBytes: got.size }, { name: got.name, size: got.size, actor: { email: share.recipient_email }, via: 'exchange link', req }) });
       } finally { await got.cleanup(); }
-    } catch (e) { if (externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || externalChunks.sendError(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   },
   (req, res, next) => externalUploadMw()(req, res, (err) => {
     if (err) return res.status(413).json({ error: `That file is larger than the ${externalUpload.DEFAULT_MAX_MB} MB this kind of upload can carry.` });
@@ -817,8 +822,9 @@ router.post('/share/:token/upload',
     try {
       if (!req.file) return res.status(400).json({ error: 'file required' });
       const { buffer, originalname, mimetype, size } = req.file;
-      await placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath: req.body?.relativePath, put: (storagePath, mt) => storage.upload(storagePath, buffer, mt) });
-    } catch (e) { if (sendFolderOpError(res, e)) return; serverError(res, e); }
+      await placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath: req.body?.relativePath,
+        put: (storagePath, mt) => malwareScan.storeBuffer(storagePath, buffer, mt, { name: originalname, actor: { email: req.exchangeShare.recipient_email }, via: 'exchange link', req }) });
+    } catch (e) { if (malwareScan.sendRefusal(res, e) || sendFolderOpError(res, e)) return; serverError(res, e); }
   });
 
 async function placeExchangeUpload(req, res, { originalname, size, mimetype, relativePath, put }) {
@@ -1002,7 +1008,7 @@ router.get('/', auth, async (req, res) => {
       limit = 'LIMIT 500';
     }
     const rows = await db.query(
-      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name
+      `SELECT ${DOCUMENT_COLUMNS}, up.display_name AS uploaded_by_name, ${retention.heldSql('d')} AS held
        FROM documents d
        LEFT JOIN user_profiles up ON up.user_id = d.uploaded_by
        WHERE d.deleted_at IS NULL
@@ -1116,6 +1122,8 @@ router.post('/library-transfer', auth, requireRole('admin', 'contributor'), asyn
           [...documentAccess.userParams(req.user, 'write'), accessible.map(d => d.id)]
         );
         const fresh = freshAll.filter(d => !d.library_id || sources.includes(String(d.library_id)));
+        // A held file stays in its library: the whole move is refused rather than quietly leaving it behind.
+        await retention.assertDocumentsNotHeld(q, fresh.filter(d => String(d.library_id) !== String(libraryId)).map(d => d.id), 'moved');
         const rightNow = new Map();
         for (const parent of new Set(fresh.map(d => parentOf(d.name)))) {
           rightNow.set(parent, await writeRightOrThrow(req.user, libraryId, parent, q));
@@ -1167,7 +1175,7 @@ router.get('/trash', auth, requireRole('admin', 'contributor'), async (req, res)
     // conditionInTrash: a folder share reaches a deleted file only if the share already
     // existed when it was deleted -- folder names come round again (documentAccess).
     const rows = await db.query(
-      `SELECT ${DOCUMENT_COLUMNS}
+      `SELECT ${DOCUMENT_COLUMNS}, ${retention.heldSql('d')} AS held, ${retention.underMinimumSql('d')} AS under_minimum
        FROM documents d
        WHERE d.deleted_at IS NOT NULL
          AND ${documentAccess.conditionInTrash('d', 1)}
@@ -1425,8 +1433,9 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     storagePath = `documents/${Date.now()}-${path.basename(displayName).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     dest = await destinationRight(req, res, req.user, uploadLibraryId, parentOf(displayName));
     if (!dest) return;
-    await storage.upload(storagePath, buffer, mimetype);
+    await malwareScan.storeBuffer(storagePath, buffer, mimetype, { name: displayName, actor: req.user, via: 'upload', req });
   } catch (e) {
+    if (malwareScan.sendRefusal(res, e)) return;
     return serverError(res, e);
   }
 
@@ -1461,6 +1470,7 @@ router.post('/upload', auth, requireRole('admin', 'contributor'), (req, res, nex
     });
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(size)} · ${name}`);
     recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
+    sensitiveData.check(doc.id, documentText, { name });
 
     res.json({ doc, canIngest });
   } catch (e) {
@@ -1485,14 +1495,17 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
   if (!isUuid(docId)) return res.status(404).json({ error: 'Document not found' });
   const doc = await documentAccess.getAccessibleDocument({ id: docId, user: req.user, required: 'write', columns: DOCUMENT_COLUMNS, deleted: 'active' });
   if (!doc) return res.status(404).json({ error: 'Document not found' });
+  // A held file keeps its bytes: refused before anything is read from the request.
+  try { await retention.assertDocumentNotHeld(db, doc.id, 'replaced'); } catch (e) { if (retention.sendRefusal(res, e)) return; throw e; }
   const storagePath = `documents/${Date.now()}-${path.basename(doc.name).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const hash = hashing(req);
   let storedSize = 0;
   try {
-    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
+    const result = await malwareScan.storeStream(storagePath, hash.stream, mimetype, { maxBytes }, { name: doc.name, actor: req.user, via: 'replace', req });
     storedSize = result && Number.isFinite(result.size) && result.size >= 0 ? result.size : 0;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    if (malwareScan.sendRefusal(res, e)) return;
     if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
     return serverError(res, e);
   }
@@ -1520,6 +1533,7 @@ async function replaceContent(req, res, docId, { mimetype, maxBytes, mb }) {
     if (!updated) { await storage.del(storagePath).catch(() => {}); return res.status(409).json({ error: 'The file went to the trash meanwhile' }); }
     await storage.del(doc.storage_path).catch(() => {}); // the version kept above holds these bytes
     await logDocumentEvent(doc.id, 'replaced', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize)} · replaced`);
+    sensitiveData.check(doc.id, documentText, { name: doc.name });
     await logEvent(`replace · ${doc.name}`, req.user.id, req.user.email);
     res.json({ doc: updated, replaced: true, streamed: true });
   } catch (e) {
@@ -1576,10 +1590,11 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
   try {
     // The cap is enforced inside uploadStream's own pipeline (see storage.capStream),
     // so an over-cap abort rejects here cleanly instead of crashing on a stream race.
-    const result = await storage.uploadStream(storagePath, hash.stream, mimetype, { maxBytes });
+    const result = await malwareScan.storeStream(storagePath, hash.stream, mimetype, { maxBytes }, { name: displayName, size: declaredSize, actor: req.user, via: 'upload stream', req });
     if (result && Number.isFinite(result.size) && result.size >= 0) storedSize = result.size;
   } catch (e) {
     await storage.del(storagePath).catch(() => {});
+    if (malwareScan.sendRefusal(res, e)) return;
     if (e && e.code === 'UPLOAD_TOO_LARGE') return res.status(413).json({ error: `File exceeds the ${mb} MB upload limit` });
     return serverError(res, e);
   }
@@ -1615,6 +1630,7 @@ router.post('/upload-stream', auth, requireRole('admin', 'contributor'), async (
     });
     await logDocumentEvent(doc.id, 'uploaded', req.user.id, req.user.email, `${fileSizeLabelForEvent(storedSize || 0)} · streamed upload`);
     recordUploadNotify(req.user, name, uploadLibraryId, doc.id);
+    sensitiveData.check(doc.id, documentText, { name });
 
     res.json({ doc, canIngest, streamed: true });
   } catch (e) {
@@ -1788,7 +1804,8 @@ router.post('/uploads/:sessionId/complete', auth, requireRole('admin', 'contribu
 
     const stream = await chunkedFileStream(session);
     const hash = hashing(stream); // content_hash, computed as the chunks are joined
-    const result = await storage.uploadStream(session.storage_path, hash.stream, session.mime_type);
+    // Scanned at assembly: the pieces are only bytes until they are one file.
+    const result = await malwareScan.storeStream(session.storage_path, hash.stream, session.mime_type, {}, { name: session.name, size: Number(session.size || 0), actor: req.user, via: 'resumable upload', req });
     const storedSize = Number.isFinite(result?.size) && result.size >= 0 ? result.size : Number(session.size || 0);
     const { doc, canIngest } = await createDocumentRecord({
       displayName: session.name,
@@ -2013,9 +2030,9 @@ router.post('/:id/shares', auth, requireRole('admin', 'contributor'), async (req
     });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    const expiresInDays = Number.parseInt(req.body?.expiresInDays || '7', 10);
-    const safeDays = Number.isFinite(expiresInDays) && expiresInDays > 0 ? Math.min(expiresInDays, 365) : 7;
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 7);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const token = crypto.randomBytes(32).toString('base64url');
     const { salt, hash } = passwordParts(String(req.body?.password || '').trim());
 
@@ -2063,9 +2080,9 @@ router.post('/:id/send', auth, requireRole('admin', 'contributor'), async (req, 
     const bad = recipients.filter(r => !/^[^\s,;<>"]+@[^\s,;<>"]+\.[a-z]{2,}$/i.test(r));
     if (bad.length) return res.status(400).json({ error: `Not a valid email address: ${bad[0]}` });
 
-    const days = Number.parseInt(req.body?.expiresInDays ?? 30, 10);
-    const safeDays = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
-    const expiresAt = req.body?.neverExpires ? null : new Date(Date.now() + safeDays * 864e5).toISOString();
+    const exp = await resolveLinkExpiry(req.body, 30);
+    if (exp.error) return res.status(400).json({ error: exp.error, code: exp.code });
+    const expiresAt = exp.expiresAt;
     const password = String(req.body?.password || '').trim();
     const allowUpload = req.body?.allowUpload !== false;
     const note = String(req.body?.message || '').slice(0, 2000).trim();
@@ -2414,6 +2431,8 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
       [req.params.versionId, req.params.id]
     );
     if (!version) return res.status(404).json({ error: 'Version not found' });
+    // Putting an old version back replaces what the file holds now: not while it is held.
+    try { await retention.assertDocumentNotHeld(db, doc.id, 'replaced'); } catch (e) { if (retention.sendRefusal(res, e)) return; throw e; }
 
     // Restore the CONTENT, and the file name the version had -- but keep the file where
     // it is now. A version's stored name carries the folder it was in at the time, and
@@ -2445,6 +2464,7 @@ router.post('/:id/restore-version/:versionId', auth, requireRole('admin', 'contr
     });
 
     await logDocumentEvent(doc.id, 'version_restored', req.user.id, req.user.email, `restored version ${version.version_number}`);
+    sensitiveData.check(doc.id, version.document_text || null, { name: updated.name });
     await logEvent(`version restore · ${updated.name} · v${version.version_number}`, req.user.id, req.user.email);
     res.json({ doc: updated });
   } catch (e) {
@@ -2470,6 +2490,7 @@ router.delete('/:id', auth, requireRole('admin', 'contributor'), async (req, res
     // this was the last live file under a shared folder, the folder is kept (empty and
     // still shared) rather than left as a name a future folder could inherit.
     const planted = await withFolderOp({ libraryIds: [doc.library_id], kind: 'placement', mode: 'shared' }, async (q) => {
+      await retention.assertDocumentNotHeld(q, doc.id, 'deleted');   // a legal hold: 423 LEGAL_HOLD
       const gone = await q.query(
         'UPDATE documents SET deleted_at = NOW(), deleted_by = $2, deleted_by_email = $3 WHERE id = $1 AND deleted_at IS NULL RETURNING name',
         [req.params.id, req.user.id, req.user.email]
@@ -2533,6 +2554,7 @@ router.put('/:id/rename', auth, requireRole('admin', 'contributor'), async (req,
       let nameNow = name;
       let scopedNow = scoped;
       if (parentOf(name) !== parentOf(doc.name)) {
+        await retention.assertDocumentNotHeld(q, doc.id, 'moved');   // a hold keeps a file where it is
         const folderNow = cut >= 0 ? await destinationFolder(raw.slice(0, cut), libraryId, req.user, q) : '';
         if (folderNow === null) throw new FolderOpError(null, 400, 'invalid folder');
         nameNow = folderNow ? `${folderNow}/${base}` : base;
@@ -2703,6 +2725,7 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     if (base && current && base !== current && req.body?.force !== true) {
       return res.status(409).json({ code: 'FILE_CHANGED', error: 'This file changed since you opened it', revision: current });
     }
+    await malwareScan.checkBuffer(buffer, { name: doc.name, actor: req.user, via: 'text edit', req });
     const sitting = await textEdits.startsSitting(doc.id, req.user.id);
     let keptVersion = false;
     if (sitting && before && before.length) {
@@ -2713,12 +2736,13 @@ router.put('/:id/content', auth, requireRole('admin', 'contributor'), async (req
     let documentText = null;
     try { documentText = await extractText(buffer, doc.name); } catch { /* non-fatal */ }
     await db.query('UPDATE documents SET size = $2, document_text = $3, content_hash = $4, modified_at = NOW() WHERE id = $1', [doc.id, buffer.length, documentText, sha256(buffer)]);
+    sensitiveData.check(doc.id, documentText, { name: doc.name });
     if (sitting) {
       await logDocumentEvent(doc.id, 'edited', req.user.id, req.user.email, `${buffer.length} bytes`);
       tellAboutTextEdit(doc, req.user);
     }
     res.json({ ok: true, size: buffer.length, revision: textEdits.revisionOf(buffer), new_sitting: sitting, kept_version: keptVersion });
-  } catch (e) { serverError(res, e); }
+  } catch (e) { if (malwareScan.sendRefusal(res, e)) return; serverError(res, e); }
 });
 
 // POST /api/files/:id/restore — restore a soft-deleted document from trash
@@ -2767,6 +2791,8 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
       deleted: 'deleted',
     });
     if (!doc) return res.status(404).json({ error: 'Document not found in trash' });
+    // Refused under a legal hold, and before the library's minimum retention is reached.
+    await retention.assertPurgeAllowed(db, doc.id);
 
     // The row goes first, and only while it is still in the Trash: deleting the object
     // first was a way to destroy a file somebody restored in between, and to record a
@@ -2787,6 +2813,7 @@ router.delete('/:id/purge', auth, requireRole('admin'), async (req, res) => {
     await logEvent(`purge · ${doc.name}`, req.user.id, req.user.email);
     res.json({ success: true });
   } catch (e) {
+    if (retention.sendRefusal(res, e)) return;
     serverError(res, e);
   }
 });

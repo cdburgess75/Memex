@@ -169,7 +169,12 @@ app.get('/api/config', async (req, res) => {
   let setupRequired = false;
   try { setupRequired = String((await settings.get('setup_completed')) || '').toLowerCase() !== 'true'; } catch { /* if the DB is unreadable, don't spuriously gate a running system */ }
   if (String(process.env.FIRST_BOOT || '').toLowerCase() === 'force') setupRequired = true;
+  // Longest a share link may live (admin cap); null = no cap. The link dialogs hide
+  // "never" and trim their day choices to it (server still enforces).
+  let shareLinkMaxDays = null;
+  try { shareLinkMaxDays = await require('./lib/shareLinks').shareLinkMaxDays(); } catch { /* no cap */ }
   res.json({
+    shareLinkMaxDays,
     keycloakUrl: browserKeycloakUrl(req),
     keycloakRealm: process.env.KEYCLOAK_REALM || 'memex',
     keycloakClientId: process.env.KEYCLOAK_CLIENT_ID || 'memex-app',
@@ -371,12 +376,20 @@ async function start() {
           });
       })(1);
     }
+    // Sign-ins, failed sign-ins and sign-outs from Keycloak into the audit record, every
+    // five minutes (lib/signInEvents; the compliance control signin_events reads it).
+    try { if (require('./lib/signInEvents').start()) console.log('[startup] sign-in record poller armed'); }
+    catch (e) { console.error('[startup] sign-in record poller failed:', e.message); }
     // Arm the scheduled-backup timer (no-op unless backups are enabled).
     try { await require('./lib/backup').reschedule(); } catch (e) { console.error('[startup] backup scheduler failed:', e.message); }
+    // Arm the scheduled compliance reports (no-op unless the schedule is on).
+    try { await require('./lib/complianceReports').reschedule(); } catch (e) { console.error('[startup] compliance report scheduler failed:', e.message); }
+    try { await require('./lib/sensitiveData').restoreBackfillStatus(); } catch (e) { console.error('[startup] sensitive data state failed:', e.message); }
     // Periodically reclaim staged chunks from abandoned resumable uploads.
     try { require('./lib/uploadSweeper').start(); console.log('[startup] upload-session sweeper armed'); }
     catch (e) { console.error('[startup] upload sweeper failed:', e.message); }
     // Periodically hard-delete trashed documents past the retention window.
+    try { require('./lib/retention').start(); console.log('[startup] retention job armed'); } catch (e) { console.error('[startup] retention job failed:', e.message); }
     try { require('./lib/trashSweeper').start(); console.log('[startup] trash sweeper armed'); }
     catch (e) { console.error('[startup] trash sweeper failed:', e.message); }
     // Once a day: tell the administrators when the license needs attention.
@@ -435,6 +448,8 @@ function shutdown(signal) {
   if (!server) process.exit(0); // signalled before listen (e.g. mid-migration)
   try { require('./lib/uploadSweeper').stop(); } catch { /* not started */ }
   try { require('./lib/trashSweeper').stop(); } catch { /* not started */ }
+  try { require('./lib/signInEvents').stop(); } catch { /* not started */ }
+  try { require('./lib/retention').stop(); } catch { /* not started */ }
   try { require('./lib/gettingStarted').stop(); } catch { /* not started */ }
   const forced = setTimeout(() => { console.error('[shutdown] forced exit after 25s'); process.exit(1); }, 25_000);
   forced.unref?.();

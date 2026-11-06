@@ -44,7 +44,7 @@ function fmtBytes(n) {
 }
 
 // The verdict. Each rule is one sentence an administrator can act on; the worst level wins.
-function verdict({ errors = 0, refusals = 0, disk = null, signins = null, license = null, host = null, now = Date.now() } = {}) {
+function verdict({ errors = 0, refusals = 0, disk = null, signins = null, license = null, scanner = null, findings = null, host = null, now = Date.now() } = {}) {
   const reasons = [];
   let level = 'ok';
   const raise = (to, why) => { reasons.push(why); if (to === 'problem') level = 'problem'; else if (level === 'ok') level = 'attention'; };
@@ -65,6 +65,11 @@ function verdict({ errors = 0, refusals = 0, disk = null, signins = null, licens
     else if (license.state === 'expiring') raise('attention', 'The license is about to expire.');
     else if (license.state === 'unlicensed') raise('attention', 'No license is installed.');
   }
+  // Scanning on with no scanner means every upload is refused: a problem, not a note.
+  if (scanner && scanner.enabled && !scanner.answering) raise('problem', 'Virus scanning is on but the scanner is not answering, so uploads are refused.');
+  // A card number in a file is something to look at, not a fault of the server's.
+  const cards = Number(findings?.open?.card || 0);
+  if (cards > 0) raise('attention', `${cards} file${cards === 1 ? ' holds' : 's hold'} what looks like a payment card number. Open Compliance › Findings.`);
   if (host) {
     const daysSince = (t) => (t ? Math.floor((now - new Date(t)) / 86400e3) : null);
     const plural = (n) => `${n} day${n === 1 ? '' : 's'}`;
@@ -109,6 +114,23 @@ async function signIns(since) {
   } catch (e) { return { unavailable: e.message }; }
 }
 
+// Virus scanning, in one line for the page: null when it is off (lib/malwareScan).
+async function scannerState() {
+  try {
+    const scan = require('./malwareScan');
+    const st = await scan.status();
+    if (!st.enabled) return null;
+    return { enabled: true, answering: st.answering, version: st.version, signature_date: st.signatureDate, last_scan_at: st.lastScanAt, refused_30d: await scan.refusedCount(30), error: st.error };
+  } catch { return null; }
+}
+
+// Sensitive data in files, in one line for the page: open findings by type, how many files
+// have been checked, and the one-time check of existing files (lib/sensitiveData). null
+// when every type is off.
+async function findingsState() {
+  try { return await require('./sensitiveData').healthLine(); } catch { return null; }
+}
+
 async function licenseState() {
   try {
     const st = await require('./license').status();
@@ -142,13 +164,13 @@ async function summary({ days = 1 } = {}) {
     db.queryOne('SELECT count(*)::int AS n, count(*) FILTER (WHERE disabled_at IS NULL)::int AS active FROM user_roles', []),
     db.queryOne('SELECT pg_database_size(current_database())::bigint AS bytes', []),
   ]);
-  const [disk, signins, license, host] = await Promise.all([diskFree(), signIns(sinceDate), licenseState(), hostUpdates()]);
+  const [disk, signins, license, scanner, findings, host] = await Promise.all([diskFree(), signIns(sinceDate), licenseState(), scannerState(), findingsState(), hostUpdates()]);
   const byStatus = {};
   let refusals = 0;
   for (const r of refusalRows || []) { byStatus[r.status] = r.n; refusals += r.n; }
   const errors = errRow?.n || 0;
   const actions = (byType || []).reduce((a, r) => a + r.n, 0);
-  const { status, reasons } = verdict({ errors, refusals, disk, signins, license, host });
+  const { status, reasons } = verdict({ errors, refusals, disk, signins, license, scanner, findings, host });
   return {
     status, reasons, checked_at: new Date().toISOString(), period_days: days,
     version: VERSION, started_at: STARTED_AT.toISOString(), uptime_seconds: Math.round(process.uptime()),
@@ -157,7 +179,7 @@ async function summary({ days = 1 } = {}) {
     signins,
     activity: { actions, by_type: byType || [], active_people: activeRow?.n || 0 },
     stored: { files: filesRow?.n || 0, bytes: Number(filesRow?.bytes || 0), people: peopleRow?.n || 0, people_active: peopleRow?.active || 0, database_bytes: Number(dbRow?.bytes || 0) },
-    disk, license, host,
+    disk, license, scanner, findings, host,
   };
 }
 

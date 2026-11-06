@@ -7,84 +7,299 @@ const db = require('./db');
 
 const ROOT = path.join(__dirname, '..', '..');
 
+// Control ids a framework may name before the control exists: a later change
+// (card-number detection). profileStatus() drops them until the catalog has them.
+const UPCOMING = [];
+
+// One requirement: a catalog control, the clause it answers to in this framework, and
+// why, in words the office manager can read. `why` always names the clause.
+const req = (control, cite, why) => ({ control, cite, why });
+
 const FRAMEWORKS = [
+  {
+    // Tax and accounting firms are "financial institutions" under the FTC Safeguards
+    // Rule (16 CFR 314). The IRS repeats the same expectations in Pub 4557 and the
+    // Pub 5708 written-plan template. Listed first: it is the profile a CPA office
+    // turns on, and the one the simple "one light, one download" view is built for.
+    id: 'safeguards',
+    setting: 'compliance_safeguards_enabled',
+    name: 'FTC Safeguards Rule (CPA / tax)',
+    short: 'Safeguards',
+    scope: 'What the FTC Safeguards Rule and IRS Pub 4557 expect of a tax or accounting firm\'s file system.',
+    note: 'Readiness of this Depot only. Your firm still owns its written plan, training, and yearly report.',
+    requirements: [
+      req('mfa', '314.4(c)(5)', '314.4(c)(5): multi-factor authentication for anyone who reaches client information.'),
+      req('encryption', '314.4(c)(3)', '314.4(c)(3): client information is encrypted where it is stored.'),
+      req('network_security', '314.4(c)(3)', '314.4(c)(3): client information is encrypted in transit (HTTPS).'),
+      req('access_control', '314.4(c)(1)', '314.4(c)(1): only the people who need client information can reach it, and the list is reviewed.'),
+      req('sensitive_data', '314.4(c)(1) and (c)(2)', '314.4(c)(1) and (c)(2): know where customer information sits. Depot checks each file for card, Social Security and bank numbers and lists what it finds, so a card number that should never have been uploaded is caught.'),
+      req('access_review', '314.4(c)(1)', '314.4(c)(1): who has access is reviewed on a schedule, and access is taken away when it is no longer needed.'),
+      req('audit_logging', '314.4(c)(8)', '314.4(c)(8): a record of who did what with client information, including views and downloads, that cannot be quietly edited.'),
+      req('signin_events', '314.4(c)(8)', '314.4(c)(8): sign-ins and failed sign-ins are recorded, so an attempt to get in by someone unauthorized can be seen.'),
+      req('malware_scanning', '314.4(c)(1) and IRS Pub 4557', '314.4(c)(1) and IRS Pub 4557: files are checked for malicious software before anyone opens them.'),
+      req('backup_restore', '314.4(c)(1) and (h)', '314.4(c)(1) and (h): you can get client information back after a failure or an incident.'),
+      req('link_governance', '314.4(c)(1)', '314.4(c)(1): limit who can reach client information, and for how long.'),
+      req('retention', '314.4(c)(6)', '314.4(c)(6): dispose of client information when it is no longer needed. (Tax returns themselves stay at least three years under IRC 6107; Depot keeps a file until someone deletes it.)'),
+      req('retention_policy', '314.4(c)(6)', '314.4(c)(6): client information is kept no longer than needed, and each library says how long its files are kept (the IRS asks tax preparers to keep returns three years, IRC §6107).'),
+      req('legal_hold', '314.4(c)(6)', '314.4(c)(6): a file that must be kept for a dispute or an inquiry can be put under a legal hold, so disposal never reaches it.'),
+      req('vulnerability_management', '314.4(d)(2)', '314.4(d)(2): a yearly penetration test and vulnerability scans every six months, unless the system is watched continuously.'),
+      req('wisp', '314.4', '314.4: the rule is a written program. IRS Pub 5708 is a free template; the IRS asks about it at PTIN renewal.'),
+      req('qualified_individual', '314.4(a)', '314.4(a): a named Qualified Individual runs the program and reports to the owners.'),
+      req('risk_assessment', '314.4(b)', '314.4(b): a written look at what could go wrong with client information and what you do about it.'),
+      req('incident_response', '314.4(h)', '314.4(h): a written plan for what to do when something goes wrong, including who calls whom.'),
+      req('training', '314.4(e)', '314.4(e): security awareness training for everyone, refreshed as risks change.'),
+      req('provider_oversight', '314.4(f)', '314.4(f): pick providers that can protect client information, put it in the contract, and check on them.'),
+      req('annual_report', '314.4(i)', '314.4(i): the Qualified Individual reports in writing at least once a year.'),
+    ],
+  },
   {
     id: 'soc2',
     setting: 'compliance_soc2_enabled',
     name: 'SOC 2',
-    scope: 'Customer trust, security reviews, availability, confidentiality, privacy, and change evidence.',
-    note: 'Readiness profile only. A SOC 2 report still requires a CPA examination.',
-    controls: ['access_control', 'audit_logging', 'backup_restore', 'change_management', 'vendor_ai', 'incident_response'],
+    short: 'SOC 2',
+    scope: 'What a customer\'s security review or a SOC 2 examiner asks a file system to show: who gets in, what is recorded, and how changes and incidents are handled.',
+    note: 'Readiness profile only. A SOC 2 report is an opinion on the organization, written by a CPA firm after its own examination.',
+    requirements: [
+      req('access_control', 'CC6.1', 'CC6.1: access to the system is limited to named, authorized people.'),
+      req('mfa', 'CC6.1', 'CC6.1: a second step at sign-in, so a stolen password is not enough.'),
+      req('access_review', 'CC6.2 and CC6.3', 'CC6.2 and CC6.3: access is reviewed on a schedule and taken away when someone leaves or changes role.'),
+      req('encryption', 'CC6.1 and CC6.7', 'CC6.1 and CC6.7: data is encrypted where it is stored.'),
+      req('network_security', 'CC6.7', 'CC6.7: data is encrypted on its way to and from people (HTTPS).'),
+      req('malware_scanning', 'CC6.8', 'CC6.8: the system guards against malicious software in the files it holds.'),
+      req('audit_logging', 'CC7.2', 'CC7.2: what happens in the system is recorded and can be reviewed.'),
+      req('signin_events', 'CC6.1 and CC7.2', 'CC6.1 and CC7.2: sign-ins and failed sign-ins are recorded and watched.'),
+      req('backup_restore', 'A1.2', 'A1.2: data is backed up and can be recovered.'),
+      req('retention_policy', 'CC6.5', 'CC6.5: data is kept for a set time and disposed of when it is no longer needed, by a written rule per library.'),
+      req('legal_hold', 'CC6.5', 'CC6.5: disposal can be stopped for a file, folder or library under a legal hold.'),
+      req('change_management', 'CC8.1', 'CC8.1: changes to the system are tracked and released in an orderly way.'),
+      req('vendor_ai', 'CC9.2', 'CC9.2: outside services that see data (an AI provider, say) are known and managed.'),
+      req('incident_response', 'CC7.4', 'CC7.4: there is a written plan for responding to an incident.'),
+    ],
   },
   {
+    // HIPAA's technical safeguards, 45 CFR 164.312, are what a file system can answer
+    // to. The rest of the Security Rule (risk analysis, policies, training, business
+    // associate agreements) belongs to the covered entity or business associate.
     id: 'hipaa',
     setting: 'compliance_hipaa_enabled',
     name: 'HIPAA',
-    scope: 'Administrative, physical, and technical safeguards for ePHI handling.',
-    note: 'Do not store PHI until BAAs, policies, access review, and audit/export controls are in place.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'backup_restore', 'retention', 'vendor_ai'],
+    short: 'HIPAA',
+    scope: 'The technical safeguards in 45 CFR 164.312: who can get in, when they are signed out, what is recorded, and whether patient files are protected where they sit and on the way.',
+    note: 'HIPAA certifies organizations, not software. The business associate agreements, the risk analysis, your policies, and staff training are your organization\'s own; this report covers what Depot can show.',
+    requirements: [
+      req('access_control', '164.312(a)(1) and (a)(2)(i)', '164.312(a)(1) and (a)(2)(i): each person has their own account, so every action can be traced to one named person.'),
+      req('sensitive_data', '164.308(a)(1)(ii)(A)', '164.308(a)(1)(ii)(A): the risk analysis starts with knowing where protected information is. Depot checks each file for card, Social Security and bank numbers and lists what it finds.'),
+      req('emergency_access', '164.312(a)(2)(ii)', '164.312(a)(2)(ii): a written way to reach patient files in an emergency, when the usual person or sign-in is not available.'),
+      req('session_timeout', '164.312(a)(2)(iii)', '164.312(a)(2)(iii): a sign-in ends on its own after a set time, so an unattended screen does not stay open.'),
+      req('encryption', '164.312(a)(2)(iv) and (c)(1)', '164.312(a)(2)(iv) and (c)(1): files are encrypted where they are stored, with a cipher that also detects a file altered on disk.'),
+      req('audit_logging', '164.312(b)', '164.312(b): a record of who looked at, changed, or shared each file, kept so it cannot be quietly edited.'),
+      req('signin_events', '164.312(b) and 164.308(a)(5)(ii)(C)', '164.312(b) and 164.308(a)(5)(ii)(C): sign-ins and failed sign-ins are recorded and watched.'),
+      req('mfa', '164.312(d)', '164.312(d): the system checks that a person is who they say they are; a second step at sign-in is the usual way.'),
+      req('network_security', '164.312(e)(1)', '164.312(e)(1): files are encrypted on the way to and from people (HTTPS).'),
+      req('access_review', '164.308(a)(4)', '164.308(a)(4): who may reach patient files is reviewed, and access is taken away when it is no longer needed.'),
+      req('malware_scanning', '164.308(a)(5)(ii)(B)', '164.308(a)(5)(ii)(B): files are checked for malicious software.'),
+      req('backup_restore', '164.308(a)(7)(ii)(A)', '164.308(a)(7)(ii)(A): an exact copy of patient files can be recovered after a failure.'),
+      req('retention_policy', '164.316(b)(2)', '164.316(b)(2): records are kept for six years from when they were made or last in effect; each library says how long its files are kept.'),
+      req('legal_hold', '164.316(b)(2)', '164.316(b)(2): a file that must be kept for an inquiry or a dispute can be put under a legal hold, so nothing disposes of it.'),
+      req('vendor_ai', '164.308(b)(1)', '164.308(b)(1): an outside service that sees file contents (an AI provider, say) is a business associate and needs an agreement, or stays off.'),
+    ],
   },
   {
     id: 'gdpr',
     setting: 'compliance_gdpr_enabled',
     name: 'GDPR',
-    scope: 'Personal-data handling, deletion/erasure workflows, retention, and processor evidence.',
+    short: 'GDPR',
+    scope: 'Personal data held in files: who can reach it, how long it stays, how a person\'s request to see or erase it is met, and which outside services process it.',
     note: 'This profile helps track readiness for data-subject requests; it is not legal advice.',
-    controls: ['access_control', 'audit_logging', 'retention', 'export_delete', 'vendor_ai'],
+    requirements: [
+      req('access_control', 'Article 32(1)(b)', 'Article 32(1)(b): only named, authorized people can reach personal data.'),
+      req('encryption', 'Article 32(1)(a)', 'Article 32(1)(a): personal data is encrypted where it is stored.'),
+      req('audit_logging', 'Article 5(2) and 30', 'Article 5(2) and 30: the organization can show what was done with personal data.'),
+      req('retention', 'Article 5(1)(e)', 'Article 5(1)(e): personal data is not kept longer than needed; deleted files are disposed of on a schedule.'),
+      req('export_delete', 'Articles 15 and 17', 'Articles 15 and 17: a person can get a copy of their data, or have it erased, within a month.'),
+      req('vendor_ai', 'Article 28', 'Article 28: an outside service that processes personal data (an AI provider, say) is a processor and needs a written contract.'),
+    ],
   },
   {
+    // PCI DSS certifies merchants and processors, and only for systems that store,
+    // process or transmit cardholder data. The right goal for a file store is to be
+    // OUT of scope: no card numbers in it, and a way to tell if one slips in.
     id: 'pci_dss',
     setting: 'compliance_pci_dss_enabled',
-    name: 'PCI-DSS',
-    scope: 'Cardholder-data security posture for environments that process, store, or transmit payment data.',
-    note: 'Depot should avoid cardholder data unless PCI scope is intentionally designed and assessed.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'vulnerability_management', 'network_security'],
+    name: 'PCI: no card data in Depot',
+    short: 'PCI',
+    scope: 'Keeping Depot out of PCI scope: a written rule that no card numbers are stored here, the checks that would catch one, and the protections that limit the harm if one slips in.',
+    note: 'PCI DSS applies to systems that store, process, or transmit card data. The aim here is that Depot never does; it is not a PCI assessment, and card payments stay in your payment provider\'s own system.',
+    requirements: [
+      req('no_card_data', 'PCI DSS v4.0, scope', 'PCI DSS v4.0, scope: a system that never stores, processes, or transmits cardholder data is out of scope. A written rule, and staff who know it, keep Depot out.'),
+      req('sensitive_data', 'PCI DSS v4.0, Requirement 3 and scope', 'PCI DSS v4.0, Requirement 3 and scope: uploaded files are checked for card numbers, so a slip is caught instead of silently putting Depot in scope.'),
+      req('access_control', 'Requirement 7', 'Requirement 7: access is limited to named people who need it.'),
+      req('mfa', 'Requirement 8.4', 'Requirement 8.4: a second step at sign-in for everyone.'),
+      req('access_review', 'Requirement 7.2.4', 'Requirement 7.2.4: who has access is reviewed at least every six months.'),
+      req('audit_logging', 'Requirement 10', 'Requirement 10: a record of who did what, kept so it cannot be quietly edited.'),
+      req('signin_events', 'Requirement 10.2.1.4', 'Requirement 10.2.1.4: failed sign-ins are recorded.'),
+      req('encryption', 'Requirement 3.5', 'Requirement 3.5: if a card number did slip into a file, it would sit encrypted on disk.'),
+      req('network_security', 'Requirement 4', 'Requirement 4: files travel over HTTPS, never in the clear.'),
+      req('retention', 'Requirement 3.2.1', 'Requirement 3.2.1: nothing is kept longer than needed; deleted files are disposed of on a schedule.'),
+      req('malware_scanning', 'Requirement 5', 'Requirement 5: files are checked for malicious software.'),
+      req('vulnerability_management', 'Requirement 11', 'Requirement 11: the server is scanned for weaknesses on a schedule.'),
+    ],
+  },
+  {
+    // NIST CSF 2.0's six functions, in plain words, mapped to what Depot can show.
+    id: 'nist_csf',
+    setting: 'compliance_nist_csf_enabled',
+    name: 'NIST Cybersecurity Framework 2.0',
+    short: 'NIST CSF',
+    scope: 'The six functions of NIST CSF 2.0 (Govern, Identify, Protect, Detect, Respond, Recover) as they apply to a file system, in plain words.',
+    note: 'The framework is a way of organizing a program, not a certification. Depot answers the parts a file system can; the governance, risk and planning parts are your organization\'s own.',
+    requirements: [
+      req('qualified_individual', 'Govern, GV.RR-02', 'Govern (GV.RR-02): one named person is responsible for security and reports to leadership.'),
+      req('provider_oversight', 'Govern, GV.SC-05', 'Govern (GV.SC-05): outside providers that touch your data are under written terms and checked on.'),
+      req('risk_assessment', 'Identify, ID.RA-01', 'Identify (ID.RA-01): what could go wrong with your data is written down and reviewed.'),
+      req('vulnerability_management', 'Identify, ID.RA-01', 'Identify (ID.RA-01): the server is scanned for weaknesses on a schedule.'),
+      req('access_control', 'Protect, PR.AA-01', 'Protect (PR.AA-01): each person has their own account and a role.'),
+      req('mfa', 'Protect, PR.AA-03', 'Protect (PR.AA-03): a second step at sign-in.'),
+      req('access_review', 'Protect, PR.AA-05', 'Protect (PR.AA-05): who has access is reviewed and kept to what each person needs.'),
+      req('encryption', 'Protect, PR.DS-01', 'Protect (PR.DS-01): files are encrypted where they are stored.'),
+      req('network_security', 'Protect, PR.DS-02', 'Protect (PR.DS-02): files are encrypted on the way to and from people (HTTPS).'),
+      req('training', 'Protect, PR.AT-01', 'Protect (PR.AT-01): staff are trained to recognize and avoid security risks.'),
+      req('change_management', 'Protect, PR.PS-01', 'Protect (PR.PS-01): changes to the system are tracked and released in an orderly way.'),
+      req('audit_logging', 'Detect, DE.CM-01', 'Detect (DE.CM-01): what happens in the system is recorded, so something wrong can be noticed.'),
+      req('signin_events', 'Detect, DE.CM-03', 'Detect (DE.CM-03): sign-ins and failed sign-ins are recorded and watched.'),
+      req('malware_scanning', 'Detect, DE.CM-09', 'Detect (DE.CM-09): files are checked for malicious software.'),
+      req('incident_response', 'Respond, RS.MA-01', 'Respond (RS.MA-01): a written plan says who does what when something goes wrong.'),
+      req('backup_restore', 'Recover, RC.RP-01', 'Recover (RC.RP-01): backups run and can be restored, so work resumes after a failure.'),
+      req('retention_policy', 'Govern, GV.PO-01', 'Govern (GV.PO-01): a written rule says how long each library\'s files are kept and when they are disposed of.'),
+      req('legal_hold', 'Protect, PR.DS-01', 'Protect (PR.DS-01): a file that must be kept can be put under a legal hold, so nothing disposes of it.'),
+    ],
   },
   {
     id: 'iso27001',
     setting: 'compliance_iso27001_enabled',
     name: 'ISO/IEC 27001',
-    scope: 'ISMS evidence: risk treatment, controls, policies, internal audit, and management review.',
+    short: 'ISO 27001',
+    scope: 'The Annex A controls a file system can show evidence for: access, encryption, logging, backups, change and incident handling.',
     note: 'Product controls can support an ISMS, but certification is organization-wide.',
-    controls: ['risk_register', 'access_control', 'audit_logging', 'backup_restore', 'change_management', 'incident_response'],
+    requirements: [
+      req('risk_register', 'Clause 6.1.2', 'Clause 6.1.2: risks are listed with an owner and a treatment.'),
+      req('access_control', 'Annex A 5.15', 'Annex A 5.15: access is limited to named, authorized people.'),
+      req('mfa', 'Annex A 8.5', 'Annex A 8.5: a second step at sign-in.'),
+      req('encryption', 'Annex A 8.24', 'Annex A 8.24: data is encrypted where it is stored.'),
+      req('audit_logging', 'Annex A 8.15', 'Annex A 8.15: what happens in the system is recorded and protected from editing.'),
+      req('backup_restore', 'Annex A 8.13', 'Annex A 8.13: backups run and are tested.'),
+      req('retention_policy', 'Annex A 5.33 and 8.10', 'Annex A 5.33 and 8.10: records are kept for a set time and deleted when no longer needed, by a rule per library.'),
+      req('legal_hold', 'Annex A 5.33', 'Annex A 5.33: a file that must be kept for a legal matter can be put under a legal hold.'),
+      req('change_management', 'Annex A 8.32', 'Annex A 8.32: changes to the system are tracked and released in an orderly way.'),
+      req('incident_response', 'Annex A 5.24', 'Annex A 5.24: a written plan says who does what when something goes wrong.'),
+    ],
   },
   {
     id: 'cmmc',
     setting: 'compliance_cmmc_enabled',
     name: 'CMMC',
-    scope: 'DIB cybersecurity posture for FCI/CUI handling aligned to FAR and NIST requirements.',
-    note: 'Do not store CUI until scoping, SSP, SPRS/eMASS evidence, and required assessments are ready.',
-    controls: ['access_control', 'audit_logging', 'encryption', 'retention', 'vulnerability_management', 'network_security'],
+    short: 'CMMC',
+    scope: 'The NIST SP 800-171 practices a file system can show for a defense contractor handling federal contract information.',
+    note: 'Do not store CUI until scoping, the system security plan, SPRS/eMASS evidence, and required assessments are ready.',
+    requirements: [
+      req('access_control', 'SP 800-171 3.1.1', 'SP 800-171 3.1.1: access is limited to authorized people, each with their own account.'),
+      req('mfa', 'SP 800-171 3.5.3', 'SP 800-171 3.5.3: a second step at sign-in.'),
+      req('audit_logging', 'SP 800-171 3.3.1', 'SP 800-171 3.3.1: a record of who did what, kept so it cannot be quietly edited.'),
+      req('encryption', 'SP 800-171 3.13.16', 'SP 800-171 3.13.16: files are encrypted where they are stored.'),
+      req('network_security', 'SP 800-171 3.13.8', 'SP 800-171 3.13.8: files are encrypted on the way to and from people (HTTPS).'),
+      req('retention', 'SP 800-171 3.8.3', 'SP 800-171 3.8.3: data is disposed of when it is no longer needed.'),
+      req('vulnerability_management', 'SP 800-171 3.11.2', 'SP 800-171 3.11.2: the server is scanned for weaknesses on a schedule.'),
+    ],
   },
 ];
+// `controls` stays derivable from the requirements for everything that reads it.
+for (const f of FRAMEWORKS) f.controls = f.requirements.map(r => r.control);
 
 // `evidence` here is the default/fallback copy; auto controls override it with a live
 // signal (see CHECKS), and manual controls override it with the attestation note.
+// The clause a control answers to, and why, is per framework: FRAMEWORKS[].requirements.
+// `fix` points the client at the place the admin can put it right ('setup:mfa',
+// 'setup:session', 'settings:<key>', 'backup').
+// `attestable` auto controls accept a manual confirmation when the live signal is
+// not green — for the things Depot can only see from outside (MFA enforced by a
+// Microsoft tenant, say).
 const CONTROL_CATALOG = {
+  mfa: {
+    label: 'A second step at sign-in (MFA)',
+    evidence: 'Sign-in goes through Keycloak; a one-time code can be required for every local account.',
+    gap: 'Require an authenticator app for password sign-ins (Settings › Sign-in methods), or confirm your Microsoft 365 tenant requires a second step.',
+    fix: 'setup:mfa',
+    attestable: true,
+  },
+  link_governance: {
+    label: 'Links to outside people expire',
+    evidence: 'Share links can carry an expiry date and a password.',
+    gap: 'Set the longest a link may live (Settings › Network, limits & calls) and retire links that never expire.',
+    fix: 'settings:share_link_max_days',
+  },
+  wisp: {
+    label: 'A written security plan (WISP)',
+    manual: true,
+    evidence: 'Depot cannot see your written plan. Confirm here once it exists, and keep it with your firm records.',
+    gap: 'Write the plan (IRS Pub 5708 template), have the owners sign it, and confirm here.',
+  },
+  qualified_individual: {
+    label: 'One person is in charge of security',
+    manual: true,
+    evidence: 'Depot cannot see who holds this role. Confirm here, naming the person in the note.',
+    gap: 'Name the person (an owner, office manager, or your IT provider) and confirm here.',
+  },
+  risk_assessment: {
+    label: 'A written risk assessment',
+    manual: true,
+    evidence: 'Depot cannot see the assessment. Confirm here once it is written.',
+    gap: 'Write it (the Pub 5708 template has a section), review it yearly, and confirm here.',
+  },
+  training: {
+    label: 'Staff trained on security this year',
+    manual: true,
+    evidence: 'Depot cannot see training records. Confirm here each year with the date in the note.',
+    gap: 'Run a short session (phishing, passwords, client data handling), keep the sign-in sheet, and confirm here.',
+  },
+  provider_oversight: {
+    label: 'Service providers are checked',
+    manual: true,
+    evidence: 'Depot cannot see your contracts. Confirm here once your IT and software providers are under written terms.',
+    gap: 'Keep a list of providers that touch client data, with a signed agreement for each, and confirm here.',
+  },
+  annual_report: {
+    label: 'A yearly report to the owners',
+    manual: true,
+    evidence: 'Depot cannot see the report. The Safeguards packet from this page is written to be attached to it.',
+    gap: 'Attach this page\'s packet to a short written report each year, and confirm here with the date.',
+  },
   access_control: {
-    label: 'Access control',
-    evidence: 'Keycloak authentication with admin/contributor/viewer roles.',
-    gap: 'Add SSO/MFA enforcement and scheduled access review export.',
+    label: 'Only named people can get in',
+    evidence: 'Everyone signs in with their own account and has a role: admin, contributor, or viewer.',
+    gap: 'Give each person an account and a role; make at least one person an admin.',
   },
   audit_logging: {
-    label: 'Audit logging',
-    evidence: 'Tamper-evident (hash-chained) activity log with an admin integrity-verify check, plus file history, version history, share events, and admin history views.',
-    gap: 'Retain periodic exported integrity attestations off-box.',
+    label: 'A record of who did what',
+    evidence: 'Every view, download, upload, change, share, and deletion is logged, and the log is hash-chained so a changed or deleted entry is detectable.',
+    gap: 'The log fills itself in as people use Depot; nothing to set up.',
   },
   encryption: {
-    label: 'Encryption at rest',
-    evidence: 'Local AES-256-GCM encryption is configurable for new uploads.',
-    gap: 'Enable key custody, rotation evidence, and storage-provider encryption verification.',
+    label: 'Files are encrypted where they are stored',
+    fix: 'settings:storage_encryption_key',
+    evidence: 'Files on disk are encrypted (AES-256-GCM) with a key only the server holds.',
+    gap: 'Set an encryption key (Settings › Storage & backups). Files uploaded before that are not encrypted.',
   },
   backup_restore: {
-    label: 'Backup and restore evidence',
-    evidence: 'Local backup and verify scripts exist under scripts/.',
-    gap: 'Schedule off-box backups and retain restore-test evidence.',
+    label: 'Backups run and can be restored',
+    fix: 'backup',
+    evidence: 'Depot can back itself up on a schedule and check that a backup restores.',
+    gap: 'Turn on scheduled backups (Settings › Storage & backups), or back up the whole server another way and confirm it here.',
+    attestable: true,
   },
   change_management: {
-    label: 'Change management',
-    evidence: 'Git history, version file, tags, and Docker rebuild/deploy flow.',
-    gap: 'Add release approval and rollback evidence.',
+    label: 'Updates are tracked',
+    evidence: 'Depot runs signed, numbered releases; every change is in version history.',
+    gap: 'Nothing to set up; Depot keeps its own release record.',
   },
   vendor_ai: {
     label: 'AI/vendor governance',
@@ -92,15 +307,16 @@ const CONTROL_CATALOG = {
     gap: 'Add vendor inventory, BAA/DPA tracking, AI no-send zones, and prompt/content redaction evidence.',
   },
   incident_response: {
-    label: 'Incident response',
+    label: 'A written plan for when something goes wrong',
     manual: true,
-    evidence: 'No formal incident runbook is tracked in app yet.',
-    gap: 'Add incident response policy, tabletop records, and breach/escalation checklist.',
+    evidence: 'Depot cannot see your plan. Confirm here once it is written.',
+    gap: 'Write one page: who to call, how to cut off access, who tells clients, the FTC, and the state (Louisiana gives you 60 days to notify people; the FTC wants 30 days for 500 or more). Confirm here.',
   },
   retention: {
-    label: 'Retention and deletion',
-    evidence: 'Trash retention days are configurable and files can be restored/purged.',
-    gap: 'Add data-class retention policies, legal hold, and erasure request tracking.',
+    label: 'Deleted files are disposed of on a schedule',
+    evidence: 'Files in the trash are purged after a set number of days.',
+    gap: 'Set trash retention to between 1 and 90 days (Settings › Network, limits & calls).',
+    fix: 'settings:trash_retention_days',
   },
   export_delete: {
     label: 'Export/delete request workflow',
@@ -109,21 +325,84 @@ const CONTROL_CATALOG = {
     gap: 'Add auditable data-subject request workflow with identity verification and completion evidence.',
   },
   vulnerability_management: {
-    label: 'Vulnerability management',
+    label: 'The server is scanned and kept patched',
     manual: true,
-    evidence: 'Dependency tests exist, but no scheduled vulnerability evidence is retained in-app.',
-    gap: 'Add OS/package/dependency scan status, patch cadence, and exception tracking.',
+    evidence: 'Depot updates itself, and "Run live checks" audits its own components. The twice-yearly scan of the server is your IT provider\'s to run and keep.',
+    gap: 'Have your IT provider scan the server every six months and keep the report; confirm here with the date.',
   },
   network_security: {
-    label: 'Network security',
+    label: 'Files are encrypted on the way to you',
+    fix: 'settings:app_url',
     evidence: 'Baseline security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS on HTTPS) are enforced; CORS, bind address, trust proxy, and production Caddy overlay are configurable.',
-    gap: 'Enable HTTPS end to end, MFA/SSO, and retain hardened reverse-proxy evidence.',
+    gap: 'Give Depot an https:// address (Settings › Branding & links) so every connection is encrypted.',
   },
   risk_register: {
     label: 'Risk register',
     manual: true,
     evidence: 'Compliance roadmap exists.',
     gap: 'Add risk register, owners, treatment status, and review cadence.',
+  },
+  emergency_access: {
+    label: 'A written way in during an emergency',
+    manual: true,
+    evidence: 'Depot cannot see your procedure. Confirm here once it says who can reach patient files when the usual person or sign-in is not available.',
+    gap: 'Write one page: who holds a second administrator account, where its credentials are sealed, and who may open them. Confirm here.',
+  },
+  session_timeout: {
+    label: 'People are signed out after a set time',
+    evidence: 'A sign-in ends on its own after the time set under Sign-in methods.',
+    gap: 'Set how long a sign-in lasts to a day or less (Settings › Sign-in methods), or confirm your Microsoft 365 tenant signs people out.',
+    fix: 'setup:session',
+    attestable: true,
+  },
+  no_card_data: {
+    label: 'No cardholder data is stored here (written rule)',
+    manual: true,
+    evidence: 'Depot cannot read your policy. Confirm here once a written rule says card numbers never go into Depot, and staff know where payments do go.',
+    gap: 'Write the rule (one paragraph: card numbers are never typed into or uploaded to Depot; payments go through the card terminal or payment provider), tell staff, and confirm here.',
+  },
+  malware_scanning: {
+    label: 'Uploads are scanned for malware',
+    why: 'HIPAA §164.308(a)(5)(ii)(B) and FTC Safeguards 314.4(c): protection from malicious software.',
+    evidence: 'Every file that enters Depot, by upload, by a link, or from the drive, is checked by a virus scanner before it is kept; a file that fails is refused and the administrators are told.',
+    gap: 'Start the scanner on the server (COMPOSE_PROFILES=clamav in .env, then upgrade.sh) and switch scanning on in Settings › Storage & backups.',
+    fix: 'settings:malware_scan_enabled',
+  },
+  // `action` is a button the window draws on the row whatever its state: the admin does
+  // the thing from Compliance without leaving. { label, api } — a POST, with an optional note.
+  access_review: {
+    label: 'Who has access is reviewed every quarter',
+    why: 'FTC Safeguards 314.4(c)(1), HIPAA §164.308(a)(4), SOC 2 CC6.2: periodic review of who can get in.',
+    evidence: 'Settings › Users & access lists every person and what they can open. Record each review there, or here.',
+    gap: 'Look through the list in Settings › Users & access, remove anyone who should not be on it, and record that it was reviewed.',
+    fix: 'access',
+    action: { label: 'Record that this list was reviewed', api: '/admin/access-review/signoff' },
+  },
+  signin_events: {
+    label: 'Sign-ins and failed sign-ins are recorded',
+    why: 'HIPAA §164.312(b), SOC 2 CC7.2: activity review includes authentication.',
+    evidence: 'Every sign-in, failed sign-in and sign-out is copied from Keycloak into the hash-chained activity record every five minutes.',
+    gap: 'Turn sign-in records on (Settings › Server, signin_events_enabled) and make sure Keycloak is keeping events for the realm.',
+    fix: 'settings:signin_events_enabled',
+  },
+  sensitive_data: {
+    label: 'No card numbers are stored in Depot',
+    evidence: 'Every file\'s text is checked for payment card numbers (and, as information, Social Security and bank numbers) as it arrives; what is found is listed under Findings until an administrator resolves it or deletes the file.',
+    gap: 'Open Findings in the Compliance window: each file that holds what looks like a card number is listed with where it is. Delete the file or move the number out of Depot, or mark the finding resolved with a note. Card detection must be on (Compliance › Findings).',
+    fix: 'compliance:findings',
+  },
+  retention_policy: {
+    label: 'Each library says how long its files are kept',
+    evidence: 'A library can say "keep at least N years" (nothing in it is deleted for good before then) and "move to the trash after N years without changes".',
+    gap: 'Open each shared library\'s menu, choose Retention, and set how long its files must be kept (tax returns: 3 years; patient files: 6 years).',
+    fix: 'retention',
+  },
+  legal_hold: {
+    label: 'A legal hold can stop any deletion',
+    evidence: 'An administrator can put a file, a folder or a whole library under a legal hold with a reason; while it is held, nothing can delete, purge, replace or move it, and every hold and release is in the record.',
+    gap: 'Place a hold when a dispute or an inquiry starts (the Legal hold item in a library, folder or file menu), or confirm here that your office knows how.',
+    fix: 'holds',
+    attestable: true,
   },
 };
 
@@ -144,8 +423,8 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Keycloak authentication is enforced on every request; role-based access is configured (${roles} role assignment(s), ${admins} admin(s)). MFA/SSO enforcement and scheduled access-review export remain to be evidenced.`
-        : 'Keycloak authentication is enforced, but no role assignments were found yet — assign admin/contributor/viewer roles to complete access control.',
+        ? `Everyone signs in with their own account; ${roles} ${roles === 1 ? 'person has' : 'people have'} a role, ${admins} of them admin. A second step at sign-in (MFA) is its own item.`
+        : 'Everyone must sign in, but nobody has a role yet — give people admin, contributor, or viewer roles.',
     };
   },
   audit_logging: async () => {
@@ -158,10 +437,10 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Tamper-evident hash-chained log active (${chain.toLocaleString()} chained event(s); plain activity feed ${activity.toLocaleString()}), plus file, version, and share history.`
+        ? `${chain.toLocaleString()} entries in the hash-chained record of views, downloads, changes, shares, deletions, and access changes.`
         : activity > 0
-          ? `The plain activity feed has ${activity.toLocaleString()} event(s), but the tamper-evident hash chain has no entries yet — not evidenced as tamper-evident.`
-          : 'No audit events recorded yet.',
+          ? `${activity.toLocaleString()} plain activity entries, but the hash-chained record has none yet — it fills in from the next file action.`
+          : 'No activity recorded yet; the record fills in as people use Depot.',
     };
   },
   encryption: async () => {
@@ -169,8 +448,8 @@ const CHECKS = {
     return {
       ready: !!key,
       evidence: key
-        ? 'At-rest AES-256-GCM encryption key is configured for local storage.'
-        : 'No at-rest encryption key configured — new local uploads are stored unencrypted.',
+        ? 'Files on disk are encrypted (AES-256-GCM); the key is set.'
+        : 'No encryption key is set — files are stored on disk unencrypted.',
     };
   },
   backup_restore: async () => {
@@ -190,10 +469,10 @@ const CHECKS = {
     return {
       ready,
       evidence: ready
-        ? `Backup tooling present and a backup has completed successfully${lastRun ? ` (last run ${new Date(lastRun).toISOString()})` : ''}. Retain a restore-test record to complete this control.`
+        ? `A backup has completed${lastRun ? ` (most recent ${new Date(lastRun).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })})` : ''}. Keep a note of when you last restored one as a test.`
         : has
-          ? 'Backup scripts are present, but no successful backup run is recorded yet — run a backup (and a restore drill) to evidence this control.'
-          : 'No backup script found under scripts/.',
+          ? 'No backup has completed yet.'
+          : 'Backup tooling is missing from this install.',
     };
   },
   change_management: async ({ git }) => ({
@@ -215,13 +494,89 @@ const CHECKS = {
     };
   },
   retention: async () => {
-    const days = Number(await settings.getOrEnv('trash_retention_days'));
-    const ok = Number.isFinite(days) && days > 0;
+    // Disposal on a schedule: the trash must empty itself, and within a quarter. The
+    // per-library policies (lib/retention.js) are counted here too; retention_policy
+    // judges them.
+    const raw = await settings.getOrEnv('trash_retention_days');
+    const days = raw == null || raw === '' ? 30 : Number(raw);   // 30 is the sweeper's default
+    const ok = Number.isFinite(days) && days > 0 && days <= 90;
+    let libs = '';
+    try {
+      const p = await require('./retention').policySummary();
+      if (p.total) libs = ` Of ${p.total} shared librar${p.total === 1 ? 'y' : 'ies'}, ${p.withMinimum} ${p.withMinimum === 1 ? 'has' : 'have'} a minimum time files are kept, ${p.withDisposal} dispose${p.withDisposal === 1 ? 's' : ''} of untouched files on their own, and ${p.withNone} ${p.withNone === 1 ? 'has' : 'have'} no policy.`;
+    } catch { /* counted when the table exists */ }
     return {
       ready: ok,
-      evidence: ok
-        ? `Trash retention set to ${days} days; deleted files are recoverable until purge.`
-        : 'No explicit trash retention period is configured.',
+      evidence: (ok
+        ? `Deleted files are purged after ${days} day${days === 1 ? '' : 's'} in the trash; until then they can be restored.`
+        : days === 0
+          ? 'The trash never empties itself — deleted files stay on disk until someone purges them.'
+          : `Deleted files stay in the trash for ${days} days before purge — longer than the 90 days this profile expects.`) + libs,
+    };
+  },
+  session_timeout: async () => {
+    const hours = Number(await settings.get('login_session_hours'));
+    const set = Number.isFinite(hours) && hours > 0;
+    const ready = set && hours <= 24;
+    return {
+      ready,
+      evidence: ready
+        ? `A sign-in ends on its own after ${hours} hour${hours === 1 ? '' : 's'}.`
+        : set
+          ? `A sign-in lasts ${hours} hours before it ends on its own — longer than the day this profile expects.`
+          : 'How long a sign-in lasts has not been set here; Keycloak\'s default applies.',
+    };
+  },
+  mfa: async () => {
+    const required = String((await settings.get('mfa_required')) || '').toLowerCase() === 'true';
+    const ms365 = boolValue(await settings.getOrEnv('login_ms365_enabled'));
+    // Per person, from Keycloak (lib/keycloakAdmin mfaStatusByUser): the switch says the
+    // rule, the count says whether everyone has followed it yet.
+    let people = null;
+    try { people = (await require('./keycloakAdmin').mfaStatusByUser()).users; } catch { /* unreachable, or no admin credentials here */ }
+    if (people) {
+      const n = (st) => people.filter(u => u.state === st).length;
+      const federated = people.filter(u => u.state === 'federated');
+      const ms = federated.filter(u => u.provider === 'microsoft').length, ad = federated.length - ms;
+      const local = people.length - federated.length;
+      const counts = [`${n('enrolled')} of ${people.length} ${people.length === 1 ? 'person' : 'people'} enrolled`, `${n('pending')} pending`];
+      if (ms) counts.push(`${ms} through Microsoft 365`);
+      if (ad) counts.push(`${ad} through Active Directory`);
+      const line = counts.join(', ') + '.';
+      const uncovered = n('none') + n('pending');
+      if (required && !uncovered) return { ready: true, evidence: `Every local account must enter a one-time code at sign-in. ${line}` };
+      if (required) return { ready: false, evidence: `A one-time code is required, but ${uncovered} ${uncovered === 1 ? 'person has' : 'people have'} not set one up yet. ${line}` };
+      if (!local) return { ready: false, evidence: `${line} Sign-in is through ${ms ? 'Microsoft 365' : 'your identity provider'}. Depot cannot see whether it requires a second step — confirm it below once it does.` };
+      return { ready: false, evidence: `A one-time code is not required at sign-in — a stolen password is enough to reach client files. ${line}` };
+    }
+    if (required) {
+      return { ready: true, evidence: 'Every local account must enter a one-time code at sign-in (required action in Keycloak). Who has set one up could not be counted: Keycloak did not answer.' };
+    }
+    return {
+      ready: false,
+      evidence: ms365
+        ? 'Sign-in is through Microsoft 365. Depot cannot see whether your Microsoft tenant requires a second step — confirm it below once it does.'
+        : 'A one-time code is not required at sign-in — a stolen password is enough to reach client files.',
+    };
+  },
+  link_governance: async () => {
+    const raw = await settings.getOrEnv('share_link_max_days');
+    const cap = Number.parseInt(raw || '', 10);
+    const capSet = Number.isFinite(cap) && cap > 0;
+    let forever = 0;
+    try {
+      forever = (await db.queryOne(
+        `SELECT (SELECT count(*) FROM document_share_links WHERE revoked_at IS NULL AND expires_at IS NULL)::int
+              + (SELECT count(*) FROM folder_share_links  WHERE revoked_at IS NULL AND expires_at IS NULL)::int AS n`
+      ))?.n || 0;
+    } catch { /* tables may be absent on a fresh install */ }
+    const ready = capSet && forever === 0;
+    const liveNote = forever ? `${forever} live link${forever === 1 ? '' : 's'} never expire${forever === 1 ? 's' : ''}` : 'no live link lasts forever';
+    return {
+      ready,
+      evidence: capSet
+        ? `Links to outside people expire within ${cap} day${cap === 1 ? '' : 's'}; ${liveNote}.`
+        : `No limit is set on how long a link may live; ${liveNote}.`,
     };
   },
   network_security: async () => {
@@ -233,6 +588,97 @@ const CHECKS = {
         ? 'App URL is configured for HTTPS (config-level only — run the live checks to verify the certificate and reachability). CORS, bind address, and trust-proxy are set.'
         : 'App URL is not set to HTTPS — traffic may be unencrypted in transit.',
     };
+  },
+  malware_scanning: async () => {
+    // Green only when scanning is on AND the scanner answered within the last hour: an
+    // enabled switch with a dead scanner refuses every upload, which is not protection.
+    // The ping is cached (lib/malwareScan.status), never made on each page load.
+    const scan = require('./malwareScan');
+    const st = await scan.status();
+    const refused = await scan.refusedCount(30);
+    const when = (iso) => new Date(iso).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const day = (iso) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const refusedLine = `${refused} ${refused === 1 ? 'file' : 'files'} refused in the last 30 days`;
+    if (!st.enabled) return { ready: false, evidence: `Virus scanning is off: files are stored as they arrive. ${refusedLine}.` };
+    if (!st.answering) return { ready: false, evidence: `Virus scanning is on but the scanner is not answering${st.error ? ` (${st.error})` : ''}; uploads are being refused until it does. ${refusedLine}.` };
+    return {
+      ready: true,
+      evidence: `Every upload is scanned (${st.version || 'ClamAV'}, signatures from ${st.signatureDate ? day(st.signatureDate) : 'an unknown date'}); the scanner answered ${st.checkedAt ? when(st.checkedAt) : 'recently'}. Last scan ${st.lastScanAt ? when(st.lastScanAt) : 'not yet'}. ${refusedLine}.`,
+    };
+  },
+  access_review: async () => {
+    const review = require('./accessReview');
+    const last = await review.latest();
+    if (!last) return { ready: false, evidence: 'No review has been recorded yet.' };
+    const at = new Date(last.reviewed_at);
+    const ageDays = Math.floor((Date.now() - at.getTime()) / 86400e3);
+    const when = at.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const who = last.reviewed_by_email || 'an administrator';
+    const line = `Last reviewed ${when} by ${who}${last.user_count ? ` (${last.user_count} ${last.user_count === 1 ? 'person' : 'people'} on the list)` : ''}${last.note ? ` · ${last.note}` : ''}.`;
+    return ageDays <= review.REVIEW_DAYS
+      ? { ready: true, evidence: line }
+      : { ready: false, evidence: `${line} That is ${ageDays} days ago — more than a quarter.` };
+  },
+  signin_events: async () => {
+    const poller = require('./signInEvents');
+    const st = await poller.status();
+    let counts = { signed_in: 0, sign_in_failed: 0, signed_out: 0 };
+    try {
+      const rows = await db.query(
+        `SELECT event_type, count(*)::int AS n FROM document_events WHERE event_type = ANY($1) AND created_at >= now() - INTERVAL '30 days' GROUP BY event_type`,
+        [poller.EVENT_TYPES]);
+      for (const r of rows || []) counts[r.event_type] = r.n;
+    } catch { /* table may be absent on a fresh install */ }
+    const line = `In the last 30 days: ${counts.signed_in} sign-in${counts.signed_in === 1 ? '' : 's'}, ${counts.sign_in_failed} failed, ${counts.signed_out} sign-out${counts.signed_out === 1 ? '' : 's'}.`;
+    if (!st.enabled) return { ready: false, evidence: `Sign-in records are switched off (signin_events_enabled). ${line}` };
+    if (!st.last) return { ready: false, evidence: `Sign-in records are on but have not been read from Keycloak yet (the first pass runs a minute after start). ${line}` };
+    if (st.last.eventsEnabled === false) return { ready: false, evidence: `Keycloak is not keeping sign-in records for the realm, so there is nothing to copy. Turn on events in Keycloak (Realm settings › Events). ${line}` };
+    if (!st.last.ok) return { ready: false, evidence: `The last read from Keycloak failed: ${st.last.error}. ${line}` };
+    return { ready: true, evidence: `Copied from Keycloak into the hash-chained record every five minutes; last read ${new Date(st.last.at).toLocaleString('en-US')}. ${line}` };
+  },
+  sensitive_data: async () => {
+    // Green when card detection is on and no card finding is open. Social Security and
+    // bank findings are reported but never fail this control: a tax office holds them.
+    const sd = require('./sensitiveData');
+    const s = await sd.summary();
+    const when = (iso) => new Date(iso).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const n = (k) => `${s.open[k]} open, ${s.resolved[k]} resolved`;
+    const files = `${s.files_checked.toLocaleString()} of ${s.files_total.toLocaleString()} files checked${s.last_check_at ? `, last ${when(s.last_check_at)}` : ''}`;
+    const tail = `Card numbers: ${n('card')}. Social Security numbers: ${s.modes.ssn === 'flag' ? n('ssn') : 'not checked'}. Bank numbers: ${s.modes.bank === 'flag' ? n('bank') : 'not checked'}. ${files}.`;
+    if (s.modes.card !== 'flag') return { ready: false, evidence: `Card numbers are not being checked for. ${tail}` };
+    if (s.open.card > 0) return { ready: false, evidence: `${s.open.card} file${s.open.card === 1 ? ' holds' : 's hold'} what looks like a payment card number. ${tail}` };
+    return { ready: true, evidence: `Every file is checked for card numbers as it arrives, and none is open. ${tail}` };
+  },
+  retention_policy: async () => {
+    // The rule, stated so the office manager can check it: every shared library (one
+    // that is not somebody's personal library and has not been put away) says how long
+    // its files are kept. Personal libraries hold somebody's own parked files, not the
+    // firm's client records, so they are not counted.
+    const retention = require('./retention');
+    const p = await retention.policySummary();
+    const rule = 'The rule: every shared library (not a personal one, not one put away) must say how long its files are kept.';
+    if (!p.total) return { ready: false, evidence: `There is no shared library yet. ${rule}` };
+    const named = (p.libraries || []).filter(l => l.client && l.min_years).map(l => `“${l.name}” ${l.words}`).join('; ');
+    if (p.missingMinimum.length) {
+      return {
+        ready: false,
+        evidence: `${p.missingMinimum.length} of ${p.total} shared librar${p.total === 1 ? 'y' : 'ies'} ${p.missingMinimum.length === 1 ? 'has' : 'have'} no minimum: ${p.missingMinimum.map(n => `“${n}”`).join(', ')}.${named ? ` Set: ${named}.` : ''} ${rule}`,
+      };
+    }
+    return { ready: true, evidence: `Every shared library says how long its files are kept: ${named}. ${rule}` };
+  },
+  legal_hold: async () => {
+    // Green once the feature has been used (a hold placed, open or since released); an
+    // office that has never needed one confirms instead that it knows how.
+    const retention = require('./retention');
+    const [counts, active] = await Promise.all([retention.holdCounts(), retention.activeHolds()]);
+    const day = (iso) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const list = active.slice(0, 5).map(h => `${h.where} since ${day(h.placed_at)} (${h.placed_by || 'an administrator'}: ${h.reason})`).join('; ');
+    const openLine = active.length
+      ? `${active.length} hold${active.length === 1 ? '' : 's'} in place: ${list}${active.length > 5 ? '; …' : ''}.`
+      : 'No hold is in place right now.';
+    if (!counts.ever) return { ready: false, evidence: `A hold has never been placed. ${openLine} An administrator places one from a library, folder or file menu; while it is held, nothing can delete, purge, replace or move it.` };
+    return { ready: true, evidence: `Legal holds are in use: ${counts.ever} placed so far, ${counts.active} open. ${openLine} While a file is held, nothing can delete, purge, replace or move it, by anyone, and each hold and release is in the record.` };
   },
 };
 
@@ -247,7 +693,8 @@ async function getAttestations() {
 }
 
 async function setAttestation(controlId, { met, note }, user) {
-  if (!CONTROL_CATALOG[controlId]?.manual) throw new Error('Control is not a manual attestation');
+  const base = CONTROL_CATALOG[controlId];
+  if (!base?.manual && !base?.attestable) throw new Error('Control is not a manual attestation');
   await db.query(
     `INSERT INTO compliance_attestations (control_id, met, note, attested_by, attested_by_email, attested_at)
      VALUES ($1, $2, $3, $4, $5, NOW())
@@ -338,14 +785,22 @@ async function evaluateControls() {
         evidence = probes.audit.detail + (a?.met ? ' · attested' : '');
       }
       out[id] = {
-        id, label: base.label, gap: base.gap, manual: true, ready, evidence,
+        id, label: base.label, gap: base.gap, why: base.why || '', manual: true, ready, evidence,
         attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
       };
     } else {
       let r = await CHECKS[id]({ git });
       if (id === 'network_security' && definitive(probes.https)) r = { ready: probes.https.status === 'ok', evidence: probes.https.detail };
       if (id === 'backup_restore' && definitive(probes.backup)) r = { ready: probes.backup.status === 'ok', evidence: probes.backup.detail };
-      out[id] = { id, label: base.label, gap: base.gap, manual: false, ready: r.ready, evidence: r.evidence };
+      // An attestable control takes a confirmation only when the live signal is not
+      // green: the live signal always wins when it is.
+      const a = base.attestable ? attest[id] : null;
+      if (a?.met && !r.ready) r = { ready: true, evidence: a.note ? `Confirmed: ${a.note}` : 'Confirmed by an admin.' };
+      out[id] = {
+        id, label: base.label, gap: base.gap, why: base.why || '', fix: base.fix || null, action: base.action || null, manual: false,
+        attestable: !!base.attestable, ready: r.ready, evidence: r.evidence,
+        attestation: a ? { met: a.met, note: a.note || '', by: a.attested_by_email || '', at: a.attested_at } : null,
+      };
     }
   }
   return out;
@@ -393,7 +848,7 @@ async function profileStatus() {
   const items = [];
   for (const f of FRAMEWORKS) {
     const enabled = boolValue(await settings.getOrEnv(f.setting));
-    const controls = f.controls.map(id => evaluated[id]).filter(Boolean);
+    const controls = f.requirements.map(r => evaluated[r.control] && { ...evaluated[r.control], cite: r.cite, why: r.why }).filter(Boolean);
     items.push({ ...f, enabled, controls });
   }
   return items;
@@ -432,4 +887,4 @@ async function updateStatus() {
   };
 }
 
-module.exports = { FRAMEWORKS, CONTROL_CATALOG, CHECKS, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };
+module.exports = { FRAMEWORKS, UPCOMING, CONTROL_CATALOG, CHECKS, profileStatus, summary, updateStatus, boolValue, setAttestation, getAttestations, runProbes, probeMeta };

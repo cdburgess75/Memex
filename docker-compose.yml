@@ -1,3 +1,7 @@
+# The one place the Keycloak version is set. Pinned to an exact release so every box
+# runs the same build; keycloak-predump reads the same value to know what is starting.
+x-keycloak-image: &keycloak_image quay.io/keycloak/keycloak:26.8.1
+
 services:
 
   postgres:
@@ -16,14 +20,53 @@ services:
       timeout: 3s
       retries: 10
 
+  # Keycloak migrates its database the first time a newer version starts, and an older
+  # version cannot run on it afterwards. This one-shot runs before every Keycloak start
+  # and dumps the Keycloak database into ./keycloak-dumps when the version starting is
+  # newer than the one that last wrote it (scripts/keycloak-predump.sh). If the dump
+  # fails, Keycloak does not start and its database stays as it was.
+  keycloak-predump:
+    image: postgres:16.15-alpine3.24
+    restart: "no"
+    entrypoint: ["/bin/sh", "/predump.sh"]
+    environment:
+      KC_IMAGE: *keycloak_image
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./scripts/keycloak-predump.sh:/predump.sh:ro
+      - ./keycloak-dumps:/dumps
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: *keycloak_image
     restart: unless-stopped
-    # Public installs pin the hostname (start --hostname=<domain>) so Keycloak's
-    # token issuer is identical on the browser AND internal hosts — required for
-    # delegated Microsoft 365 connectors, whose server-side broker-token fetch
-    # (via KEYCLOAK_INTERNAL_URL) otherwise rejects browser-issued tokens as
-    # invalid. install.sh sets KC_START_CMD per deployment; local mode = start-dev.
+    # Public installs pin the hostname so Keycloak's token issuer is identical on the
+    # browser AND internal hosts — required for delegated Microsoft 365 connectors,
+    # whose server-side broker-token fetch (via KEYCLOAK_INTERNAL_URL) otherwise
+    # rejects browser-issued tokens as invalid. install.sh sets KC_START_CMD per
+    # deployment; local mode = start-dev.
+    # Since Keycloak 25 a bare --hostname=<domain> takes the scheme and port from each
+    # request, so http://keycloak:8080 would issue for http://<domain>:8080 and the
+    # browser for https://<domain>. Only a full URL fixes the issuer; with it,
+    # --hostname-backchannel-dynamic keeps server-to-server calls on the internal URL,
+    # as Keycloak 24 did. Boxes installed before then carry the bare form in .env; the
+    # entrypoint below turns it into the full one so nobody has to edit .env by hand.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        for a; do
+          shift
+          case "$$a" in
+            --hostname=http://*|--hostname=https://*) ;;
+            --hostname=*) set -- "$$@" --hostname-backchannel-dynamic=true; a="--hostname=https://$${a#--hostname=}" ;;
+          esac
+          set -- "$$@" "$$a"
+        done
+        exec /opt/keycloak/bin/kc.sh "$$@"
+      - kc.sh
     command: ${KC_START_CMD:-start-dev --import-realm}
     # Sign-in is a small job, but left alone the JVM sizes itself to the whole host
     # and sat at 1.4 GB idle. Capped, with the heap held to half the cap so the rest
@@ -39,8 +82,10 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: memex
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      # The master-realm admin Keycloak makes on its very first start (install only;
+      # an existing database already has one). The app and kcadm sign in with it.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
     volumes:
@@ -52,6 +97,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-predump:
+        condition: service_completed_successfully
 
   app:
     # Prebuilt image from GHCR (install.sh / upgrade.sh `docker compose pull` it).
@@ -122,6 +169,12 @@ services:
       FIRST_BOOT: ${FIRST_BOOT:-}
       # GitHub repo the signed-in update check polls for release tags.
       MEMEX_REPO: ${MEMEX_REPO:-}
+      # Virus scanning of every upload (lib/malwareScan.js). Switched on in Settings ›
+      # Storage & backups once the clamav service below is running; these are only the
+      # fallback for a database with no setting row.
+      MALWARE_SCAN_ENABLED: ${MALWARE_SCAN_ENABLED:-}
+      MALWARE_SCAN_HOST: ${MALWARE_SCAN_HOST:-clamav:3310}
+      MALWARE_SCAN_MAX_MB: ${MALWARE_SCAN_MAX_MB:-}
     volumes:
       - ${MEMEX_DOCS_DIR:-/srv/memex-documents}:/data/documents
       - backups_data:/data/backups
@@ -170,6 +223,35 @@ services:
     depends_on:
       - app
 
+  # Virus scanner for uploads (ClamAV). Off until an administrator opts in: it costs
+  # about 1.3 GB of memory for the loaded signatures and a 300 MB image, so it sits
+  # behind a profile like the editor. Enable it on a box by adding
+  # COMPOSE_PROFILES=clamav to .env and running upgrade.sh (Compose reads that line
+  # itself); then switch scanning on in Settings › Storage & backups. The app reaches
+  # it as clamav:3310 over the compose network; no port is published on the host.
+  # Signatures are refreshed daily by the image's own freshclam and kept in a volume
+  # so a restart does not download 300 MB again.
+  clamav:
+    profiles: ["clamav"]
+    # Pinned so every install runs the same scanner build; bump with a release.
+    image: clamav/clamav:${CLAMAV_TAG:-1.4.6}
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "false"
+      FRESHCLAM_CHECKS: "12"
+    volumes:
+      - clamav_db:/var/lib/clamav
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    # Loading the signatures takes a couple of minutes on first start; the app refuses
+    # uploads (503, nothing stored) until the daemon answers, then carries on.
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
 volumes:
   postgres_data:
   backups_data:
+  clamav_db:

@@ -988,6 +988,7 @@ html.dark .chip { color: var(--accent-soft); }
 .access-review-table tbody tr:last-child td { border-bottom: 0; }
 .ar-role { display: inline-block; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 11px; background: var(--accent-wash); color: var(--accent-soft); text-transform: capitalize; }
 .ar-role-admin { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.ar-history { margin-top: 4px; } .ar-history summary { cursor: pointer; } .ar-history ul { margin: 4px 0 0 18px; padding: 0; }
 .ar-role-viewer { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
 .modal h2 {
   font-family: var(--display);
@@ -1342,6 +1343,18 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
    corner of the tile instead, where no width can swallow it -- on the raised surface,
    which is the one that reads against a tile in both themes. */
 .file-card-preview .folder-shared-tag { position: absolute; left: 8px; top: 8px; margin: 0; background: var(--surface-raised); }
+/* A legal hold: a small lock after the name, in ink (it is a fact, not an action). */
+.hold-mark { display: inline-flex; align-items: center; vertical-align: -2px; margin-left: 6px; color: var(--ink-soft); }
+.hold-mark svg { width: 12px; height: 12px; }
+.library-menu-item-name .hold-mark { margin-left: 4px; }
+.rt-form { display: grid; gap: 14px; margin-top: 14px; }
+.rt-form label { display: grid; gap: 4px; font: 500 13px var(--ui); color: var(--ink); }
+.rt-form input[type=number] { width: 120px; }
+.rt-form .rt-help { font: 400 12px var(--ui); color: var(--ink-faint); }
+.hold-list { display: grid; gap: 8px; margin-top: 12px; }
+.hold-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; }
+.hold-row .grow { flex: 1 1 auto; min-width: 0; }
+.hold-row .hold-meta { font: 400 12px var(--ui); color: var(--ink-faint); margin-top: 2px; }
 .pill.ok   { color: var(--success); background: color-mix(in srgb, var(--success) 10%, var(--paper)); border-color: color-mix(in srgb, var(--success) 30%, var(--rule)); }
 .pill.warn { color: color-mix(in oklab, var(--warning) 80%, var(--ink)); background: color-mix(in srgb, var(--warning) 10%, var(--paper)); border-color: color-mix(in srgb, var(--warning) 30%, var(--rule)); }
 
@@ -1457,6 +1470,62 @@ html:not(.dark) .login-mark.login-mark--wide { background: none; box-shadow: non
 .cmp-foot { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--rule-soft); }
 .cmp-foot .grow { flex: 1; }
 .cmp-toggle-inline { display: inline-flex; align-items: center; gap: 6px; font: 600 13px var(--ui); }
+/* The simple view: one light, one download, then the short lists. */
+.cmp-simple { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 28px 24px; }
+.cmp-light { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 14px; align-items: start; padding: 18px 20px; border-radius: 12px; border: 1px solid var(--rule); background: var(--surface-2); }
+.cmp-light h3 { margin: 0 0 4px; font: 700 20px/1.25 var(--ui); color: var(--ink); }
+.cmp-light p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-soft); max-width: 70ch; }
+.cmp-light-dot { width: 22px; height: 22px; border-radius: 50%; margin-top: 3px; box-shadow: 0 0 0 5px color-mix(in oklab, currentColor 18%, transparent); }
+.cmp-light.ok .cmp-light-dot { color: var(--success); background: var(--success); }
+.cmp-light.partial .cmp-light-dot { color: var(--warning); background: var(--warning); }
+.cmp-light.no .cmp-light-dot { color: var(--danger); background: var(--danger); }
+.cmp-simple-act { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin: 16px 0 8px; }
+.cmp-simple-act .run-btn { min-height: 44px; padding: 0 22px; font-size: 15px; }
+.cmp-simple-act .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-soft); text-decoration: underline; cursor: pointer; } html.dark .cmp-simple-act .link-btn { color: var(--accent); }
+.cmp-h4 { margin: 26px 0 4px; font: 700 16px var(--ui); color: var(--ink); }
+.cmp-sub { margin: 0 0 6px; font-size: 14px; color: var(--ink-soft); max-width: 70ch; }
+.cmp-rows { display: grid; }
+.cmp-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 16px; padding: 14px 0; border-top: 1px solid var(--rule-soft); }
+.cmp-row:first-child { border-top: 0; }
+.cmp-why { margin-top: 6px; font-size: 13px; color: var(--ink-faint); max-width: 78ch; }
+.cmp-att-btn.primary { border-color: var(--accent); color: var(--accent-soft); } html.dark .cmp-att-btn.primary { color: var(--accent); }
+.cmp-adv { margin-top: 28px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.cmp-adv > summary { cursor: pointer; font: 600 14px var(--ui); color: var(--ink-soft); padding: 8px 0; }
+.cmp-adv > summary:hover { color: var(--ink); }
+.cmp-adv .cmp-main { height: 540px; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-top: 10px; }
+.cmp-adv-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cmp-reports { display: grid; }
+.cmp-findings { margin-top: 4px; }
+.cmp-find-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 16px; align-items: end; margin: 6px 0 4px; }
+.cmp-find-mode { display: flex; flex-direction: column; gap: 4px; font: 600 14px var(--ui); color: var(--ink); }
+.cmp-find-mode select { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 4px 8px; font: 500 14px var(--ui); }
+.cmp-find-mode small { font: 400 12px var(--ui); color: var(--ink-soft); }
+.cmp-find-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.cmp-find-wrap { overflow-x: auto; margin: 6px 0 10px; }
+.cmp-find-table { min-width: 720px; font-size: 13px; }
+.cmp-find-table td, .cmp-find-table th { padding: 7px 10px 7px 0; vertical-align: top; }
+.cmp-find-file { font: 600 14px var(--ui); color: var(--accent-soft); text-align: left; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.dark .cmp-find-file { color: var(--accent); }
+.cmp-find-path { font-size: 12px; color: var(--ink-faint); }
+.cmp-find-card td:nth-child(3) { color: var(--danger); font-weight: 600; }
+.cmp-report { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule-soft); font-size: 14px; }
+.cmp-report-meta { color: var(--ink-soft); font-size: 13px; }
+.cmp-report-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; }
+.cmp-report-pick select, .cmp-sched select, .cmp-sched input { font: 14px var(--ui); min-height: 36px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.cmp-sched { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; font-size: 14px; }
+.cmp-sched input { flex: 1 1 260px; min-width: 0; }
+.cmp-sched-line { margin: 0 0 12px; font-size: 14px; color: var(--ink-soft); }
+.cmp-sched-line .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-soft); text-decoration: underline; cursor: pointer; } html.dark .cmp-sched-line .link-btn { color: var(--accent); }
+.cmp-browse { padding: 0; display: flex; flex-direction: column; }
+.cmp-browse .cmp-main { flex: 1 1 0; min-height: 320px; }
+.cmp-browse .cmp-reports-fold { margin: 0; padding: 12px 28px 20px; border-top: 1px solid var(--rule); }
+@media (max-width: 820px) {
+  .cmp-browse .cmp-main { min-height: 0; }
+  .cmp-browse .cmp-reports-fold { padding: 12px 16px 20px; }
+  .cmp-simple { padding: 14px 16px 20px; }
+  .cmp-row { grid-template-columns: minmax(0, 1fr); }
+  .cmp-adv .cmp-main { height: auto; }
+}
 @media (max-width: 820px) {
   .cmp-modal { width: 100vw; height: 100dvh; border-radius: 0; border: 0; display: block; overflow-y: auto; }
   .cmp-detail { overflow: visible; } .cmp-foot .grow { display: none; }
@@ -4874,7 +4943,8 @@ function updateComplianceIndicator(summary) {
   const cls = { ok: 'ok', warn: 'warning', crit: 'critical', off: 'info' };
   const status = summary?.status || 'info';
   btn.className = `security-indicator ${cls[status] || 'info'} admin-menu-item`;
-  btn.innerHTML = `<span class="st-name">Compliance</span><span class="st-state">${(summary && summary.total) ? `${Number(summary.ready)} of ${Number(summary.total)} ready` : 'Not set up'}</span>`;
+  const open = summary ? Number(summary.total) - Number(summary.ready) : 0;
+  btn.innerHTML = `<span class="st-name">Compliance</span><span class="st-state">${(summary && summary.total) ? (open ? `${open} to fix` : 'Ready') : 'Not set up'}</span>`;
   btn.title = (summary && summary.enabledFrameworks)
     ? `${summary.ready} of ${summary.total} controls ready · ${summary.enabledFrameworks} framework(s) enabled`
     : 'Compliance readiness';
@@ -5352,6 +5422,8 @@ async function openComplianceStatus() {
 // One framework is read at a time. Which one, and "gaps only", survive a re-render (a live
 // check or an attestation redraws the window) but not closing it.
 let _cmpSel = null, _cmpGapsOnly = false;
+let _cmpAdvOpen = false; // the Advanced fold in the simple view stays as the admin left it across redraws
+let _cmpRepOpen = false; // likewise the Reports fold in the browser view
 const CMP_STATE = {
   ok: ['Ready', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'],
   partial: ['Partly', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg>'],
@@ -5361,6 +5433,247 @@ const cmpStateOf = (c) => (c.ready === true ? 'ok' : c.ready === false ? 'no' : 
 function cmpBar(controls) {
   const n = controls.length || 1, ok = controls.filter(c => c.ready === true).length, part = controls.filter(c => c.ready !== true && c.ready !== false).length;
   return `<span class="cmp-bar" aria-hidden="true"><span class="ok" style="width:${ok / n * 100}%"></span><span class="partial" style="width:${part / n * 100}%"></span></span>`;
+}
+// Where an admin puts a control right. Keys come from the server catalog's `fix`.
+const CMP_FIX = {
+  'setup:mfa': ['signin', 'Open sign-in settings'],
+  'setup:session': ['signin', 'Set how long a sign-in lasts'],
+  'settings:share_link_max_days': ['server', 'Set the link limit'],
+  'settings:trash_retention_days': ['server', 'Set trash retention'],
+  'settings:storage_encryption_key': ['storage', 'Open storage settings'],
+  'settings:malware_scan_enabled': ['storage', 'Open virus scanning'],
+  'settings:app_url': ['workspace', 'Open workspace settings'],
+  'backup': ['storage', 'Open backups'],
+  'access': ['access', 'Open the users list'],
+  'settings:signin_events_enabled': ['server', 'Open server settings'],
+  // Retention and holds live in the libraries, not in Settings: these open their own dialogs.
+  'retention': ['retention', 'Set how long files are kept'],
+  'holds': ['holds', 'See and place legal holds'],
+  'compliance:findings': ['findings', 'Open findings'],
+};
+function cmpFix(key) {
+  if (key === 'compliance:findings') { _cmpFindOpen = true; if (complianceData) renderComplianceModal(complianceData); document.getElementById('cmp-findings')?.scrollIntoView({ block: 'start' }); return; }
+  const f = CMP_FIX[key]; if (!f) return;
+  closeComplianceStatus();
+  if (f[0] === 'retention') return openRetentionOverview();
+  if (f[0] === 'holds') return openLegalHolds();
+  openSettingsAt(f[0]);
+}
+// A control's `action` ({ label, api }, from the server catalog): one POST with an optional
+// note, done from the window itself. Recording an access review is the first.
+function cmpActionBtn(c, isAdmin) {
+  if (!isAdmin || !c.action || !c.action.api || !c.action.label) return '';
+  return `<button type="button" class="cmp-att-btn primary" data-api="${escAttr(String(c.action.api))}" data-label="${escAttr(String(c.action.label))}" onclick="cmpAction(this.dataset.api, this.dataset.label)">${esc(c.action.label)}</button>`;
+}
+async function cmpAction(api, label) {
+  const note = await askPrompt(`${label}. Add a note if you like:`, '', { okLabel: label, title: 'Compliance', placeholder: 'Optional note' });
+  if (note === null) return;
+  try {
+    await apiPost(api, { note: note || '' });
+    toast('Recorded');
+    const data = await apiGet('/admin/compliance');
+    renderComplianceModal(data);
+    updateComplianceIndicator(data.summary);
+    loadAccessReviewHistory();
+  } catch (e) { toast('Could not record it: ' + e.message); }
+}
+// One light, one download. Shown when exactly one framework is tracked — a CPA office
+// tracks the Safeguards Rule and nothing else — so the page answers "are we OK?" and
+// "where is the paperwork?" before it shows a single control.
+function cmpSimpleHtml(fw, data, isAdmin) {
+  const auto = fw.controls.filter(c => !c.manual), manual = fw.controls.filter(c => c.manual);
+  const todo = auto.filter(c => c.ready !== true), unconfirmed = manual.filter(c => c.ready !== true);
+  const open = todo.length + unconfirmed.length;
+  const state = !open ? 'ok' : todo.length ? 'no' : 'partial';
+  const title = !open ? `${esc(fw.name)}: ready` : `${open} thing${open === 1 ? '' : 's'} to do`;
+  const line = !open
+    ? `This Depot is set up the way the ${esc(fw.name)} expects, and every item your firm confirms is confirmed. Download the packet below for your records.`
+    : todo.length
+      ? `${todo.length === 1 ? 'One setting is' : `${todo.length} settings are`} not where the rule expects${unconfirmed.length ? `, and ${unconfirmed.length} item${unconfirmed.length === 1 ? '' : 's'} your firm confirms ${unconfirmed.length === 1 ? 'is' : 'are'} still unconfirmed` : ''}. The packet still downloads; it will say what is left.`
+      : `Depot's own settings are ready. ${unconfirmed.length} item${unconfirmed.length === 1 ? '' : 's'} your firm confirms ${unconfirmed.length === 1 ? 'is' : 'are'} still unconfirmed.`;
+  const meta = (c) => c.attestation?.by ? `<span class="cmp-att-meta">Confirmed by ${esc(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ` · ${esc(c.attestation.note)}` : ''}</span>` : '';
+  const confirmBtn = (c, word) => isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear' : word}</button>` : '';
+  const todoRows = todo.map(c => {
+    const fix = c.fix && CMP_FIX[c.fix] && isAdmin ? `<button type="button" class="cmp-att-btn primary" data-fix="${escAttr(c.fix)}" onclick="cmpFix(this.dataset.fix)">${esc(CMP_FIX[c.fix][1])}</button>` : '';
+    return `<div class="cmp-row"><span class="cmp-state no">${CMP_STATE.no[1]}To do</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.evidence || '')}</div>${c.gap ? `<div class="cmp-check-gap"><b>What to do</b>${esc(c.gap)}</div>` : ''}${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${cmpActionBtn(c, isAdmin)}${fix}${c.attestable ? confirmBtn(c, 'Confirm it is handled elsewhere') : ''}${meta(c)}</div></div></div>`;
+  }).join('');
+  const confirmRows = manual.map(c => `<div class="cmp-row"><span class="cmp-state ${c.ready ? 'ok' : 'partial'}">${c.ready ? CMP_STATE.ok[1] + 'Confirmed' : CMP_STATE.partial[1] + 'Not yet'}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}</div><div class="cmp-check-ev">${esc(c.ready ? (c.evidence || '') : (c.gap || c.evidence || ''))}</div>${c.why ? `<div class="cmp-why">${esc(c.why)}</div>` : ''}<div class="cmp-attest">${confirmBtn(c, 'Confirm')}${meta(c)}</div></div></div>`).join('');
+  const checked = data.probes?.lastRun ? `Live checks last ran ${new Date(data.probes.lastRun).toLocaleString()}.` : 'Live checks have not run yet.';
+  return `<div class="cmp-light ${state}" role="status"><span class="cmp-light-dot" aria-hidden="true"></span><div><h3>${title}</h3><p>${line}</p></div></div>`
+    + `<div class="cmp-simple-act">${isAdmin ? `<button type="button" class="run-btn" data-fw="${escAttr(String(fw.id))}" onclick="downloadComplianceReport(this, this.dataset.fw)">Download your ${esc(fw.short || fw.name)} packet</button>` : ''}<span class="cmp-probe-meta">${esc(checked)} ${isAdmin ? `<button type="button" class="link-btn" onclick="runComplianceProbes(this)">Run them now</button>` : ''}</span></div>`
+    + cmpPastReportsHtml(data, isAdmin)
+    + (todo.length ? `<h4 class="cmp-h4">Things to fix in Depot</h4><div class="cmp-rows">${todoRows}</div>` : '')
+    + `<h4 class="cmp-h4">Things your firm confirms</h4><p class="cmp-sub">Depot cannot see these. Confirm each once it is true; who confirmed it, and when, goes into the packet.</p><div class="cmp-rows">${confirmRows}</div>`;
+}
+// Past reports: what was kept, newest first, each with a download. In the simple view it
+// sits under the packet button; in the browser view it is the Reports area.
+function cmpPastReportsHtml(data, isAdmin) {
+  const list = Array.isArray(data.reports) ? data.reports : [];
+  const names = Object.fromEntries((data.frameworks || []).map(f => [String(f.id), f.short || f.name]));
+  const rows = list.map(r => `<div class="cmp-report"><div><b>${esc(names[r.framework] || r.framework)}</b> · ${esc(new Date(r.generated_at).toLocaleDateString())}<div class="cmp-report-meta">${r.generated_by === 'schedule' ? 'Ran on schedule' : `Downloaded by ${esc(r.generated_by || '')}`} · ${r.status === 'ready' ? 'Ready' : `${r.total - r.ready} to do`}</div></div>${isAdmin ? `<button type="button" class="cmp-att-btn" data-id="${escAttr(String(r.id))}" onclick="downloadPastReport(this, this.dataset.id)">Download</button>` : ''}</div>`).join('');
+  const sched = data.reportSchedule;
+  const line = sched && sched.schedule !== 'off' ? `Reports run every ${sched.schedule === 'monthly' ? 'month' : 'quarter'}${sched.lastRun ? `; last run ${new Date(sched.lastRun).toLocaleDateString()}` : ''}.` : '';
+  return `<h4 class="cmp-h4">Past reports</h4>${line ? `<p class="cmp-sub">${esc(line)}</p>` : ''}<div class="cmp-reports">${rows || '<p class="cmp-sub">None yet. Each download is kept here.</p>'}</div>`;
+}
+// The Reports area of the browser view: pick a tracked framework, download, past reports.
+function cmpReportsAreaHtml(data, isAdmin) {
+  const tracked = (data.frameworks || []).filter(f => f.enabled);
+  const pick = tracked.length
+    ? `<div class="cmp-report-pick"><label for="cmp-report-fw">Download a report for</label><select id="cmp-report-fw">${tracked.map(f => `<option value="${escAttr(String(f.id))}">${esc(f.name)}</option>`).join('')}</select><button type="button" class="run-btn" onclick="downloadComplianceReport(this, document.getElementById('cmp-report-fw').value)">Download</button></div>`
+    : '<p class="cmp-sub">Track a framework to download a report for it.</p>';
+  return `<div class="cmp-reports-area">${isAdmin ? pick : ''}${cmpPastReportsHtml(data, isAdmin)}</div>`;
+}
+// The schedule: how often reports run themselves, and where they are sent.
+function cmpScheduleHtml(data, isAdmin) {
+  const sched = data.reportSchedule || { schedule: 'off', email: '' };
+  const opt = (v, label) => `<option value="${v}"${sched.schedule === v ? ' selected' : ''}>${label}</option>`;
+  if (!isAdmin) return '';
+  return `<h4 class="cmp-h4">Reports on a schedule</h4><p class="cmp-sub">Depot keeps one report per tracked framework under Past reports, and emails them when addresses are given${sched.lastRun ? ` (last run ${esc(new Date(sched.lastRun).toLocaleDateString())})` : ''}.</p>
+    <div class="cmp-sched"><label for="cmp-sched-every">Run a report every:</label><select id="cmp-sched-every">${opt('off', 'Off')}${opt('monthly', 'Month')}${opt('quarterly', 'Quarter')}</select>
+    <label for="cmp-sched-email">send it to:</label><input id="cmp-sched-email" type="text" placeholder="owner@firm.com, it@provider.com" value="${escAttr(sched.email || '')}">
+    <button type="button" class="cmp-att-btn primary" onclick="saveComplianceReportSchedule(this)">Save</button></div>`;
+}
+// Sensitive data in files (server lib/sensitiveData.js): the Findings fold, drawn in the
+// compliance window and on Admin › Compliance from the same data. Admin only. Each row
+// is a file that holds what looks like a card, Social Security or bank number, with a
+// sample masked to its last four digits; "Resolved" records who, when and a note.
+let _cmpFindOpen = false;
+const CMP_FIND_WORDS = { card: 'Card number', ssn: 'Social Security number', bank: 'Bank number' };
+function cmpFindingsHtml(data, isAdmin) {
+  if (!isAdmin) return '';
+  const f = data.findings;
+  if (!f) return '<p class="cmp-sub">Findings could not be loaded.</p>';
+  const modes = f.modes || {};
+  const sel = (id, type, label, hint) => `<label class="cmp-find-mode"><span>${label}</span><select id="${id}" data-type="${type}"><option value="flag"${modes[type] === 'flag' ? ' selected' : ''}>Flag</option><option value="off"${modes[type] === 'off' ? ' selected' : ''}>Off</option></select><small>${hint}</small></label>`;
+  const switches = `<div class="cmp-find-modes">${sel('cmp-find-cards', 'card', 'Card numbers', 'The PCI control. Flag: list the file and tell the admins.')}${sel('cmp-find-ssn', 'ssn', 'Social Security numbers', 'Information only: a tax office holds these.')}${sel('cmp-find-bank', 'bank', 'Bank routing and account numbers', 'Information only. Off unless you want them listed.')}<button type="button" class="cmp-att-btn primary" onclick="saveFindingSettings(this)">Save</button></div>`;
+  const bf = f.backfill || {};
+  const checked = `${Number(f.files_checked || 0).toLocaleString()} of ${Number(f.files_total || 0).toLocaleString()} files checked${f.last_check_at ? `, last ${new Date(f.last_check_at).toLocaleString()}` : ''}.`;
+  const unchecked = Math.max(0, Number(f.files_total || 0) - Number(f.files_checked || 0));
+  let bfLine = '';
+  if (bf.running) bfLine = `Checking existing files: ${Number(bf.done).toLocaleString()} of ${Number(bf.total).toLocaleString()} done.`;
+  else if (bf.error) bfLine = `The last check of existing files stopped with an error: ${bf.error}`;
+  else if (bf.finished_at) bfLine = `Existing files were last checked ${new Date(bf.finished_at).toLocaleString()}${bf.by ? ` (started by ${bf.by})` : ''}.`;
+  const checkBtn = bf.running
+    ? `<button type="button" class="cmp-att-btn" onclick="refreshFindings(this)">Refresh</button>`
+    : `<button type="button" class="cmp-att-btn" data-all="${unchecked ? '0' : '1'}" onclick="checkExistingFiles(this, this.dataset.all === '1')">${unchecked ? `Check existing files (${unchecked.toLocaleString()} not yet checked)` : 'Check all files again'}</button>`;
+  const status = `<p class="cmp-sub">Files are checked as they arrive and when they change. ${esc(checked)} ${esc(bfLine)}</p><div class="cmp-find-act">${checkBtn}<span class="cmp-probe-meta">Runs in the background in small batches; the server stays responsive and nothing is refused.</span></div>`;
+  const open = Array.isArray(f.open) ? f.open : [], resolved = Array.isArray(f.resolved) ? f.resolved : [];
+  const row = (r, done) => `<tr class="cmp-find-${esc(r.type)}">
+      <td><button type="button" class="link-btn cmp-find-file" data-fid="${escAttr(String(r.document_id))}" onclick="openFindingFile(this.dataset.fid)" title="${escAttr(r.document_name || '')}">${esc(fileDisplayName({ name: r.document_name || '' }))}</button>${r.document_name && r.document_name.includes('/') ? `<div class="cmp-find-path">${esc(r.document_name.split('/').slice(0, -1).join('/'))}</div>` : ''}</td>
+      <td>${esc(r.library_name || '—')}</td>
+      <td>${esc(CMP_FIND_WORDS[r.type] || r.type)}</td>
+      <td class="tnum">${Number(r.count).toLocaleString()}</td>
+      <td class="tnum">${esc(r.sample || '')}</td>
+      <td>${esc(new Date(r.first_seen).toLocaleDateString())}</td>
+      <td>${done
+        ? `<span class="cmp-att-meta">${r.resolved_by === 'depot' ? 'No longer in the file' : `Resolved by ${esc(r.resolved_by || '')}`} ${esc(new Date(r.resolved_at).toLocaleDateString())}${r.note && r.resolved_by !== 'depot' ? ` · ${esc(r.note)}` : ''}</span>`
+        : `<button type="button" class="cmp-att-btn" data-id="${escAttr(String(r.id))}" onclick="resolveFinding(this, this.dataset.id)">Resolved</button>`}</td>
+    </tr>`;
+  const head = `<thead><tr><th>File</th><th>Library</th><th>What</th><th>How many</th><th>Sample</th><th>First seen</th><th></th></tr></thead>`;
+  const cards = open.filter(r => r.type === 'card').length;
+  const lead = !open.length
+    ? '<p class="cmp-sub">Nothing is open. A file is listed here when Depot finds what looks like a card number, a Social Security number, or a bank number in it.</p>'
+    : `<p class="cmp-sub">${cards ? `<b>${cards} file${cards === 1 ? ' holds' : 's hold'} what looks like a card number.</b> Delete the file or take the number out of it; or, if it is where it should be, mark it resolved with a note. ` : ''}Social Security and bank findings are information only: they never fail a control.</p>`;
+  const openTable = open.length ? `<div class="cmp-find-wrap"><table class="admin-table cmp-find-table">${head}<tbody>${open.map(r => row(r, false)).join('')}</tbody></table></div>` : '';
+  const doneTable = resolved.length ? `<h4 class="cmp-h4">Recently resolved</h4><div class="cmp-find-wrap"><table class="admin-table cmp-find-table">${head}<tbody>${resolved.map(r => row(r, true)).join('')}</tbody></table></div>` : '';
+  return `<div class="cmp-findings" id="cmp-findings"><h4 class="cmp-h4">What is checked for</h4>${switches}<h4 class="cmp-h4">Checking</h4>${status}<h4 class="cmp-h4">Open findings${open.length ? ` (${open.length})` : ''}</h4>${lead}${openTable}${doneTable}</div>`;
+}
+function cmpFindingsFold(data, isAdmin) {
+  if (!isAdmin) return '';
+  const f = data.findings;
+  const n = f && Array.isArray(f.open) ? f.open.length : 0, cards = f ? Number(f.open?.filter?.(r => r.type === 'card').length || 0) : 0;
+  const word = cards ? `${cards} with a card number` : n ? `${n} open` : 'nothing open';
+  return `<details class="cmp-adv cmp-findings-fold" ${_cmpFindOpen ? 'open' : ''} ontoggle="_cmpFindOpen = this.open"><summary>Findings: files that hold card, Social Security or bank numbers (${esc(word)})</summary>${cmpFindingsHtml(data, isAdmin)}</details>`;
+}
+// One line for Admin › Compliance.
+function cmpFindingsLine(data) {
+  const f = data?.findings;
+  if (!f) return '';
+  const open = Array.isArray(f.open) ? f.open : [];
+  const cards = open.filter(r => r.type === 'card').length;
+  if (cards) return `${cards} file${cards === 1 ? ' holds' : 's hold'} what looks like a card number.`;
+  if (open.length) return `${open.length} finding${open.length === 1 ? '' : 's'} open, none a card number.`;
+  return `No card numbers found in ${Number(f.files_checked || 0).toLocaleString()} checked files.`;
+}
+async function refreshFindings(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    await loadComplianceSummary();
+    if (complianceData && document.querySelector('#compliance-status-scrim .modal')) renderComplianceModal(complianceData);
+  } finally { if (btn) btn.disabled = false; }
+}
+async function resolveFinding(btn, id) {
+  const note = await askPrompt('Mark this finding resolved. Say what was done (the number was removed, the file was deleted, or it belongs where it is):', '', { okLabel: 'Resolved', title: 'Resolve finding', placeholder: 'Optional note' });
+  if (note === null) return;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPost(`/admin/compliance/findings/${encodeURIComponent(id)}/resolve`, { note });
+    toast('Finding resolved');
+    await refreshFindings();
+  } catch (e) { toast('Could not resolve: ' + e.message); if (btn) btn.disabled = false; }
+}
+async function saveFindingSettings(btn) {
+  const v = (id) => document.getElementById(id)?.value || undefined;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPut('/admin/compliance/findings/settings', { cards: v('cmp-find-cards'), ssn: v('cmp-find-ssn'), bank: v('cmp-find-bank') });
+    toast('Saved');
+    await refreshFindings();
+  } catch (e) { toast('Save failed: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
+}
+async function checkExistingFiles(btn, all) {
+  if (all && !await askConfirm('Check every file again? It runs in the background in small batches and may take a while on a large install.', { okLabel: 'Check all files' })) return;
+  if (btn) btn.disabled = true;
+  try {
+    await apiPost('/admin/compliance/findings/check', { all: !!all });
+    toast('Checking existing files in the background.');
+    await refreshFindings();
+  } catch (e) { toast('Could not start: ' + e.message); if (btn) btn.disabled = false; }
+}
+function openFindingFile(id) { if (document.querySelector('#compliance-status-scrim')) closeComplianceStatus(); openFileDefault(id); }
+// A report is built on the server (lib/evidence.js) from live settings and records,
+// kept in Past reports, and then downloaded.
+async function downloadComplianceReport(btn, frameworkId) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const made = await apiPost('/admin/compliance/reports', { framework: frameworkId });
+    const r = made.reports && made.reports[0];
+    if (!r) throw new Error('No report was made');
+    await fetchReportFile(`/api/admin/compliance/reports/${encodeURIComponent(r.id)}.html`, r.file_name);
+    toast('Report downloaded. Open it and print to PDF for your records.');
+    loadComplianceSummary().then(() => { if (complianceData && document.querySelector('#compliance-status-scrim .modal')) renderComplianceModal(complianceData); });
+  } catch (e) { toast('Download failed: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+async function downloadPastReport(btn, id) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try { await fetchReportFile(`/api/admin/compliance/reports/${encodeURIComponent(id)}.html`, `compliance-report-${id}.html`); }
+  catch (e) { toast('Download failed: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+async function fetchReportFile(url, fallbackName) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${await getToken()}` } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || fallbackName;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await res.blob());
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+async function saveComplianceReportSchedule(btn) {
+  const schedule = document.getElementById('cmp-sched-every')?.value || 'off';
+  const email = document.getElementById('cmp-sched-email')?.value || '';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await apiPut('/admin/compliance/reports/schedule', { schedule, email });
+    if (complianceData) complianceData.reportSchedule = r.schedule;
+    toast(schedule === 'off' ? 'Scheduled reports are off.' : `Reports will run every ${schedule === 'monthly' ? 'month' : 'quarter'}.`);
+  } catch (e) { toast('Save failed: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 function renderComplianceModal(data) {
   complianceData = data;
@@ -5386,6 +5699,9 @@ function renderComplianceModal(data) {
         const meta = c.attestation?.by ? `<span class="cmp-att-meta">Marked met by ${esc(c.attestation.by)} on ${new Date(c.attestation.at).toLocaleDateString()}${c.attestation.note ? ` · ${esc(c.attestation.note)}` : ''}</span>` : '';
         const btn = isAdmin ? `<button type="button" class="cmp-att-btn" data-control="${escAttr(String(c.id))}" data-met="${c.ready ? '0' : '1'}" onclick="attestControl(this.dataset.control, this.dataset.met === '1')">${c.ready ? 'Clear "met"' : 'Mark as met'}</button>` : '';
         attest = (meta || btn) ? `<div class="cmp-attest">${btn}${meta}</div>` : '';
+      } else if (c.action) {
+        const act = cmpActionBtn(c, isAdmin);
+        attest = act ? `<div class="cmp-attest">${act}</div>` : '';
       }
       const gap = st !== 'ok' && c.gap ? `<div class="cmp-check-gap"><b>What is missing</b>${esc(c.gap)}</div>` : '';
       return `<div class="cmp-check"><span class="cmp-state ${st}">${icon}${word}</span><div class="cmp-check-body"><div class="cmp-check-label">${esc(c.label)}${c.manual ? '<span class="cmp-manual" title="Depot cannot see this one. Someone confirms it.">You confirm this</span>' : ''}</div>${c.evidence ? `<div class="cmp-check-ev">${esc(c.evidence)}</div>` : ''}${gap}${attest}</div></div>`;
@@ -5398,10 +5714,19 @@ function renderComplianceModal(data) {
   }
   const all = fws.filter(f => f.enabled).flatMap(f => f.controls), allReady = all.filter(c => c.ready === true).length;
   const probeLine = data.probes?.lastRun ? `Live checks last run ${new Date(data.probes.lastRun).toLocaleString()}` : 'Live checks have not been run yet';
-  m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">Compliance readiness</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
-    + `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${fws.filter(f => f.enabled).length} tracked framework${fws.filter(f => f.enabled).length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div></div>`
-    + `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`
-    + `<div class="cmp-foot">${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button><span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
+  const tracked = fws.filter(f => f.enabled);
+  const simple = tracked.length === 1 ? tracked[0] : null;
+  const browser = `<div class="cmp-main">${pick}<div class="cmp-list" role="tablist" aria-label="Frameworks" aria-orientation="vertical">${list}</div><div class="cmp-detail" id="cmp-detail" role="tabpanel" tabindex="0" aria-label="${escAttr(sel ? sel.name : 'Framework')}">${detail}</div></div>`;
+  const findingsFold = cmpFindingsFold(data, isAdmin);
+  const reportsFold = `<details class="cmp-adv cmp-reports-fold" ${_cmpRepOpen ? 'open' : ''} ontoggle="_cmpRepOpen = this.open"><summary>Reports: download one for any tracked framework, past reports, and the schedule</summary>${cmpReportsAreaHtml(data, isAdmin)}${cmpScheduleHtml(data, isAdmin)}</details>`;
+  const tools = `${isAdmin ? `<button class="ghost-btn" onclick="runComplianceProbes(this)">Run live checks</button><button class="ghost-btn" onclick="downloadEvidencePackage(this)">Evidence package</button>` : ''}<button class="ghost-btn" onclick="exportComplianceReport()">Control report</button>`;
+  if (m.classList) m.classList.toggle('cmp-is-simple', !!simple);
+  m.innerHTML = `<div class="cmp-top"><button type="button" class="cmp-x" aria-label="Close" onclick="closeComplianceStatus()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="cmp-title">${simple ? 'Compliance' : 'Compliance readiness'}</h2><p class="sub">${esc(data.disclaimer || 'Readiness profiles only. They do not certify the organization.')}</p>`
+    + (simple ? '' : `<div class="cmp-overall"><span class="cmp-overall-n">${all.length ? `${allReady} of ${all.length} controls ready across ${tracked.length} tracked framework${tracked.length === 1 ? '' : 's'}` : 'No framework is being tracked yet'}</span>${all.length ? cmpBar(all) : ''}<span class="cmp-probe-meta" role="status">${esc(probeLine)}</span></div>`) + `</div>`
+    + (simple
+        ? `<div class="cmp-simple">${cmpSimpleHtml(simple, data, isAdmin)}${findingsFold}<details class="cmp-adv" ${_cmpAdvOpen ? 'open' : ''} ontoggle="_cmpAdvOpen = this.open"><summary>Advanced: every control, other frameworks, live checks, the schedule, and the raw evidence</summary>${cmpScheduleHtml(data, isAdmin)}${browser}<div class="cmp-adv-tools">${tools}</div></details></div>`
+        : `<div class="cmp-simple cmp-browse">${browser}${findingsFold}${reportsFold}</div>`)
+    + `<div class="cmp-foot">${simple ? '' : tools}<span class="grow"></span>${isAdmin ? `<button class="ghost-btn" onclick="closeComplianceStatus();setTab('admin')">Choose frameworks</button>` : ''}<button class="run-btn" onclick="closeComplianceStatus()">Close</button></div>`;
 }
 function cmpSelect(id) { _cmpSel = id; if (complianceData) renderComplianceModal(complianceData); const d = document.getElementById('cmp-detail'); if (d) d.scrollTop = 0; document.querySelector('.cmp-fw[aria-selected="true"]')?.focus({ preventScroll: true }); }
 function cmpGapsOnly(on) { _cmpGapsOnly = !!on; if (complianceData) renderComplianceModal(complianceData); }
@@ -5602,6 +5927,14 @@ async function adminDeleteFile(fileId, fileName) {
   } catch (e) { toast('Could not move to Trash: ' + e.message); }
 }
 
+// One line on the schedule, for the Admin tab: how often reports run and when they last did.
+function cmpScheduleLine(data) {
+  const s = data?.reportSchedule;
+  const last = s?.lastRun ? ` Last run ${new Date(s.lastRun).toLocaleDateString()}.` : '';
+  const n = Array.isArray(data?.reports) ? data.reports.length : 0;
+  if (!s || s.schedule === 'off') return `Reports run when you download one${n ? ` (${n} kept)` : ''}.${last}`;
+  return `Reports run every ${s.schedule === 'monthly' ? 'month' : 'quarter'}${s.email ? `, sent to ${s.email}` : ''}${n ? ` (${n} kept)` : ''}.${last}`;
+}
 function complianceHtml(data) {
   if (!data || !Array.isArray(data.frameworks)) {
     return `<div class="usage-section"><h3>Compliance &amp; Updates</h3><p class="settings-notice">Compliance status is unavailable.</p></div>`;
@@ -5631,6 +5964,8 @@ function complianceHtml(data) {
       <div class="update-card"><strong>Ubuntu host</strong><span>${ubuntu.supportedFromApp ? 'Host updater configured.' : 'Host updates require a hardened runner.'}</span><span>${esc(ubuntu.recommendedMethod || '')}</span></div>
       <div class="update-card"><strong>Dependency audit</strong><span>${deps.available ? 'Node package lock found.' : 'Package audit metadata unavailable.'}</span><span>${esc(deps.recommendedCommand || '')}</span></div>
     </div>
+    <p class="cmp-sched-line">${esc(cmpScheduleLine(data))} <button type="button" class="link-btn" onclick="_cmpRepOpen = true; _cmpAdvOpen = true; openComplianceStatus()">Reports</button></p>
+    ${data.findings ? `<p class="cmp-sched-line">Findings: ${esc(cmpFindingsLine(data))} <button type="button" class="link-btn" onclick="_cmpFindOpen = true; openComplianceStatus()">Open findings</button></p>` : ''}
     <div class="compliance-grid">${frameworkCards}</div>
     <button class="ghost-btn" onclick="saveComplianceProfiles()">Save compliance profiles</button>
   </div>`;
@@ -5716,7 +6051,11 @@ async function loadAdminHealth(days = 1) {
       huRow('Last restart', hu.last_boot ? esc(when(hu.last_boot)) : 'Not reported'),
       huRow('Reported', esc(when(hu.reported_at))),
     ].join('')}</dl>`;
-  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}</div>
+  const sc = h.scanner;
+  const scanLine = sc ? `<p>Virus scanning: ${sc.answering ? `on, scanner answering (${esc(sc.version || 'ClamAV')}, signatures from ${sc.signature_date ? esc(new Date(sc.signature_date).toLocaleDateString()) : 'an unknown date'}), last scan ${sc.last_scan_at ? esc(when(sc.last_scan_at)) : 'not yet'}` : 'on, but the scanner is not answering'} · ${Number(sc.refused_30d || 0).toLocaleString()} file${Number(sc.refused_30d) === 1 ? '' : 's'} refused in the last 30 days.</p>` : '';
+  const fd = h.findings;
+  const findLine = fd ? `<p>Sensitive data: ${Number(fd.open?.card || 0).toLocaleString()} card, ${Number(fd.open?.ssn || 0).toLocaleString()} Social Security, ${Number(fd.open?.bank || 0).toLocaleString()} bank finding${Number(fd.open?.bank || 0) === 1 ? '' : 's'} open · ${Number(fd.files_checked || 0).toLocaleString()} of ${Number(fd.files_total || 0).toLocaleString()} files checked${fd.backfill?.running ? ` · checking existing files, ${Number(fd.backfill.done).toLocaleString()} of ${Number(fd.backfill.total).toLocaleString()} done` : ''}.</p>` : '';
+  el.innerHTML = `<div class="health-status health-${esc(String(h.status))}" role="status"><strong>${word}</strong> · ${days === 7 ? 'the last 7 days' : 'the last 24 hours'} · version ${esc(h.version)} · up ${esc(fmtUptime(h.uptime_seconds))}${h.reasons.length ? `<ul class="health-reasons">${h.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '<p>Nothing is wrong that Depot can see.</p>'}${scanLine}${findLine}</div>
     <div class="health-range">${range(1, 'Last 24 hours')}${range(7, 'Last 7 days')}</div>
     <div class="dash-stats admin-stats-3">
       ${adminStat('Could not finish', Number(h.errors.count).toLocaleString(), 'requests the server failed on')}
@@ -5989,6 +6328,48 @@ async function saveStorageSettings() {
   } catch (e) { toast('Save failed: ' + e.message); }
 }
 
+async function saveMalwareScanSettings() {
+  const body = {
+    malware_scan_enabled: document.getElementById('cfg-scan-on').value,
+    malware_scan_host: document.getElementById('cfg-scan-host').value.trim() || null,
+    malware_scan_max_mb: document.getElementById('cfg-scan-max').value.trim() || null,
+  };
+  try { await apiPut('/admin/settings', body); settingsSys = { ...settingsSys, ...body }; toast(body.malware_scan_enabled === 'true' ? 'Scanning on — files that fail the scan are refused' : 'Scanning off'); }
+  catch (e) { toast('Save failed: ' + (e.body?.error || e.message)); }
+}
+// The scanner's own test file (EICAR), sent through the ordinary upload route so the whole
+// path is proved, not just the socket. Assembled from pieces so this page never holds the
+// string itself: a desktop antivirus reading index.html would otherwise flag it.
+function eicarTestFile() {
+  const parts = ['X5O!P%@AP[4\\PZX54(P^)7CC)7}$', 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE', '!$H+H*'];
+  return new File([parts.join('')], 'EICAR test file.txt', { type: 'text/plain' });
+}
+async function testMalwareScan() {
+  const out = document.getElementById('cfg-scan-result');
+  out.textContent = 'Asking the scanner…';
+  let st;
+  try { st = await apiPost('/admin/settings/malware-scan/ping', {}); }
+  catch (e) { out.textContent = 'Could not ask: ' + (e.body?.error || e.message); return; }
+  if (!st.enabled) { out.textContent = 'Scanning is off. Save it as On, then test.'; return; }
+  if (!st.answering) { out.textContent = 'The scanner is not answering' + (st.error ? ' (' + st.error + ')' : '') + '. Uploads are refused until it does.'; return; }
+  out.textContent = `${st.version || 'ClamAV'} answered, signatures from ${st.signatureDate ? new Date(st.signatureDate).toLocaleDateString() : 'an unknown date'}. Uploading the test file…`;
+  const fd = new FormData();
+  fd.append('file', eicarTestFile());
+  let res, body;
+  try {
+    res = await fetch('/api/files/upload', { method: 'POST', headers: { Authorization: `Bearer ${await getToken()}` }, body: fd });
+    body = await res.json().catch(() => ({}));
+  } catch (e) { out.textContent = 'Upload failed: ' + e.message; return; }
+  if (res.status === 422 && body.code === 'MALWARE_DETECTED') { out.textContent = 'Working: the test file was refused. ' + body.error; return; }
+  if (res.status === 503) { out.textContent = 'The scanner stopped answering during the upload: ' + (body.error || ''); return; }
+  if (res.ok && body.doc?.id) {
+    await apiDelete(`/files/${body.doc.id}`).catch(() => {});
+    out.textContent = 'Not working: the test file was stored, not refused (it has been moved to the trash). Check the scanner.';
+    return;
+  }
+  out.textContent = `Unexpected answer (${res.status}): ${body.error || ''}`;
+}
+
 function generateEncKey() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -6115,6 +6496,18 @@ async function saveMs365Login(enable) {
    /setup/session-length accepts; a length set another way (kcadm) is shown as it is. */
 const SESSION_HOUR_CHOICES = [[10, '10 hours'], [24, '1 day'], [168, '1 week'], [336, '2 weeks'], [720, '30 days']];
 function sessionHoursLabel(h) { return SESSION_HOUR_CHOICES.find(([v]) => v === h)?.[1] || (h % 24 === 0 ? `${h / 24} days` : `${h} hours`); }
+// Same route as the setup wizard's switch; mfa_required is a DB-only setting, so the
+// box reads it from the compliance data when the settings read does not carry it.
+async function settingsToggleMfa(enable) {
+  const out = document.getElementById('cfg-mfa-result');
+  if (out) out.innerHTML = '<span class="setup-muted">Applying…</span>';
+  try {
+    const r = await apiPost('/setup/mfa', { enable });
+    if (out) out.innerHTML = r.ok ? `<span class="setup-ok">✓ ${enable ? 'Required — people set up an authenticator at their next sign-in.' : 'No longer required.'}</span>` : `<span class="setup-err">${esc(r.error || 'Failed')} ${esc(r.hint || '')}</span>`;
+    if (settingsSys) settingsSys.mfa_required = enable ? 'true' : '';
+    loadComplianceSummary();
+  } catch (e) { if (out) out.innerHTML = `<span class="setup-err">${esc(e.message)}</span>`; }
+}
 async function loadSessionLength() {
   const sel = document.getElementById('cfg-session-hours');
   if (!sel) return;
@@ -6201,6 +6594,8 @@ async function saveNetworkSettings() {
     max_upload_files: document.getElementById('cfg-max-upload-files')?.value,
     api_token_rate_limit: document.getElementById('cfg-api-token-rate')?.value || '6000',
     trash_retention_days: document.getElementById('cfg-trash-retention-days').value,
+    signin_events_enabled: document.getElementById('cfg-signin-events')?.value || 'true',
+    share_link_max_days: document.getElementById('cfg-share-link-max-days')?.value.trim() || '',
     blocked_file_exts: document.getElementById('cfg-blocked-exts')?.value.trim(),
   };
   try {
@@ -6506,8 +6901,8 @@ function switchSettingsTab(tab) {
   else if (tab === 'activity' && admin) { body.innerHTML = activitySettingsHtml(); loadActivity(true); }
   else if (tab === 'access' && admin) { body.innerHTML = accessSettingsHtml(); loadAccessReview(); loadAdminTokens(); }
   else if (tab === 'workspace') body.innerHTML = workspaceSettingsHtml() + systemSections('Integrations');
-  else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'How long a sign-in lasts'); loadSessionLength(); }
-  else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
+  else if (tab === 'signin') { body.innerHTML = systemSections('Sign-in methods', 'A second step at sign-in', 'How long a sign-in lasts'); loadSessionLength(); }
+  else if (tab === 'storage') { body.innerHTML = systemSections('File Storage', 'At-rest Encryption', 'Virus scanning', 'Scheduled backups', 'Settings export'); loadBackupConfig(); }
   else if (tab === 'server') body.innerHTML = systemSections('Network &amp; Security', 'Calls (video / audio)');
   else if (tab === 'license' && admin) { body.innerHTML = licenseSettingsHtml(licenseStatus); loadLicenseSettings(); }
   body.scrollTop = 0;
@@ -7308,7 +7703,7 @@ function activityQuery(extra = {}) {
   return p.toString();
 }
 const ACTIVITY_LABELS = {
-  uploaded: 'Uploaded', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
+  uploaded: 'Uploaded', upload_blocked: 'Refused (malware found)', sensitive_data_found: 'Sensitive data found', sensitive_data_resolved: 'Finding resolved', edited: 'Edited', renamed: 'Renamed', trashed: 'Moved to trash',
   restored: 'Restored', purged: 'Deleted permanently', updated: 'Updated',
   internal_link_sent: 'Sent a sign-in link', internal_folder_link_sent: 'Sent a folder sign-in link', external_folder_share_sent: 'Sent a folder link', share_created: 'Created share link', share_downloaded: 'Downloaded via link', share_revoked: 'Revoked share link',
   access_granted: 'Granted access', access_revoked: 'Revoked access',
@@ -7316,6 +7711,10 @@ const ACTIVITY_LABELS = {
   guide_added: 'Getting-started guide added automatically',
   guide_updated: 'Getting-started guide updated automatically',
   guide_removed: 'Getting-started guide (Word copy) removed automatically',
+  // From Keycloak, copied into the record by the server (lib/signInEvents); no file.
+  signed_in: 'Signed in', sign_in_failed: 'Sign-in failed', signed_out: 'Signed out',
+  access_reviewed: 'Access list reviewed',
+  hold_placed: 'Legal hold placed', hold_released: 'Legal hold released', disposed: 'Moved to trash by retention policy', retention_policy_set: 'Retention policy set',
 };
 function activityLabel(t) { return ACTIVITY_LABELS[t] || (t || '').replace(/_/g, ' '); }
 function activityWhen(ts) {
@@ -7342,7 +7741,7 @@ async function loadActivity(reset) {
     }
     const rows = r.events.map(e => `<div class="activity-row">
         <span class="activity-ev activity-ev-${esc(e.event_type)}">${esc(activityLabel(e.event_type))}</span>
-        <span class="activity-doc">${e.document_name ? esc(e.document_name) : '<em>(deleted file)</em>'}</span>
+        <span class="activity-doc">${e.document_name ? esc(e.document_name) : e.document_id ? '<em>(deleted file)</em>' : '<span class="cell-empty">—</span>'}</span>
         <span class="activity-actor">${esc(e.actor_email || 'unknown')}</span>
         <span class="activity-when" title="${esc(e.detail || '')}">${esc(activityWhen(e.created_at))}</span>
       </div>`).join('');
@@ -7634,6 +8033,10 @@ function systemSettingsHtml() {
         <span class="setup-result" id="cfg-ldap-result"></span>
       </div>
 
+      <div class="settings-sub" style="margin-top:20px">A second step at sign-in</div>
+      <p class="settings-notice">With this on, everyone with a local (password) account must also enter a code from an authenticator app. People who sign in with Microsoft 365 or Active Directory are not affected: their second step is their own provider's to require.</p>
+      <label class="setup-check" style="margin-bottom:6px"><input type="checkbox" id="cfg-mfa-required" ${s.mfa_required==='true'?'checked':''} onchange="settingsToggleMfa(this.checked)"> Require an authenticator app for password sign-ins</label>
+      <div id="cfg-mfa-result" class="setup-result" style="margin-bottom:4px"></div>
       <div class="settings-sub" style="margin-top:20px">How long a sign-in lasts</div>
       <p class="settings-notice">Everyone is asked to sign in again after this long, on every computer and phone, however they sign in. A change applies from the next sign-in; people already signed in keep their current session until it ends. If someone told Microsoft to keep them signed in, Microsoft 365 may sign them straight back in without asking for a password.</p>
       <div class="settings-grid">
@@ -7692,10 +8095,33 @@ function systemSettingsHtml() {
         <input type="number" id="cfg-api-token-rate" value="${esc(s.api_token_rate_limit||'6000')}" min="60" max="1000000" step="1" title="How many requests one API token may make in 15 minutes. Over it, the token gets 429 answers until the window passes. Sign-ins from the app are not held to this.">
         <label>Trash retention (days)</label>
         <input type="number" id="cfg-trash-retention-days" value="${esc(s.trash_retention_days||'30')}" min="1" max="3650" step="1">
+        <label for="cfg-signin-events">Record sign-ins in the activity log <span style="font-size:10px;color:var(--ink-faint)">(who signed in, who failed to, and who signed out, copied from Keycloak every five minutes into the tamper-evident record; the Compliance window reads it)</span></label>
+        <select id="cfg-signin-events"><option value="true" ${String(s.signin_events_enabled||'').toLowerCase()!=='false'?'selected':''}>Yes</option><option value="false" ${String(s.signin_events_enabled||'').toLowerCase()==='false'?'selected':''}>No</option></select>
+        <label for="cfg-share-link-max-days">Longest a share link may live (days) <span style="font-size:10px;color:var(--ink-faint)">(empty means no limit, and links may be set to never expire)</span></label>
+        <input type="number" id="cfg-share-link-max-days" value="${esc(s.share_link_max_days||'')}" min="1" max="365" step="1" placeholder="No limit" title="Applies to every link to someone outside: file links, folder links, and send-by-email. A longer choice is trimmed to this; 'never' is refused.">
         <label>Blocked upload types <span style="font-size:10px;color:var(--ink-faint)">(extensions refused on upload; empty means nothing is refused)</span></label>
         <input type="text" id="cfg-blocked-exts" value="${esc(s.blocked_file_exts||'')}" placeholder="Nothing is refused. To refuse types, list them: .exe .bat .msi">
       </div>
       <button class="ghost-btn" onclick="saveNetworkSettings()">Save network settings</button>
+
+      <div class="settings-sub" style="margin-top:20px">Virus scanning</div>
+      <p class="settings-notice">Every file that enters Depot, by upload, by a link, or from the drive, is checked by a scanner (ClamAV) before it is kept; a file that fails is refused and you are told. Needs the scanner running on the server: add <code>COMPOSE_PROFILES=clamav</code> to the server's <code>.env</code> and run <code>upgrade.sh</code>. <strong>While scanning is on and the scanner is not answering, uploads are refused.</strong></p>
+      <div class="settings-grid">
+        <label>Scan uploads</label>
+        <select id="cfg-scan-on">
+          <option value="false"${s.malware_scan_enabled!=='true'?' selected':''}>Off</option>
+          <option value="true"${s.malware_scan_enabled==='true'?' selected':''}>On — refuse files that fail the scan</option>
+        </select>
+        <label>Scanner address</label>
+        <input type="text" id="cfg-scan-host" value="${esc(s.malware_scan_host||'')}" placeholder="clamav:3310">
+        <label>Largest file scanned (MB)</label>
+        <input type="number" id="cfg-scan-max" min="1" value="${esc(s.malware_scan_max_mb||'')}" placeholder="512 — bigger files are stored unscanned">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+        <button class="ghost-btn" onclick="saveMalwareScanSettings()">Save scanning settings</button>
+        <button class="ghost-btn" onclick="testMalwareScan()">Test with a harmless EICAR file</button>
+        <span id="cfg-scan-result" role="status"></span>
+      </div>
 
       <div class="settings-sub" style="margin-top:20px">Scheduled backups</div>
       <p class="settings-notice">Back up the database and files on a schedule to one or more destinations. Backups are kept in the app and shipped to each enabled destination; older ones are pruned to the retention count.</p>
@@ -7798,7 +8224,8 @@ function activitySettingsHtml() {
 function accessSettingsHtml() {
   return `<div class="settings-sub">Users &amp; access</div>
       <p class="settings-notice">Every user, their role, the libraries they own, the libraries, folders and groups that give them access, direct file shares, and last activity. Use it for periodic review and sign-off.</p>
-      <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button></div>
+      <div class="btn-row" style="margin-bottom:8px"><button class="ghost-btn" type="button" onclick="loadAccessReview()">Refresh</button><button class="ghost-btn" type="button" onclick="exportAccessReviewCsv()">Export CSV</button><button class="run-btn" type="button" onclick="recordAccessReview()">Record that this list was reviewed</button></div>
+      <p class="settings-notice" id="access-review-last">Loading past reviews…</p>
       <div id="access-review">${emptyState('Loading users', 'Working out who can open what.')}</div>
       <div class="settings-sub">API tokens</div>
       <p class="settings-notice">Every live token anyone has made for the <a href="/api/docs" target="_blank" rel="noopener">API</a>, and whose it is. A token acts as that person with their rights. Revoke one here if it should not exist; the person sees it gone from their own list.</p>
@@ -7831,19 +8258,52 @@ async function verifyAuditLog() {
 function accessWhen(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 async function loadAccessReview() {
   const el = document.getElementById('access-review'); if (!el) return;
+  loadAccessReviewHistory();
   try { el.innerHTML = renderAccessReview(await apiGet('/admin/access-review')); }
   catch (e) {
     el.innerHTML = emptyState('Could not load the users list', `Try again, or refresh the page if it keeps happening.${e.message ? ` (${e.message})` : ''}`,
       '<button class="ghost-btn" type="button" onclick="loadAccessReview()">Try again</button>');
   }
 }
+// "Last reviewed … by …", from the sign-offs the server keeps (access_reviews).
+async function loadAccessReviewHistory() {
+  const el = document.getElementById('access-review-last'); if (!el) return;
+  try { el.innerHTML = accessReviewHistoryHtml((await apiGet('/admin/access-review/history')).reviews || []); }
+  catch (e) { el.textContent = `Past reviews could not be loaded. ${e.message || ''}`; }
+}
+function accessReviewHistoryHtml(reviews) {
+  if (!reviews.length) return 'No review has been recorded yet. Look through the list, then record that it was reviewed; the compliance window expects one each quarter.';
+  const r = reviews[0];
+  const older = reviews.slice(1, 6).map(x => `<li>${esc(accessWhen(x.reviewed_at))} by ${esc(x.reviewed_by_email || 'an administrator')}${x.note ? ` · ${esc(x.note)}` : ''}</li>`).join('');
+  return `Last reviewed ${esc(accessWhen(r.reviewed_at))} by ${esc(r.reviewed_by_email || 'an administrator')}${r.user_count ? ` (${r.user_count} ${r.user_count === 1 ? 'person' : 'people'} on the list)` : ''}${r.note ? ` · ${esc(r.note)}` : ''}.`
+    + (older ? `<details class="ar-history"><summary>Earlier reviews</summary><ul>${older}</ul></details>` : '');
+}
+// The sign-off: kept with the list as it stands, and in the chained activity record.
+async function recordAccessReview() {
+  const note = await askPrompt('Record that you reviewed who has access. Add a note if you like (what you changed, say):', '', { okLabel: 'Record review', title: 'Access review', placeholder: 'Optional note' });
+  if (note === null) return;
+  try {
+    await apiPost('/admin/access-review/signoff', { note: note || '' });
+    toast('Review recorded');
+    loadAccessReviewHistory();
+    loadComplianceSummary();
+  } catch (e) { toast('Could not record the review: ' + e.message); }
+}
+// The words for the second-step column (the server's accessReview.MFA_WORDS, one pill each).
+const AR_MFA = {
+  federated: ['ok', 'Through their identity provider'], enrolled: ['ok', 'Authenticator set up'],
+  pending: ['warn', 'Asked to set one up'], none: ['warn', 'None'], unknown: ['', 'Could not check'],
+};
+function mfaPill(state) { const [cls, word] = AR_MFA[state] || AR_MFA.unknown; return `<span class="pill${cls ? ' ' + cls : ''}">${esc(word)}</span>`; }
 function renderAccessReview(r) {
   const open = (r.openLibraries && r.openLibraries.length)
     ? `<p class="settings-notice">Listed to every signed-in user (this gives no access to the files in them): ${r.openLibraries.map(esc).join(', ')}</p>` : '';
   const list = (a) => (a && a.length ? a.map(esc).join('<br>') : '<span class="cell-empty">—</span>');
+  const mfaNote = r.mfaError ? `<p class="settings-notice">Second step at sign-in could not be checked: ${esc(r.mfaError)}</p>` : '';
   const rows = r.users.map(u => `<tr>
       <td>${esc(u.email)}${u.name ? `<div class="file-row-sub">${esc(u.name)}</div>` : ''}${u.emailVerified === false ? '<div><span class="pill warn">Email not verified</span></div>' : ''}</td>
       <td><span class="ar-role ar-role-${esc(u.role)}">${esc(u.role)}</span></td>
+      <td>${mfaPill(u.mfa)}</td>
       <td>${list(u.owns)}</td>
       <td>${u.role === 'admin' ? 'All libraries (admin)' : list(u.libraryAccess)}</td>
       <td>${list(u.folderAccess)}</td>
@@ -7854,7 +8314,7 @@ function renderAccessReview(r) {
     </tr>`).join('');
   const pending = (r.pendingShares && r.pendingShares.length)
     ? `<p class="settings-notice">Shared with addresses that have no verified account yet (they get this access once they sign in with that address verified):</p><ul class="settings-notice">${r.pendingShares.map(p => `<li>${esc(p.email)}: ${[...(p.libraryAccess || []), ...(p.folderAccess || [])].map(esc).join('; ')}</li>`).join('')}</ul>` : '';
-  return `${open}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th>Owns</th><th>Library access</th><th>Folder access</th><th>Groups</th><th title="Older member lists: they only decide who sees a library listed">Listed in</th><th style="text-align:right">Files shared directly</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
+  return `${open}${mfaNote}<div class="access-review-wrap"><table class="access-review-table"><thead><tr><th>User</th><th>Role</th><th title="Second step at sign-in (MFA)">Second step</th><th>Owns</th><th>Library access</th><th>Folder access</th><th>Groups</th><th title="Older member lists: they only decide who sees a library listed">Listed in</th><th style="text-align:right">Files shared directly</th><th>Last activity</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${pending}<p class="settings-notice">${r.userCount} user${r.userCount === 1 ? '' : 's'} · generated ${esc(accessWhen(r.generatedAt))}. Access comes from owning a library, a share of a library or folder (directly or through a group), or a file shared directly.</p>`;
 }
 async function exportAccessReviewCsv() {
@@ -8178,7 +8638,7 @@ function fileNameCellHtml(f) {
   if (!fileVisibleCols.has('size')) bits.push(fileSizeLabel(f.size || 0));
   if (folder) bits.push(esc(folder));
   const sub = bits.length ? `<div class="file-row-sub">${bits.join(' · ')}</div>` : '';
-  return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" role="button" tabindex="0" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(fileDisplayName(f))}</div>${sub}</div></div></td>`;
+  return `<td class="file-col-name"><div class="file-library-name">${fileRowIconHtml(f, ext)}<div><div class="file-row-title file-name-link" role="button" tabindex="0" title="Open ${esc(f.name)}" onclick="openFileFromName(event, this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(fileDisplayName(f))}${holdMark(f.held ? 'Under a legal hold: it cannot be deleted, replaced or moved' : '')}</div>${sub}</div></div></td>`;
 }
 // Click the file name → open/preview; clicking elsewhere on the row toggles selection.
 function openFileFromName(event, el) {
@@ -8201,7 +8661,7 @@ function folderLibraryRow(folder) {
   // as a rendering gap.
   const extra = visibleFileColumns().filter(c => c.id !== 'name').map(c =>
     `<td class="file-col-${c.id}"${c.align === 'right' ? ' style="text-align:right"' : ''}><span class="cell-empty">—</span></td>`).join('');
-  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}</div><div class="file-row-sub">${folder.where ? esc(folder.where) + ' · ' : ''}${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
+  return `<tr class="file-folder-row${sel ? ' selected' : ''}" data-folder="${esc(folder.path)}" onmousedown="pointerDragStart(event,'folder',this.dataset.folder)" onclick="maybeOpenFolder(this.dataset.folder)" oncontextmenu="return openFolderMenu(this.dataset.folder, event)"><td class="file-col-select"><button class="file-library-select${sel ? ' selected' : ''}" title="${sel ? 'Deselect' : 'Select'}" aria-label="Select folder ${esc(folder.name)}" aria-pressed="${sel ? 'true' : 'false'}" data-folder="${esc(folder.path)}" onclick="toggleFolderSelection(this.dataset.folder, event)"></button></td><td class="file-col-name"><div class="file-library-name"><span class="file-folder-icon"></span><div><div class="file-row-title" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">${esc(folder.name)}${folderSharedTag(folder.path)}${folderHoldTag(folder.path)}</div><div class="file-row-sub">${folder.where ? esc(folder.where) + ' · ' : ''}${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div></td>${extra}<td class="file-col-actions"><div class="file-library-actions">${(() => { const on = folderBellOn(folder.path); const p = esc(folder.path); return `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying you of new files — click to mute' : 'Muted — click to get new-file notifications'}" aria-label="New-file notifications" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Share" aria-label="Share" data-folder="${p}" onclick="event.stopPropagation();openFolderShare(this.dataset.folder)">${ICON_SHARE}</button>`
     + `<button class="file-library-icon-btn" title="Download as ZIP" aria-label="Download" data-folder="${p}" onclick="event.stopPropagation();downloadFolderZip(this.dataset.folder)">${ICON_DOWNLOAD}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button>`; })()}</div></td></tr>`;
@@ -8921,7 +9381,128 @@ async function loadCurrentFolderFiles() {
 }
 async function loadLibraryData() {
   nameSearch = { key: '', rows: [] };
-  await Promise.all([loadFolderIndex(), loadCurrentFolderFiles()]);
+  await Promise.all([loadFolderIndex(), loadCurrentFolderFiles(), loadLibraryHolds()]);
+}
+// The open legal holds in the current library (GET /api/libraries/:id/holds), for the lock
+// marks on folders; a file's own mark comes with the file (held).
+let libraryHolds = { libraryId: null, holds: [] };
+async function loadLibraryHolds() {
+  const id = currentLibraryId;
+  if (!id) { libraryHolds = { libraryId: null, holds: [] }; return; }
+  try { libraryHolds = { libraryId: id, holds: await apiGet('/libraries/' + encodeURIComponent(id) + '/holds') }; }
+  catch { libraryHolds = { libraryId: id, holds: [] }; }
+}
+const ICON_HOLD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+function holdMark(title) { return title ? `<span class="hold-mark" title="${escAttr(title)}" aria-label="${escAttr(title)}">${ICON_HOLD}</span>` : ''; }
+// A hold placed on exactly this folder (for the menu's wording).
+function folderHoldHere(path) {
+  const p = normalizeFilePath(path || '');
+  return (libraryHolds.holds || []).find(h => h.scope === 'folder' && normalizeFilePath(h.folder_path || '') === p) || null;
+}
+// A folder is marked when the library is held, or a hold sits on it or a folder above it.
+function folderHoldTag(path) {
+  const p = normalizeFilePath(path || '');
+  const hs = libraryHolds.holds || [];
+  if (hs.some(h => h.scope === 'library')) return holdMark('This whole library is under a legal hold');
+  const on = hs.find(h => h.scope === 'folder' && (normalizeFilePath(h.folder_path || '') === p || p.startsWith(normalizeFilePath(h.folder_path || '') + '/')));
+  return on ? holdMark(`Under a legal hold (${on.reason}): nothing in it can be deleted, replaced or moved`) : '';
+}
+// ---- Retention: how long a library's files are kept ----
+async function openLibraryRetention(libraryId) {
+  const lib = librariesList.find(l => String(l.id) === String(libraryId));
+  if (!lib || !lib.id) { toast('That library is no longer available.'); return; }
+  let cur = lib.retention || { min_years: null, dispose_years: null };
+  try { cur = await apiGet('/libraries/' + encodeURIComponent(lib.id) + '/retention') || cur; } catch { /* the listing's copy */ }
+  const m = openModal({ id: 'retention-scrim', labelledBy: 'rt-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-rt-close>✕</button>`
+    + `<h2 id="rt-title">Retention for “${esc(lib.name)}”</h2>`
+    + `<p class="sub">How long the files in this library are kept. Leave both blank and nothing changes: deleted files leave the Trash after the usual number of days, and nothing is deleted unasked.</p>`
+    + `<div class="rt-form">`
+    + `<label>Keep at least<span><input type="number" id="rt-min" min="1" max="100" step="1" value="${escAttr(cur.min_years == null ? '' : String(cur.min_years))}" placeholder="years"> years</span><span class="rt-help">Nothing in this library is deleted for good before a file is this old, even from the Trash. Tax returns: 3 years. Patient files: 6 years.</span></label>`
+    + `<label>Move to the Trash after<span><input type="number" id="rt-dispose" min="1" max="100" step="1" value="${escAttr(cur.dispose_years == null ? '' : String(cur.dispose_years))}" placeholder="years"> years without changes</span><span class="rt-help">A file nobody has changed for this long goes to the Trash on its own. Whoever added it is told 30 days ahead, and it can be restored from the Trash afterwards. Blank means never.</span></label>`
+    + `</div>`
+    + (cur.set_by ? `<p class="sub">Last set by ${esc(cur.set_by)} on ${esc(new Date(cur.set_at).toLocaleDateString())}.</p>` : '')
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-rt-close>Cancel</button><button class="run-btn" type="button" id="rt-save">Save</button></div>` });
+  m.el.querySelectorAll('[data-rt-close]').forEach(b => b.onclick = () => m.close());
+  m.el.querySelector('#rt-save').onclick = async () => {
+    const body = { min_years: m.el.querySelector('#rt-min').value || null, dispose_years: m.el.querySelector('#rt-dispose').value || null };
+    try {
+      const r = await apiPut('/libraries/' + encodeURIComponent(lib.id) + '/retention', body);
+      lib.retention = { min_years: r.min_years, dispose_years: r.dispose_years };
+      m.close();
+      toast(r.min_years || r.dispose_years ? `Retention set for “${lib.name}”` : `No retention policy for “${lib.name}”`);
+    } catch (e) { toast('Could not save: ' + e.message); }
+  };
+}
+// Every library's policy at a glance, reached from the Compliance window's fix pointer.
+function openRetentionOverview() {
+  const libs = (librariesList || []).filter(l => l.id && !l.archived_at);
+  const words = (r) => { const p = []; if (r?.min_years) p.push(`kept at least ${r.min_years} year${r.min_years === 1 ? '' : 's'}`); if (r?.dispose_years) p.push(`to the Trash after ${r.dispose_years} year${r.dispose_years === 1 ? '' : 's'} without changes`); return p.length ? p.join('; ') : 'no policy yet'; };
+  const rows = libs.map(l => `<div class="hold-row"><div class="grow"><b>${esc(l.name)}</b>${l.personal ? ' <span class="library-menu-item-sub">personal</span>' : ''}<div class="hold-meta">${esc(words(l.retention))}</div></div>${l.can_manage ? `<button class="cmp-att-btn" type="button" data-lib="${escAttr(String(l.id))}" onclick="openLibraryRetention(this.dataset.lib)">Set…</button>` : ''}</div>`).join('');
+  const m = openModal({ id: 'retention-all-scrim', labelledBy: 'rta-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-rta-close>✕</button><h2 id="rta-title">How long files are kept</h2>`
+    + `<p class="sub">Each shared library should say how long its files are kept. Personal libraries hold people's own parked files and are not counted.</p>`
+    + `<div class="hold-list">${rows || '<p class="sub">No library yet.</p>'}</div>`
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-rta-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-rta-close]').forEach(b => b.onclick = () => m.close());
+}
+// ---- Legal holds (administrators) ----
+// One dialog for a library, a folder or a file: shows the hold that is on exactly this
+// thing with a way to release it, or asks for a reason and places one.
+async function openLegalHold({ scope, libraryId = null, folderPath = '', fileId = null }) {
+  if (currentUser?.role !== 'admin') { toast('Only an administrator can place or release a legal hold.'); return; }
+  let holds = [];
+  try { holds = (await apiGet('/admin/legal-holds')).active || []; } catch (e) { toast('Could not read the holds: ' + e.message); return; }
+  const f = fileId ? findFile(fileId) : null;
+  const lib = librariesList.find(l => String(l.id) === String(libraryId || f?.library_id));
+  const fp = normalizeFilePath(folderPath || '');
+  const here = holds.find(h => scope === 'document' ? String(h.document_id) === String(fileId)
+    : scope === 'folder' ? (h.scope === 'folder' && String(h.library_id) === String(libraryId) && normalizeFilePath(h.folder_path || '') === fp)
+      : (h.scope === 'library' && String(h.library_id) === String(libraryId)));
+  const what = scope === 'document' ? `file “${f ? fileDisplayName(f) : 'this file'}”` : scope === 'folder' ? `folder “${fp.split('/').pop()}”` : `library “${lib?.name || 'this library'}”`;
+  if (here) {
+    const note = await askPrompt(`A legal hold is on this ${what} since ${new Date(here.placed_at).toLocaleDateString()} (${here.placed_by || 'an administrator'}): “${here.reason}”.\n\nTo release it, say why it is no longer needed:`, '', { okLabel: 'Release the hold', title: 'Legal hold' });
+    if (note == null) return;
+    if (!String(note).trim()) { toast('A note is needed to release a hold.'); return; }
+    try { await apiDelete('/admin/legal-holds/' + encodeURIComponent(here.id), { note }); toast(`Hold released on ${what}`); await afterHoldChange(); }
+    catch (e) { toast('Could not release the hold: ' + e.message); }
+    return;
+  }
+  const reason = await askPrompt(`Put this ${what} under a legal hold?\n\nWhile it is held, nothing in it can be deleted, deleted for good, replaced or moved, by anyone, until an administrator releases the hold. Say what the hold is for:`, '', { okLabel: 'Place the hold', title: 'Legal hold', placeholder: 'e.g. Smith v. Jones, subpoena received 3 Nov' });
+  if (reason == null) return;
+  if (!String(reason).trim()) { toast('A hold needs a reason.'); return; }
+  try {
+    await apiPost('/admin/legal-holds', { scope, library_id: libraryId || f?.library_id || null, folder_path: fp || null, document_id: fileId || null, reason });
+    toast(`Legal hold placed on ${what}`);
+    await afterHoldChange();
+  } catch (e) { toast('Could not place the hold: ' + e.message); }
+}
+async function afterHoldChange() {
+  await loadLibraries();
+  if (document.getElementById('file-library-view')) { await loadLibraryData(); renderDocumentLibraryList(); }
+  else if (document.getElementById('file-list')) await loadFiles();
+}
+// Every open hold, reached from the Compliance window's fix pointer: release any, or place one on a library.
+async function openLegalHolds() {
+  if (currentUser?.role !== 'admin') return;
+  let data = { active: [], released: [] };
+  try { data = await apiGet('/admin/legal-holds'); } catch (e) { toast('Could not read the holds: ' + e.message); return; }
+  const rows = (data.active || []).map(h => `<div class="hold-row"><div class="grow"><b>${esc(h.where)}</b><div class="hold-meta">Since ${esc(new Date(h.placed_at).toLocaleDateString())} · ${esc(h.placed_by || 'an administrator')} · ${esc(h.reason)}</div></div><button class="cmp-att-btn" type="button" data-id="${escAttr(String(h.id))}" data-where="${escAttr(h.where)}" onclick="releaseHoldFromList(this.dataset.id, this.dataset.where)">Release…</button></div>`).join('');
+  const libs = (librariesList || []).filter(l => l.id && !l.archived_at);
+  const m = openModal({ id: 'holds-scrim', labelledBy: 'holds-title', html:
+    `<button class="modal-x" type="button" aria-label="Close" data-holds-close>✕</button><h2 id="holds-title">Legal holds</h2>`
+    + `<p class="sub">While something is held, nothing in it can be deleted, deleted for good, replaced or moved, by anyone. Holds on a folder or a single file are placed from that folder's or file's menu.</p>`
+    + `<div class="hold-list">${rows || '<p class="sub">No hold is in place.</p>'}</div>`
+    + (libs.length ? `<div class="btn-row" style="margin-top:14px;align-items:center;gap:8px"><label for="holds-lib">Place a hold on a whole library:</label><select id="holds-lib">${libs.map(l => `<option value="${escAttr(String(l.id))}">${esc(l.name)}</option>`).join('')}</select><button class="cmp-att-btn primary" type="button" onclick="openLegalHold({ scope: 'library', libraryId: document.getElementById('holds-lib').value })">Place…</button></div>` : '')
+    + `<div class="btn-row" style="justify-content:flex-end;margin-top:16px"><button class="ghost-btn" type="button" data-holds-close>Done</button></div>` });
+  m.el.querySelectorAll('[data-holds-close]').forEach(b => b.onclick = () => m.close());
+}
+async function releaseHoldFromList(id, where) {
+  const note = await askPrompt(`Release the hold on ${where}? Say why it is no longer needed:`, '', { okLabel: 'Release the hold', title: 'Legal hold' });
+  if (note == null) return;
+  if (!String(note).trim()) { toast('A note is needed to release a hold.'); return; }
+  try { await apiDelete('/admin/legal-holds/' + encodeURIComponent(id), { note }); toast('Hold released'); document.getElementById('holds-scrim')?.remove(); await afterHoldChange(); }
+  catch (e) { toast('Could not release the hold: ' + e.message); }
 }
 // Searching by name inside a library asks the server (it reaches every folder); the
 // result is kept until the words, the library or the files change.
@@ -9161,7 +9742,7 @@ function libraryMenuRow(l) {
     ? `<span class="pill warn" title="Put away: nothing can be added to it, and only administrators see it here">Archived</span>`
     : (LIBRARY_PILL[l.my_access] ? `<span class="library-menu-item-sub">${LIBRARY_PILL[l.my_access]}</span>` : '');
   const share = canShareLibrary(l) ? `<button class="library-share-btn" type="button" data-share-lib="${escAttr(String(l.id))}" aria-label="Share ${escAttr(l.name)}" title="Share">${ICON_SHARE}</button>` : '';
-  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
+  return `<div class="library-menu-item-wrap"><button class="library-menu-item${String(l.id) === String(currentLibraryId) ? ' active' : ''}" title="${escAttr(l.name)}" onclick="switchLibrary('${l.id}')"><span class="library-menu-item-name">${esc(l.name)}${holdMark(l.held ? 'This whole library is under a legal hold' : l.has_holds ? 'Something in this library is under a legal hold' : '')}</span>${pill}</button>${share}<button class="library-pin-star${pinned ? ' pinned' : ''}" type="button" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(l.name)}" title="${pinned ? 'Unpin' : 'Pin to the top of this menu and the sidebar'}" onclick="toggleLibraryPin(event,'${l.id}')">${navIcon('favorites', 'library-pin-ic')}</button></div>`;
 }
 // ---- Library menu ----
 // With a handful of libraries the menu is a plain list. Past LIBRARY_MENU_COMPACT it gets a
@@ -9244,6 +9825,8 @@ function libraryMenuActionsHtml(cur) {
     + (canShareLibrary(cur) ? `<button class="library-menu-item" type="button" data-share-lib="${id}">Share…</button>` : '')
     + `<button class="library-menu-item" type="button" data-access-lib="${id}">${cur.can_manage ? 'Who has access…' : 'Your access…'}</button>`
     + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();renameLibrary(this.dataset.lib)">Rename…</button>` : '')
+    + (cur.can_manage ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();openLibraryRetention(this.dataset.lib)">Retention…</button>` : '')
+    + (currentUser?.role === 'admin' ? `<button class="library-menu-item" type="button" data-lib="${id}" onclick="closeLibraryMenu();openLegalHold({ scope: 'library', libraryId: this.dataset.lib })">${cur.held ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '')
     + (opensAtSignIn
         ? `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="true" onclick="setStartLibrary(null)" title="On: this library opens each time you sign in. Select to turn that off."><span>Open at sign-in</span><span class="library-menu-check" aria-hidden="true">✓</span></button>`
         : `<button class="library-menu-item library-menu-toggle" type="button" aria-pressed="false" data-lib="${id}" onclick="setStartLibrary(this.dataset.lib)" title="Open this library each time you sign in"><span>Open at sign-in</span></button>`)
@@ -10704,7 +11287,7 @@ function fileCardHtml(f) {
     + `<button class="file-card-star${fav ? ' on' : ''}" data-fid="${fid}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${fav ? 'true' : 'false'}" onclick="event.stopPropagation();toggleFileFavorite(this.dataset.fid, event)">${fav ? '★' : '☆'}</button>`
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn" title="Actions" data-fid="${fid}" onclick="event.stopPropagation();openFileMenu(this.dataset.fid, event)">${ICON_MORE}</button></div></div>`
-    + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}</div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(name)}">${esc(name)}${holdMark(f.held ? 'Under a legal hold' : '')}</div>`
     + `<div class="file-card-sub">${fileSizeLabel(f.size || 0)} · ${fileDate(f.modified_at || f.created_at)}</div></div></div>`;
 }
 function folderCardHtml(folder) {
@@ -10715,7 +11298,7 @@ function folderCardHtml(folder) {
     + `<div class="file-card-actions">`
     + `<button class="file-library-icon-btn file-bell-btn${on ? ' on' : ''}" title="${on ? 'Notifying — click to mute' : 'Muted — click to enable'}" data-folder="${p}" onclick="event.stopPropagation();toggleFolderBell(this.dataset.folder, this)">${on ? ICON_BELL : ICON_BELL_OFF}</button>`
     + `<button class="file-library-icon-btn" title="Folder actions" data-folder="${p}" onclick="event.stopPropagation();openFolderMenu(this.dataset.folder, event)">${ICON_MORE}</button></div></div>`
-    + `<div class="file-card-body"><div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}</div>`
+    + `<div class="file-card-body"><div class="file-card-name" title="${esc(folder.name)}">${esc(folder.name)}${folderHoldTag(folder.path)}</div>`
     + `<div class="file-card-sub">${folder.count} item${folder.count === 1 ? '' : 's'}</div></div></div>`;
 }
 
@@ -11068,6 +11651,7 @@ function folderOpMessage(e) {
   const code = e?.body?.code;
   if (code === 'LIBRARY_BUSY') return 'Someone else is moving things in this library right now. Give it a moment and try again.';
   if (code === 'CHANGED') return 'Who can open this folder changed while you were deciding. Have another look and try again.';
+  if (code === 'LEGAL_HOLD' || code === 'RETENTION_MINIMUM') return e?.body?.error || e?.message || 'This is under a legal hold.';
   return e?.message || 'Something went wrong.';
 }
 
@@ -11300,7 +11884,9 @@ async function openShareSelected({ openAccess = false } = {}) {
     + `<p class="share-how" id="share-how" hidden></p>`
     + `</div></div>`
     + `<div class="share-q" id="share-q3"><div class="share-q-num">3</div><div class="share-q-body"><div class="share-q-title">How long and how locked</div>`
-    + `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`
+    + (shareLinkCap()
+        ? `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" checked disabled> Expires on<span class="share-toggle-hint">Links here last at most ${shareLinkCap()} days.</span></label><input type="date" class="share-inline-input" id="share-expiry-date" value="${dateInDays(Math.min(7, shareLinkCap()))}" min="${dateInDays(1)}" max="${dateInDays(shareLinkCap())}">`
+        : `<label class="share-toggle"><input type="checkbox" id="share-expiry-on" onchange="shareToggle('expiry')"> Set an expiry date</label><input type="date" class="share-inline-input" id="share-expiry-date" hidden>`)
     + `<label class="share-toggle"><input type="checkbox" id="share-pw-on" onchange="shareToggle('pw')"> Require a password</label><input type="password" class="share-inline-input" id="share-pw" hidden placeholder="Password" autocomplete="new-password">`
     + `<label class="share-toggle" id="share-upload-row"><input type="checkbox" id="share-upload-on"> Let people outside send files back<span class="share-toggle-hint">They land beside this file, and you are told. Applies to invited people who have no account here.</span></label>`
     + `</div></div>`
@@ -11459,6 +12045,20 @@ async function loadShareLinks(fileId = firstSelectedFile()?.id) {
   }
 }
 
+// The admin cap on how long a link may live (/api/config shareLinkMaxDays); null = none.
+function shareLinkCap() { const n = Number(appConfig?.shareLinkMaxDays); return Number.isFinite(n) && n > 0 ? n : null; }
+// <option>s for an expiry <select>: the given day choices trimmed to the cap, the cap
+// itself added when no choice equals it, and "Never" only when there is no cap.
+function expiryOptionsHtml(days, selected) {
+  const cap = shareLinkCap();
+  let list = cap ? days.filter(d => d > 0 && d <= cap) : days.filter(d => d > 0);
+  if (cap && !list.includes(cap)) list.push(cap);
+  list = [...new Set(list)].sort((a, b) => a - b);
+  const sel = cap ? Math.min(selected, cap) : selected;
+  return list.map(d => `<option value="${d}"${d === sel ? ' selected' : ''}>${d} days</option>`).join('') + (cap ? '' : `<option value="0"${selected === 0 ? ' selected' : ''}>Never</option>`);
+}
+// yyyy-mm-dd for the date input, n days from now.
+function dateInDays(n) { const d = new Date(Date.now() + n * 864e5); return d.toISOString().slice(0, 10); }
 function permissionLabel(permission) {
   return permission === 'admin' ? 'Can manage' : permission === 'write' ? 'Can edit' : 'Can view';
 }
@@ -12705,6 +13305,7 @@ function openFileMenu(fileId, event) {
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToFolder('${fileId}')">Move to folder…</button>` : '',
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFileToLibrary('${fileId}')">Move to library…</button>` : '',
     `<button class="file-menu-item" onclick="closeFileMenu();openFileDetails('${fileId}')">Details</button>`,
+    currentUser?.role === 'admin' ? `<button class="file-menu-item" data-fid="${escAttr(String(fileId))}" onclick="closeFileMenu();openLegalHold({ scope: 'document', fileId: this.dataset.fid })">${f.held ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '',
     canChange ? `<div class="file-menu-rule"></div>` : '',
     canChange ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFile('${fileId}')">Delete</button>` : '',
   ].filter(Boolean).join('');
@@ -12817,6 +13418,7 @@ function openFolderMenu(path, event) {
     canChange ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToParent(folderMenuPath)">Move to folder…</button>` : '',
     canEnd ? `<button class="file-menu-item" onclick="closeFileMenu();moveFolderToLibrary(folderMenuPath)">Move to library…</button>` : '',
     canCopy ? `<button class="file-menu-item" onclick="closeFileMenu();copyFolderToLibrary(folderMenuPath)">Copy to library…</button>` : '',
+    currentUser?.role === 'admin' ? `<button class="file-menu-item" onclick="closeFileMenu();openLegalHold({ scope: 'folder', libraryId: currentLibraryId, folderPath: folderMenuPath })">${folderHoldHere(path) ? 'Legal hold (in place)…' : 'Legal hold…'}</button>` : '',
     canEnd ? `<div class="file-menu-rule"></div>` : '',
     canEnd ? `<button class="file-menu-item danger" onclick="closeFileMenu();deleteFolder(folderMenuPath)">Delete folder</button>` : '',
     canChange && !canEnd ? `<div class="file-menu-label" style="text-transform:none;letter-spacing:0;font-weight:400">This folder is shared with other people. Renaming it or moving it here keeps the sharing; deleting it would end it, so that is the library owner's to do.</div>` : '',
@@ -12958,11 +13560,11 @@ async function openFolderShare(path) {
     <section class="file-share-section"><h3>People and groups</h3>${canManage ? `${accessTabsHtml()}<div class="ls-mount" data-view-panel="share"></div><div class="acc-mount" data-view-panel="access" hidden></div>` : '<div class="acc-mount"></div><p class="file-share-hint" style="margin-top:8px">Only the library owner or an admin can share it further.</p>'}<div class="fs-legacy"></div></section>
     ${canLink ? `<section class="file-share-section" style="margin-top:22px"><h3>Send to people</h3><p class="file-share-hint">Each person is emailed their own link to a page that lists this folder: they can download files one at a time, or the folder as a ZIP. It shows the folder as it is, including what is added later, and you are told the first time each of them opens it. A colleague with a Depot account signs in to open theirs; anyone else gets a link that works for whoever holds it, so add a password if it must not be forwarded.${canManage ? ' To give a colleague ongoing access instead, add them under People and groups above.' : ''}</p>
       <div class="share-people" style="margin-top:8px"><div class="share-chips" id="fsend-chips"></div><input class="share-email-input" id="fsend-input" type="email" autocomplete="off" aria-label="Add people by email" placeholder="Add people by email, then press Enter" onkeydown="folderSendKey(event)" onblur="folderSendCommit(this)"></div>
-      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry"><option value="30">30 days</option><option value="7">7 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div><label class="share-toggle"><input type="checkbox" id="fsend-upload"> Let them add files to this folder<span class="share-toggle-hint">Their page gets an upload area. Files land in this folder, belong to you, and you are told when one arrives. Large files are fine.</span></label>
+      <div class="file-share-grid" style="margin-top:10px"><label for="fsend-expiry">Expires</label><select id="fsend-expiry">${expiryOptionsHtml([7, 30, 90], 30)}</select><label for="fsend-password">Password</label><input id="fsend-password" name="memex-folder-send-pw" type="password" autocomplete="new-password" placeholder="Optional, for people outside"><label for="fsend-note">Note</label><input id="fsend-note" type="text" autocomplete="off" placeholder="Optional message in the email"></div><label class="share-toggle"><input type="checkbox" id="fsend-upload"> Let them add files to this folder<span class="share-toggle-hint">Their page gets an upload area. Files land in this folder, belong to you, and you are told when one arrives. Large files are fine.</span></label>
       <div class="btn-row"><button class="run-btn" id="fsend-go" onclick="sendFolderToPeople()" disabled>Send</button></div>
       <div class="share-how" id="fsend-result" role="status"></div>
       </section><section class="file-share-section" style="margin-top:22px"><h3>Anyone with the link</h3><p class="file-share-hint">Creates one link, no sign-in needed, to a page that lists this folder's files for download (one at a time, or as a ZIP). It covers only the files in the folder right now, because a link like this can be forwarded to anyone.</p>
-      <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="0">Never</option></select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
+      <div class="file-share-grid"><label for="folder-share-expiry">Expires</label><select id="folder-share-expiry">${expiryOptionsHtml([7, 30, 90], 7)}</select><label for="folder-share-password">Password</label><input id="folder-share-password" name="memex-folder-share-pw" type="password" autocomplete="new-password" placeholder="Optional"></div>
       <div class="btn-row"><button class="run-btn" onclick="createFolderShareLink()">Create link</button></div>
       <div class="file-share-result" id="folder-share-result"><input class="file-share-url" id="folder-share-url" readonly><button class="file-library-tool" onclick="copyFolderShareUrl()">Copy link</button></div>
       <div class="file-share-list" id="folder-share-list">${emptyState('Loading links', 'Checking existing links for this folder.')}</div>

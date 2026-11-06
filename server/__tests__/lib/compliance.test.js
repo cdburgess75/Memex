@@ -19,8 +19,8 @@ describe('access_control readiness', () => {
     });
     const r = await CHECKS.access_control();
     expect(r.ready).toBe(true);
-    expect(r.evidence).toMatch(/3 role assignment/);
-    expect(r.evidence).toMatch(/MFA\/SSO/); // gaps stated, not hidden
+    expect(r.evidence).toMatch(/3 people have a role/);
+    expect(r.evidence).toMatch(/MFA/); // the gap is named, not hidden
   });
 
   test('not ready when no roles are configured', async () => {
@@ -44,7 +44,7 @@ describe('audit_logging readiness', () => {
       /document_events/.test(sql) ? Promise.resolve({ n: 5 }) : Promise.resolve({ n: 9 }));
     const r = await CHECKS.audit_logging();
     expect(r.ready).toBe(true);
-    expect(r.evidence).toMatch(/hash-chained/i);
+    expect(r.evidence).toMatch(/5 entries in the hash-chained record/i);
   });
 
   test('not ready when only the plain activity feed has events', async () => {
@@ -52,7 +52,7 @@ describe('audit_logging readiness', () => {
       /document_events/.test(sql) ? Promise.resolve({ n: 0 }) : Promise.resolve({ n: 9 }));
     const r = await CHECKS.audit_logging();
     expect(r.ready).toBe(false);
-    expect(r.evidence).toMatch(/not evidenced as tamper-evident/i);
+    expect(r.evidence).toMatch(/hash-chained record has none yet/i);
   });
 });
 
@@ -69,6 +69,175 @@ describe('backup_restore readiness', () => {
     settings.get.mockResolvedValue(null);
     const r = await CHECKS.backup_restore();
     expect(r.ready).toBe(false);
-    expect(r.evidence).toMatch(/no successful backup run is recorded/i);
+    expect(r.evidence).toMatch(/No backup has completed yet/i);
+  });
+});
+
+// ---- FTC Safeguards Rule profile (the CPA / tax-firm profile) ----
+const { FRAMEWORKS, CONTROL_CATALOG, UPCOMING } = require('../../lib/compliance');
+
+describe('safeguards framework', () => {
+  test('exists, is listed first, and every control it names is in the catalog or on its way', () => {
+    expect(FRAMEWORKS[0].id).toBe('safeguards');
+    for (const id of FRAMEWORKS[0].controls) expect(CONTROL_CATALOG[id] || UPCOMING.includes(id)).toBeTruthy();
+  });
+
+  test('every catalog entry has the copy the simple view and the packet print', () => {
+    for (const [id, c] of Object.entries(CONTROL_CATALOG)) {
+      expect(typeof c.label).toBe('string');
+      expect(typeof c.evidence).toBe('string');
+      expect(typeof c.gap).toBe('string');
+      // auto controls must have a check; manual ones must not
+      if (c.manual) expect(require('../../lib/compliance').CHECKS[id]).toBeUndefined();
+      else expect(typeof require('../../lib/compliance').CHECKS[id]).toBe('function');
+    }
+    // each Safeguards requirement names the clause it answers to
+    for (const r of FRAMEWORKS[0].requirements) expect(r.why).toMatch(/314\.4/);
+  });
+});
+
+// The citation is per framework: one control answers to 314.4(c)(5) for a CPA office and
+// to 164.312(d) for a clinic. Every requirement says which, and names only controls that
+// exist or are on the explicit list of ones on their way.
+describe('every framework cites its clauses', () => {
+  test('each requirement has a control, a cite, and a why that names the cite', () => {
+    for (const f of FRAMEWORKS) {
+      expect(f.requirements.length).toBeGreaterThan(0);
+      for (const r of f.requirements) {
+        expect(typeof r.control).toBe('string');
+        expect(r.cite).toMatch(/\S/);
+        expect(r.why).toContain(r.cite.split(' and ')[0].replace(/,.*$/, ''));
+      }
+      expect(f.controls).toEqual(f.requirements.map(r => r.control));
+      expect(new Set(f.controls).size).toBe(f.controls.length);   // a control once per framework
+    }
+  });
+  test('every control id named exists in the catalog or is in UPCOMING', () => {
+    for (const f of FRAMEWORKS) for (const id of f.controls) {
+      if (!CONTROL_CATALOG[id]) expect(UPCOMING).toContain(id);
+    }
+  });
+  test('the profiles say what they are not', () => {
+    const by = Object.fromEntries(FRAMEWORKS.map(f => [f.id, f]));
+    expect(by.hipaa.note).toMatch(/certifies organizations, not software/);
+    expect(by.hipaa.requirements.map(r => r.cite).join(' ')).toMatch(/164\.312\(a\)\(2\)\(iii\)/);   // automatic logoff
+    expect(by.pci_dss.name).toBe('PCI: no card data in Depot');
+    expect(by.pci_dss.controls).toContain('no_card_data');
+    expect(by.pci_dss.controls).toContain('sensitive_data');
+    expect(by.nist_csf.requirements.map(r => r.cite).join(' ')).toMatch(/Govern.*Identify.*Protect.*Detect.*Respond.*Recover/s);
+    for (const id of ['malware_scanning', 'access_review', 'signin_events']) for (const fw of ['safeguards', 'hipaa', 'pci_dss', 'soc2']) expect(by[fw].controls).toContain(id);
+  });
+});
+
+describe('session_timeout readiness (HIPAA automatic logoff)', () => {
+  test('ready when a sign-in lasts a day or less', async () => {
+    settings.get.mockImplementation(k => Promise.resolve(k === 'login_session_hours' ? '10' : null));
+    const r = await require('../../lib/compliance').CHECKS.session_timeout();
+    expect(r.ready).toBe(true);
+    expect(r.evidence).toMatch(/10 hours/);
+  });
+  test('not ready when it is longer, or not set', async () => {
+    settings.get.mockImplementation(k => Promise.resolve(k === 'login_session_hours' ? '168' : null));
+    expect((await require('../../lib/compliance').CHECKS.session_timeout()).ready).toBe(false);
+    settings.get.mockResolvedValue(null);
+    const r = await require('../../lib/compliance').CHECKS.session_timeout();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/not been set/);
+  });
+});
+
+describe('mfa readiness', () => {
+  test('ready when the setup switch recorded mfa_required', async () => {
+    settings.get.mockResolvedValue('true');
+    settings.getOrEnv.mockResolvedValue(null);
+    const r = await CHECKS.mfa();
+    expect(r.ready).toBe(true);
+  });
+
+  test('not ready without it; Microsoft-only sign-in says to confirm the tenant', async () => {
+    settings.get.mockResolvedValue(null);
+    settings.getOrEnv.mockImplementation(k => Promise.resolve(k === 'login_ms365_enabled' ? 'true' : null));
+    const r = await CHECKS.mfa();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/Microsoft tenant/);
+    settings.getOrEnv.mockResolvedValue(null);
+    expect((await CHECKS.mfa()).evidence).toMatch(/stolen password/);
+  });
+});
+
+describe('link_governance readiness', () => {
+  test('ready only with a cap set and no live link that never expires', async () => {
+    settings.getOrEnv.mockImplementation(k => Promise.resolve(k === 'share_link_max_days' ? '30' : null));
+    db.queryOne.mockResolvedValue({ n: 0 });
+    expect((await CHECKS.link_governance()).ready).toBe(true);
+    db.queryOne.mockResolvedValue({ n: 2 });
+    const r = await CHECKS.link_governance();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/2 live links never expire/);
+  });
+
+  test('not ready when no cap is set', async () => {
+    settings.getOrEnv.mockResolvedValue(null);
+    db.queryOne.mockResolvedValue({ n: 0 });
+    const r = await CHECKS.link_governance();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/No limit is set/);
+  });
+});
+
+describe('retention readiness (disposal on a schedule)', () => {
+  test('unset uses the sweeper default of 30 days and is ready', async () => {
+    settings.getOrEnv.mockResolvedValue(null);
+    expect((await CHECKS.retention()).ready).toBe(true);
+  });
+  test('0 (never purge) and over 90 days are not ready', async () => {
+    settings.getOrEnv.mockResolvedValue('0');
+    expect((await CHECKS.retention()).ready).toBe(false);
+    settings.getOrEnv.mockResolvedValue('400');
+    expect((await CHECKS.retention()).ready).toBe(false);
+    settings.getOrEnv.mockResolvedValue('45');
+    expect((await CHECKS.retention()).ready).toBe(true);
+  });
+});
+
+// malware_scanning: green only when scanning is on AND the scanner answered within the
+// hour (lib/malwareScan caches the ping); the evidence names what an auditor asks for.
+describe('malware_scanning readiness', () => {
+  const scan = require('../../lib/malwareScan');
+  afterEach(() => jest.restoreAllMocks());
+  const stub = (st, refused = 0) => {
+    jest.spyOn(scan, 'status').mockResolvedValue({ enabled: false, answering: false, checkedAt: null, version: null, signatureDate: null, lastScanAt: null, error: null, ...st });
+    jest.spyOn(scan, 'refusedCount').mockResolvedValue(refused);
+  };
+  test('off: not ready, says files are stored as they arrive', async () => {
+    stub({ enabled: false }, 0);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/scanning is off/i);
+    expect(r.evidence).toMatch(/0 files refused in the last 30 days/);
+  });
+  test('on but the scanner is not answering: not ready, says uploads are refused', async () => {
+    stub({ enabled: true, answering: false, error: 'connect ECONNREFUSED' }, 1);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(false);
+    expect(r.evidence).toMatch(/not answering/);
+    expect(r.evidence).toMatch(/uploads are being refused/);
+    expect(r.evidence).toMatch(/1 file refused/);
+  });
+  test('on and answering: ready, with the signature date, the last scan and the count', async () => {
+    stub({ enabled: true, answering: true, version: 'ClamAV 1.4.6', signatureDate: '2026-11-02T06:00:00.000Z', checkedAt: '2026-11-03T15:00:00.000Z', lastScanAt: '2026-11-03T14:30:00.000Z' }, 3);
+    const r = await CHECKS.malware_scanning();
+    expect(r.ready).toBe(true);
+    expect(r.evidence).toMatch(/ClamAV 1\.4\.6/);
+    expect(r.evidence).toMatch(/signatures from November 2, 2026/);
+    expect(r.evidence).toMatch(/Last scan November 3, 2026/);
+    expect(r.evidence).toMatch(/3 files refused in the last 30 days/);
+    expect(scan.status).toHaveBeenCalledWith(); // the cached status, never a forced ping
+  });
+  test('the catalog entry: label, why, and a fix that opens the storage settings', () => {
+    const { CONTROL_CATALOG } = require('../../lib/compliance');
+    expect(CONTROL_CATALOG.malware_scanning).toMatchObject({ label: 'Uploads are scanned for malware', fix: 'settings:malware_scan_enabled' });
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/164\.308\(a\)\(5\)\(ii\)\(B\)/);
+    expect(CONTROL_CATALOG.malware_scanning.why).toMatch(/314\.4\(c\)/);
   });
 });

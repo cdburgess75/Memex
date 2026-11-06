@@ -44,19 +44,35 @@ const ENV_MAP = {
   // blocklist stopped being the default on 2026-10-14).
   blocked_file_exts:              'BLOCKED_FILE_EXTS',
   min_free_disk_mb:               'MIN_FREE_DISK_MB',
+  // Virus scanning of every upload through the clamav service (lib/malwareScan.js).
+  // 'true' enforces; host is host:port of clamd; files over max_mb are stored unscanned.
+  malware_scan_enabled:           'MALWARE_SCAN_ENABLED',
+  malware_scan_host:              'MALWARE_SCAN_HOST',
+  malware_scan_max_mb:            'MALWARE_SCAN_MAX_MB',
+  // Sensitive data in files (lib/sensitiveData.js): off or flag, per type. Card numbers
+  // and Social Security numbers flag by default; bank numbers are off. Findings show
+  // under Compliance; nothing is refused.
+  sensitive_data_cards:           'SENSITIVE_DATA_CARDS',
+  sensitive_data_ssn:             'SENSITIVE_DATA_SSN',
+  sensitive_data_bank:            'SENSITIVE_DATA_BANK',
   trash_retention_days:           'TRASH_RETENTION_DAYS',
   max_document_versions:          'MAX_DOCUMENT_VERSIONS',
+  compliance_safeguards_enabled:  'COMPLIANCE_SAFEGUARDS_ENABLED',
   compliance_soc2_enabled:        'COMPLIANCE_SOC2_ENABLED',
   compliance_hipaa_enabled:       'COMPLIANCE_HIPAA_ENABLED',
   compliance_gdpr_enabled:        'COMPLIANCE_GDPR_ENABLED',
   compliance_pci_dss_enabled:     'COMPLIANCE_PCI_DSS_ENABLED',
   compliance_iso27001_enabled:    'COMPLIANCE_ISO27001_ENABLED',
   compliance_cmmc_enabled:        'COMPLIANCE_CMMC_ENABLED',
+  compliance_nist_csf_enabled:    'COMPLIANCE_NIST_CSF_ENABLED',
+  compliance_report_schedule:     'COMPLIANCE_REPORT_SCHEDULE',   // off | monthly | quarterly
+  compliance_report_email:        'COMPLIANCE_REPORT_EMAIL',      // comma list; the scheduled report goes here
   backup_enabled:                 'BACKUP_ENABLED',
   backup_interval_hours:          'BACKUP_INTERVAL_HOURS',
   backup_retention:               'BACKUP_RETENTION',
   backup_destinations:            'BACKUP_DESTINATIONS',
   backup_download_secret:         'BACKUP_DOWNLOAD_SECRET',
+  signin_events_enabled:          'SIGNIN_EVENTS_ENABLED',   // sign-ins from Keycloak into the audit record (lib/signInEvents); on unless 'false'
   stun_url:                       'STUN_URL',
   turn_url:                       'TURN_URL',
   turn_username:                  'TURN_USERNAME',
@@ -97,6 +113,10 @@ const ENV_MAP = {
   // mailbox) instead of the single workspace address. Falls back automatically
   // when a member has no usable mailbox. 'false' disables.
   email_send_as_user:             'EMAIL_SEND_AS_USER',
+  // Longest a share link or send-by-email link may live, in days (1–365). Unset
+  // means no cap: the dialogs keep their 7/30-day defaults and "never" stays
+  // available. The compliance check `link_governance` wants it set.
+  share_link_max_days:            'SHARE_LINK_MAX_DAYS',
   email_ev_share_granted:         'EMAIL_EV_SHARE_GRANTED',
   email_ev_share_downloaded:      'EMAIL_EV_SHARE_DOWNLOADED',
   email_ev_share_opened:          'EMAIL_EV_SHARE_OPENED',
