@@ -1,6 +1,6 @@
 # Exact Node and Alpine, plus the digest: Dependabot proposes a new digest whenever the
 # image is rebuilt with Alpine fixes, so those reach servers through a normal release.
-FROM node:24.22.2-alpine3.24@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
+FROM node:24.22.3-alpine3.24@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 LABEL org.opencontainers.image.source="https://github.com/cdburgess75/Memex"
 LABEL org.opencontainers.image.description="Memex — team knowledge base kept by Claude"
